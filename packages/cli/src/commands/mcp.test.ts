@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeIo, withFakeHome, type CapturedIo } from "../../test/support.js";
-import { runMcpInstall, runMcpServe } from "./mcp.js";
+import { checkMcpStatus, runMcpInstall, runMcpServe } from "./mcp.js";
 import { EXIT_OK, EXIT_USAGE } from "../output.js";
 
 describe("orch mcp install --dry-run", () => {
@@ -156,6 +156,56 @@ describe("orch mcp install (écriture réelle, sous HOME factice)", () => {
       const path = join(home, ".copilot", "mcp-config.json");
       const written = JSON.parse(await readFile(path, "utf8"));
       expect(written.mcpServers.orch.command).toBe("orch");
+    });
+  });
+});
+
+describe("checkMcpStatus", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-cli-mcp-status-"));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("copilot : \"not-registered\" quand le fichier n'existe pas encore", async () => {
+    await withFakeHome(async () => {
+      const status = await checkMcpStatus("copilot", root);
+      expect(status.registered).toBe("not-registered");
+    });
+  });
+
+  it("copilot : \"registered\" une fois l'entrée écrite, sans relancer l'installation", async () => {
+    await withFakeHome(async () => {
+      await runMcpInstall(root, "copilot", {}, makeIo());
+      const status = await checkMcpStatus("copilot", root);
+      expect(status.registered).toBe("registered");
+      expect(status.detail).toMatch(/mcp-config\.json/);
+    });
+  });
+
+  it("copilot : un fichier existant avec un autre serveur reste \"not-registered\" pour \"orch\"", async () => {
+    await withFakeHome(async (home) => {
+      const path = join(home, ".copilot", "mcp-config.json");
+      await mkdir(join(home, ".copilot"), { recursive: true });
+      await writeFile(path, JSON.stringify({ mcpServers: { autre: { command: "autre-cli" } } }), "utf8");
+      const status = await checkMcpStatus("copilot", root);
+      expect(status.registered).toBe("not-registered");
+    });
+  });
+
+  it("claude et codex : \"unknown\", sans lancer le moindre sous-processus", async () => {
+    await withFakeHome(async () => {
+      const claude = await checkMcpStatus("claude", root);
+      expect(claude.registered).toBe("unknown");
+      expect(claude.detail).toContain("claude mcp list");
+
+      const codex = await checkMcpStatus("codex", root);
+      expect(codex.registered).toBe("unknown");
+      expect(codex.detail).toContain("codex mcp list");
     });
   });
 });

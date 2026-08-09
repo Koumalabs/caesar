@@ -12,6 +12,7 @@
 import { fileURLToPath } from "node:url";
 import { Command, CommanderError } from "commander";
 import { runAgentsDisable, runAgentsEnable, runAgentsList, runAgentsTest } from "./commands/agents.js";
+import { runConfig } from "./commands/config.js";
 import { runDoctor } from "./commands/doctor.js";
 import { runInit } from "./commands/init.js";
 import { runMcpInstall, runMcpServe } from "./commands/mcp.js";
@@ -90,6 +91,14 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
         const root = await resolveRoot(opts.root);
         return runDoctor(root, { json: opts.json }, io);
       });
+    });
+
+  program
+    .command("config")
+    .description("Lance le TUI de configuration (OpenTUI, sous Bun). Sans Bun : renvoie vers les sous-commandes équivalentes.")
+    .option("--root <dir>", "Racine du projet (défaut : recherche automatique depuis le répertoire courant)")
+    .action(async (options: { root?: string }) => {
+      await run(async () => runConfig(await resolveRoot(options.root), io));
     });
 
   // ---------------------------------------------------------------------

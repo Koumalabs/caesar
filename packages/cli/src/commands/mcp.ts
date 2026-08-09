@@ -188,6 +188,51 @@ async function applyPlan(plan: InstallPlan): Promise<void> {
   await writeJsonFileAtomic(plan.path, merged);
 }
 
+/**
+ * État d'enregistrement d'un client MCP, utilisé par l'écran Intégrations du
+ * TUI (voir le brief de la tâche 8) — pas de bouton "installer" qui ignore
+ * ce qui est déjà en place.
+ *
+ * Pour les clients à fichier (`copilot`, `antigravity`, `opencode`), l'état
+ * se lit honnêtement : le fichier existe-t-il, porte-t-il déjà l'entrée
+ * `SERVER_NAME` ? Pour les clients à sous-commande (`claude`, `codex`),
+ * aucune lecture fiable et sans effet de bord n'est disponible : `claude mcp
+ * list` fait un health-check des serveurs approuvés (effet de bord réseau) et
+ * ne publie pas de `--json` ; `codex mcp list --json` existe mais reste
+ * asymétrique avec `claude`. Plutôt que de deviner ou d'invoquer l'un et pas
+ * l'autre (l'incohérence serait pire que l'absence d'info — voir la
+ * contrainte globale n°3 sur les flags non vérifiés), `registered` vaut
+ * `"unknown"` pour les deux, avec un motif qui nomme la sous-commande à
+ * lancer soi-même.
+ */
+export type McpRegistrationState = "registered" | "not-registered" | "unknown";
+
+export interface McpStatus {
+  client: McpClient;
+  registered: McpRegistrationState;
+  detail: string;
+}
+
+export async function checkMcpStatus(client: McpClient, root: string): Promise<McpStatus> {
+  const plan = buildPlan(client, root);
+  if (plan.kind === "command") {
+    return {
+      client,
+      registered: "unknown",
+      detail: `Statut non vérifiable sans effet de bord : lancez "${plan.bin} mcp list" pour le consulter vous-même.`,
+    };
+  }
+
+  const existing = await readJsonFile(plan.path);
+  const bucket = existing[plan.mergeKey] as Record<string, unknown> | undefined;
+  const registered = bucket !== undefined && Object.prototype.hasOwnProperty.call(bucket, SERVER_NAME);
+  return {
+    client,
+    registered: registered ? "registered" : "not-registered",
+    detail: registered ? `Déjà enregistré dans ${plan.path}.` : `Absent de ${plan.path}.`,
+  };
+}
+
 export interface McpInstallOptions {
   dryRun?: boolean;
   json?: boolean;

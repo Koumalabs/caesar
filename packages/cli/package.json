@@ -5,6 +5,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "bin": {
     "orch": "./dist/bin.js"
   },
@@ -15,6 +18,7 @@
     "@orch/mcp-channel": "workspace:*",
     "@orch/mcp-server": "workspace:*",
     "@orch/protocol": "workspace:*",
+    "@orch/tui": "workspace:*",
     "commander": "^15.0.0",
     "zod": "^4.4.3"
   }

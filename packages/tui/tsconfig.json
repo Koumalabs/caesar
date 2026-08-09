@@ -1,0 +1,38 @@
+{
+  // Ce package tourne sous Bun, qui exécute le TypeScript directement : ce
+  // fichier ne sert qu'au typecheck (`tsc --noEmit`, voir le script
+  // "typecheck"), jamais à une compilation dont un autre package
+  // dépendrait. Volontairement absent des references de `tsconfig.json`
+  // racine (`pnpm exec tsc -b` ne le voit pas) et volontairement non composite
+  // : composite implique une émission de déclarations destinée à des
+  // consommateurs, ce qu'aucun package ne fait ici.
+  //
+  // N'étend pas `tsconfig.base.json` (module: NodeNext) : OpenTUI publie son
+  // typage JSX (`box`, `text`, `select`…) sous l'export `@opentui/react`
+  // avec `moduleResolution: "bundler"`, la configuration que son propre
+  // README recommande — Bun la comprend nativement. Les options de rigueur
+  // du monorepo (`strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`…)
+  // sont reprises explicitement pour rester cohérentes avec les autres
+  // packages.
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/react",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": false,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "composite": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*"]
+}

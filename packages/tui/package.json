@@ -1,0 +1,25 @@
+{
+  "name": "@orch/tui",
+  "version": "0.1.0",
+  "description": "TUI de configuration de l'orchestrateur (OpenTUI, exécuté sous Bun)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun src/main.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@opentui/core": "0.5.1",
+    "@opentui/react": "0.5.1",
+    "@orch/cli": "workspace:*",
+    "@orch/core": "workspace:*",
+    "@orch/protocol": "workspace:*",
+    "react": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.0",
+    "typescript": "~5.9.3"
+  }
+}
