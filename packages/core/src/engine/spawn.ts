@@ -49,6 +49,15 @@ export async function runAgentProcess(options: RunOptions): Promise<RunResult> {
   const { agent, plan, paths, taskId, timeoutMs, signal, onEvent, onSpawn } = options;
   const startedAt = Date.now();
 
+  // Un signal déjà déclenché à l'entrée (annulation survenue pendant une
+  // étape antérieure, plus lente — préparation de l'isolation, par exemple)
+  // ne doit jamais aboutir à un lancement : un écouteur `abort` posé après
+  // coup, plus loin dans cette fonction, ne se déclencherait jamais pour un
+  // signal déjà abandonné.
+  if (signal?.aborted) {
+    return { exitCode: null, signal: null, timedOut: false, aborted: true, eventCount: 0, durationMs: Date.now() - startedAt };
+  }
+
   for (const file of plan.files) {
     await mkdir(dirname(file.path), { recursive: true });
     await writeFile(file.path, file.content, "utf8");
@@ -65,7 +74,7 @@ export async function runAgentProcess(options: RunOptions): Promise<RunResult> {
     const event = toOrchEvent(taskId, seq++, partial);
     eventCount++;
     await appendEvent(paths, event);
-    onEvent?.(event);
+    safeOnEvent(onEvent, event);
   }
 
   const child = spawn(plan.command, plan.args, {
@@ -177,6 +186,22 @@ export async function runAgentProcess(options: RunOptions): Promise<RunResult> {
     eventCount,
     durationMs: Date.now() - startedAt,
   };
+}
+
+/**
+ * Invoque `onEvent` sans jamais laisser une exception qu'il lèverait remonter
+ * jusqu'à l'appelant : le tout premier événement (`started`) est émis avant
+ * même que le minuteur de timeout et l'écouteur d'abandon ne soient posés —
+ * un callback d'affichage qui casse à cet instant ne doit pas transformer un
+ * problème de présentation en sous-processus orphelin.
+ */
+function safeOnEvent(onEvent: RunOptions["onEvent"], event: OrchEvent): void {
+  if (!onEvent) return;
+  try {
+    onEvent(event);
+  } catch {
+    // Volontairement ignoré : voir la documentation de la fonction.
+  }
 }
 
 /** Complète un événement partiel avec les champs communs (protocole, seq, horodatage, tâche). */

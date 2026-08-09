@@ -44,6 +44,13 @@ describe("fileTaskStore", () => {
     expect(await store.get("t_absent")).toBeNull();
   });
 
+  it("refuse de créer deux fois le même identifiant, sans écraser silencieusement", async () => {
+    await store.create(sampleRecord({ id: "t_dup", objective: "premier" }));
+    await expect(store.create(sampleRecord({ id: "t_dup", objective: "second" }))).rejects.toThrow(/t_dup/);
+    // Le premier enregistrement survit, inchangé.
+    expect((await store.get("t_dup"))!.objective).toBe("premier");
+  });
+
   it("écrit sous <root>/.orch/state/tasks/<id>.json", async () => {
     const record = sampleRecord();
     await store.create(record);

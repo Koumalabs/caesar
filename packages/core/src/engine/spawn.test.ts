@@ -227,6 +227,49 @@ describe("runAgentProcess", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("un onEvent qui lève n'interrompt pas la tâche : elle va jusqu'au bout, sans orphelin", async () => {
+    const { task, paths } = await setupTask(dir, {});
+    const result = await runAgentProcess({
+      agent: stubAgent,
+      plan: planFor(task, paths),
+      paths,
+      taskId: task.id,
+      timeoutMs: 10_000,
+      onEvent: () => {
+        // Simule un callback d'affichage cassé — dès le tout premier événement
+        // ("started"), avant même que le minuteur de timeout et l'écouteur
+        // d'abandon ne soient posés.
+        throw new Error("callback d'affichage cassé");
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.aborted).toBe(false);
+    await expectNoOrphan();
+  });
+
+  it("un AbortSignal déjà déclenché avant l'appel ne lance aucun processus", async () => {
+    const { task, paths } = await setupTask(dir, { mode: "hang" });
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await runAgentProcess({
+      agent: stubAgent,
+      plan: planFor(task, paths),
+      paths,
+      taskId: task.id,
+      timeoutMs: 10_000,
+      signal: controller.signal,
+    });
+
+    expect(result.aborted).toBe(true);
+    expect(result.exitCode).toBeNull();
+    expect(result.eventCount).toBe(0);
+    // Rien n'a été lancé : aucun fichier de journal n'a même été créé.
+    await expect(readFile(paths.rawLog, "utf8")).rejects.toThrow();
+    await expectNoOrphan();
+  });
+
   it("un AbortSignal annule l'exécution avant le timeout", async () => {
     const { task, paths } = await setupTask(dir, { mode: "hang" });
     const controller = new AbortController();

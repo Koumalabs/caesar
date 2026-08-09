@@ -46,6 +46,14 @@ export interface TaskRecord {
 }
 
 export interface TaskStore {
+  /**
+   * Crée l'enregistrement d'une nouvelle tâche. Lève si `record.id` est déjà
+   * pris — jamais un écrasement silencieux : deux exécutions qui partageraient
+   * le même identifiant (bug d'un appelant, `taskId` imposé et réutilisé par
+   * erreur) écriraient sinon dans le même répertoire de tâche, avec un
+   * `raw.log` tronqué et un `events.jsonl` entrelacé. `update` reste la seule
+   * façon de modifier un enregistrement existant.
+   */
   create(record: TaskRecord): Promise<void>;
   update(id: string, patch: Partial<TaskRecord>): Promise<TaskRecord>;
   get(id: string): Promise<TaskRecord | null>;
@@ -82,7 +90,13 @@ export function fileTaskStore(root: string): TaskStore {
   }
 
   return {
-    create: (record) => writeRecord(record),
+    async create(record) {
+      const existing = await readRecord(record.id);
+      if (existing) {
+        throw new Error(`Tâche déjà existante : "${record.id}" (un enregistrement porte déjà cet identifiant ; utilisez update pour le modifier).`);
+      }
+      await writeRecord(record);
+    },
 
     async update(id, patch) {
       const current = await readRecord(id);

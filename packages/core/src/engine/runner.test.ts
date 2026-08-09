@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -246,6 +246,31 @@ describe("runTask", () => {
     expect(outcome.record.id).toBe("t_imposed");
     expect(outcome.record.task_dir).toBe(join(root, ".orch", "tasks", "t_imposed"));
     expect(await store.get("t_imposed")).not.toBeNull();
+  });
+
+  it("un signal déjà déclenché à l'entrée n'engage même pas l'isolation : aucun worktree créé, statut cancelled", async () => {
+    await initGitRepo(root);
+    const controller = new AbortController();
+    controller.abort();
+
+    const outcome = await runTask(
+      { store, root },
+      {
+        agentId: "fake-agent",
+        objective: "signal déjà abandonné avant le lancement",
+        // write + dépôt git : la règle d'isolation "auto" aurait normalement
+        // créé un worktree. Le garde doit intervenir avant que cela n'arrive.
+        mode: "write",
+        workspace: root,
+        signal: controller.signal,
+      },
+    );
+
+    expect(outcome.record.status).toBe("cancelled");
+    expect(outcome.record.branch).toBeUndefined();
+    expect(outcome.diff).toBeUndefined();
+    expect(outcome.report.status).toBe("failed");
+    await expect(access(join(root, ".orch", "wt"))).rejects.toThrow();
   });
 
   it("onEvent reçoit les événements au fil de l'eau, avant que runTask ne résolve", async () => {

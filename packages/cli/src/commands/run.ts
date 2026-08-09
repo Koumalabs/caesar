@@ -15,12 +15,22 @@
  * contrat que celui dont le serveur MCP aura besoin (`orch_delegate`
  * asynchrone, rendant un identifiant immédiatement).
  */
-import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Isolation, OrchEvent, TaskMode } from "@orch/protocol";
 import type { ResolvedRole } from "@orch/core";
-import { checkDelegation, findAgentDefinition, findBinaryInPath, fileTaskStore, loadConfig, parseDuration, pickAgentForRole, resolveRole, runTask } from "@orch/core";
+import {
+  checkDelegation,
+  findAgentDefinition,
+  findBinaryInPath,
+  fileTaskStore,
+  generateTaskId,
+  loadConfig,
+  parseDuration,
+  pickAgentForRole,
+  resolveRole,
+  runTask,
+} from "@orch/core";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, writeLine } from "../output.js";
 
@@ -45,11 +55,6 @@ async function resolveContext(raw: string | undefined): Promise<string | undefin
     return await readFile(path, "utf8");
   }
   return raw;
-}
-
-/** Identifiant lisible, dans le même format que celui que `runner.ts` aurait généré. */
-function generateTaskId(): string {
-  return `t_${randomUUID().replace(/-/g, "")}`;
 }
 
 function describeEvent(event: OrchEvent): string | undefined {

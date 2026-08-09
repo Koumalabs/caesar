@@ -7,8 +7,18 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Channel, Finding, Isolation, OrchEvent, Report, ReportChannel, Task, TaskMode } from "@orch/protocol";
-import { TASK_PROTOCOL, TaskSchema, renderTaskPrompt, strictReportJsonSchema, taskEnv, taskPaths, writeTask } from "@orch/protocol";
+import type { Channel, Finding, Isolation, OrchEvent, Report, ReportChannel, Task, TaskMode, TaskPaths } from "@orch/protocol";
+import {
+  REPORT_PROTOCOL,
+  ReportSchema,
+  TASK_PROTOCOL,
+  TaskSchema,
+  renderTaskPrompt,
+  strictReportJsonSchema,
+  taskEnv,
+  taskPaths,
+  writeTask,
+} from "@orch/protocol";
 import { resolveAgentDefinition } from "../registry/index.js";
 import type { AgentDefinition, SpawnPlan } from "../registry/types.js";
 import type { ReportSource, TaskRecord, TaskStatus, TaskStore } from "../store.js";
@@ -93,6 +103,15 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   const id = input.taskId ?? generateTaskId();
   const taskDir = join(deps.root, ".orch", "tasks", id);
   const paths = taskPaths(taskDir);
+
+  // Vérifié ici, avant d'engager l'isolation : la préparation qui suit peut
+  // créer un worktree git, une opération qui n'est pas instantanée. Sans ce
+  // garde, un signal déjà déclenché à l'entrée serait ignoré jusqu'au bout —
+  // `runAgentProcess` (deuxième garde, juste avant de lancer le fils) ne
+  // couvre que l'annulation survenue *pendant* cette préparation.
+  if (input.signal?.aborted) {
+    return abortBeforeStart(deps, input, id, paths, agentDef, depth);
+  }
 
   const { isolation, warning, handle } = await prepareIsolation(deps.root, id, input, agentDef);
   const workspace = handle ? handle.path : input.workspace;
@@ -222,8 +241,61 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   return { record: updated, report, source: resolved.source, diff };
 }
 
-function generateTaskId(): string {
+/** Utilisée par `runTask` quand `input.taskId` est absent. Exportée pour que les
+ * appelants qui préfèrent imposer leur propre identifiant (voir `RunTaskInput.taskId`)
+ * réutilisent le même format plutôt que d'en tenir une seconde implémentation. */
+export function generateTaskId(): string {
   return `t_${randomUUID().replace(/-/g, "")}`;
+}
+
+/**
+ * Court-circuite `runTask` quand `input.signal` est déjà déclenché à l'entrée :
+ * aucune isolation n'est préparée (pas de worktree git, potentiellement
+ * lent), `agentDef.build` n'est pas appelé, et surtout aucun processus n'est
+ * lancé. Le résultat reste un `TaskOutcome` valide, visible par
+ * `orch ps`/`orch logs` comme n'importe quelle autre tâche annulée.
+ */
+async function abortBeforeStart(
+  deps: RunnerDeps,
+  input: RunTaskInput,
+  id: string,
+  paths: TaskPaths,
+  agentDef: AgentDefinition,
+  depth: number,
+): Promise<TaskOutcome> {
+  const now = new Date().toISOString();
+  // Aucune décision d'isolation réelle n'a été prise puisque `prepareIsolation`
+  // n'a jamais tourné : "auto" n'a pas de sens ici, "inplace" est la valeur la
+  // plus honnête (pas de worktree créé), l'isolation explicitement demandée
+  // sinon.
+  const isolation: Isolation = input.isolation && input.isolation !== "auto" ? input.isolation : "inplace";
+
+  const record: TaskRecord = {
+    id,
+    agent: agentDef.id,
+    role: input.role,
+    objective: input.objective,
+    status: "cancelled",
+    created_at: now,
+    started_at: now,
+    ended_at: now,
+    task_dir: paths.dir,
+    workspace: input.workspace,
+    isolation,
+    mode: input.mode,
+    report_via: "file",
+    depth,
+  };
+  await deps.store.create(record);
+
+  const report: Report = ReportSchema.parse({
+    protocol: REPORT_PROTOCOL,
+    task_id: id,
+    status: "failed",
+    summary: "Tâche annulée avant le lancement : le signal d'abandon était déjà déclenché à l'entrée de runTask.",
+  });
+
+  return { record, report, source: "synthesized" };
 }
 
 function withFinding(report: Report, finding: Finding): Report {
