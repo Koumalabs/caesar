@@ -40,6 +40,7 @@ export function makeSampleFactory(defaultAgentId: string): {
       paths,
       prompt: "PROMPT",
       reportVia: "file",
+      model: undefined,
       extraArgs: [],
       ...overrides,
     };

@@ -39,7 +39,17 @@ export interface BuildContext {
   schemaFile?: string;
   /** Où le CLI doit déposer son message final, s'il en est capable. */
   finalMessageFile?: string;
-  model?: string;
+  /**
+   * Modèle demandé (`--model`/`model:`), s'il y en a un. Obligatoire — quitte
+   * à passer `undefined` explicitement — plutôt qu'optionnel : voir C6 et le
+   * durcissement de typage de la revue finale. Un champ optionnel est
+   * précisément ce qui a permis à `runTask` d'omettre ce champ sans qu'aucune
+   * erreur de compilation ne le signale, alors que les cinq adaptateurs le
+   * consomment tous (`ctx.model`) : `--model` était accepté partout et
+   * silencieusement ignoré. Absent → `undefined` explicite ; chaque
+   * adaptateur n'ajoute son flag que si `ctx.model` est défini.
+   */
+  model: string | undefined;
   /** Arguments bruts ajoutés par l'utilisateur, passés en fin de ligne. */
   extraArgs: string[];
 }
