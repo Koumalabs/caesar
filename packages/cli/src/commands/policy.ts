@@ -95,14 +95,21 @@ export async function runPolicyShow(root: string, options: PolicyShowOptions, io
   return EXIT_OK;
 }
 
-async function setPolicyList(root: string, id: string, list: "allowed" | "denied", present: boolean): Promise<OrchConfig> {
+interface PolicyListUpdate {
+  config: OrchConfig;
+  /** Vrai si la liste passait de vide à non vide — voir CONTRÔLEUR-2 de la revue finale. */
+  wasEmptyAllowlist: boolean;
+}
+
+async function setPolicyList(root: string, id: string, list: "allowed" | "denied", present: boolean): Promise<PolicyListUpdate> {
   const { config } = await loadConfig(root);
+  const wasEmptyAllowlist = list === "allowed" && present && config.policy.allowed.length === 0;
   const set = new Set(config.policy[list]);
   if (present) set.add(id);
   else set.delete(id);
   const updated: OrchConfig = { ...config, policy: { ...config.policy, [list]: [...set] } };
   await saveProjectConfig(root, updated);
-  return updated;
+  return { config: updated, wasEmptyAllowlist };
 }
 
 export interface PolicyEditOptions {
@@ -110,14 +117,30 @@ export interface PolicyEditOptions {
 }
 
 export async function runPolicyAllow(root: string, id: string, options: PolicyEditOptions, io: Io): Promise<number> {
-  const config = await setPolicyList(root, id, "allowed", true);
-  if (options.json) printJson(io, { id, allowed: config.policy.allowed });
-  else writeLine(io.stdout, `Agent "${id}" ajouté à la liste "allowed".`);
+  const { config, wasEmptyAllowlist } = await setPolicyList(root, id, "allowed", true);
+  if (options.json) {
+    printJson(io, { id, allowed: config.policy.allowed, narrowed_allowlist: wasEmptyAllowlist });
+  } else {
+    writeLine(io.stdout, `Agent "${id}" ajouté à la liste "allowed".`);
+    // CONTRÔLEUR-2 de la revue finale : "allow" partait d'une liste vide —
+    // où tout agent non refusé passait — et la rend désormais restrictive.
+    // Un utilisateur qui voulait "autoriser un agent de plus" vient d'en
+    // interdire tous les autres sans le savoir ; ce message est le seul
+    // signal avant un futur "orch doctor".
+    if (wasEmptyAllowlist) {
+      writeLine(
+        io.stdout,
+        `Attention : la liste "allowed" était vide (tous les agents non refusés passaient) ; elle ne contient ` +
+          `désormais que "${id}" — les autres agents sont maintenant refusés. Pour autoriser un agent de plus sans ` +
+          `restreindre les autres, préférez "orch policy deny"/"orch agents disable" sur ce que vous voulez exclure.`,
+      );
+    }
+  }
   return EXIT_OK;
 }
 
 export async function runPolicyDeny(root: string, id: string, options: PolicyEditOptions, io: Io): Promise<number> {
-  const config = await setPolicyList(root, id, "denied", true);
+  const { config } = await setPolicyList(root, id, "denied", true);
   if (options.json) printJson(io, { id, denied: config.policy.denied });
   else writeLine(io.stdout, `Agent "${id}" ajouté à la liste "denied".`);
   return EXIT_OK;

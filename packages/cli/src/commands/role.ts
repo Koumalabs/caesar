@@ -21,7 +21,7 @@ export interface RoleListOptions {
 
 export async function runRoleList(root: string, options: RoleListOptions, io: Io): Promise<number> {
   const { config } = await loadConfig(root);
-  const installed = await resolveInstalledMap(agentIdsOf(config.roles));
+  const installed = await resolveInstalledMap(agentIdsOf(config.roles), config.agents);
 
   const rows = config.roles.map((role) => {
     const pick = pickAgentForRole(role, { isInstalled: (id) => installed.get(id) ?? false, policy: config.policy });

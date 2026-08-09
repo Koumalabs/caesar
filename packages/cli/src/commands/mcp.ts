@@ -38,7 +38,7 @@ export interface McpServeOptions {
 }
 
 export async function runMcpServe(root: string, io: Io, options: McpServeOptions = {}): Promise<number> {
-  const { server } = buildServer(root);
+  const { server } = await buildServer(root);
   writeLine(io.stderr, `Serveur MCP "${SERVER_NAME}" démarré (racine du projet : ${root}). En écoute sur stdio…`);
   const transport = new StdioServerTransport(options.stdin, options.stdout);
   await server.connect(transport);

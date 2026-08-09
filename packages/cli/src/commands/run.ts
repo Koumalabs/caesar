@@ -28,7 +28,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Isolation, OrchEvent, TaskMode } from "@orch/protocol";
-import { fileTaskStore, generateTaskId, loadConfig, resolveDelegation, runTask } from "@orch/core";
+import { createQueue, fileTaskStore, generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation, runTask } from "@orch/core";
 import { ISOLATIONS, TASK_MODES } from "../flags.js";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, writeLine } from "../output.js";
@@ -112,6 +112,12 @@ export async function runRun(root: string, objective: string, options: RunOption
     return EXIT_USAGE;
   }
 
+  // Profondeur héritée de `$ORCH_DEPTH` (+1) : voir C4 de la revue finale.
+  // `orch run` peut lui-même tourner comme sous-agent d'une délégation
+  // précédente — c'est le seul moyen pour `max_depth`/le garde-fou anti-
+  // récursion de s'appliquer au-delà du premier niveau.
+  const depth = nextDelegationDepth();
+
   const resolved = await resolveDelegation(config, root, {
     role: options.role,
     agent: options.agent,
@@ -119,6 +125,7 @@ export async function runRun(root: string, objective: string, options: RunOption
     isolation: options.isolation as Isolation | "auto" | undefined,
     context,
     timeout: options.timeout,
+    depth,
   });
   if ("error" in resolved) {
     printError(io, resolved.error);
@@ -127,6 +134,11 @@ export async function runRun(root: string, objective: string, options: RunOption
   const { agentId, mode, isolation, timeoutMs, context: resolvedContext } = resolved;
 
   const store = fileTaskStore(root);
+  // Une `Queue` par appel : `orch run` ne lance qu'une seule tâche à la fois,
+  // mais la câbler explicitement (plutôt que de laisser `RunnerDeps.queue` à
+  // `undefined`) tient la promesse de `policy.max_parallel` — voir C4 de la
+  // revue finale, et le durcissement de typage qui rend ce champ obligatoire.
+  const queue = createQueue(config.policy.max_parallel);
   const taskId = generateTaskId();
   const controller = new AbortController();
 
@@ -150,7 +162,7 @@ export async function runRun(root: string, objective: string, options: RunOption
   let outcome;
   try {
     outcome = await runTask(
-      { store, root },
+      { store, root, queue },
       {
         agentId,
         objective,
@@ -161,6 +173,8 @@ export async function runRun(root: string, objective: string, options: RunOption
         ...(options.role ? { role: options.role } : {}),
         ...(options.model ? { model: options.model } : {}),
         timeoutMs,
+        depth,
+        extraAgents: config.agents,
         taskId,
         signal: controller.signal,
         ...(onEvent ? { onEvent } : {}),
@@ -180,6 +194,7 @@ export async function runRun(root: string, objective: string, options: RunOption
       status: outcome.record.status,
       report: outcome.report,
       report_source: outcome.source,
+      changes_verified_by: outcome.record.changes_verified_by,
       diff: outcome.diff ? { files: outcome.diff.files, is_empty: outcome.diff.isEmpty } : undefined,
     });
     return outcome.record.status === "succeeded" ? EXIT_OK : EXIT_RUNTIME;

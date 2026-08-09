@@ -11,6 +11,7 @@
 import type { OrchConfig } from "@orch/core";
 import {
   checkDelegation,
+  createQueue,
   describeAgentCapabilities,
   describeAgentPolicy,
   fileTaskStore,
@@ -30,7 +31,10 @@ export interface AgentsListOptions {
 
 export async function runAgentsList(root: string, options: AgentsListOptions, io: Io): Promise<number> {
   const { config } = await loadConfig(root);
-  const defs = listAgentDefinitions();
+  // Catalogue natif étendu des agents de configuration ([[agent]]) : voir C1
+  // de la revue finale — sans quoi un agent déclaré en TOML restait invisible
+  // de "orch agents list".
+  const defs = listAgentDefinitions(config.agents);
 
   const rows = await Promise.all(
     defs.map(async (def) => {
@@ -107,7 +111,8 @@ export interface AgentsTestOptions {
 const PING_OBJECTIVE = "Réponds uniquement: OK";
 
 export async function runAgentsTest(root: string, id: string, options: AgentsTestOptions, io: Io): Promise<number> {
-  if (!findAgentDefinition(id)) {
+  const { config } = await loadConfig(root);
+  if (!findAgentDefinition(id, config.agents)) {
     printError(io, `Agent inconnu : "${id}".`);
     return EXIT_USAGE;
   }
@@ -119,7 +124,6 @@ export async function runAgentsTest(root: string, id: string, options: AgentsTes
     return EXIT_USAGE;
   }
 
-  const { config } = await loadConfig(root);
   const decision = checkDelegation(config.policy, { agentId: id, depth: 0 });
   if (!decision.allowed) {
     printError(io, decision.reason);
@@ -127,9 +131,10 @@ export async function runAgentsTest(root: string, id: string, options: AgentsTes
   }
 
   const store = fileTaskStore(root);
+  const queue = createQueue(config.policy.max_parallel);
   const startedAt = Date.now();
   const outcome = await runTask(
-    { store, root },
+    { store, root, queue },
     {
       agentId: id,
       objective: PING_OBJECTIVE,
@@ -137,6 +142,7 @@ export async function runAgentsTest(root: string, id: string, options: AgentsTes
       isolation: "inplace",
       workspace: root,
       timeoutMs: 60_000,
+      extraAgents: config.agents,
     },
   );
   const durationMs = Date.now() - startedAt;
