@@ -32,6 +32,10 @@ Chaque tâche possède son répertoire, dont le chemin est transmis par `$ORCH_T
 | `report.json` | Le compte rendu | agent |
 | `events.jsonl` | Le flux d'avancement, une ligne JSON par événement | agent ou adaptateur |
 | `raw.log` | Sortie brute du processus, pour le diagnostic | orchestrateur |
+| `questions/<id>.json` | Une question posée via le canal retour (facultatif) | agent |
+| `answers/<id>.json` | La réponse à cette question | orchestrateur |
+
+`questions/` et `answers/` n'existent que si la tâche utilise le canal retour (ci-dessous) : c'est là que `ask_orchestrator` et sa réponse se rencontrent, sur le système de fichiers comme le reste du standard — aucune mémoire n'est partagée entre le processus de l'agent et celui de l'orchestrateur.
 
 ## Variables d'environnement
 
@@ -142,6 +146,8 @@ Quand `task.channel` est renseigné, un serveur MCP est joignable pendant l'exé
 | `submit_report` | Remettre le rapport, validé immédiatement |
 
 C'est ce qui transforme la délégation en dialogue plutôt qu'en aller-retour muet. Un agent qui ne sait pas charger de serveur MCP ignore simplement ce champ.
+
+`ask_orchestrator` dépose la question dans `questions/<id>.json` puis attend l'apparition d'`answers/<id>.json` (scrutation), au plus 5 minutes par défaut et jamais au-delà du temps restant sur `deadline_ms` de la tâche. Sans réponse dans ce délai, l'appel rend la main normalement — ce n'est pas une erreur — avec une invitation à poursuivre au meilleur jugement de l'agent plutôt que d'attendre indéfiniment. Côté orchestrateur, répondre est symétrique : le tool `orch_answer` du serveur MCP principal (`@orch/mcp-server`, hors du périmètre de ce standard mais fourni par l'implémentation de référence) écrit `answers/<id>.json` ; répondre à une question inconnue ou déjà répondue échoue explicitement plutôt que d'écrire en silence.
 
 ## Se conformer, en pratique
 
