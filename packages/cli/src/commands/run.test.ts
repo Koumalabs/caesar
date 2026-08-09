@@ -84,10 +84,32 @@ describe("orch run", () => {
     });
   });
 
-  it("ni --agent ni --role : code d'usage", async () => {
+  it("ni --agent ni --role : code d'usage, message nommant les deux flags", async () => {
     await withFakeHome(async () => {
       const code = await runRun(root, "tâche", {}, io);
       expect(code).toBe(EXIT_USAGE);
+      // Message propre au CLI (nomme les flags), pas le motif générique que
+      // rend `resolveDelegation` pour ses autres appelants (voir le rapport
+      // de correction de la tâche 7 — perdu sans bruit lors de l'extraction,
+      // restauré par la revue).
+      expect(io.stderrText().trim()).toBe("Précisez --agent <id> ou --role <name>.");
+    });
+  });
+
+  it("--mode invalide l'emporte sur --role inconnu : la validation de forme sort avant toute résolution", async () => {
+    await withFakeHome(async () => {
+      // Fixe la précédence entérinée par la revue de la tâche 7 : les
+      // validations de forme (--mode, --isolation), qui ne nécessitent
+      // aucune E/S, sortent avant même de tenter de résoudre --role — que
+      // celui-ci soit ou non valide. Avant l'extraction de
+      // `resolveDelegation`, l'ordre inverse aurait rendu "Rôle inconnu"
+      // ici ; ce test aurait détecté la régression de précédence relevée en
+      // revue.
+      const code = await runRun(root, "tâche", { role: "inexistant", mode: "bogus" }, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toMatch(/--mode/);
+      expect(io.stderrText()).not.toMatch(/inexistant/);
+      expect(io.stderrText()).not.toMatch(/[Rr]ôle inconnu/);
     });
   });
 

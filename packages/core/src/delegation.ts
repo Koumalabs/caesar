@@ -57,6 +57,13 @@ export interface ResolvedDelegation {
 export type DelegationResult = ResolvedDelegation | { error: string };
 
 export async function resolveDelegation(config: OrchConfig, root: string, params: DelegationParams): Promise<DelegationResult> {
+  // Motif générique, volontairement sans nom de flag ni de champ : cette
+  // fonction ne sait pas depuis quelle façade elle est appelée. Le CLI
+  // (`orch run`) vérifie cette même condition en amont, avant d'appeler
+  // `resolveDelegation`, pour rendre son propre message nommant les flags
+  // exacts (`--agent`/`--role`) — voir `run.ts` et le rapport de correction
+  // de la tâche 7. Pour le serveur MCP, dont les paramètres se nomment
+  // justement "agent"/"role", ce motif générique convient tel quel.
   if (!params.agent && !params.role) {
     return { error: "Un agent ou un rôle est requis." };
   }

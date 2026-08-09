@@ -75,15 +75,33 @@ function describeEvent(event: OrchEvent): string | undefined {
 export async function runRun(root: string, objective: string, options: RunOptions, io: Io): Promise<number> {
   const { config } = await loadConfig(root);
 
-  // Validation de forme, propre au CLI (chaînes brutes issues de commander) :
-  // avant même de résoudre rôle/agent, pour échouer vite sur un argument
-  // manifestement invalide plutôt que d'engager de l'I/O pour rien.
+  // Précédence délibérée, fixée par un test (voir run.test.ts) : toute
+  // validation de *forme*, propre au CLI (chaînes brutes issues de
+  // commander, aucune E/S ni lecture de configuration nécessaire) sort
+  // avant même de tenter de résoudre rôle/agent via `resolveDelegation`. Un
+  // `--mode bogus` est une erreur d'usage immédiate ; elle ne doit pas
+  // attendre la résolution d'un `--role` par ailleurs invalide pour être
+  // signalée. C'était différent avant l'extraction de `resolveDelegation`
+  // (tâche 7) — le repli sur ces mêmes vérifications, alors postérieures à
+  // la résolution du rôle/agent, est resté sans effet observable jusqu'à ce
+  // que la revue le relève.
   if (options.mode && !TASK_MODES.includes(options.mode as TaskMode)) {
     printError(io, `--mode invalide (attendu l'une de : ${TASK_MODES.join(", ")}).`);
     return EXIT_USAGE;
   }
   if (options.isolation && !ISOLATIONS.includes(options.isolation as Isolation | "auto")) {
     printError(io, `--isolation invalide (attendu l'une de : ${ISOLATIONS.join(", ")}).`);
+    return EXIT_USAGE;
+  }
+  // Même logique : la présence d'un agent ou d'un rôle est une condition de
+  // forme, vérifiable sans résoudre quoi que ce soit. `resolveDelegation`
+  // porte sa propre garde pour ses autres appelants (le serveur MCP,
+  // notamment, dont les paramètres se nomment "agent"/"role") avec un motif
+  // générique ; ici, on la précède pour rendre le message historique du CLI,
+  // qui nomme les flags exacts à taper — perdu sans bruit lors de
+  // l'extraction, restauré par la revue.
+  if (!options.agent && !options.role) {
+    printError(io, "Précisez --agent <id> ou --role <name>.");
     return EXIT_USAGE;
   }
 
