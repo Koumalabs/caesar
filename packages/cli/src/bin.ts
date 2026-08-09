@@ -14,6 +14,7 @@ import { Command, CommanderError } from "commander";
 import { runAgentsDisable, runAgentsEnable, runAgentsList, runAgentsTest } from "./commands/agents.js";
 import { runDoctor } from "./commands/doctor.js";
 import { runInit } from "./commands/init.js";
+import { runMcpInstall, runMcpServe } from "./commands/mcp.js";
 import { runPolicyAllow, runPolicyDeny, runPolicyShow } from "./commands/policy.js";
 import { runProtocolSchema } from "./commands/protocol.js";
 import { runRoleAdd, runRoleList, runRoleRemove, runRoleShow } from "./commands/role.js";
@@ -298,6 +299,31 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
     .action(async (id: string, _options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => runApply(await resolveRoot(opts.root), id, { json: opts.json }, io));
+    });
+
+  // ---------------------------------------------------------------------
+  // mcp
+  // ---------------------------------------------------------------------
+
+  const mcp = program
+    .command("mcp")
+    .description("Serveur MCP : expose les tools de délégation à un agent principal, et l'enregistrement auprès de ses clients.");
+
+  mcp
+    .command("serve")
+    .description('Démarre le serveur MCP sur stdio. Rien d\'autre que le protocole n\'écrit sur stdout : les diagnostics vont sur stderr.')
+    .option("--root <dir>", "Racine du projet (défaut : recherche automatique depuis le répertoire courant)")
+    .action(async (options: { root?: string }) => {
+      await run(async () => runMcpServe(await resolveRoot(options.root), io));
+    });
+
+  withCommonOptions(mcp.command("install"))
+    .description("Enregistre \"orch\" auprès d'un client MCP : claude, codex, copilot, opencode ou antigravity.")
+    .argument("<client>", "claude, codex, copilot, opencode ou antigravity")
+    .option("--dry-run", "Affiche ce qui serait fait (commande exécutée ou fichier écrit), sans rien exécuter ni écrire.")
+    .action(async (client: string, options: GlobalOptions & { dryRun?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<typeof options>();
+      await run(async () => runMcpInstall(await resolveRoot(opts.root), client, { dryRun: opts.dryRun, json: opts.json }, io));
     });
 
   // ---------------------------------------------------------------------

@@ -26,7 +26,7 @@ describe("buildProgram (structurel)", () => {
     const io = makeIo();
     const program = buildProgram(io, { value: 0 });
     const names = program.commands.map((c) => c.name()).sort();
-    expect(names).toEqual(["agents", "apply", "cancel", "diff", "doctor", "init", "logs", "policy", "protocol", "ps", "role", "run"]);
+    expect(names).toEqual(["agents", "apply", "cancel", "diff", "doctor", "init", "logs", "mcp", "policy", "protocol", "ps", "role", "run"]);
 
     const agents = program.commands.find((c) => c.name() === "agents")!;
     expect(agents.commands.map((c) => c.name()).sort()).toEqual(["disable", "enable", "list", "test"]);
@@ -39,6 +39,9 @@ describe("buildProgram (structurel)", () => {
 
     const protocol = program.commands.find((c) => c.name() === "protocol")!;
     expect(protocol.commands.map((c) => c.name()).sort()).toEqual(["schema"]);
+
+    const mcp = program.commands.find((c) => c.name() === "mcp")!;
+    expect(mcp.commands.map((c) => c.name()).sort()).toEqual(["install", "serve"]);
   });
 });
 
