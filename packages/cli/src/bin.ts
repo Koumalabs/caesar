@@ -109,7 +109,18 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
     .description("Lance le TUI de configuration (OpenTUI, sous Bun). Sans Bun : renvoie vers les sous-commandes équivalentes.")
     .action(async (_options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
-      await run(async () => runConfig(await resolveRoot(opts.root), io));
+      await run(async () => {
+        // `withCommonOptions` aligne cette commande sur toutes les autres
+        // (tâche 10, C2), ce qui lui fait accepter `--json` — mais cette
+        // commande lance un TUI interactif, sans sortie machine à produire.
+        // L'accepter en silence laisserait croire qu'il a été honoré :
+        // refusé explicitement plutôt qu'ignoré (revue de la tâche 10).
+        if (opts.json) {
+          printError(io, '--json n\'a pas de sens pour "orch config" : cette commande lance un TUI interactif, pas une sortie machine.');
+          return EXIT_USAGE;
+        }
+        return runConfig(await resolveRoot(opts.root), io);
+      });
     });
 
   // ---------------------------------------------------------------------

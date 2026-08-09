@@ -121,4 +121,13 @@ describe("orch (binaire compilé)", () => {
       await chmod(orchDir, 0o700);
     }
   });
+
+  it("\"config --json\" est refusé explicitement, pas silencieusement ignoré (revue de la tâche 10)", async () => {
+    await expect(execFileAsync("node", [BIN_PATH, "config", "--root", root, "--json"])).rejects.toMatchObject({ code: 2 });
+    try {
+      await execFileAsync("node", [BIN_PATH, "config", "--root", root, "--json"]);
+    } catch (error) {
+      expect((error as { stderr: string }).stderr).toMatch(/--json/);
+    }
+  });
 });
