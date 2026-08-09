@@ -25,8 +25,8 @@ import { useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import type { RoleConfig } from "@orch/core";
-import { listAgentDefinitions, parseDuration } from "@orch/core";
-import { IsolationSchema, TaskModeSchema } from "@orch/protocol";
+import { parseDuration } from "@orch/core";
+import { CATALOG_IDS, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
 import {
   addRoleAgent,
   findRole,
@@ -48,10 +48,6 @@ export interface RolesScreenProps {
   notify: (message: string, isError?: boolean) => void;
 }
 
-const MODE_OPTIONS = TaskModeSchema.options;
-const ISOLATION_OPTIONS = [...IsolationSchema.options, "auto"] as const;
-const CATALOG_IDS = listAgentDefinitions().map((def) => def.id);
-
 type Field = "purpose" | "agents" | "mode" | "isolation" | "timeout" | "system_prompt_file";
 const FIELDS: Field[] = ["purpose", "agents", "mode", "isolation", "timeout", "system_prompt_file"];
 const FIELD_LABELS: Record<Field, string> = {
@@ -62,18 +58,6 @@ const FIELD_LABELS: Record<Field, string> = {
   timeout: "Délai",
   system_prompt_file: "Prompt système (fichier)",
 };
-
-function formatMs(ms: number): string {
-  if (ms % 3_600_000 === 0) return `${ms / 3_600_000}h`;
-  if (ms % 60_000 === 0) return `${ms / 60_000}m`;
-  if (ms % 1000 === 0) return `${ms / 1000}s`;
-  return `${ms}ms`;
-}
-
-function cycle<T>(options: readonly T[], current: T): T {
-  const index = options.indexOf(current);
-  return options[(index + 1) % options.length]!;
-}
 
 export function RolesScreen({ state, installed, onChange, onEditingChange, notify }: RolesScreenProps) {
   const roles = state.draft.roles;

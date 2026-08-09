@@ -1,42 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { taskPaths, TaskSchema, TASK_PROTOCOL, type Task, type TaskPaths } from "@orch/protocol";
 import { describe, expect, it } from "vitest";
-import type { BuildContext } from "../registry/types.js";
 import { copilotAgent } from "./copilot.js";
+import { makeSampleFactory, paths } from "../../test/sample-task.js";
 
 const FIXTURE_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "test", "fixtures");
 
-function sampleTask(overrides: Partial<Task> = {}): Task {
-  return TaskSchema.parse({
-    protocol: TASK_PROTOCOL,
-    id: "t_0001",
-    created_at: "2026-08-09T10:00:00.000Z",
-    agent: "copilot",
-    objective: "Corriger la régression",
-    mode: "write",
-    isolation: "worktree",
-    workspace: "/tmp/wt",
-    deadline_ms: 600_000,
-    report_path: "/tmp/task/report.json",
-    events_path: "/tmp/task/events.jsonl",
-    ...overrides,
-  });
-}
-
-const paths: TaskPaths = taskPaths("/tmp/task");
-
-function sampleContext(overrides: Partial<BuildContext> = {}): BuildContext {
-  return {
-    task: sampleTask(),
-    paths,
-    prompt: "PROMPT",
-    reportVia: "file",
-    extraArgs: [],
-    ...overrides,
-  };
-}
+const { sampleTask, sampleContext } = makeSampleFactory("copilot");
 
 describe("copilotAgent.build", () => {
   it("refuse write et shell en lecture seule, sans jamais autoriser tous les outils", () => {
@@ -140,9 +111,14 @@ describe("copilotAgent.translate", () => {
   });
 
   it("ignore les événements de session sans intérêt (mcp, skills, tools_updated)", () => {
-    const line = lines.find((l) => l.includes('"session.mcp_server_status_changed"'));
-    expect(line).toBeDefined();
-    expect(copilotAgent.translate(line as string)).toEqual({ events: [] });
+    const mcpLine = lines.find((l) => l.includes('"session.mcp_server_status_changed"'));
+    const skillsLine = lines.find((l) => l.includes('"session.skills_loaded"'));
+    const toolsLine = lines.find((l) => l.includes('"session.tools_updated"'));
+
+    for (const line of [mcpLine, skillsLine, toolsLine]) {
+      expect(line).toBeDefined();
+      expect(copilotAgent.translate(line as string)).toEqual({ events: [] });
+    }
   });
 
   it("ignore silencieusement une ligne vide, du JSON invalide, ou du JSON inconnu", () => {

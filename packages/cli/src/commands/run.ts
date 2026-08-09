@@ -29,6 +29,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Isolation, OrchEvent, TaskMode } from "@orch/protocol";
 import { fileTaskStore, generateTaskId, loadConfig, resolveDelegation, runTask } from "@orch/core";
+import { ISOLATIONS, TASK_MODES } from "../flags.js";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, writeLine } from "../output.js";
 
@@ -43,9 +44,6 @@ export interface RunOptions {
   json?: boolean;
   channel?: boolean;
 }
-
-const TASK_MODES: readonly TaskMode[] = ["read-only", "write"];
-const ISOLATIONS: readonly (Isolation | "auto")[] = ["inplace", "worktree", "auto"];
 
 async function resolveContext(raw: string | undefined): Promise<string | undefined> {
   if (!raw) return undefined;

@@ -28,8 +28,8 @@ import type { Isolation, TaskMode } from "@orch/protocol";
 import type { OrchConfig } from "./config.js";
 import { parseDuration } from "./config.js";
 import { checkDelegation } from "./policy.js";
-import { pickAgentForRole, resolveRole } from "./roles.js";
-import { findAgentDefinition, findBinaryInPath } from "./registry/index.js";
+import { pickAgentForRole, resolveInstalledMap, resolveRole } from "./roles.js";
+import { findAgentDefinition } from "./registry/index.js";
 
 export interface DelegationParams {
   role?: string;
@@ -77,13 +77,7 @@ export async function resolveDelegation(config: OrchConfig, root: string, params
   if (params.agent) {
     agentId = params.agent;
   } else if (role) {
-    const installed = new Map<string, boolean>();
-    await Promise.all(
-      role.agents.map(async (id) => {
-        const def = findAgentDefinition(id);
-        installed.set(id, def ? (await findBinaryInPath(def.bin)) !== null : false);
-      }),
-    );
+    const installed = await resolveInstalledMap(role.agents);
     const pick = pickAgentForRole(role, { isInstalled: (id) => installed.get(id) ?? false, policy: config.policy });
     if ("error" in pick) return { error: pick.error };
     agentId = pick.agentId;

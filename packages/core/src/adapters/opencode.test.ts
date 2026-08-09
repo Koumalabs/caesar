@@ -1,42 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { taskPaths, TaskSchema, TASK_PROTOCOL, type Task, type TaskPaths } from "@orch/protocol";
 import { describe, expect, it } from "vitest";
-import type { BuildContext } from "../registry/types.js";
 import { opencodeAgent } from "./opencode.js";
+import { makeSampleFactory } from "../../test/sample-task.js";
 
 const FIXTURE_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "test", "fixtures");
 
-function sampleTask(overrides: Partial<Task> = {}): Task {
-  return TaskSchema.parse({
-    protocol: TASK_PROTOCOL,
-    id: "t_0001",
-    created_at: "2026-08-09T10:00:00.000Z",
-    agent: "opencode",
-    objective: "Corriger la régression",
-    mode: "write",
-    isolation: "worktree",
-    workspace: "/tmp/wt",
-    deadline_ms: 600_000,
-    report_path: "/tmp/task/report.json",
-    events_path: "/tmp/task/events.jsonl",
-    ...overrides,
-  });
-}
-
-const paths: TaskPaths = taskPaths("/tmp/task");
-
-function sampleContext(overrides: Partial<BuildContext> = {}): BuildContext {
-  return {
-    task: sampleTask(),
-    paths,
-    prompt: "PROMPT",
-    reportVia: "file",
-    extraArgs: [],
-    ...overrides,
-  };
-}
+const { sampleTask, sampleContext } = makeSampleFactory("opencode");
 
 describe("opencodeAgent.build", () => {
   it("n'a pas de mode lecture seule natif : --auto n'apparaît qu'en écriture", () => {
@@ -120,9 +91,13 @@ describe("opencodeAgent.translate", () => {
   });
 
   it("ignore step_start / step_finish, qui ne portent pas de contenu reconnu", () => {
-    const line = lines.find((l) => l.includes('"type":"step_start"'));
-    expect(line).toBeDefined();
-    expect(opencodeAgent.translate(line as string)).toEqual({ events: [] });
+    const stepStart = lines.find((l) => l.includes('"type":"step_start"'));
+    const stepFinish = lines.find((l) => l.includes('"type":"step_finish"'));
+
+    for (const line of [stepStart, stepFinish]) {
+      expect(line).toBeDefined();
+      expect(opencodeAgent.translate(line as string)).toEqual({ events: [] });
+    }
   });
 
   it("traduit une part tool-<nom> de façon défensive", () => {

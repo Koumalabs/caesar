@@ -8,6 +8,7 @@ import { join } from "node:path";
 import type { OrchConfig, PolicyConfig, RoleConfig } from "./config.js";
 import { isEnoent } from "./config.js";
 import { isAgentAllowed, isRecursionAllowed } from "./policy.js";
+import { findAgentDefinition, findBinaryInPath } from "./registry/index.js";
 
 export interface ResolvedRole extends RoleConfig {
   systemPrompt: string;
@@ -39,6 +40,26 @@ export async function resolveRole(config: OrchConfig, root: string, name: string
   }
 
   return { ...role, systemPrompt };
+}
+
+/**
+ * Résout, pour un ensemble d'identifiants d'agents, si chacun est installé
+ * (binaire trouvé sur le `PATH`) — le prédicat synchrone attendu par
+ * `pickAgentForRole`, précalculé une fois pour toutes. Partagé par
+ * `resolveDelegation` (ci-dessous, un rôle à la fois) et par `orch role list`
+ * (`packages/cli/src/commands/role.ts`, tous les rôles d'un coup) : les deux
+ * façades resolvaient jusqu'ici cette même carte chacune de leur côté (tâche
+ * 10, B).
+ */
+export async function resolveInstalledMap(agentIds: Iterable<string>): Promise<Map<string, boolean>> {
+  const entries = await Promise.all(
+    [...new Set(agentIds)].map(async (id): Promise<[string, boolean]> => {
+      const def = findAgentDefinition(id);
+      if (!def) return [id, false];
+      return [id, (await findBinaryInPath(def.bin)) !== null];
+    }),
+  );
+  return new Map(entries);
 }
 
 export interface AgentPick {

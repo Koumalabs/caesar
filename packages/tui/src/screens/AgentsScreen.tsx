@@ -18,12 +18,13 @@ import { useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { describeAgentCapabilities, describeAgentPolicy, listAgentDefinitions } from "@orch/core";
+import type { AgentInstallStatus } from "@orch/core";
 import type { ConfigState } from "../state/config-state";
 
 export interface AgentsScreenProps {
   state: ConfigState;
   /** `null` tant que la détection n'a pas encore répondu — voir `App`. */
-  installed: Map<string, { installed: boolean; path?: string; version?: string }> | null;
+  installed: Map<string, AgentInstallStatus> | null;
   onToggleDenied: (agentId: string) => void;
 }
 

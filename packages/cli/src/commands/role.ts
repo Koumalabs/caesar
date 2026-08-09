@@ -2,24 +2,17 @@
  * `orch role list|show|add|remove`.
  */
 import type { OrchConfig, RoleConfig } from "@orch/core";
-import { findAgentDefinition, findBinaryInPath, loadConfig, parseDuration, pickAgentForRole, resolveRole, saveProjectConfig } from "@orch/core";
+import { loadConfig, parseDuration, pickAgentForRole, resolveInstalledMap, resolveRole, saveProjectConfig } from "@orch/core";
 import type { Isolation, TaskMode } from "@orch/protocol";
+import { ISOLATIONS, TASK_MODES } from "../flags.js";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
 
-/** Pré-résout, une fois pour toutes, l'installation des agents référencés par un ensemble de rôles. */
-async function resolveInstalledMap(roles: readonly RoleConfig[]): Promise<Map<string, boolean>> {
+/** Agents référencés par un ensemble de rôles, tous à la fois (`resolveInstalledMap` de `@orch/core` ne prend qu'une seule liste). */
+function agentIdsOf(roles: readonly RoleConfig[]): string[] {
   const ids = new Set<string>();
   for (const role of roles) for (const id of role.agents) ids.add(id);
-
-  const entries = await Promise.all(
-    [...ids].map(async (id): Promise<[string, boolean]> => {
-      const def = findAgentDefinition(id);
-      if (!def) return [id, false];
-      return [id, (await findBinaryInPath(def.bin)) !== null];
-    }),
-  );
-  return new Map(entries);
+  return [...ids];
 }
 
 export interface RoleListOptions {
@@ -28,7 +21,7 @@ export interface RoleListOptions {
 
 export async function runRoleList(root: string, options: RoleListOptions, io: Io): Promise<number> {
   const { config } = await loadConfig(root);
-  const installed = await resolveInstalledMap(config.roles);
+  const installed = await resolveInstalledMap(agentIdsOf(config.roles));
 
   const rows = config.roles.map((role) => {
     const pick = pickAgentForRole(role, { isInstalled: (id) => installed.get(id) ?? false, policy: config.policy });
@@ -105,9 +98,6 @@ export interface RoleAddOptions {
   timeout?: string;
   json?: boolean;
 }
-
-const TASK_MODES: readonly TaskMode[] = ["read-only", "write"];
-const ISOLATIONS: readonly (Isolation | "auto")[] = ["inplace", "worktree", "auto"];
 
 export async function runRoleAdd(root: string, name: string, options: RoleAddOptions, io: Io): Promise<number> {
   const agents = (options.agents ?? "")

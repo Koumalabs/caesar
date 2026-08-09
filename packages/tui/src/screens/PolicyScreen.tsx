@@ -17,8 +17,8 @@
 import { useState } from "react";
 import { useKeyboard } from "@opentui/react";
 import type { PolicyConfig } from "@orch/core";
-import { listAgentDefinitions, parseDuration } from "@orch/core";
-import { IsolationSchema, TaskModeSchema } from "@orch/protocol";
+import { parseDuration } from "@orch/core";
+import { CATALOG_IDS, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
 import { setPolicyListEntry, updatePolicy, type ConfigState, type PolicyListField } from "../state/config-state";
 
 export interface PolicyScreenProps {
@@ -27,10 +27,6 @@ export interface PolicyScreenProps {
   onEditingChange: (editing: boolean) => void;
   notify: (message: string, isError?: boolean) => void;
 }
-
-const MODE_OPTIONS = TaskModeSchema.options;
-const ISOLATION_OPTIONS = [...IsolationSchema.options, "auto"] as const;
-const CATALOG_IDS = listAgentDefinitions().map((def) => def.id);
 
 type Field = "max_parallel" | "default_isolation" | "default_mode" | "default_timeout_ms" | "allow_recursion" | "max_depth" | "allowed" | "denied";
 const FIELDS: Field[] = ["max_parallel", "default_isolation", "default_mode", "default_timeout_ms", "allow_recursion", "max_depth", "allowed", "denied"];
@@ -45,18 +41,6 @@ const FIELD_LABELS: Record<Field, string> = {
   denied: "denied",
 };
 const LIST_FIELDS = new Set<Field>(["allowed", "denied"]);
-
-function formatMs(ms: number): string {
-  if (ms % 3_600_000 === 0) return `${ms / 3_600_000}h`;
-  if (ms % 60_000 === 0) return `${ms / 60_000}m`;
-  if (ms % 1000 === 0) return `${ms / 1000}s`;
-  return `${ms}ms`;
-}
-
-function cycle<T>(options: readonly T[], current: T): T {
-  const index = options.indexOf(current);
-  return options[(index + 1) % options.length]!;
-}
 
 export function PolicyScreen({ state, onChange, onEditingChange, notify }: PolicyScreenProps) {
   const policy = state.draft.policy;

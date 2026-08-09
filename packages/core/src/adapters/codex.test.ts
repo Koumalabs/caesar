@@ -1,42 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { taskPaths, TaskSchema, TASK_PROTOCOL, type Task, type TaskPaths } from "@orch/protocol";
 import { describe, expect, it } from "vitest";
-import type { BuildContext } from "../registry/types.js";
 import { codexAgent } from "./codex.js";
+import { makeSampleFactory, paths } from "../../test/sample-task.js";
 
 const FIXTURE_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "test", "fixtures");
 
-function sampleTask(overrides: Partial<Task> = {}): Task {
-  return TaskSchema.parse({
-    protocol: TASK_PROTOCOL,
-    id: "t_0001",
-    created_at: "2026-08-09T10:00:00.000Z",
-    agent: "codex",
-    objective: "Corriger la régression",
-    mode: "write",
-    isolation: "worktree",
-    workspace: "/tmp/wt",
-    deadline_ms: 600_000,
-    report_path: "/tmp/task/report.json",
-    events_path: "/tmp/task/events.jsonl",
-    ...overrides,
-  });
-}
-
-const paths: TaskPaths = taskPaths("/tmp/task");
-
-function sampleContext(overrides: Partial<BuildContext> = {}): BuildContext {
-  return {
-    task: sampleTask(),
-    paths,
-    prompt: "PROMPT",
-    reportVia: "file",
-    extraArgs: [],
-    ...overrides,
-  };
-}
+const { sampleTask, sampleContext } = makeSampleFactory("codex");
 
 describe("codexAgent.build", () => {
   it("choisit le sandbox read-only en mode lecture seule", () => {

@@ -1,37 +1,8 @@
-import { taskPaths, TaskSchema, TASK_PROTOCOL, type Task, type TaskPaths } from "@orch/protocol";
 import { describe, expect, it } from "vitest";
 import { createGenericAgent } from "./generic.js";
-import type { BuildContext } from "./types.js";
+import { makeSampleFactory, paths } from "../../test/sample-task.js";
 
-function sampleTask(overrides: Partial<Task> = {}): Task {
-  return TaskSchema.parse({
-    protocol: TASK_PROTOCOL,
-    id: "t_0001",
-    created_at: "2026-08-09T10:00:00.000Z",
-    agent: "mon-cli",
-    objective: "Corriger la régression",
-    mode: "write",
-    isolation: "worktree",
-    workspace: "/tmp/wt",
-    deadline_ms: 600_000,
-    report_path: "/tmp/task/report.json",
-    events_path: "/tmp/task/events.jsonl",
-    ...overrides,
-  });
-}
-
-const paths: TaskPaths = taskPaths("/tmp/task");
-
-function sampleContext(overrides: Partial<BuildContext> = {}): BuildContext {
-  return {
-    task: sampleTask(),
-    paths,
-    prompt: "PROMPT",
-    reportVia: "file",
-    extraArgs: [],
-    ...overrides,
-  };
-}
+const { sampleTask, sampleContext } = makeSampleFactory("mon-cli");
 
 describe("createGenericAgent", () => {
   it("utilise l'identifiant comme nom d'affichage par défaut", () => {
