@@ -26,6 +26,7 @@ describe("AgentsScreen", () => {
     const frame = setup.captureCharFrame();
     expect(frame).toContain("codex");
     expect(frame).toContain("antigravity");
+    expect(frame).toContain("capacités");
     expect(frame).toContain("Détection de l'installation en cours");
     setup.renderer.destroy();
   });

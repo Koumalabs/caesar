@@ -48,9 +48,10 @@ export function AgentsScreen({ state, installed, onToggleDenied }: AgentsScreenP
       <text fg="gray">Catalogue des agents — Espace : autorisation, Entrée : détail des capacités.</text>
       <box flexDirection="row" marginTop={1}>
         <text attributes={TextAttributes.BOLD}>{"agent".padEnd(14)}</text>
-        <text attributes={TextAttributes.BOLD}>{"binaire".padEnd(28)}</text>
-        <text attributes={TextAttributes.BOLD}>{"version".padEnd(16)}</text>
-        <text attributes={TextAttributes.BOLD}>{"autorisation".padEnd(30)}</text>
+        <text attributes={TextAttributes.BOLD}>{"binaire".padEnd(26)}</text>
+        <text attributes={TextAttributes.BOLD}>{"version".padEnd(14)}</text>
+        <text attributes={TextAttributes.BOLD}>{"capacités".padEnd(14)}</text>
+        <text attributes={TextAttributes.BOLD}>autorisation</text>
       </box>
       <box flexDirection="column">
         {CATALOG.map((def, index) => {
@@ -61,13 +62,15 @@ export function AgentsScreen({ state, installed, onToggleDenied }: AgentsScreenP
           const policy = describeAgentPolicy(state.draft.policy, def.id);
           const policyText = policy.allowed ? "autorisé" : `refusé (${policy.reason})`;
           const caps = describeAgentCapabilities(def);
+          const capsSummary = caps.length > 0 ? `${caps.length} notable(s)` : "aucune";
 
           return (
             <box key={def.id} flexDirection="column">
               <box flexDirection="row" backgroundColor={isSelected ? "#333366" : undefined}>
                 <text>{(isSelected ? "› " : "  ") + def.id.padEnd(12)}</text>
-                <text>{presence.padEnd(28)}</text>
-                <text>{version.padEnd(16)}</text>
+                <text>{presence.padEnd(26)}</text>
+                <text>{version.padEnd(14)}</text>
+                <text>{capsSummary.padEnd(14)}</text>
                 <text fg={policy.allowed ? "green" : "red"}>{policyText}</text>
               </box>
               {expanded === def.id ? (
