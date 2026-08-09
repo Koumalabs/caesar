@@ -1,0 +1,179 @@
+import { mkdir, readFile, writeFile, appendFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { ENV, PROTOCOL_VERSION, REPORT_PROTOCOL } from "./version.js";
+import { TaskSchema, type Task } from "./task.js";
+import { ReportSchema, type Report } from "./report.js";
+import { EventSchema, type OrchEvent } from "./event.js";
+
+export interface TaskPaths {
+  dir: string;
+  taskFile: string;
+  reportPath: string;
+  eventsPath: string;
+  rawLog: string;
+}
+
+/** Disposition normalisée d'un répertoire de tâche. */
+export function taskPaths(taskDir: string): TaskPaths {
+  return {
+    dir: taskDir,
+    taskFile: join(taskDir, "task.json"),
+    reportPath: join(taskDir, "report.json"),
+    eventsPath: join(taskDir, "events.jsonl"),
+    rawLog: join(taskDir, "raw.log"),
+  };
+}
+
+/**
+ * Les variables d'environnement d'un sous-agent. C'est le contrat minimal :
+ * un agent extérieur qui sait lire `$ORCH_TASK_FILE` et écrire `$ORCH_REPORT_PATH`
+ * est orchestrable, sans rien connaître de cette implémentation.
+ */
+export function taskEnv(task: Task, paths: TaskPaths): Record<string, string> {
+  return {
+    [ENV.taskDir]: paths.dir,
+    [ENV.taskFile]: paths.taskFile,
+    [ENV.reportPath]: paths.reportPath,
+    [ENV.eventsPath]: paths.eventsPath,
+    [ENV.taskId]: task.id,
+    [ENV.agent]: task.agent,
+    [ENV.depth]: String(task.depth),
+    [ENV.protocolVersion]: PROTOCOL_VERSION,
+  };
+}
+
+export async function writeTask(paths: TaskPaths, task: Task): Promise<void> {
+  await mkdir(paths.dir, { recursive: true });
+  await writeFile(paths.taskFile, JSON.stringify(task, null, 2) + "\n", "utf8");
+}
+
+export async function readTask(paths: TaskPaths): Promise<Task> {
+  const raw = await readFile(paths.taskFile, "utf8");
+  return TaskSchema.parse(JSON.parse(raw));
+}
+
+export async function appendEvent(paths: TaskPaths, event: OrchEvent): Promise<void> {
+  await mkdir(dirname(paths.eventsPath), { recursive: true });
+  await appendFile(paths.eventsPath, JSON.stringify(event) + "\n", "utf8");
+}
+
+/**
+ * Relit le journal en ignorant les lignes illisibles : un journal partiellement
+ * corrompu reste plus utile qu'une erreur.
+ */
+export async function readEvents(paths: TaskPaths): Promise<OrchEvent[]> {
+  let raw: string;
+  try {
+    raw = await readFile(paths.eventsPath, "utf8");
+  } catch {
+    return [];
+  }
+  const events: OrchEvent[] = [];
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    const parsed = EventSchema.safeParse(safeJsonParse(line));
+    if (parsed.success) events.push(parsed.data);
+  }
+  return events;
+}
+
+/** Valide un rapport, quelle que soit sa provenance. */
+export function parseReport(value: unknown): Report {
+  return ReportSchema.parse(value);
+}
+
+/** Lit `report.json` s'il existe et s'il est conforme. */
+export async function readReport(paths: TaskPaths): Promise<Report | null> {
+  try {
+    const raw = await readFile(paths.reportPath, "utf8");
+    const parsed = ReportSchema.safeParse(safeJsonParse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeReport(paths: TaskPaths, report: Report): Promise<void> {
+  await mkdir(paths.dir, { recursive: true });
+  await writeFile(paths.reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+}
+
+/**
+ * Dernier recours : retrouver un rapport noyé dans la sortie texte d'un agent.
+ *
+ * On cherche d'abord un bloc explicitement balisé, puis, à défaut, n'importe quel
+ * objet JSON du texte qui se déclare comme un rapport. Le balayage suit les
+ * accolades en tenant compte des chaînes et des échappements, afin de ne pas se
+ * faire piéger par une accolade à l'intérieur d'une chaîne.
+ */
+export function extractReportFromText(text: string): Report | null {
+  const candidates: string[] = [];
+
+  // Blocs de code balisés : ```json orch:report, ```orch:report, ```json …
+  const fence = /```[ \t]*(?:json)?[ \t]*(?:orch:report)?[ \t]*\r?\n([\s\S]*?)```/g;
+  for (const match of text.matchAll(fence)) {
+    const body = match[1];
+    if (body && body.includes(REPORT_PROTOCOL)) candidates.push(body);
+  }
+
+  // Objets JSON bruts contenant le marqueur de protocole.
+  for (const start of markerObjectStarts(text)) {
+    const obj = readBalancedObject(text, start);
+    if (obj) candidates.push(obj);
+  }
+
+  // Le dernier rapport valide l'emporte : un agent qui se reprend a le dernier mot.
+  for (const candidate of candidates.reverse()) {
+    const parsed = ReportSchema.safeParse(safeJsonParse(candidate));
+    if (parsed.success) return parsed.data;
+  }
+  return null;
+}
+
+/** Positions d'ouverture d'objet plausibles, remontées depuis chaque marqueur trouvé. */
+function markerObjectStarts(text: string): number[] {
+  const starts: number[] = [];
+  let from = 0;
+  for (;;) {
+    const marker = text.indexOf(REPORT_PROTOCOL, from);
+    if (marker === -1) break;
+    from = marker + REPORT_PROTOCOL.length;
+    for (let i = marker; i >= 0; i--) {
+      if (text[i] === "{") {
+        starts.push(i);
+        break;
+      }
+    }
+  }
+  return starts;
+}
+
+function readBalancedObject(text: string, start: number): string | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function safeJsonParse(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}

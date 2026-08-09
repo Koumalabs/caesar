@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# État runtime de l'orchestrateur : tâches, worktrees, logs
+.orch/tasks/
+.orch/wt/
+.orch/state/
+
+.DS_Store

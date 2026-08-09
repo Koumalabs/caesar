@@ -1,0 +1,21 @@
+{
+  "name": "@orch/cli",
+  "version": "0.1.0",
+  "description": "CLI de configuration et de supervision de l'orchestrateur",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "orch": "./dist/bin.js"
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@orch/core": "workspace:*",
+    "@orch/mcp-channel": "workspace:*",
+    "@orch/mcp-server": "workspace:*",
+    "@orch/protocol": "workspace:*",
+    "commander": "^15.0.0",
+    "zod": "^4.4.3"
+  }
+}

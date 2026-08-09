@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/protocol" },
+    { "path": "packages/core" },
+    { "path": "packages/mcp-channel" },
+    { "path": "packages/mcp-server" },
+    { "path": "packages/cli" }
+  ]
+}
