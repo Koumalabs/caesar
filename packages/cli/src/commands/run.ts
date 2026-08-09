@@ -3,22 +3,22 @@
  * a un → choisit l'agent (`--agent` l'emporte sur le rôle) → `checkDelegation`
  * → `runTask`. Voir le brief pour l'enchaînement exact.
  *
- * Concession documentée : `RunTaskInput` (`@orch/core`) n'accepte ni
- * `AbortSignal` ni callback d'événements — seule extension autorisée par ce
- * brief hors `packages/cli` : `TaskRecord.pid`, pour `orch cancel`. Un
- * `Ctrl-C` pendant `orch run` s'appuie donc sur le comportement standard de
- * POSIX : le sous-processus, lancé sans `detached`, partage le groupe de
- * processus du CLI et reçoit SIGINT directement du terminal, sans relais
- * explicite nécessaire. `orch run` se contente d'afficher un message plutôt
- * que de couper l'attente du résultat. De même, l'avancement affiché en mode
- * humain provient de la relecture de `events.jsonl` une fois la tâche
- * terminée plutôt que d'un flux en direct, `runTask` ne remontant pas
- * d'événements en cours de route.
+ * `Ctrl-C` interrompt proprement : un `AbortController` créé ici est transmis
+ * à `runTask` (`RunTaskInput.signal`, relayé jusqu'à `runAgentProcess`, qui
+ * sait déjà l'honorer — SIGTERM puis, à défaut de réponse, SIGKILL). Le
+ * sous-processus est donc explicitement signalé, sans dépendre du
+ * regroupement de processus POSIX. L'avancement, en mode humain, est affiché
+ * au fil de l'eau via `RunTaskInput.onEvent` plutôt que relu après coup.
+ * `taskId` est généré ici (plutôt que par le moteur) pour que le répertoire
+ * de la tâche soit connu dès l'appel — pas strictement nécessaire à
+ * l'affichage en direct (qui passe par `onEvent`), mais c'est le même
+ * contrat que celui dont le serveur MCP aura besoin (`orch_delegate`
+ * asynchrone, rendant un identifiant immédiatement).
  */
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Isolation, OrchEvent, TaskMode } from "@orch/protocol";
-import { readEvents, taskPaths } from "@orch/protocol";
 import type { ResolvedRole } from "@orch/core";
 import { checkDelegation, findAgentDefinition, findBinaryInPath, fileTaskStore, loadConfig, parseDuration, pickAgentForRole, resolveRole, runTask } from "@orch/core";
 import type { Io } from "../output.js";
@@ -47,8 +47,15 @@ async function resolveContext(raw: string | undefined): Promise<string | undefin
   return raw;
 }
 
+/** Identifiant lisible, dans le même format que celui que `runner.ts` aurait généré. */
+function generateTaskId(): string {
+  return `t_${randomUUID().replace(/-/g, "")}`;
+}
+
 function describeEvent(event: OrchEvent): string | undefined {
   switch (event.type) {
+    case "started":
+      return `  [démarrage] agent "${event.agent}"`;
     case "tool_use":
       return `  [outil] ${event.tool}${event.input_summary ? ` — ${event.input_summary}` : ""} (${event.status})`;
     case "file_changed":
@@ -139,11 +146,25 @@ export async function runRun(root: string, objective: string, options: RunOption
   }
 
   const store = fileTaskStore(root);
+  const taskId = generateTaskId();
+  const controller = new AbortController();
 
   const onSigint = (): void => {
-    printError(io, "Interruption demandée : le sous-processus reçoit SIGINT directement du terminal ; en attente de sa fin propre…");
+    printError(io, `Interruption demandée : arrêt de la tâche "${taskId}" (SIGTERM au sous-processus, SIGKILL s'il ne répond pas)…`);
+    controller.abort();
   };
   process.on("SIGINT", onSigint);
+
+  // En --json, la consigne du brief ("n'écrire que le résultat final sur
+  // stdout") exclut tout affichage en direct : `onEvent` reste alors
+  // silencieux, les événements ne sont utiles qu'au fil de l'eau en mode
+  // humain.
+  const onEvent = options.json
+    ? undefined
+    : (event: OrchEvent): void => {
+        const line = describeEvent(event);
+        if (line) writeLine(io.stdout, line);
+      };
 
   let outcome;
   try {
@@ -159,6 +180,9 @@ export async function runRun(root: string, objective: string, options: RunOption
         ...(options.role ? { role: options.role } : {}),
         ...(options.model ? { model: options.model } : {}),
         timeoutMs,
+        taskId,
+        signal: controller.signal,
+        ...(onEvent ? { onEvent } : {}),
       },
     );
   } catch (error) {
@@ -177,12 +201,6 @@ export async function runRun(root: string, objective: string, options: RunOption
       diff: outcome.diff ? { files: outcome.diff.files, is_empty: outcome.diff.isEmpty } : undefined,
     });
     return outcome.record.status === "succeeded" ? EXIT_OK : EXIT_RUNTIME;
-  }
-
-  const events = await readEvents(taskPaths(outcome.record.task_dir));
-  for (const event of events) {
-    const line = describeEvent(event);
-    if (line) writeLine(io.stdout, line);
   }
 
   writeLine(io.stdout);

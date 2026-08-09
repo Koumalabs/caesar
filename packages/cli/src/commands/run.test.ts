@@ -157,4 +157,77 @@ describe("orch run", () => {
       }),
     );
   }, 20_000);
+
+  it("l'avancement (mode humain) est émis pendant l'exécution, pas seulement relu à la fin", async () => {
+    await withFakeHome(() =>
+      withFakeAgentAsBin("codex", async () => {
+        await initGitRepo(root);
+        let settled = false;
+        const runPromise = runRun(
+          root,
+          "tâche suivie en direct",
+          { agent: "codex", mode: "write", isolation: "inplace", context: JSON.stringify({ mode: "hang", sleepMs: 500 }) },
+          io,
+        ).then((code) => {
+          settled = true;
+          return code;
+        });
+
+        // La ligne "[démarrage]" (dérivée de l'événement "started") doit
+        // apparaître alors que `runRun` est encore en cours d'exécution —
+        // c'est ce qui distingue un affichage en direct (onEvent) d'une
+        // relecture après coup.
+        for (let i = 0; i < 100 && !io.stdoutText().includes("[démarrage]"); i++) {
+          await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 10));
+        }
+        expect(io.stdoutText()).toContain("[démarrage]");
+        expect(settled).toBe(false);
+
+        const code = await runPromise;
+        expect(code).toBe(EXIT_OK);
+      }),
+    );
+  }, 20_000);
+
+  it("SIGINT interrompt proprement une tâche en cours, sans laisser de processus fils", async () => {
+    await withFakeHome(() =>
+      withFakeAgentAsBin("codex", async (shimDir) => {
+        await initGitRepo(root);
+        const shimPath = join(shimDir, "codex");
+
+        const runPromise = runRun(
+          root,
+          "tâche interrompue",
+          { agent: "codex", mode: "write", isolation: "inplace", context: JSON.stringify({ mode: "hang", sleepMs: 30_000 }) },
+          io,
+        );
+
+        for (let i = 0; i < 100 && !io.stdoutText().includes("[démarrage]"); i++) {
+          await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 10));
+        }
+        expect(io.stdoutText()).toContain("[démarrage]");
+
+        // `process.emit` invoque directement les gestionnaires enregistrés via
+        // `process.on("SIGINT", ...)`, sans passer par le signal OS réel — on
+        // exerce exactement le même code que Ctrl-C déclencherait, sans risquer
+        // d'affecter le process de test lui-même ou d'autres fichiers de test
+        // exécutés en parallèle.
+        process.emit("SIGINT", "SIGINT");
+
+        // Preuve que le signal a réellement atteint et terminé le
+        // sous-processus, bien avant les 30 s de `sleepMs`.
+        const code = await runPromise;
+        expect(code).toBe(EXIT_RUNTIME);
+        expect(io.stderrText()).toMatch(/Interruption demandée/);
+
+        try {
+          const { stdout } = await execFileAsync("pgrep", ["-f", shimPath]);
+          expect(stdout.trim()).toBe("");
+        } catch (error) {
+          // pgrep sort en erreur (code 1) quand rien ne correspond : c'est le résultat attendu.
+          expect((error as { code?: number }).code).toBe(1);
+        }
+      }),
+    );
+  }, 20_000);
 });

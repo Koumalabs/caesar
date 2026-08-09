@@ -237,6 +237,76 @@ describe("runTask", () => {
     expect(outcome.record.pid).toBeUndefined();
   });
 
+  it("taskId fourni par l'appelant : utilisé tel quel, sans en générer un autre", async () => {
+    const outcome = await runTask(
+      { store, root },
+      { agentId: "fake-agent", objective: "identifiant imposé", mode: "write", workspace: root, taskId: "t_imposed" },
+    );
+
+    expect(outcome.record.id).toBe("t_imposed");
+    expect(outcome.record.task_dir).toBe(join(root, ".orch", "tasks", "t_imposed"));
+    expect(await store.get("t_imposed")).not.toBeNull();
+  });
+
+  it("onEvent reçoit les événements au fil de l'eau, avant que runTask ne résolve", async () => {
+    const seenBeforeResolution: string[] = [];
+    let resolved = false;
+
+    const runPromise = runTask(
+      { store, root },
+      {
+        agentId: "fake-agent",
+        objective: "événements en direct",
+        mode: "write",
+        workspace: root,
+        onEvent: (event) => seenBeforeResolution.push(event.type),
+      },
+    ).then((outcome) => {
+      resolved = true;
+      return outcome;
+    });
+
+    // Le premier événement ("started") doit être observable avant même que
+    // `runTask` ait fini de résoudre — c'est ce qui distingue un flux en
+    // direct d'une relecture après coup.
+    for (let i = 0; i < 100 && seenBeforeResolution.length === 0; i++) {
+      await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 5));
+    }
+    expect(seenBeforeResolution).toContain("started");
+    expect(resolved).toBe(false);
+
+    const outcome = await runPromise;
+    expect(outcome.record.status).toBe("succeeded");
+    expect(seenBeforeResolution).toContain("finished");
+  });
+
+  it("un AbortSignal annulé pendant l'exécution interrompt la tâche sans laisser de processus fils", async () => {
+    const controller = new AbortController();
+    const runPromise = runTask(
+      { store, root },
+      {
+        agentId: "fake-agent",
+        objective: "tâche interrompue via AbortSignal",
+        mode: "write",
+        workspace: root,
+        signal: controller.signal,
+        context: JSON.stringify({ mode: "hang", sleepMs: 30_000 }),
+      },
+    );
+
+    // Laisse le sous-processus réellement démarrer avant d'annuler.
+    for (let i = 0; i < 100; i++) {
+      const [record] = await store.list({ status: ["running"] });
+      if (record?.pid !== undefined) break;
+      await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 20));
+    }
+    controller.abort();
+
+    const outcome = await runPromise;
+    expect(outcome.record.status).toBe("cancelled");
+    expect(outcome.record.pid).toBeUndefined();
+  });
+
   it("recoupe une déclaration mensongère avec le diff réel de bout en bout", async () => {
     await initGitRepo(root);
     const outcome = await runTask(

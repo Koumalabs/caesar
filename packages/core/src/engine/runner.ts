@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Channel, Finding, Isolation, Report, ReportChannel, Task, TaskMode } from "@orch/protocol";
+import type { Channel, Finding, Isolation, OrchEvent, Report, ReportChannel, Task, TaskMode } from "@orch/protocol";
 import { TASK_PROTOCOL, TaskSchema, renderTaskPrompt, strictReportJsonSchema, taskEnv, taskPaths, writeTask } from "@orch/protocol";
 import { resolveAgentDefinition } from "../registry/index.js";
 import type { AgentDefinition, SpawnPlan } from "../registry/types.js";
@@ -52,6 +52,30 @@ export interface RunTaskInput {
   depth?: number;
   extraArgs?: string[];
   channel?: Channel | null;
+  /**
+   * Identifiant à utiliser pour cette tâche, plutôt que d'en générer un.
+   * Permet à l'appelant de connaître à l'avance le répertoire de la tâche
+   * (`<root>/.orch/tasks/<taskId>`) — donc de la suivre (`events.jsonl`)
+   * pendant qu'elle tourne, ou de la référencer avant même que `runTask` ne
+   * résolve. Absent : comportement inchangé, un identifiant est généré ici
+   * comme avant. Sert notamment le CLI (`orch run`, avancement en direct) et,
+   * à terme, le serveur MCP (`orch_delegate`, qui doit rendre un identifiant
+   * immédiatement pour permettre plusieurs délégations en parallèle).
+   */
+  taskId?: string;
+  /**
+   * Transmis tel quel à `runAgentProcess`, qui le supporte déjà : permet à
+   * l'appelant d'annuler une tâche en cours sans attendre sa résolution, en
+   * garantissant qu'aucun sous-processus n'est laissé derrière (SIGTERM puis,
+   * à défaut de réponse, SIGKILL — voir `spawn.ts`).
+   */
+  signal?: AbortSignal;
+  /**
+   * Transmis tel quel à `runAgentProcess`, qui le supporte déjà : permet à
+   * l'appelant d'observer les événements normalisés au fil de l'eau, plutôt
+   * que de devoir relire `events.jsonl` après coup.
+   */
+  onEvent?: (event: OrchEvent) => void;
 }
 
 export interface TaskOutcome {
@@ -66,7 +90,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const depth = input.depth ?? 0;
 
-  const id = generateTaskId();
+  const id = input.taskId ?? generateTaskId();
   const taskDir = join(deps.root, ".orch", "tasks", id);
   const paths = taskPaths(taskDir);
 
@@ -152,6 +176,8 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
       paths,
       taskId: id,
       timeoutMs,
+      signal: input.signal,
+      onEvent: input.onEvent,
       // Renseigne le pid dès qu'il est connu, pour qu'un autre processus
       // (typiquement `orch cancel`) puisse retrouver et signaler la tâche
       // pendant qu'elle tourne encore — voir `TaskRecord.pid`.
