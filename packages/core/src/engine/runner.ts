@@ -21,6 +21,16 @@ import type { WorktreeDiff, WorktreeHandle } from "./worktree.js";
 
 const DEFAULT_TIMEOUT_MS = 600_000;
 
+/**
+ * Nom du fichier où un CLI capable de `finalMessageFile` dépose son dernier
+ * message, sous le répertoire de la tâche. Chemin fixe et prévisible : un
+ * agent qui connaît son répertoire de tâche (`$ORCH_TASK_DIR`) peut le
+ * retrouver sans qu'aucun jeton dédié n'existe dans le gabarit générique
+ * d'arguments (`GenericAgentSpec`, tâche 3) — c'est ce que fait l'agent
+ * factice dans les tests.
+ */
+const FINAL_MESSAGE_FILE_NAME = "final-message.txt";
+
 export interface RunnerDeps {
   store: TaskStore;
   root: string;
@@ -96,12 +106,18 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
 
   const prompt = renderTaskPrompt(task, { reportVia, channelServerName: task.channel?.server_name });
 
+  // Quand le CLI sait lui-même déposer son dernier message dans un fichier
+  // (Codex avec `-o`, par exemple), c'est plus fiable qu'une reconstitution
+  // depuis stdout : `resolveReport` le consulte en priorité au palier 2.
+  const finalMessageFile = agentDef.capabilities.finalMessageFile ? join(paths.dir, FINAL_MESSAGE_FILE_NAME) : undefined;
+
   const plan = agentDef.build({
     task,
     paths,
     prompt,
     reportVia,
     schemaFile,
+    finalMessageFile,
     extraArgs: input.extraArgs ?? [],
   });
   // Le contrat minimal d'un agent externe ($ORCH_TASK_FILE, $ORCH_REPORT_PATH…)
@@ -135,7 +151,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
 
   const diff = handle ? await diffWorktree(handle) : undefined;
 
-  const resolved = await resolveReport({ task, paths, run, diff, reportVia });
+  const resolved = await resolveReport({ task, paths, run, diff, reportVia, finalMessageFile });
   let report = resolved.report;
 
   if (diff) {

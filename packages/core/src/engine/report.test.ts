@@ -103,6 +103,45 @@ describe("resolveReport", () => {
     expect(resolved.source).toBe("extracted");
   });
 
+  describe("palier 2, fichier de message final", () => {
+    it("source \"schema\" quand le palier retenu est \"schema\"", async () => {
+      const embedded = minimalReport({ summary: "déposé par le CLI dans final-message.txt" });
+      await mkdir(paths.dir, { recursive: true });
+      const finalMessageFile = join(paths.dir, "final-message.txt");
+      await writeFile(finalMessageFile, JSON.stringify(embedded), "utf8");
+
+      const resolved = await resolveReport({ task: sampleTask(), paths, run: sampleRun(), reportVia: "schema", finalMessageFile });
+      expect(resolved.source).toBe("schema");
+      expect(resolved.report.summary).toBe("déposé par le CLI dans final-message.txt");
+    });
+
+    it("l'emporte sur un finalText de stdout divergent : plus fiable, consulté en premier", async () => {
+      const fromFile = minimalReport({ summary: "la bonne réponse, déposée par le CLI" });
+      const fromStdout = minimalReport({ summary: "une reconstitution stdout qui diverge" });
+      await mkdir(paths.dir, { recursive: true });
+      const finalMessageFile = join(paths.dir, "final-message.txt");
+      await writeFile(finalMessageFile, JSON.stringify(fromFile), "utf8");
+
+      const run = sampleRun({ finalText: JSON.stringify(fromStdout) });
+      const resolved = await resolveReport({ task: sampleTask(), paths, run, reportVia: "file", finalMessageFile });
+
+      expect(resolved.report.summary).toBe("la bonne réponse, déposée par le CLI");
+      expect(resolved.source).toBe("extracted");
+    });
+
+    it("absent ou illisible : se rabat sur le finalText de stdout", async () => {
+      const embedded = minimalReport({ summary: "repli sur stdout" });
+      const run = sampleRun({ finalText: JSON.stringify(embedded) });
+      const resolved = await resolveReport({
+        task: sampleTask(),
+        paths,
+        run,
+        finalMessageFile: join(paths.dir, "n-existe-pas.txt"),
+      });
+      expect(resolved.report.summary).toBe("repli sur stdout");
+    });
+  });
+
   it("palier 3, source \"extracted\" : rapport noyé dans raw.log, absent de finalText", async () => {
     const embedded = minimalReport({ summary: "rapport retrouvé dans le journal brut" });
     await mkdir(paths.dir, { recursive: true });

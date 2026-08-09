@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { REPORT_PROTOCOL } from "@orch/protocol";
 import { fileTaskStore, type TaskStore } from "../store.js";
 import { createQueue } from "./queue.js";
 
@@ -37,12 +38,19 @@ vi.mock("../registry/index.js", async (importOriginal) => {
     args: [fakeAgentPath, "{{prompt}}"],
     capabilities: { nativeReadOnly: true },
   });
+  const fakeAgentFinalMessageDefinition = createGenericAgent({
+    id: "fake-agent-final-message",
+    bin: process.execPath,
+    args: [fakeAgentPath, "{{prompt}}"],
+    capabilities: { finalMessageFile: true },
+  });
 
   return {
     ...actual,
     resolveAgentDefinition: (id: string) => {
       if (id === "fake-agent") return fakeAgentDefinition;
       if (id === "fake-agent-native-ro") return fakeAgentNativeReadOnlyDefinition;
+      if (id === "fake-agent-final-message") return fakeAgentFinalMessageDefinition;
       return actual.resolveAgentDefinition(id);
     },
   };
@@ -174,6 +182,32 @@ describe("runTask", () => {
     expect(outcome.source).toBe("synthesized");
     expect(outcome.record.status).toBe("succeeded");
     expect(outcome.report.status).toBe("success");
+  });
+
+  it("un agent capable de finalMessageFile est câblé de bout en bout : le runner lui désigne le fichier, il l'utilise", async () => {
+    await initGitRepo(root);
+    const embedded = {
+      protocol: REPORT_PROTOCOL,
+      task_id: "peu importe, resolveReport ne s'y fie pas",
+      status: "success",
+      summary: "déposé par le CLI dans final-message.txt, jamais dans report.json",
+      changes: [],
+    };
+    const outcome = await runTask(
+      { store, root },
+      {
+        agentId: "fake-agent-final-message",
+        objective: "agent qui rapporte par fichier de message final",
+        mode: "write",
+        workspace: root,
+        // "silent" : aucun report.json écrit, pour prouver que le rapport
+        // vient bien de final-message.txt et de rien d'autre.
+        context: JSON.stringify({ mode: "silent", finalMessage: JSON.stringify(embedded) }),
+      },
+    );
+
+    expect(outcome.source).toBe("extracted");
+    expect(outcome.report.summary).toBe("déposé par le CLI dans final-message.txt, jamais dans report.json");
   });
 
   it("recoupe une déclaration mensongère avec le diff réel de bout en bout", async () => {

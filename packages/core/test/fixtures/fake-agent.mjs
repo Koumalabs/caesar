@@ -21,7 +21,8 @@
  *   "status": "success",
  *   "summary": "…",
  *   "sleepMs": 86400000,
- *   "ignoreSigterm": false
+ *   "ignoreSigterm": false,
+ *   "finalMessage": "…"
  * }
  *
  * - "success" (par défaut) : écrit les `files` déclarés, un rapport valide.
@@ -37,11 +38,19 @@
  * rapport indépendamment des `files` réellement écrits — de quoi simuler un
  * agent qui ment, dans les deux sens (fichier tu, fichier inventé), pour
  * éprouver `reconcileChanges`.
+ *
+ * `finalMessage`, quand fourni, simule un CLI dont `capabilities.finalMessageFile`
+ * est vrai (Codex avec `-o`, par exemple) : le message est écrit tel quel
+ * dans `final-message.txt`, sous le répertoire de la tâche. Ce script ne
+ * reçoit ce chemin par aucun jeton dédié — `GenericAgentSpec` (tâche 3) n'en
+ * prévoit pas pour un CLI générique — mais le retrouve lui-même sous
+ * `$ORCH_TASK_DIR`, exactement comme le calcule le runner.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 
 const REPORT_PROTOCOL = "orch.report/v1";
+const FINAL_MESSAGE_FILE_NAME = "final-message.txt";
 
 function log(kind, message) {
   process.stdout.write(JSON.stringify({ kind, message }) + "\n");
@@ -94,6 +103,11 @@ async function main() {
     const target = isAbsolute(file.path) ? file.path : join(task.workspace, file.path);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, file.content ?? "", "utf8");
+  }
+
+  if (directive.finalMessage !== undefined) {
+    const taskDir = process.env["ORCH_TASK_DIR"];
+    writeFileSync(join(taskDir, FINAL_MESSAGE_FILE_NAME), directive.finalMessage, "utf8");
   }
 
   const exitCode = directive.exitCode ?? (mode === "fail" ? 1 : 0);

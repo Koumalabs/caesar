@@ -3,6 +3,11 @@
  * recoupement de ce que l'agent déclare avoir modifié avec ce que git
  * constate.
  *
+ * Le palier 2 (le texte final de l'agent) consulte deux sources dans
+ * l'ordre de fiabilité décroissante : d'abord un fichier que le CLI
+ * lui-même a déposé (`finalMessageFile`), puis, à défaut, le texte
+ * reconstitué en rejouant les traductions ligne à ligne de stdout.
+ *
  * C'est le garde-fou central du projet : un agent qui ne respecte aucun
  * contrat de rapport ne fait pas échouer l'orchestrateur, et un agent qui
  * ment sur ses `changes` ne trompe jamais l'appelant plus loin que ce
@@ -38,8 +43,16 @@ export async function resolveReport(args: {
    * distinguer. Extension minimale et documentée, à confirmer en revue.
    */
   reportVia?: ReportChannel;
+  /**
+   * Chemin du fichier où le CLI lui-même — et non le modèle sous sandbox —
+   * dépose son message final, quand `agent.capabilities.finalMessageFile`
+   * est vrai (voir `BuildContext.finalMessageFile`, renseigné par le
+   * runner). Plus fiable que `run.finalText`, reconstitué en reformant les
+   * traductions ligne à ligne de stdout : consulté avant lui.
+   */
+  finalMessageFile?: string;
 }): Promise<ResolvedReport> {
-  const { task, paths, run, diff, reportVia } = args;
+  const { task, paths, run, diff, reportVia, finalMessageFile } = args;
 
   // Palier 1 : canal MCP ou contrat de fichier, tous deux écrivant report.json.
   const fromFile = await readReport(paths);
@@ -47,7 +60,20 @@ export async function resolveReport(args: {
     return { report: fromFile, source: task.channel ? "channel" : "file" };
   }
 
-  // Palier 2 : le dernier texte final non vide de l'agent contient le rapport.
+  // Palier 2, message final : le CLI a lui-même déposé son dernier message
+  // dans un fichier dédié — plus fiable qu'une reconstitution depuis stdout,
+  // donc consulté en premier.
+  if (finalMessageFile) {
+    const fileText = await readTextSafe(finalMessageFile);
+    if (fileText.trim() !== "") {
+      const extracted = extractReportFromText(fileText);
+      if (extracted) {
+        return { report: extracted, source: reportVia === "schema" ? "schema" : "extracted" };
+      }
+    }
+  }
+
+  // Palier 2, stdout : le dernier texte final non vide de l'agent contient le rapport.
   if (run.finalText) {
     const extracted = extractReportFromText(run.finalText);
     if (extracted) {
@@ -56,7 +82,7 @@ export async function resolveReport(args: {
   }
 
   // Palier 3 : le rapport est noyé quelque part dans le journal brut complet.
-  const rawText = await readRawLogSafe(paths.rawLog);
+  const rawText = await readTextSafe(paths.rawLog);
   const fromLog = extractReportFromText(rawText);
   if (fromLog) {
     return { report: fromLog, source: "extracted" };
@@ -104,7 +130,7 @@ export function reconcileChanges(report: Report, diff: WorktreeDiff): Report {
   return { ...report, changes: diff.files, findings };
 }
 
-async function readRawLogSafe(path: string): Promise<string> {
+async function readTextSafe(path: string): Promise<string> {
   try {
     return await readFile(path, "utf8");
   } catch {
