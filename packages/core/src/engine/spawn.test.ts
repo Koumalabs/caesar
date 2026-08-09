@@ -209,6 +209,24 @@ describe("runAgentProcess", () => {
     expect(raw).toContain("bonjour depuis stdin");
   });
 
+  it("onSpawn reçoit le pid du sous-processus avant tout traitement de sa sortie", async () => {
+    const { task, paths } = await setupTask(dir, {});
+    let spawnedPid: number | undefined;
+    const result = await runAgentProcess({
+      agent: stubAgent,
+      plan: planFor(task, paths),
+      paths,
+      taskId: task.id,
+      timeoutMs: 10_000,
+      onSpawn: (pid) => {
+        spawnedPid = pid;
+      },
+    });
+
+    expect(spawnedPid).toBeGreaterThan(0);
+    expect(result.exitCode).toBe(0);
+  });
+
   it("un AbortSignal annule l'exécution avant le timeout", async () => {
     const { task, paths } = await setupTask(dir, { mode: "hang" });
     const controller = new AbortController();

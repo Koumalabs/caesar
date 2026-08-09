@@ -210,6 +210,33 @@ describe("runTask", () => {
     expect(outcome.report.summary).toBe("déposé par le CLI dans final-message.txt, jamais dans report.json");
   });
 
+  it("renseigne le pid du sous-processus pendant l'exécution puis l'efface à la fin", async () => {
+    const runPromise = runTask(
+      { store, root },
+      {
+        agentId: "fake-agent",
+        objective: "vérifie le cycle de vie du pid",
+        mode: "write",
+        workspace: root,
+        isolation: "inplace",
+        timeoutMs: 300,
+        context: JSON.stringify({ mode: "hang", sleepMs: 5000 }),
+      },
+    );
+
+    // Attend que le pid apparaisse dans le store, pendant que la tâche tourne encore.
+    let seenPid: number | undefined;
+    for (let i = 0; i < 100 && seenPid === undefined; i++) {
+      const records = await store.list({ status: ["running"] });
+      seenPid = records[0]?.pid;
+      if (seenPid === undefined) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(seenPid).toBeGreaterThan(0);
+
+    const outcome = await runPromise;
+    expect(outcome.record.pid).toBeUndefined();
+  });
+
   it("recoupe une déclaration mensongère avec le diff réel de bout en bout", async () => {
     await initGitRepo(root);
     const outcome = await runTask(

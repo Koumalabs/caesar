@@ -35,6 +35,14 @@ export interface TaskRecord {
   report_via: ReportChannel;
   report_source?: ReportSource;
   depth: number;
+  /**
+   * Identifiant du processus du sous-agent, le temps qu'il tourne. Renseigné
+   * par le moteur au lancement, effacé à la fin (voir `runner.ts`) : c'est ce
+   * qui permet à `orch cancel` (tâche CLI) d'envoyer SIGTERM à une tâche
+   * lancée par un autre processus (le serveur MCP, par exemple) sans autre
+   * moyen de retrouver son PID.
+   */
+  pid?: number;
 }
 
 export interface TaskStore {

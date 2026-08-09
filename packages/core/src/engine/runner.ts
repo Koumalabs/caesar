@@ -146,7 +146,19 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   await deps.store.create(record);
 
   const execute = (): Promise<RunResult> =>
-    runAgentProcess({ agent: agentDef, plan: finalPlan, paths, taskId: id, timeoutMs });
+    runAgentProcess({
+      agent: agentDef,
+      plan: finalPlan,
+      paths,
+      taskId: id,
+      timeoutMs,
+      // Renseigne le pid dès qu'il est connu, pour qu'un autre processus
+      // (typiquement `orch cancel`) puisse retrouver et signaler la tâche
+      // pendant qu'elle tourne encore — voir `TaskRecord.pid`.
+      onSpawn: async (pid) => {
+        await deps.store.update(id, { pid });
+      },
+    });
   const run = deps.queue ? await deps.queue.run(execute) : await execute();
 
   const diff = handle ? await diffWorktree(handle) : undefined;
@@ -176,6 +188,9 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     ended_at: new Date().toISOString(),
     exit_code: run.exitCode,
     report_source: resolved.source,
+    // Le processus n'existe plus : un pid effacé évite à `orch cancel` de
+    // signaler un pid réutilisé entre-temps par un tout autre processus.
+    pid: undefined,
   });
 
   return { record: updated, report, source: resolved.source, diff };

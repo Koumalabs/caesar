@@ -26,6 +26,13 @@ export interface RunOptions {
   timeoutMs: number;
   signal?: AbortSignal;
   onEvent?: (event: OrchEvent) => void;
+  /**
+   * Appelé dès que le pid du sous-processus est connu, avant tout traitement
+   * de sa sortie. Sert uniquement à `runner.ts` pour renseigner `TaskRecord.pid`
+   * au plus tôt (voir le brief de la tâche 6, extension `orch cancel`) ; ignoré
+   * si le processus échoue à démarrer (pas de pid dans ce cas).
+   */
+  onSpawn?: (pid: number) => void | Promise<void>;
 }
 
 export interface RunResult {
@@ -39,7 +46,7 @@ export interface RunResult {
 }
 
 export async function runAgentProcess(options: RunOptions): Promise<RunResult> {
-  const { agent, plan, paths, taskId, timeoutMs, signal, onEvent } = options;
+  const { agent, plan, paths, taskId, timeoutMs, signal, onEvent, onSpawn } = options;
   const startedAt = Date.now();
 
   for (const file of plan.files) {
@@ -71,6 +78,8 @@ export async function runAgentProcess(options: RunOptions): Promise<RunResult> {
   child.once("error", (error) => {
     spawnError = error;
   });
+
+  if (child.pid !== undefined) await onSpawn?.(child.pid);
 
   await emit({ type: "started", agent: agent.id, command: [plan.command, ...plan.args].join(" ") });
 
