@@ -11,4 +11,3 @@ export * from "./tools/logs.js";
 export * from "./tools/report-summary.js";
 export * from "./tools/result.js";
 export * from "./tools/status.js";
-export * from "./tools/worktree-handle.js";

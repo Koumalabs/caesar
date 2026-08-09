@@ -7,10 +7,9 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { applyWorktree } from "@orch/core";
+import { applyWorktree, loadWorktreeHandle } from "@orch/core";
 import type { McpSession } from "../session.js";
 import { errorResult, jsonResult } from "./result.js";
-import { loadWorktreeHandle } from "./worktree-handle.js";
 
 export const ORCH_APPLY = "orch_apply";
 

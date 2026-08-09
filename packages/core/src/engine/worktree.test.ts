@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyWorktree, createWorktree, diffWorktree, removeWorktree, repoRoot } from "./worktree.js";
+import { taskPaths, writeTask } from "@orch/protocol";
+import type { Task } from "@orch/protocol";
+import type { TaskRecord } from "../store.js";
+import { applyWorktree, createWorktree, diffWorktree, loadWorktreeHandle, removeWorktree, repoRoot } from "./worktree.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -145,6 +148,89 @@ describe("worktree", () => {
 
       const branches = await git(root, ["branch", "--list", "orch/task-remove"]);
       expect(branches.trim()).toBe("");
+    });
+  });
+
+  describe("loadWorktreeHandle", () => {
+    function record(overrides: Partial<TaskRecord> = {}): TaskRecord {
+      return {
+        id: "task-handle",
+        agent: "codex",
+        objective: "tâche",
+        status: "succeeded",
+        created_at: new Date().toISOString(),
+        task_dir: join(root, ".orch", "tasks", "task-handle"),
+        workspace: join(root, ".orch", "wt", "task-handle"),
+        isolation: "worktree",
+        mode: "write",
+        report_via: "file",
+        depth: 0,
+        branch: "orch/task-handle",
+        ...overrides,
+      };
+    }
+
+    it("null quand l'isolation n'est pas \"worktree\"", async () => {
+      const handle = await loadWorktreeHandle(record({ isolation: "inplace", branch: undefined }));
+      expect(handle).toBeNull();
+    });
+
+    it("null quand isolation \"worktree\" mais sans branche enregistrée", async () => {
+      const handle = await loadWorktreeHandle(record({ branch: undefined }));
+      expect(handle).toBeNull();
+    });
+
+    it("reconstruit le handle depuis task.json, base_ref compris", async () => {
+      const rec = record();
+      const paths = taskPaths(rec.task_dir);
+      const task: Task = {
+        protocol: "orch.task/v1",
+        id: rec.id,
+        created_at: rec.created_at,
+        agent: rec.agent,
+        objective: rec.objective,
+        context: "",
+        constraints: [],
+        acceptance_criteria: [],
+        mode: rec.mode,
+        isolation: "worktree",
+        workspace: rec.workspace,
+        base_ref: "deadbeef",
+        deadline_ms: 60_000,
+        depth: 0,
+        report_path: paths.reportPath,
+        events_path: paths.eventsPath,
+      };
+      await writeTask(paths, task);
+
+      const handle = await loadWorktreeHandle(rec);
+      expect(handle).toEqual({ path: rec.workspace, branch: "orch/task-handle", baseRef: "deadbeef" });
+    });
+
+    it("base_ref absent de task.json : replie sur \"HEAD\"", async () => {
+      const rec = record({ id: "task-handle-2", task_dir: join(root, ".orch", "tasks", "task-handle-2") });
+      const paths = taskPaths(rec.task_dir);
+      const task: Task = {
+        protocol: "orch.task/v1",
+        id: rec.id,
+        created_at: rec.created_at,
+        agent: rec.agent,
+        objective: rec.objective,
+        context: "",
+        constraints: [],
+        acceptance_criteria: [],
+        mode: rec.mode,
+        isolation: "worktree",
+        workspace: rec.workspace,
+        deadline_ms: 60_000,
+        depth: 0,
+        report_path: paths.reportPath,
+        events_path: paths.eventsPath,
+      };
+      await writeTask(paths, task);
+
+      const handle = await loadWorktreeHandle(rec);
+      expect(handle?.baseRef).toBe("HEAD");
     });
   });
 });

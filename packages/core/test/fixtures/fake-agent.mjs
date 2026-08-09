@@ -30,9 +30,17 @@
  *   un rapport sauf si `writeReport` est faux.
  * - "silent" : n'écrit jamais de rapport, quel que soit `writeReport` —
  *   simule un agent qui ignore le contrat, pour éprouver la synthèse.
- * - "hang" : ne fait jamais rien de plus qu'attendre `sleepMs`, pour
- *   éprouver le timeout et l'annulation. Avec `ignoreSigterm`, installe un
- *   gestionnaire qui absorbe SIGTERM, pour éprouver l'escalade vers SIGKILL.
+ * - "hang" : ne fait jamais rien de plus qu'attendre `sleepMs` (défaut : un
+ *   jour, en pratique indéfiniment), pour éprouver le timeout et
+ *   l'annulation. Avec `ignoreSigterm`, installe un gestionnaire qui absorbe
+ *   SIGTERM, pour éprouver l'escalade vers SIGKILL.
+ *
+ * Dans les trois autres modes ("success", "fail", "silent"), `sleepMs`,
+ * s'il est fourni explicitement, retarde d'autant le traitement avant
+ * l'écriture du rapport (par défaut : aucune pause) — utile pour prouver
+ * qu'un appelant attend plusieurs tâches en parallèle sans que l'attente
+ * conjointe ne coûte la somme de leurs délais (voir
+ * `packages/mcp-server/src/tools/await.test.ts`).
  *
  * `declaredChanges`, quand fourni, remplace la déclaration de `changes` du
  * rapport indépendamment des `files` réellement écrits — de quoi simuler un
@@ -95,6 +103,10 @@ async function main() {
     await sleep(sleepMs);
     // Jamais atteint en pratique : le processus est terminé avant.
     return;
+  }
+
+  if (directive.sleepMs !== undefined) {
+    await sleep(directive.sleepMs);
   }
 
   log("progress", "traitement");

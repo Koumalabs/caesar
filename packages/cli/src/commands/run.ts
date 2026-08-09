@@ -1,7 +1,17 @@
 /**
- * `orch run` : résout la racine → charge la config → résout le rôle s'il y en
- * a un → choisit l'agent (`--agent` l'emporte sur le rôle) → `checkDelegation`
- * → `runTask`. Voir le brief pour l'enchaînement exact.
+ * `orch run` : résout la racine → charge la config → résout la délégation
+ * (rôle/agent/mode/isolation/politique/timeout/contexte, via
+ * `resolveDelegation` d'`@orch/core`) → `runTask`. Voir le brief pour
+ * l'enchaînement d'origine.
+ *
+ * La résolution rôle → agent → politique elle-même n'est plus dupliquée ici :
+ * `resolveDelegation` est le point d'assemblage partagé avec `orch_delegate`
+ * (serveur MCP), voir son en-tête (`packages/core/src/delegation.ts`) et le
+ * rapport de correction de la tâche 7. Ce qui reste propre à ce fichier :
+ * valider la *forme* de `--mode`/`--isolation` (chaînes brutes issues de
+ * commander) et résoudre `--context @fichier` — deux affinages purement
+ * CLI, qui n'ont pas leur place dans une fonction partagée avec le serveur
+ * MCP (dont les entrées sont déjà typées par son schéma zod).
  *
  * `Ctrl-C` interrompt proprement : un `AbortController` créé ici est transmis
  * à `runTask` (`RunTaskInput.signal`, relayé jusqu'à `runAgentProcess`, qui
@@ -12,25 +22,13 @@
  * `taskId` est généré ici (plutôt que par le moteur) pour que le répertoire
  * de la tâche soit connu dès l'appel — pas strictement nécessaire à
  * l'affichage en direct (qui passe par `onEvent`), mais c'est le même
- * contrat que celui dont le serveur MCP aura besoin (`orch_delegate`
+ * contrat que celui dont le serveur MCP a besoin (`orch_delegate`
  * asynchrone, rendant un identifiant immédiatement).
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Isolation, OrchEvent, TaskMode } from "@orch/protocol";
-import type { ResolvedRole } from "@orch/core";
-import {
-  checkDelegation,
-  findAgentDefinition,
-  findBinaryInPath,
-  fileTaskStore,
-  generateTaskId,
-  loadConfig,
-  parseDuration,
-  pickAgentForRole,
-  resolveRole,
-  runTask,
-} from "@orch/core";
+import { fileTaskStore, generateTaskId, loadConfig, resolveDelegation, runTask } from "@orch/core";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, writeLine } from "../output.js";
 
@@ -77,65 +75,15 @@ function describeEvent(event: OrchEvent): string | undefined {
 export async function runRun(root: string, objective: string, options: RunOptions, io: Io): Promise<number> {
   const { config } = await loadConfig(root);
 
-  let role: ResolvedRole | null = null;
-  if (options.role) {
-    role = await resolveRole(config, root, options.role);
-    if (!role) {
-      printError(io, `Rôle inconnu : "${options.role}".`);
-      return EXIT_USAGE;
-    }
-  }
-
-  let agentId: string;
-  if (options.agent) {
-    agentId = options.agent;
-  } else if (role) {
-    const installed = new Map<string, boolean>();
-    await Promise.all(
-      role.agents.map(async (id) => {
-        const def = findAgentDefinition(id);
-        installed.set(id, def ? (await findBinaryInPath(def.bin)) !== null : false);
-      }),
-    );
-    const pick = pickAgentForRole(role, { isInstalled: (id) => installed.get(id) ?? false, policy: config.policy });
-    if ("error" in pick) {
-      printError(io, pick.error);
-      return EXIT_USAGE;
-    }
-    agentId = pick.agentId;
-  } else {
-    printError(io, "Précisez --agent <id> ou --role <name>.");
-    return EXIT_USAGE;
-  }
-
-  if (!findAgentDefinition(agentId)) {
-    printError(io, `Agent inconnu : "${agentId}".`);
-    return EXIT_USAGE;
-  }
-
+  // Validation de forme, propre au CLI (chaînes brutes issues de commander) :
+  // avant même de résoudre rôle/agent, pour échouer vite sur un argument
+  // manifestement invalide plutôt que d'engager de l'I/O pour rien.
   if (options.mode && !TASK_MODES.includes(options.mode as TaskMode)) {
     printError(io, `--mode invalide (attendu l'une de : ${TASK_MODES.join(", ")}).`);
     return EXIT_USAGE;
   }
   if (options.isolation && !ISOLATIONS.includes(options.isolation as Isolation | "auto")) {
     printError(io, `--isolation invalide (attendu l'une de : ${ISOLATIONS.join(", ")}).`);
-    return EXIT_USAGE;
-  }
-
-  const decision = checkDelegation(config.policy, { agentId, depth: 0 });
-  if (!decision.allowed) {
-    printError(io, decision.reason);
-    return EXIT_USAGE;
-  }
-
-  const mode: TaskMode = (options.mode as TaskMode | undefined) ?? role?.mode ?? config.policy.default_mode;
-  const isolation: Isolation | "auto" = (options.isolation as Isolation | "auto" | undefined) ?? role?.isolation ?? config.policy.default_isolation;
-
-  let timeoutMs: number;
-  try {
-    timeoutMs = options.timeout ? parseDuration(options.timeout) : (role?.timeout_ms ?? config.policy.default_timeout_ms);
-  } catch (error) {
-    printError(io, error instanceof Error ? error.message : String(error));
     return EXIT_USAGE;
   }
 
@@ -146,9 +94,20 @@ export async function runRun(root: string, objective: string, options: RunOption
     printError(io, `Impossible de lire --context : ${error instanceof Error ? error.message : String(error)}`);
     return EXIT_USAGE;
   }
-  if (role?.systemPrompt) {
-    context = [role.systemPrompt, context].filter((part) => part && part.trim() !== "").join("\n\n---\n\n");
+
+  const resolved = await resolveDelegation(config, root, {
+    role: options.role,
+    agent: options.agent,
+    mode: options.mode as TaskMode | undefined,
+    isolation: options.isolation as Isolation | "auto" | undefined,
+    context,
+    timeout: options.timeout,
+  });
+  if ("error" in resolved) {
+    printError(io, resolved.error);
+    return EXIT_USAGE;
   }
+  const { agentId, mode, isolation, timeoutMs, context: resolvedContext } = resolved;
 
   const store = fileTaskStore(root);
   const taskId = generateTaskId();
@@ -178,7 +137,7 @@ export async function runRun(root: string, objective: string, options: RunOption
       {
         agentId,
         objective,
-        ...(context !== undefined ? { context } : {}),
+        ...(resolvedContext !== undefined ? { context: resolvedContext } : {}),
         mode,
         isolation,
         workspace: root,

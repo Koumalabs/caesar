@@ -42,12 +42,19 @@ describe("orch_await", () => {
     );
   }, 20_000);
 
-  it("deux délégations en parallèle, attendues ensemble par un seul orch_await", async () => {
+  it("deux délégations en parallèle sont réellement exécutées en même temps, pas l'une après l'autre", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = createSession(root);
 
-        const delayMs = 500;
+        // `sleepMs`, depuis la correction du constat 1 de la revue de la
+        // tâche 7, retarde aussi le mode "success" de l'agent factice (pas
+        // seulement "hang") — voir `fake-agent.mjs`. Sans ça, les deux
+        // tâches se termineraient quasi instantanément quel que soit l'ordre
+        // d'exécution, et aucune mesure ci-dessous ne distinguerait un
+        // déroulement parallèle d'un déroulement séquentiel.
+        const delayMs = 1_000;
+        const startedAt = Date.now();
         const [first, second] = await Promise.all([
           orchDelegate(session, {
             objective: "première",
@@ -68,7 +75,36 @@ describe("orch_await", () => {
         const secondId = (second.structuredContent as { task_id: string }).task_id;
         expect(firstId).not.toBe(secondId);
 
-        const startedAt = Date.now();
+        // Preuve n°1, par constat d'état plutôt que par chronométrage — donc
+        // insensible à la charge de la machine (voir la revue de la
+        // tâche 7) : pendant que les deux tâches dorment, il doit exister un
+        // instant où le store les montre **simultanément** "running". Un
+        // déroulement séquentiel (la seconde ne démarrant qu'une fois la
+        // première terminée) ne produit jamais cet instant : on y verrait la
+        // première passer à "succeeded" avant même que la seconde n'existe
+        // dans le store à l'état "running" — la boucle ci-dessous
+        // épuiserait alors ses itérations sans jamais voir les deux
+        // "running" au même instant, et l'assertion qui suit échouerait.
+        let observedBothRunning = false;
+        for (let i = 0; i < 400 && !observedBothRunning; i++) {
+          const [r1, r2] = await Promise.all([session.store.get(firstId), session.store.get(secondId)]);
+          if (r1?.status === "running" && r2?.status === "running") {
+            observedBothRunning = true;
+          } else {
+            await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 5));
+          }
+        }
+        expect(observedBothRunning).toBe(true);
+
+        // Preuve n°2, chronométrée, en complément de la preuve n°1 (qui
+        // reste la seule dont la marge ne dépend pas de la charge de la
+        // machine) : l'attente conjointe des deux tâches ne coûte que le
+        // plus long des deux délais, pas leur somme. Avec delayMs = 1000 ms
+        // chacune, un déroulement séquentiel prendrait au moins ~2000 ms
+        // (plus le coût de démarrage des deux processus) ; le seuil
+        // ci-dessous l'exclut franchement tout en laissant une marge large
+        // au cas parallèle réel (mesuré entre ~1000 et ~1500 ms selon la
+        // charge de la machine lors du calibrage de ce test).
         const awaited = await orchAwait(session, { task_ids: [firstId, secondId], timeout_ms: 10_000 });
         const elapsedMs = Date.now() - startedAt;
 
@@ -77,10 +113,7 @@ describe("orch_await", () => {
         expect(tasks[secondId]?.status).toBe("succeeded");
         expect(tasks[firstId]?.report?.summary).toBe("première faite.");
         expect(tasks[secondId]?.report?.summary).toBe("seconde faite.");
-
-        // Les deux tâches tournent en parallèle : l'attente conjointe ne coûte
-        // pas la somme des deux délais, seulement le plus long des deux.
-        expect(elapsedMs).toBeLessThan(delayMs * 2);
+        expect(elapsedMs).toBeLessThan(1_800);
       }),
     );
   }, 20_000);

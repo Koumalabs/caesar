@@ -4,20 +4,17 @@
  * tâche 7.
  *
  * L'assemblage (charger la configuration, résoudre le rôle puis l'agent,
- * vérifier la politique, calculer mode/isolation/timeout/contexte) reproduit
- * fidèlement celui de `orch run` (`packages/cli/src/commands/run.ts`), pour
- * les mêmes règles de repli (`--agent` l'emporte sur `--role`, mais un rôle
- * fourni reste résolu pour ses valeurs par défaut même quand `agent` est
- * explicite). Cette duplication est délibérément signalée dans le rapport de
- * la tâche 7 plutôt que résolue en silence : les deux façades (CLI, MCP)
- * gagneraient sans doute à partager un seul point d'assemblage dans
- * `@orch/core`, mais ce n'est pas une décision qui relève de cette tâche.
+ * vérifier la politique, calculer mode/isolation/timeout/contexte) est
+ * délégué à `resolveDelegation` (`@orch/core`), le point d'assemblage partagé
+ * avec `orch run` (`packages/cli/src/commands/run.ts`) — voir son en-tête
+ * et le rapport de correction de la tâche 7 : les deux façades appliquaient
+ * jusqu'ici la même règle en deux endroits distincts.
  *
- * Le champ `isolation` rendu est celui effectivement transmis à `runTask`
- * après résolution des couches de configuration (entrée explicite > rôle >
- * politique projet) — pas la résolution finale "auto" → "inplace"/"worktree"
- * que `runTask` effectue en interne : cette dernière dépend de l'état du
- * dépôt git et d'une préparation d'isolation potentiellement non instantanée
+ * Le champ `isolation` rendu est celui que `resolveDelegation` a résolu à
+ * partir des couches de configuration (entrée explicite > rôle > politique
+ * projet) — pas la résolution finale "auto" → "inplace"/"worktree" que
+ * `runTask` effectue en interne : cette dernière dépend de l'état du dépôt
+ * git et d'une préparation d'isolation potentiellement non instantanée
  * (création d'un worktree), qu'`orch_delegate` ne peut pas attendre sans
  * rouvrir la promesse de non-blocage que ce tool porte. `orch_status`/
  * `orch_await`, une fois la tâche connue du store, rendent l'isolation
@@ -26,18 +23,8 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { ResolvedRole, RunTaskInput } from "@orch/core";
-import {
-  checkDelegation,
-  findAgentDefinition,
-  findBinaryInPath,
-  generateTaskId,
-  loadConfig,
-  parseDuration,
-  pickAgentForRole,
-  resolveRole,
-} from "@orch/core";
-import type { Isolation, TaskMode } from "@orch/protocol";
+import type { RunTaskInput } from "@orch/core";
+import { generateTaskId, loadConfig, resolveDelegation } from "@orch/core";
 import { launchTask } from "../session.js";
 import type { McpSession } from "../session.js";
 import { errorResult, jsonResult } from "./result.js";
@@ -107,83 +94,42 @@ const OrchDelegateInputSchema = z.object(orchDelegateInputShape);
 export type OrchDelegateInput = z.infer<typeof OrchDelegateInputSchema>;
 
 export async function orchDelegate(session: McpSession, input: OrchDelegateInput): Promise<CallToolResult> {
-  if (!input.agent && !input.role) {
-    return errorResult('Préciser "agent" ou "role".');
-  }
-
   const { config } = await loadConfig(session.root);
 
-  let role: ResolvedRole | null = null;
-  if (input.role) {
-    role = await resolveRole(config, session.root, input.role);
-    if (!role) return errorResult(`Rôle inconnu : "${input.role}".`);
-  }
-
-  let agentId: string;
-  if (input.agent) {
-    agentId = input.agent;
-  } else if (role) {
-    const installed = new Map<string, boolean>();
-    await Promise.all(
-      role.agents.map(async (id) => {
-        const def = findAgentDefinition(id);
-        installed.set(id, def ? (await findBinaryInPath(def.bin)) !== null : false);
-      }),
-    );
-    const pick = pickAgentForRole(role, { isInstalled: (id) => installed.get(id) ?? false, policy: config.policy });
-    if ("error" in pick) return errorResult(pick.error);
-    agentId = pick.agentId;
-  } else {
-    // Inatteignable : la garde en tête de fonction exige déjà l'un des deux.
-    return errorResult('Préciser "agent" ou "role".');
-  }
-
-  if (!findAgentDefinition(agentId)) {
-    return errorResult(`Agent inconnu : "${agentId}".`);
-  }
-
-  const decision = checkDelegation(config.policy, { agentId, depth: 0 });
-  if (!decision.allowed) {
+  const resolved = await resolveDelegation(config, session.root, {
+    role: input.role,
+    agent: input.agent,
+    mode: input.mode,
+    isolation: input.isolation,
+    context: input.context,
+    timeout: input.timeout,
+  });
+  if ("error" in resolved) {
     // Motif rendu tel quel par @orch/core — voir le brief.
-    return errorResult(decision.reason);
-  }
-
-  const mode: TaskMode = input.mode ?? role?.mode ?? config.policy.default_mode;
-  const isolation: Isolation | "auto" = input.isolation ?? role?.isolation ?? config.policy.default_isolation;
-
-  let timeoutMs: number;
-  try {
-    timeoutMs = input.timeout ? parseDuration(input.timeout) : (role?.timeout_ms ?? config.policy.default_timeout_ms);
-  } catch (error) {
-    return errorResult(error instanceof Error ? error.message : String(error));
-  }
-
-  let context = input.context;
-  if (role?.systemPrompt) {
-    context = [role.systemPrompt, context].filter((part) => part && part.trim() !== "").join("\n\n---\n\n");
+    return errorResult(resolved.error);
   }
 
   const taskId = generateTaskId();
   const controller = new AbortController();
 
   const runInput: RunTaskInput & { taskId: string } = {
-    agentId,
+    agentId: resolved.agentId,
     objective: input.objective,
-    ...(context !== undefined ? { context } : {}),
+    ...(resolved.context !== undefined ? { context: resolved.context } : {}),
     ...(input.constraints ? { constraints: input.constraints } : {}),
     ...(input.acceptance_criteria ? { acceptance_criteria: input.acceptance_criteria } : {}),
-    mode,
-    isolation,
+    mode: resolved.mode,
+    isolation: resolved.isolation,
     workspace: session.root,
-    ...(input.role ? { role: input.role } : {}),
+    ...(resolved.role ? { role: resolved.role } : {}),
     ...(input.model ? { model: input.model } : {}),
-    timeoutMs,
+    timeoutMs: resolved.timeoutMs,
     taskId,
     signal: controller.signal,
   };
   launchTask(session, runInput, controller);
 
-  return jsonResult({ task_id: taskId, agent: agentId, mode, isolation, status: "running" });
+  return jsonResult({ task_id: taskId, agent: resolved.agentId, mode: resolved.mode, isolation: resolved.isolation, status: "running" });
 }
 
 export function registerOrchDelegate(server: McpServer, session: McpSession): void {

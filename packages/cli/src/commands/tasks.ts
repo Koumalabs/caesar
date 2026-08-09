@@ -3,9 +3,9 @@
  */
 import { readFile } from "node:fs/promises";
 import type { OrchEvent } from "@orch/protocol";
-import { EventSchema, readEvents, readTask, taskPaths } from "@orch/protocol";
-import type { TaskRecord, TaskStatus, TaskStore, WorktreeHandle } from "@orch/core";
-import { applyWorktree, diffWorktree, fileTaskStore } from "@orch/core";
+import { EventSchema, readEvents, taskPaths } from "@orch/protocol";
+import type { TaskRecord, TaskStatus, TaskStore } from "@orch/core";
+import { applyWorktree, diffWorktree, fileTaskStore, loadWorktreeHandle } from "@orch/core";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
 
@@ -237,12 +237,9 @@ export async function runCancel(root: string, id: string, options: CancelOptions
 // ---------------------------------------------------------------------------
 // diff / apply
 // ---------------------------------------------------------------------------
-
-async function loadWorktreeHandle(record: TaskRecord): Promise<WorktreeHandle | null> {
-  if (record.isolation !== "worktree" || !record.branch) return null;
-  const task = await readTask(taskPaths(record.task_dir));
-  return { path: record.workspace, branch: record.branch, baseRef: task.base_ref ?? "HEAD" };
-}
+// `loadWorktreeHandle` vit désormais dans `@orch/core` (`engine/worktree.ts`)
+// — partagée avec le serveur MCP (`orch_diff`/`orch_apply`), voir le rapport
+// de correction de la tâche 7.
 
 export interface DiffOptions {
   json?: boolean;

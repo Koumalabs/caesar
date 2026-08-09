@@ -11,6 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Change } from "@orch/protocol";
+import { readTask, taskPaths } from "@orch/protocol";
+import type { TaskRecord } from "../store.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -110,6 +112,19 @@ export async function applyWorktree(root: string, handle: WorktreeHandle): Promi
   } finally {
     await rm(scratchDir, { recursive: true, force: true });
   }
+}
+
+/**
+ * Reconstruit le `WorktreeHandle` d'une tâche à partir de son enregistrement
+ * (`TaskRecord`) — `null` si la tâche n'a pas tourné en isolation worktree.
+ * Partagé par `orch diff`/`orch apply` (CLI) et `orch_diff`/`orch_apply`
+ * (serveur MCP), qui en avaient chacun leur propre copie avant la revue de
+ * la tâche 7 : voir son rapport de correction.
+ */
+export async function loadWorktreeHandle(record: TaskRecord): Promise<WorktreeHandle | null> {
+  if (record.isolation !== "worktree" || !record.branch) return null;
+  const task = await readTask(taskPaths(record.task_dir));
+  return { path: record.workspace, branch: record.branch, baseRef: task.base_ref ?? "HEAD" };
 }
 
 /** Traduit `git diff --name-status` vers le vocabulaire commun `Change`. */
