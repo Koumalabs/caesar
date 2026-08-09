@@ -10,6 +10,7 @@ import type {
   Translation,
 } from "../registry/types.js";
 import { defaultPreferredReportChannel } from "../registry/types.js";
+import { isRecord, parseJsonLine } from "./json-line.js";
 
 const AGENT_ID = "copilot";
 
@@ -80,20 +81,6 @@ function build(ctx: BuildContext): SpawnPlan {
   return { command: "copilot", args, cwd: ctx.task.workspace, env: {}, files };
 }
 
-function parseLine(line: string): unknown {
-  const trimmed = line.trim();
-  if (!trimmed) return undefined;
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return undefined;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * Traduit le flux `copilot --output-format json`.
  *
@@ -107,7 +94,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * observées faute de quota disponible et restent strictement défensives.
  */
 function translate(line: string): Translation {
-  const data = parseLine(line);
+  const data = parseJsonLine(line);
   if (!isRecord(data)) return { events: [] };
 
   const type = data["type"];

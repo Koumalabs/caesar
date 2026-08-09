@@ -8,6 +8,7 @@ import type {
   Translation,
 } from "../registry/types.js";
 import { defaultPreferredReportChannel } from "../registry/types.js";
+import { isRecord, parseJsonLine } from "./json-line.js";
 
 const AGENT_ID = "antigravity";
 
@@ -62,20 +63,6 @@ function build(ctx: BuildContext): SpawnPlan {
   return { command: "agy", args, cwd: ctx.task.workspace, env: {}, files: [] };
 }
 
-function parseLine(line: string): unknown {
-  const trimmed = line.trim();
-  if (!trimmed) return undefined;
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return undefined;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * Traduit le flux `agy --output-format stream-json`.
  *
@@ -86,7 +73,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * `event`/payload que les formes confirmées et reste strictement défensive.
  */
 function translate(line: string): Translation {
-  const data = parseLine(line);
+  const data = parseJsonLine(line);
   if (!isRecord(data)) return { events: [] };
 
   const event = data["event"];

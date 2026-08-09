@@ -10,6 +10,7 @@ import type {
   Translation,
 } from "../registry/types.js";
 import { defaultPreferredReportChannel } from "../registry/types.js";
+import { isRecord, parseJsonLine } from "./json-line.js";
 
 const AGENT_ID = "opencode";
 
@@ -68,20 +69,6 @@ function build(ctx: BuildContext): SpawnPlan {
   return { command: "opencode", args, cwd: ctx.task.workspace, env: {}, files };
 }
 
-function parseLine(line: string): unknown {
-  const trimmed = line.trim();
-  if (!trimmed) return undefined;
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return undefined;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * Traduit le flux `opencode run --format json`.
  *
@@ -94,7 +81,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * la déduire du code de sortie du processus.
  */
 function translate(line: string): Translation {
-  const data = parseLine(line);
+  const data = parseJsonLine(line);
   if (!isRecord(data)) return { events: [] };
 
   const part = data["part"];
