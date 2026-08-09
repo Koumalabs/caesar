@@ -22,12 +22,17 @@ import { runRoleAdd, runRoleList, runRoleRemove, runRoleShow } from "./commands/
 import { runRun } from "./commands/run.js";
 import { runApply, runCancel, runDiff, runLogs, runPs } from "./commands/tasks.js";
 import type { Io } from "./output.js";
-import { EXIT_OK, EXIT_USAGE, printError, processIo } from "./output.js";
+import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, processIo } from "./output.js";
 import { resolveRoot } from "./root.js";
 
 interface GlobalOptions {
   root?: string;
   json?: boolean;
+}
+
+/** Vrai si `error` porte un `.code` système (erreur `fs`, sous-processus…) plutôt qu'un `Error` métier écrit à la main. */
+function hasSystemErrorCode(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error;
 }
 
 /** Options communes à toute commande : `--root` (racine explicite) et `--json` (sortie machine). */
@@ -60,11 +65,18 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
       // Filet de sécurité : chaque commande retourne déjà son propre code
       // pour ses échecs attendus (refus de politique, argument invalide,
       // tâche inconnue…). Une exception qui remonte jusqu'ici est donc
-      // inattendue — la plupart du temps `loadConfig` qui échoue sur un
-      // fichier de configuration mal formé — ce qui reste, par nature, une
-      // erreur de configuration : code 2.
+      // inattendue, et de deux natures possibles, distinguées ici plutôt que
+      // toutes deux mappées sur le code 2 (tâche 10, C) :
+      //  - le plus souvent, `loadConfig` qui échoue sur un fichier de
+      //    configuration mal formé (TOML invalide, schéma non respecté) — ce
+      //    reste, par nature, une erreur de configuration/usage : code 2.
+      //    Ces erreurs sont toujours des `Error` écrites à la main, sans
+      //    `.code` (voir `config.ts`, qui réenveloppe systématiquement les
+      //    erreurs système avant de les relever).
+      //  - un vrai échec d'exécution (E/S, sous-processus git, etc.) porte
+      //    au contraire un `.code` système — celui-là relève du code 1.
       printError(io, error instanceof Error ? error.message : String(error));
-      exitCodeRef.value = EXIT_USAGE;
+      exitCodeRef.value = !(error instanceof CommanderError) && hasSystemErrorCode(error) ? EXIT_RUNTIME : EXIT_USAGE;
     }
   }
 
@@ -93,12 +105,11 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
       });
     });
 
-  program
-    .command("config")
+  withCommonOptions(program.command("config"))
     .description("Lance le TUI de configuration (OpenTUI, sous Bun). Sans Bun : renvoie vers les sous-commandes équivalentes.")
-    .option("--root <dir>", "Racine du projet (défaut : recherche automatique depuis le répertoire courant)")
-    .action(async (options: { root?: string }) => {
-      await run(async () => runConfig(await resolveRoot(options.root), io));
+    .action(async (_options: GlobalOptions, command: Command) => {
+      const opts = command.optsWithGlobals<GlobalOptions>();
+      await run(async () => runConfig(await resolveRoot(opts.root), io));
     });
 
   // ---------------------------------------------------------------------

@@ -22,7 +22,7 @@
  * tests lui-même plutôt que de faire échouer proprement l'assertion.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { act } from "react";
@@ -70,6 +70,22 @@ async function mountApp(): Promise<TestRendererSetup> {
 async function waitForLoaded(setup: TestRendererSetup): Promise<void> {
   await setup.waitForFrame((frame) => frame.includes("modifications non enregistrées") || frame.includes("tout est enregistré"));
 }
+
+// Les deux tests ci-dessous fixent eux-mêmes `exitOnCtrlC: false` sur le
+// renderer de test (`mountApp`) : ils prouvent qu'`App` gère bien Ctrl+C
+// dans cette configuration, mais ne font jamais tourner `main.tsx` — une
+// régression qui y retirerait l'option ne serait donc détectée par aucun des
+// deux (tâche 10, C). Un test qui exécuterait vraiment `main.tsx` toucherait
+// `process.argv`/un vrai `CliRenderer` pour un bénéfice marginal ; vérifier
+// que le fichier source passe bien l'option à `createCliRenderer` suffit.
+describe("main.tsx (câblage minimal, sans monter le TUI)", () => {
+  it("désactive exitOnCtrlC sur le renderer qu'il crée", async () => {
+    const source = await readFile(new URL("./main.tsx", import.meta.url), "utf8");
+    const call = source.match(/createCliRenderer\(([^)]*)\)/);
+    expect(call, "main.tsx doit appeler createCliRenderer(...)").not.toBeNull();
+    expect(call![1]).toMatch(/exitOnCtrlC:\s*false/);
+  });
+});
 
 describe("Ctrl+C", () => {
   it("avec des modifications en attente : affiche la confirmation, ne quitte pas", async () => {

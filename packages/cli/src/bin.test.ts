@@ -9,7 +9,7 @@
  *   sous-processus plutôt qu'un appel direct de fonction.
  */
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -42,6 +42,17 @@ describe("buildProgram (structurel)", () => {
 
     const mcp = program.commands.find((c) => c.name() === "mcp")!;
     expect(mcp.commands.map((c) => c.name()).sort()).toEqual(["install", "serve"]);
+  });
+
+  it("\"config\" déclare --root/--json via withCommonOptions, comme les autres sous-commandes (tâche 10, C)", () => {
+    const io = makeIo();
+    const program = buildProgram(io, { value: 0 });
+    const config = program.commands.find((c) => c.name() === "config")!;
+    const flags = config.options.map((o) => o.long).sort();
+    // Comparé à "doctor", qui passe déjà par `withCommonOptions` : mêmes flags.
+    const doctor = program.commands.find((c) => c.name() === "doctor")!;
+    expect(flags).toEqual(doctor.options.map((o) => o.long).sort());
+    expect(flags).toEqual(["--json", "--root"]);
   });
 });
 
@@ -77,5 +88,37 @@ describe("orch (binaire compilé)", () => {
     expect(() => JSON.parse(stdout)).not.toThrow();
     expect(stdout).not.toMatch(/\x1b\[/);
     expect(stderr).toBe("");
+  });
+
+  // Tâche 10, C : le filet d'exception de `bin.ts` distingue désormais une
+  // erreur de configuration/usage (code 2, comportement historique) d'un
+  // vrai échec d'exécution (code 1) — les deux tests suivants prouvent
+  // chaque branche plutôt que de se fier à la seule lecture du code.
+
+  it("un fichier de configuration invalide sort en code 2 (erreur de configuration, pas d'exécution)", async () => {
+    await mkdir(join(root, ".orch"), { recursive: true });
+    await writeFile(join(root, ".orch", "config.toml"), "ceci n'est pas du toml valide [[[", "utf8");
+
+    await expect(execFileAsync("node", [BIN_PATH, "policy", "show", "--root", root])).rejects.toMatchObject({ code: 2 });
+    try {
+      await execFileAsync("node", [BIN_PATH, "policy", "show", "--root", root]);
+    } catch (error) {
+      expect((error as { stderr: string }).stderr).toMatch(/TOML invalide/);
+    }
+  });
+
+  it("une vraie erreur système non anticipée (répertoire non accessible en écriture) sort en code 1, pas 2", async () => {
+    const orchDir = join(root, ".orch");
+    await mkdir(orchDir, { recursive: true });
+    // Lecture toujours possible (aucun config.toml : chemin "absent", pas une
+    // erreur), écriture impossible : `saveProjectConfig` (appelé par
+    // `policy allow`) échoue avec une vraie erreur système (`EACCES`), jamais
+    // ré-enveloppée en `Error` métier — contrairement à `loadConfig`.
+    await chmod(orchDir, 0o500);
+    try {
+      await expect(execFileAsync("node", [BIN_PATH, "policy", "allow", "codex", "--root", root])).rejects.toMatchObject({ code: 1 });
+    } finally {
+      await chmod(orchDir, 0o700);
+    }
   });
 });
