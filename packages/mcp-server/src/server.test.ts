@@ -67,6 +67,7 @@ describe("buildServer sur le transport stdio", () => {
     const listResponse = JSON.parse(listResponseLine) as { result: { tools: Array<{ name: string }> } };
     const names = listResponse.result.tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "orch_answer",
       "orch_apply",
       "orch_await",
       "orch_cancel",

@@ -10,8 +10,12 @@
   },
   "files": ["dist"],
   "dependencies": {
+    "@orch/mcp-channel": "workspace:*",
     "@orch/protocol": "workspace:*",
     "smol-toml": "^1.7.1",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
   }
 }

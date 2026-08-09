@@ -7,6 +7,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { listPendingQuestions } from "@orch/mcp-channel";
 import { readEvents, taskPaths } from "@orch/protocol";
 import type { McpSession } from "../session.js";
 import { errorResult, jsonResult } from "./result.js";
@@ -16,9 +17,11 @@ export const ORCH_STATUS = "orch_status";
 export const orchStatusDescription =
   "Get a quick, non-blocking snapshot of a task started by orch_delegate: its current status (pending, " +
   "running, succeeded, failed, cancelled, timed_out), timestamps, and the last normalized event recorded so " +
-  "far (a tool call, a file change, a progress message…). Unlike orch_await, this never waits and never " +
-  "returns the final report — use it to check in on a long-running task without blocking, then orch_await once " +
-  "you actually need the result, or orch_logs for more than just the last event.";
+  "far (a tool call, a file change, a progress message…). Also reports pending_questions — anything the task's " +
+  "sub-agent has asked via its ask_orchestrator back-channel tool and is still waiting on; answer them with " +
+  "orch_answer. Unlike orch_await, this never waits and never returns the final report — use it to check in on " +
+  "a long-running task without blocking, then orch_await once you actually need the result, or orch_logs for " +
+  "more than just the last event.";
 
 export const orchStatusInputShape = {
   task_id: z.string().min(1).describe("The task_id returned by orch_delegate."),
@@ -31,8 +34,10 @@ export async function orchStatus(session: McpSession, input: OrchStatusInput): P
   const record = await session.store.get(input.task_id);
   if (!record) return errorResult(`Tâche inconnue : "${input.task_id}".`);
 
-  const events = await readEvents(taskPaths(record.task_dir));
+  const paths = taskPaths(record.task_dir);
+  const events = await readEvents(paths);
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+  const pendingQuestions = await listPendingQuestions(paths.dir);
 
   return jsonResult({
     task_id: record.id,
@@ -45,6 +50,7 @@ export async function orchStatus(session: McpSession, input: OrchStatusInput): P
     started_at: record.started_at,
     ended_at: record.ended_at,
     last_event: lastEvent,
+    pending_questions: pendingQuestions,
   });
 }
 

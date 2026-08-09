@@ -6,7 +6,8 @@
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import type { Channel, Finding, Isolation, OrchEvent, Report, ReportChannel, Task, TaskMode, TaskPaths } from "@orch/protocol";
 import {
   REPORT_PROTOCOL,
@@ -30,6 +31,54 @@ import type { Queue } from "./queue.js";
 import type { WorktreeDiff, WorktreeHandle } from "./worktree.js";
 
 const DEFAULT_TIMEOUT_MS = 600_000;
+
+/** Nom sous lequel le canal retour est déclaré côté agent (voir `Channel.server_name`). */
+const CHANNEL_SERVER_NAME = "orch";
+
+/**
+ * Chemin absolu de `dist/bin.js` dans `@orch/mcp-channel`, résolu via la
+ * résolution de module Node plutôt que supposé à un chemin relatif fixe —
+ * voir le brief de la tâche 9 ("résous son chemin dynamiquement plutôt que
+ * de le supposer"). Cette résolution survit à une installation en dehors de
+ * ce dépôt (npm, un lien global…), tant que `@orch/mcp-channel` reste une
+ * dépendance déclarée de `@orch/core` (voir son `package.json`) : c'est la
+ * même méthode que `resolveTuiEntry` dans
+ * `packages/cli/src/commands/config.ts` pour `@orch/tui`.
+ *
+ * `@orch/mcp-channel` restreint son `"exports"` à `"."` (contrairement à
+ * `@orch/tui`, dépourvu d'`"exports"`, que `resolveTuiEntry` peut donc
+ * résoudre jusqu'à `package.json` directement) : demander la résolution de
+ * `"@orch/mcp-channel/package.json"` échouerait (`ERR_PACKAGE_PATH_NOT_EXPORTED`).
+ * On résout donc l'entrée principale (`"."` → `dist/index.js`) et on
+ * descend vers son voisin `dist/bin.js`, toujours émis dans le même
+ * répertoire par `tsc` puisque `src/index.ts` et `src/bin.ts` sont tous deux
+ * à la racine de `src/`, sans sous-répertoire.
+ */
+function resolveChannelEntry(): string {
+  const require = createRequire(import.meta.url);
+  const indexPath = require.resolve("@orch/mcp-channel");
+  return join(dirname(indexPath), "bin.js");
+}
+
+/**
+ * Construit les coordonnées du canal retour pour une tâche. `command` est le
+ * binaire Node lui-même (`process.execPath`), jamais `orch-channel` par son
+ * nom ni le fichier résolu directement : ni l'un ni l'autre ne peuvent être
+ * supposés exécutables ou présents dans le `PATH` du sous-agent qui le
+ * lancera — voir le brief.
+ *
+ * Ne lève jamais : une résolution en échec (installation cassée, paquet
+ * introuvable…) rend `undefined` plutôt que de faire échouer toute la
+ * tâche — le canal n'est jamais un point de défaillance.
+ */
+function buildChannel(taskDir: string): Channel | undefined {
+  try {
+    const entry = resolveChannelEntry();
+    return { transport: "mcp-stdio", command: process.execPath, args: [entry, taskDir], server_name: CHANNEL_SERVER_NAME };
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Nom du fichier où un CLI capable de `finalMessageFile` dépose son dernier
@@ -61,7 +110,23 @@ export interface RunTaskInput {
   timeoutMs?: number;
   depth?: number;
   extraArgs?: string[];
-  channel?: Channel | null;
+  /**
+   * Active le canal retour MCP bidirectionnel pour cette tâche, si l'agent
+   * cible sait charger un serveur MCP (`capabilities.mcpInjection !==
+   * "none"`) : le runner construit alors lui-même les coordonnées du
+   * `Channel` (voir `buildChannel`/`resolveChannelEntry` plus bas) — binaire
+   * `orch-channel` résolu dynamiquement, argument `taskDir`, nom de serveur
+   * `"orch"` — aucun appelant n'a besoin d'en connaître le détail. Absent ou
+   * faux (défaut) : comportement inchangé, aucun canal proposé — voir le
+   * brief de la tâche 9 : le canal ajoute un processus et une injection de
+   * configuration à chaque délégation, cela se choisit explicitement.
+   *
+   * Sans effet, jamais une erreur, si l'agent ne sait pas charger de serveur
+   * MCP ou si la résolution du binaire échoue (installation cassée…) : le
+   * canal n'est jamais un point de défaillance, la tâche retombe alors sur
+   * le palier de rapport suivant (`defaultPreferredReportChannel`).
+   */
+  channel?: boolean;
   /**
    * Identifiant à utiliser pour cette tâche, plutôt que d'en générer un.
    * Permet à l'appelant de connaître à l'avance le répertoire de la tâche
@@ -116,6 +181,9 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   const { isolation, warning, handle } = await prepareIsolation(deps.root, id, input, agentDef);
   const workspace = handle ? handle.path : input.workspace;
 
+  const channel: Channel | undefined =
+    input.channel === true && agentDef.capabilities.mcpInjection !== "none" ? buildChannel(paths.dir) : undefined;
+
   const task: Task = TaskSchema.parse({
     protocol: TASK_PROTOCOL,
     id,
@@ -134,7 +202,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     depth,
     report_path: paths.reportPath,
     events_path: paths.eventsPath,
-    channel: input.channel ?? undefined,
+    channel,
   });
 
   const channelAvailable = task.channel != null;

@@ -12,6 +12,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { TaskOutcome, TaskRecord } from "@orch/core";
+import { listPendingQuestions } from "@orch/mcp-channel";
 import { readReport, taskPaths } from "@orch/protocol";
 import type { McpSession } from "../session.js";
 import { jsonResult } from "./result.js";
@@ -27,8 +28,10 @@ export const orchAwaitDescription =
   "summary, files changed per git, findings, questions). Pass every task_id from a batch of parallel " +
   "orch_delegate calls in a single orch_await call to collect all their results together — that is the reason " +
   "orch_delegate does not block on its own. Tasks still running when timeout_ms elapses are reported with " +
-  "pending: true instead of a report; call orch_await again with the same task_id to keep waiting, or " +
-  "orch_status for a lighter, non-blocking check.";
+  "pending: true instead of a report — and, when the sub-agent has called its ask_orchestrator back-channel " +
+  "tool and is still waiting on an answer, with pending_questions listing what it asked: a task waiting on you " +
+  "is never indistinguishable from one simply still working. Answer with orch_answer, then call orch_await " +
+  "again with the same task_id to keep waiting, or orch_status for a lighter, non-blocking check.";
 
 export const orchAwaitInputShape = {
   task_ids: z
@@ -94,7 +97,12 @@ function outcomeToResult(taskId: string, outcome: TaskOutcome): Record<string, u
 async function describeFromStore(record: TaskRecord): Promise<Record<string, unknown>> {
   const base = { task_id: record.id, status: record.status, agent: record.agent, role: record.role };
   if (record.status === "pending" || record.status === "running") {
-    return { ...base, pending: true };
+    // Une tâche encore en cours n'est pas juste "pending" : si son sous-agent
+    // attend une réponse via ask_orchestrator, il faut le dire — et dire quoi
+    // — plutôt que de la rendre indiscernable d'une tâche qui travaille
+    // simplement encore (voir le brief de la tâche 9).
+    const pendingQuestions = await listPendingQuestions(taskPaths(record.task_dir).dir);
+    return { ...base, pending: true, pending_questions: pendingQuestions };
   }
   const report = await readReport(taskPaths(record.task_dir));
   return { ...base, pending: false, report: report ? summarizeReport(report) : undefined };
@@ -111,7 +119,8 @@ async function awaitOne(session: McpSession, taskId: string, timeoutMs: number):
   const outcome = await raceTimeout(entry.promise, timeoutMs);
   if (outcome === TIMED_OUT) {
     const record = await session.store.get(taskId);
-    return { task_id: taskId, status: record?.status ?? "running", agent: entry.agentId, pending: true };
+    const pendingQuestions = record ? await listPendingQuestions(taskPaths(record.task_dir).dir) : [];
+    return { task_id: taskId, status: record?.status ?? "running", agent: entry.agentId, pending: true, pending_questions: pendingQuestions };
   }
   return outcomeToResult(taskId, outcome);
 }

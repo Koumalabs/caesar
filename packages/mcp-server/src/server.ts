@@ -1,11 +1,12 @@
 /**
- * Construction du serveur MCP : un `McpServer` du SDK, avec les neuf tools
- * de délégation enregistrés — voir le brief de la tâche 7. `orch_answer`
- * (canal retour) n'est pas de cette tâche.
+ * Construction du serveur MCP : un `McpServer` du SDK, avec les dix tools de
+ * délégation enregistrés — neuf pour la délégation elle-même (brief de la
+ * tâche 7), plus `orch_answer` (canal retour, brief de la tâche 9).
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createSession } from "./session.js";
 import type { McpSession } from "./session.js";
+import { registerOrchAnswer } from "./tools/answer.js";
 import { registerOrchApply } from "./tools/apply.js";
 import { registerOrchAwait } from "./tools/await.js";
 import { registerOrchCancel } from "./tools/cancel.js";
@@ -38,6 +39,7 @@ export function buildServer(root: string): BuiltServer {
   registerOrchCancel(server, session);
   registerOrchDiff(server, session);
   registerOrchApply(server, session);
+  registerOrchAnswer(server, session);
 
   return { server, session };
 }

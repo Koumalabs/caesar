@@ -13,7 +13,7 @@
  * forme suivante (tous les champs ont une valeur par défaut) :
  *
  * {
- *   "mode": "success" | "fail" | "silent" | "hang",
+ *   "mode": "success" | "fail" | "silent" | "hang" | "ask",
  *   "exitCode": 0,
  *   "files": [{ "path": "relatif/au/workspace.txt", "content": "…" }],
  *   "declaredChanges": [{ "path": "…", "action": "modified", "summary": "…" }],
@@ -22,7 +22,9 @@
  *   "summary": "…",
  *   "sleepMs": 86400000,
  *   "ignoreSigterm": false,
- *   "finalMessage": "…"
+ *   "finalMessage": "…",
+ *   "question": "…",
+ *   "options": ["…"]
  * }
  *
  * - "success" (par défaut) : écrit les `files` déclarés, un rapport valide.
@@ -34,13 +36,23 @@
  *   jour, en pratique indéfiniment), pour éprouver le timeout et
  *   l'annulation. Avec `ignoreSigterm`, installe un gestionnaire qui absorbe
  *   SIGTERM, pour éprouver l'escalade vers SIGKILL.
+ * - "ask" (tâche 9, canal retour) : si `task.channel` est renseigné, se
+ *   connecte à `orch-channel` comme client MCP (voir
+ *   `@modelcontextprotocol/sdk/client`), appelle `ask_orchestrator` avec
+ *   `question`/`options`, puis `submit_report` avec un résumé qui rapporte
+ *   littéralement la réponse reçue — c'est ce qui permet à un test de
+ *   vérifier que la réponse a bien fait l'aller-retour, pas seulement que le
+ *   canal a répondu quelque chose. Si `task.channel` est absent (canal non
+ *   activé pour cette tâche), dégrade silencieusement vers l'écriture directe
+ *   de `report.json`, exactement comme le mode "success" : c'est le
+ *   comportement attendu d'un agent réel qui ignorerait le canal (voir la
+ *   consigne de repli documentée par `renderTaskPrompt`).
  *
- * Dans les trois autres modes ("success", "fail", "silent"), `sleepMs`,
- * s'il est fourni explicitement, retarde d'autant le traitement avant
- * l'écriture du rapport (par défaut : aucune pause) — utile pour prouver
- * qu'un appelant attend plusieurs tâches en parallèle sans que l'attente
- * conjointe ne coûte la somme de leurs délais (voir
- * `packages/mcp-server/src/tools/await.test.ts`).
+ * Dans les trois modes "success", "fail", "silent", `sleepMs`, s'il est
+ * fourni explicitement, retarde d'autant le traitement avant l'écriture du
+ * rapport (par défaut : aucune pause) — utile pour prouver qu'un appelant
+ * attend plusieurs tâches en parallèle sans que l'attente conjointe ne coûte
+ * la somme de leurs délais (voir `packages/mcp-server/src/tools/await.test.ts`).
  *
  * `declaredChanges`, quand fourni, remplace la déclaration de `changes` du
  * rapport indépendamment des `files` réellement écrits — de quoi simuler un
@@ -66,6 +78,65 @@ function log(kind, message) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Mode "ask" : le round-trip complet du canal retour (tâche 9). Écrit
+ * toujours `report.json`, soit via `submit_report` (canal disponible), soit
+ * directement (dégradation, canal absent) — jamais les deux.
+ *
+ * Le SDK MCP n'est importé qu'ici, dynamiquement : les autres modes n'en ont
+ * pas besoin, et ce script reste sans dépendance de paquet du monorepo (voir
+ * l'en-tête) — seul `@modelcontextprotocol/sdk`, un paquet tiers, tout comme
+ * un agent extérieur réel en embarquerait un pour parler MCP.
+ */
+async function handleAskMode(task, directive, reportPath) {
+  const baseSummary = directive.summary ?? "Traité.";
+  const channel = task.channel;
+
+  if (!channel) {
+    writeFileSync(
+      reportPath,
+      JSON.stringify(
+        {
+          protocol: REPORT_PROTOCOL,
+          task_id: task.id,
+          status: "success",
+          summary: `${baseSummary} (canal indisponible, question non posée)`,
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf8",
+    );
+    return;
+  }
+
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+
+  const transport = new StdioClientTransport({ command: channel.command, args: channel.args });
+  const client = new Client({ name: "fake-agent", version: "0.0.0" });
+  await client.connect(transport);
+
+  const asked = await client.callTool({
+    name: "ask_orchestrator",
+    arguments: { question: directive.question ?? "Quelle couleur ?", options: directive.options ?? [] },
+  });
+  const askedData = asked.structuredContent ?? {};
+  const answerText = askedData.answered ? askedData.answer : `(sans réponse) ${askedData.message ?? ""}`;
+
+  await client.callTool({
+    name: "submit_report",
+    arguments: {
+      protocol: REPORT_PROTOCOL,
+      task_id: task.id,
+      status: "success",
+      summary: `${baseSummary} Réponse reçue : ${answerText}`,
+    },
+  });
+
+  await client.close();
 }
 
 async function main() {
@@ -102,6 +173,14 @@ async function main() {
     log("progress", "en attente indéfiniment");
     await sleep(sleepMs);
     // Jamais atteint en pratique : le processus est terminé avant.
+    return;
+  }
+
+  if (mode === "ask") {
+    log("progress", "question");
+    await handleAskMode(task, directive, reportPath);
+    log("progress", "terminé");
+    process.exitCode = directive.exitCode ?? 0;
     return;
   }
 

@@ -12,6 +12,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@orch/core": "workspace:*",
+    "@orch/mcp-channel": "workspace:*",
     "@orch/protocol": "workspace:*",
     "zod": "^4.4.3"
   }

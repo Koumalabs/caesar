@@ -1,7 +1,8 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeQuestion } from "@orch/mcp-channel";
 import { withFakeAgentAsBin, withFakeHome } from "../../test/support.js";
 import { createSession } from "../session.js";
 import { orchAwait } from "./await.js";
@@ -168,4 +169,38 @@ describe("orch_await", () => {
       }),
     );
   }, 20_000);
+
+  it("une tâche bloquée sur une question dit qu'elle attend, et quoi — pas juste \"en cours\"", async () => {
+    const taskDir = join(root, ".orch", "tasks", "t_q");
+    await mkdir(taskDir, { recursive: true });
+    const session = createSession(root);
+    await session.store.create({
+      id: "t_q",
+      agent: "codex",
+      objective: "obj",
+      status: "running",
+      created_at: new Date().toISOString(),
+      started_at: new Date().toISOString(),
+      task_dir: taskDir,
+      workspace: root,
+      isolation: "inplace",
+      mode: "write",
+      report_via: "channel",
+      depth: 0,
+    });
+    await writeQuestion(taskDir, { id: "q1", question: "Quelle branche ?", options: [], asked_at: new Date().toISOString() });
+
+    // `t_q` n'a jamais été lancée par cette session (pas d'entrée dans
+    // `session.tasks`) : `orchAwait` retombe sur le store/le système de
+    // fichiers, exactement comme pour une tâche lancée par un autre
+    // processus (`orch run`, un précédent serveur MCP…) — voir `describeFromStore`.
+    const awaited = await orchAwait(session, { task_ids: ["t_q"] });
+    const tasks = (
+      awaited.structuredContent as {
+        tasks: Record<string, { pending: boolean; pending_questions: Array<{ id: string; question: string }> }>;
+      }
+    ).tasks;
+    expect(tasks["t_q"]?.pending).toBe(true);
+    expect(tasks["t_q"]?.pending_questions).toEqual([expect.objectContaining({ id: "q1", question: "Quelle branche ?" })]);
+  });
 });

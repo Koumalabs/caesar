@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { REPORT_PROTOCOL } from "@orch/protocol";
+import { REPORT_PROTOCOL, readTask, taskPaths } from "@orch/protocol";
 import { fileTaskStore, type TaskStore } from "../store.js";
 import { createQueue } from "./queue.js";
 
@@ -44,6 +44,18 @@ vi.mock("../registry/index.js", async (importOriginal) => {
     args: [fakeAgentPath, "{{prompt}}"],
     capabilities: { finalMessageFile: true },
   });
+  // `mcpInjection: "flag"` : un agent qui sait charger un serveur MCP par
+  // ligne de commande — condition nécessaire pour que le runner construise
+  // un `Channel` (tâche 9). `createGenericAgent` ne sait pas injecter la
+  // configuration MCP lui-même (ce n'est pas un des cinq adaptateurs réels) ;
+  // seul `task.channel`, lu directement depuis `task.json`, importe ici —
+  // c'est ce que fait le nouveau mode "ask" de l'agent factice.
+  const fakeAgentChannelDefinition = createGenericAgent({
+    id: "fake-agent-channel",
+    bin: process.execPath,
+    args: [fakeAgentPath, "{{prompt}}"],
+    capabilities: { mcpInjection: "flag" },
+  });
 
   return {
     ...actual,
@@ -51,6 +63,7 @@ vi.mock("../registry/index.js", async (importOriginal) => {
       if (id === "fake-agent") return fakeAgentDefinition;
       if (id === "fake-agent-native-ro") return fakeAgentNativeReadOnlyDefinition;
       if (id === "fake-agent-final-message") return fakeAgentFinalMessageDefinition;
+      if (id === "fake-agent-channel") return fakeAgentChannelDefinition;
       return actual.resolveAgentDefinition(id);
     },
   };
@@ -352,5 +365,46 @@ describe("runTask", () => {
     expect(outcome.report.changes).toEqual([{ path: "reel.txt", action: "created", summary: "" }]);
     const files = outcome.report.findings.map((f) => f.file).sort();
     expect(files).toEqual(["invente.txt", "reel.txt"]);
+  });
+
+  describe("canal retour (tâche 9)", () => {
+    it("channel: true + agent qui sait charger un serveur MCP : task.channel est construit, le palier de rapport devient \"channel\"", async () => {
+      const outcome = await runTask(
+        { store, root },
+        { agentId: "fake-agent-channel", objective: "avec canal", mode: "write", workspace: root, channel: true },
+      );
+
+      expect(outcome.record.report_via).toBe("channel");
+      const task = await readTask(taskPaths(outcome.record.task_dir));
+      expect(task.channel).toEqual({
+        transport: "mcp-stdio",
+        command: process.execPath,
+        args: [expect.stringMatching(/bin\.js$/), outcome.record.task_dir],
+        server_name: "orch",
+      });
+    });
+
+    it("channel absent (défaut) : task.channel reste vide même pour un agent qui le supporterait", async () => {
+      const outcome = await runTask(
+        { store, root },
+        { agentId: "fake-agent-channel", objective: "sans canal demandé", mode: "write", workspace: root },
+      );
+
+      expect(outcome.record.report_via).not.toBe("channel");
+      const task = await readTask(taskPaths(outcome.record.task_dir));
+      expect(task.channel).toBeFalsy();
+    });
+
+    it("dégradation : channel: true pour un agent sans mcpInjection est ignoré silencieusement, la tâche aboutit quand même", async () => {
+      const outcome = await runTask(
+        { store, root },
+        { agentId: "fake-agent", objective: "canal demandé mais non supporté", mode: "write", workspace: root, channel: true },
+      );
+
+      expect(outcome.record.status).toBe("succeeded");
+      expect(outcome.record.report_via).not.toBe("channel");
+      const task = await readTask(taskPaths(outcome.record.task_dir));
+      expect(task.channel).toBeFalsy();
+    });
   });
 });

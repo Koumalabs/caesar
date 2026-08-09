@@ -47,6 +47,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@orch/mcp-channel':
+        specifier: workspace:*
+        version: link:../mcp-channel
       '@orch/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -56,6 +59,10 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+    devDependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.30.0
+        version: 1.30.0(zod@4.4.3)
 
   packages/mcp-channel:
     dependencies:
@@ -77,6 +84,9 @@ importers:
       '@orch/core':
         specifier: workspace:*
         version: link:../core
+      '@orch/mcp-channel':
+        specifier: workspace:*
+        version: link:../mcp-channel
       '@orch/protocol':
         specifier: workspace:*
         version: link:../protocol
