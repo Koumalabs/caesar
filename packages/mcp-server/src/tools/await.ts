@@ -25,7 +25,10 @@ const DEFAULT_AWAIT_TIMEOUT_MS = 30_000;
 
 export const orchAwaitDescription =
   "Wait for one or more tasks started by orch_delegate to finish, and return their normalized reports (status, " +
-  "summary, files changed per git, findings, questions). Pass every task_id from a batch of parallel " +
+  "summary, files changed, findings, questions). changes_verified_by in the report tells you how much to trust " +
+  "the files-changed list: \"git\" means it was cross-checked against the actual git state of the workspace " +
+  "(true whenever the workspace is a git repository, in both isolations); \"declaration\" means no git check " +
+  "was possible and it is only the sub-agent's own claim. Pass every task_id from a batch of parallel " +
   "orch_delegate calls in a single orch_await call to collect all their results together — that is the reason " +
   "orch_delegate does not block on its own. Tasks still running when timeout_ms elapses are reported with " +
   "pending: true instead of a report — and, when the sub-agent has called its ask_orchestrator back-channel " +
@@ -83,7 +86,7 @@ function outcomeToResult(taskId: string, outcome: TaskOutcome): Record<string, u
     agent: outcome.record.agent,
     role: outcome.record.role,
     pending: false,
-    report: summarizeReport(outcome.report),
+    report: summarizeReport(outcome.report, outcome.record.changes_verified_by ?? "declaration"),
   };
 }
 
@@ -105,7 +108,7 @@ async function describeFromStore(record: TaskRecord): Promise<Record<string, unk
     return { ...base, pending: true, pending_questions: pendingQuestions };
   }
   const report = await readReport(taskPaths(record.task_dir));
-  return { ...base, pending: false, report: report ? summarizeReport(report) : undefined };
+  return { ...base, pending: false, report: report ? summarizeReport(report, record.changes_verified_by ?? "declaration") : undefined };
 }
 
 async function awaitOne(session: McpSession, taskId: string, timeoutMs: number): Promise<Record<string, unknown>> {

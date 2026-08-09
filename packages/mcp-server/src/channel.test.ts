@@ -42,7 +42,7 @@ describe("cycle complet du canal retour", () => {
   it("délégation avec canal → question remontée par orch_status et orch_await → orch_answer → l'agent reprend et rapporte via submit_report", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const runPromise = runTask(
           { store: session.store, root },
           {
@@ -100,7 +100,7 @@ describe("cycle complet du canal retour", () => {
   it("dégradation : le canal est disponible mais jamais sollicité par l'agent, la tâche aboutit quand même par le contrat de fichier", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const outcome = await runTask(
           { store: session.store, root },
           {
@@ -139,7 +139,7 @@ describe("cycle complet du canal retour", () => {
   it("le même cycle, via orch_delegate — la seule façade dont dispose l'agent principal en usage réel", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const delegated = await orchDelegate(session, {
           objective: "poser une question puis conclure",
           agent: "codex",

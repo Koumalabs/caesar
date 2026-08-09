@@ -41,7 +41,7 @@ describe("buildServer sur le transport stdio", () => {
   });
 
   it("ne laisse rien d'autre que du JSON-RPC transiter sur le flux de sortie", async () => {
-    const { server } = buildServer(root);
+    const { server } = await buildServer(root);
     const stdin = new PassThrough();
     const stdout = new PassThrough();
     const transport = new StdioServerTransport(stdin, stdout);

@@ -11,8 +11,8 @@
  * dont la trace est déposée dans le store : c'est `orch_await` qui la
  * rapportera, jamais une exception qui remonte dans le vide.
  */
-import type { RunTaskInput, TaskOutcome, TaskRecord, TaskStore } from "@orch/core";
-import { fileTaskStore, runTask } from "@orch/core";
+import type { Queue, RunTaskInput, TaskOutcome, TaskRecord, TaskStore } from "@orch/core";
+import { createQueue, fileTaskStore, loadConfig, runTask } from "@orch/core";
 import { REPORT_PROTOCOL, ReportSchema } from "@orch/protocol";
 
 export interface SessionTask {
@@ -27,10 +27,24 @@ export interface McpSession {
   root: string;
   store: TaskStore;
   tasks: Map<string, SessionTask>;
+  /**
+   * Sémaphore partagé par tous les `orch_delegate` de cette session — voir
+   * C4 de la revue finale : `RunnerDeps.queue` n'était câblé par aucune
+   * façade, `max_parallel` n'était donc appliqué nulle part alors que
+   * `orchDelegateDescription` encourage explicitement le modèle à appeler
+   * `orch_delegate` "repeatedly back to back". Sa limite est celle de
+   * `policy.max_parallel` au moment de la connexion (`createSession`) :
+   * comme la détection d'installation du TUI ("chargée une seule fois, pas à
+   * chaque frappe"), une édition ultérieure de la politique en cours de
+   * session ne redimensionne pas cette file — limite assumée plutôt que de
+   * reconstruire une file qui pourrait avoir des tâches en attente.
+   */
+  queue: Queue;
 }
 
-export function createSession(root: string): McpSession {
-  return { root, store: fileTaskStore(root), tasks: new Map() };
+export async function createSession(root: string): Promise<McpSession> {
+  const { config } = await loadConfig(root);
+  return { root, store: fileTaskStore(root), tasks: new Map(), queue: createQueue(config.policy.max_parallel) };
 }
 
 /**
@@ -125,7 +139,7 @@ function buildInMemoryFailureOutcome(taskId: string, agentId: string, error: unk
  * rendre avant que cette promesse ne se résolve.
  */
 export function launchTask(session: McpSession, input: RunTaskInput & { taskId: string }, controller: AbortController): SessionTask {
-  const promise = runTask({ store: session.store, root: session.root }, input).catch(async (error: unknown) => {
+  const promise = runTask({ store: session.store, root: session.root, queue: session.queue }, input).catch(async (error: unknown) => {
     try {
       return await synthesizeFailure(session.store, input.taskId, input.agentId, error);
     } catch (storeError) {

@@ -19,7 +19,9 @@ export const orchListAgentsDescription =
 
 export async function orchListAgents(session: McpSession): Promise<CallToolResult> {
   const { config } = await loadConfig(session.root);
-  const defs = listAgentDefinitions();
+  // Catalogue natif étendu des agents de configuration ([[agent]]) : voir C1
+  // de la revue finale.
+  const defs = listAgentDefinitions(config.agents);
 
   const agents = await Promise.all(
     defs.map(async (def) => {

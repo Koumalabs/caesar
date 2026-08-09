@@ -22,7 +22,7 @@ describe("orch_diff", () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         await initGitRepo(root);
-        const session = createSession(root);
+        const session = await createSession(root);
 
         const delegated = await orchDelegate(session, {
           objective: "écrire un fichier",
@@ -48,7 +48,7 @@ describe("orch_diff", () => {
   it("isolation inplace : is_empty, sans worktree à diffuser", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const delegated = await orchDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
         const entry = session.tasks.get(taskId);
@@ -64,7 +64,7 @@ describe("orch_diff", () => {
 
   it("tâche inconnue : erreur claire", async () => {
     await withFakeHome(async () => {
-      const session = createSession(root);
+      const session = await createSession(root);
       const result = await orchDiff(session, { task_id: "t_inexistant" });
       expect(result.isError).toBe(true);
     });

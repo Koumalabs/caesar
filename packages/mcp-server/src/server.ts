@@ -26,8 +26,8 @@ export interface BuiltServer {
 }
 
 /** Construit le serveur MCP pour le projet enraciné à `root`, avec sa propre session (tâches en cours, store). */
-export function buildServer(root: string): BuiltServer {
-  const session = createSession(root);
+export async function buildServer(root: string): Promise<BuiltServer> {
+  const session = await createSession(root);
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
   registerOrchListAgents(server, session);

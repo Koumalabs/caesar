@@ -22,7 +22,7 @@ describe("orch_status", () => {
   it("tâche connue : statut, métadonnées, et dernier événement", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const delegated = await orchDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
@@ -44,7 +44,7 @@ describe("orch_status", () => {
 
   it("tâche inconnue : erreur claire", async () => {
     await withFakeHome(async () => {
-      const session = createSession(root);
+      const session = await createSession(root);
       const result = await orchStatus(session, { task_id: "t_inexistant" });
       expect(result.isError).toBe(true);
       expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);
@@ -54,7 +54,7 @@ describe("orch_status", () => {
   it("une question en attente est visible dans pending_questions — c'est ce qui rend le canal utile", async () => {
     const taskDir = join(root, ".orch", "tasks", "t_q");
     await mkdir(taskDir, { recursive: true });
-    const session = createSession(root);
+    const session = await createSession(root);
     await session.store.create({
       id: "t_q",
       agent: "codex",

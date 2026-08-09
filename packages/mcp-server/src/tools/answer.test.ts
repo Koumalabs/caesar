@@ -17,7 +17,7 @@ describe("orch_answer", () => {
     root = await mkdtemp(join(tmpdir(), "orch-mcp-answer-"));
     taskDir = join(root, ".orch", "tasks", "t_test");
     await mkdir(taskDir, { recursive: true });
-    session = createSession(root);
+    session = await createSession(root);
     await session.store.create({
       id: "t_test",
       agent: "codex",

@@ -22,7 +22,7 @@ describe("orch_await", () => {
   it("cycle complet orch_delegate puis orch_await, jusqu'au rapport", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const delegated = await orchDelegate(session, {
           objective: "écrire un fichier",
           agent: "codex",
@@ -46,7 +46,7 @@ describe("orch_await", () => {
   it("deux délégations en parallèle sont réellement exécutées en même temps, pas l'une après l'autre", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
 
         // `sleepMs`, depuis la correction du constat 1 de la revue de la
         // tâche 7, retarde aussi le mode "success" de l'agent factice (pas
@@ -122,7 +122,7 @@ describe("orch_await", () => {
   it("un délai dépassé rend l'état partiel plutôt que d'attendre indéfiniment", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const delegated = await orchDelegate(session, {
           objective: "tâche longue",
           agent: "codex",
@@ -153,7 +153,7 @@ describe("orch_await", () => {
   it("un task_id totalement inconnu est signalé comme tel, sans faire échouer le reste du lot", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const delegated = await orchDelegate(session, {
           objective: "tâche",
           agent: "codex",
@@ -173,7 +173,7 @@ describe("orch_await", () => {
   it("une tâche bloquée sur une question dit qu'elle attend, et quoi — pas juste \"en cours\"", async () => {
     const taskDir = join(root, ".orch", "tasks", "t_q");
     await mkdir(taskDir, { recursive: true });
-    const session = createSession(root);
+    const session = await createSession(root);
     await session.store.create({
       id: "t_q",
       agent: "codex",

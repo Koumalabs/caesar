@@ -40,7 +40,7 @@ describe("orch_list_roles", () => {
   it("reflète les rôles configurés et l'agent qui serait retenu, aucun binaire installé", async () => {
     await withFakeHome(() =>
       withEmptyPath(root, async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const result = await orchListRoles(session);
         expect(result.isError).toBeFalsy();
 
@@ -67,7 +67,7 @@ describe("orch_list_roles", () => {
         const { config } = await loadConfig(root);
         await saveProjectConfig(root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
 
-        const session = createSession(root);
+        const session = await createSession(root);
         const result = await orchListRoles(session);
         const roles = (result.structuredContent as { roles: RoleRow[] }).roles;
         const reviewer = roles.find((r) => r.name === "reviewer");

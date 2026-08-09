@@ -25,7 +25,10 @@ export async function orchListRoles(session: McpSession): Promise<CallToolResult
       const installed = new Map<string, boolean>();
       await Promise.all(
         role.agents.map(async (id) => {
-          const def = findAgentDefinition(id);
+          // `config.agents` : un rôle peut nommer un agent générique déclaré
+          // en configuration, pas seulement le catalogue natif — voir C1 de
+          // la revue finale.
+          const def = findAgentDefinition(id, config.agents);
           installed.set(id, def ? (await findBinaryInPath(def.bin)) !== null : false);
         }),
       );

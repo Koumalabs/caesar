@@ -22,7 +22,7 @@ describe("orch_delegate", () => {
   it("rend un task_id immédiatement, sans attendre la fin de la tâche", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const startedAt = Date.now();
 
         const result = await orchDelegate(session, {
@@ -65,7 +65,7 @@ describe("orch_delegate", () => {
   it("channel: true active le canal retour pour la tâche déléguée (tâche 9) — sans lui, task.channel resterait vide", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const result = await orchDelegate(session, {
           objective: "tâche avec canal",
           agent: "codex",
@@ -92,7 +92,7 @@ describe("orch_delegate", () => {
       const { config } = await loadConfig(root);
       await saveProjectConfig(root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
 
-      const session = createSession(root);
+      const session = await createSession(root);
       const result = await orchDelegate(session, { objective: "tâche", agent: "codex" });
 
       expect(result.isError).toBe(true);
@@ -104,7 +104,7 @@ describe("orch_delegate", () => {
 
   it("un rôle inconnu est traité proprement, sans lancer quoi que ce soit", async () => {
     await withFakeHome(async () => {
-      const session = createSession(root);
+      const session = await createSession(root);
       const result = await orchDelegate(session, { objective: "tâche", role: "inexistant" });
 
       expect(result.isError).toBe(true);
@@ -115,7 +115,7 @@ describe("orch_delegate", () => {
 
   it("ni agent ni role : erreur d'usage", async () => {
     await withFakeHome(async () => {
-      const session = createSession(root);
+      const session = await createSession(root);
       const result = await orchDelegate(session, { objective: "tâche" });
       expect(result.isError).toBe(true);
     });
@@ -123,7 +123,7 @@ describe("orch_delegate", () => {
 
   it("un agent inconnu du catalogue est traité proprement", async () => {
     await withFakeHome(async () => {
-      const session = createSession(root);
+      const session = await createSession(root);
       const result = await orchDelegate(session, { objective: "tâche", agent: "agent-fantome" });
       expect(result.isError).toBe(true);
       expect((result.content?.[0] as { text: string }).text).toMatch(/inconnu/);

@@ -21,7 +21,7 @@ describe("orch_logs", () => {
   it("tâche connue : événements normalisés, puis sortie brute avec raw: true", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const delegated = await orchDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
         const entry = session.tasks.get(taskId);
@@ -46,7 +46,7 @@ describe("orch_logs", () => {
   it("limit borne le nombre d'événements normalisés rendus, en gardant les plus récents", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const delegated = await orchDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
         const entry = session.tasks.get(taskId);
@@ -65,7 +65,7 @@ describe("orch_logs", () => {
 
   it("tâche inconnue : erreur claire", async () => {
     await withFakeHome(async () => {
-      const session = createSession(root);
+      const session = await createSession(root);
       const result = await orchLogs(session, { task_id: "t_inexistant" });
       expect(result.isError).toBe(true);
       expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);

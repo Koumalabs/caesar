@@ -51,7 +51,7 @@ describe("orch_list_agents", () => {
         const { config } = await loadConfig(root);
         await saveProjectConfig(root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
 
-        const session = createSession(root);
+        const session = await createSession(root);
         const result = await orchListAgents(session);
         expect(result.isError).toBeFalsy();
 

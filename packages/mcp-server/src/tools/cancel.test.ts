@@ -25,7 +25,7 @@ describe("orch_cancel", () => {
   it("interrompt une tâche en cours et met à jour son statut, sans laisser de processus fils", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async (shimDir) => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const shimPath = join(shimDir, "codex");
 
         const delegated = await orchDelegate(session, {
@@ -67,7 +67,7 @@ describe("orch_cancel", () => {
   it("une tâche déjà terminée : cancelled: false, statut inchangé", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const session = createSession(root);
+        const session = await createSession(root);
         const delegated = await orchDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
@@ -84,7 +84,7 @@ describe("orch_cancel", () => {
 
   it("une tâche inconnue rend une erreur", async () => {
     await withFakeHome(async () => {
-      const session = createSession(root);
+      const session = await createSession(root);
       const result = await orchCancel(session, { task_id: "t_inexistant" });
       expect(result.isError).toBe(true);
       expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);

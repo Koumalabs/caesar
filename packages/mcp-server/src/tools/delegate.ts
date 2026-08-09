@@ -24,7 +24,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { RunTaskInput } from "@orch/core";
-import { generateTaskId, loadConfig, resolveDelegation } from "@orch/core";
+import { generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation } from "@orch/core";
 import { launchTask } from "../session.js";
 import type { McpSession } from "../session.js";
 import { errorResult, jsonResult } from "./result.js";
@@ -107,6 +107,13 @@ export type OrchDelegateInput = z.infer<typeof OrchDelegateInputSchema>;
 export async function orchDelegate(session: McpSession, input: OrchDelegateInput): Promise<CallToolResult> {
   const { config } = await loadConfig(session.root);
 
+  // Profondeur héritée de `$ORCH_DEPTH` (+1) : voir C4 de la revue finale. Un
+  // serveur MCP peut lui-même tourner comme sous-agent (`orch mcp install`
+  // l'enregistre globalement chez plusieurs clients — voir I4/le constat
+  // "aggravant" de C4) : sans relire cette variable, `max_depth` et le
+  // garde-fou anti-récursion ne s'appliquaient qu'au premier niveau.
+  const depth = nextDelegationDepth();
+
   const resolved = await resolveDelegation(config, session.root, {
     role: input.role,
     agent: input.agent,
@@ -114,6 +121,7 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
     isolation: input.isolation,
     context: input.context,
     timeout: input.timeout,
+    depth,
   });
   if ("error" in resolved) {
     // Motif rendu tel quel par @orch/core — voir le brief.
@@ -135,6 +143,8 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
     ...(resolved.role ? { role: resolved.role } : {}),
     ...(input.model ? { model: input.model } : {}),
     timeoutMs: resolved.timeoutMs,
+    depth,
+    extraAgents: config.agents,
     taskId,
     signal: controller.signal,
     ...(input.channel ? { channel: true } : {}),

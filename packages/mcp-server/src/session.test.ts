@@ -32,7 +32,7 @@ describe("launchTask", () => {
   });
 
   it("un échec avant l'écriture du store (isolation \"worktree\" hors dépôt git) rend un TaskOutcome synthétisé, jamais un rejet", async () => {
-    const session = createSession(root);
+    const session = await createSession(root);
     const controller = new AbortController();
 
     const entry = launchTask(
@@ -68,7 +68,7 @@ describe("launchTask", () => {
     await mkdir(join(root, ".orch", "state"), { recursive: true });
     await writeFile(join(root, ".orch", "state", "tasks"), "occupé", "utf8");
 
-    const session = createSession(root);
+    const session = await createSession(root);
     const controller = new AbortController();
 
     const entry = launchTask(
