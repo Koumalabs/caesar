@@ -24,6 +24,7 @@
  * `context` (le `@fichier` du CLI est résolu par son appelant) : elle ne fait
  * que fusionner le contexte déjà résolu avec le prompt système du rôle.
  */
+import { ENV } from "@orch/protocol";
 import type { Isolation, TaskMode } from "@orch/protocol";
 import type { OrchConfig } from "./config.js";
 import { parseDuration } from "./config.js";
@@ -40,8 +41,31 @@ export interface DelegationParams {
   context?: string;
   /** Durée brute ("10m", "90s"…) ; le motif de `parseDuration` est rendu tel quel en cas d'échec. */
   timeout?: string;
-  /** Profondeur de délégation, transmise à `checkDelegation`. 0 (défaut) pour un appel de premier niveau — CLI, serveur MCP. */
-  depth?: number;
+  /**
+   * Profondeur de délégation, transmise à `checkDelegation`. Obligatoire —
+   * voir C4 de la revue finale : un paramètre à valeur par défaut
+   * (`params.depth ?? 0`) est ce qui a laissé `max_depth` inappliqué sans
+   * qu'aucun test ni la compilation ne le remarque. 0 pour un appel de
+   * premier niveau (CLI, serveur MCP, sans `$ORCH_DEPTH` hérité) ; voir
+   * `nextDelegationDepth` pour le calcul attendu côté façade.
+   */
+  depth: number;
+}
+
+/**
+ * Profondeur à assigner à la *prochaine* délégation, calculée depuis
+ * `$ORCH_DEPTH` hérité du processus courant — voir C4 de la revue finale :
+ * cette variable était bien exportée vers les sous-processus (`taskEnv`,
+ * `@orch/protocol`) mais jamais relue par personne, ce qui rendait
+ * `max_depth` inapplicable dès qu'un agent délégant tournait lui-même comme
+ * sous-agent d'une délégation précédente. `Number(process.env[...])` invalide
+ * ou absent retombe sur 0 plutôt que sur `NaN` — un `NaN >= max_depth` serait
+ * toujours faux et désarmerait silencieusement le garde-fou.
+ */
+export function nextDelegationDepth(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[ENV.depth];
+  const inherited = raw === undefined ? 0 : Number(raw);
+  return (Number.isFinite(inherited) ? inherited : 0) + 1;
 }
 
 export interface ResolvedDelegation {
@@ -77,7 +101,7 @@ export async function resolveDelegation(config: OrchConfig, root: string, params
   if (params.agent) {
     agentId = params.agent;
   } else if (role) {
-    const installed = await resolveInstalledMap(role.agents);
+    const installed = await resolveInstalledMap(role.agents, config.agents);
     const pick = pickAgentForRole(role, { isInstalled: (id) => installed.get(id) ?? false, policy: config.policy });
     if ("error" in pick) return { error: pick.error };
     agentId = pick.agentId;
@@ -86,11 +110,11 @@ export async function resolveDelegation(config: OrchConfig, root: string, params
     return { error: "Un agent ou un rôle est requis." };
   }
 
-  if (!findAgentDefinition(agentId)) {
+  if (!findAgentDefinition(agentId, config.agents)) {
     return { error: `Agent inconnu : "${agentId}".` };
   }
 
-  const decision = checkDelegation(config.policy, { agentId, depth: params.depth ?? 0 });
+  const decision = checkDelegation(config.policy, { agentId, depth: params.depth });
   if (!decision.allowed) {
     return { error: decision.reason };
   }

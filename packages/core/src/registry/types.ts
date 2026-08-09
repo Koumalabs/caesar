@@ -48,6 +48,21 @@ export interface BuildContext {
 export interface PreparedFile {
   path: string;
   content: string;
+  /**
+   * Vrai si ce fichier ne doit pas survivre à la tâche : son contenu
+   * précédent (s'il en avait un) est restauré une fois l'exécution
+   * terminée ; supprimé s'il n'existait pas avant. Réservé aux fichiers
+   * écrits dans le workspace réel de l'utilisateur plutôt que dans le
+   * répertoire de tâche que l'orchestrateur possède déjà — voir C5 de la
+   * revue finale (l'adaptateur opencode, seul à écrire hors de
+   * `ctx.paths.dir`) : sans ce filet, `opencode.json` était écrasé
+   * silencieusement, sans sauvegarde ni restauration, y compris en
+   * isolation `inplace` sur le fichier réel de l'utilisateur. Par défaut
+   * (absent ou faux), comportement inchangé : le fichier reste après la
+   * tâche, utile pour l'inspection a posteriori (configs MCP de
+   * claude/copilot, schéma de sortie…), toutes déposées sous `paths.dir`.
+   */
+  restoreAfter?: boolean;
 }
 
 export interface SpawnPlan {

@@ -8,7 +8,19 @@
  */
 import type { PolicyConfig } from "./config.js";
 
-export type Decision = { allowed: true } | { allowed: false; reason: string };
+/**
+ * Quelle règle a produit un refus — voir CONTRÔLEUR-1 de la revue finale :
+ * `Decision` ne portait jusqu'ici qu'une phrase, ce qui a produit un remède
+ * générique dans `orch doctor` (« Autorisez-le avec "orch agents enable X"
+ * ou "orch policy allow X" »), faux pour deux des trois motifs de refus —
+ * ni l'un ni l'autre ne touche `allow_recursion`, seul motif du refus de
+ * `claude` par défaut. `denied`/`allowlist`/`depth`/`recursion` permettent à
+ * un appelant (CLI, TUI, tools MCP) de choisir le bon remède sans
+ * réinterpréter le texte de `reason`.
+ */
+export type PolicyRule = "denied" | "allowlist" | "depth" | "recursion";
+
+export type Decision = { allowed: true } | { allowed: false; reason: string; rule: PolicyRule };
 
 /**
  * Règle des listes `allowed`/`denied` :
@@ -21,12 +33,14 @@ export function isAgentAllowed(policy: PolicyConfig, agentId: string): Decision 
   if (policy.denied.includes(agentId)) {
     return {
       allowed: false,
+      rule: "denied",
       reason: `Agent "${agentId}" refusé : présent dans la liste "denied" de la politique.`,
     };
   }
   if (policy.allowed.length > 0 && !policy.allowed.includes(agentId)) {
     return {
       allowed: false,
+      rule: "allowlist",
       reason: `Agent "${agentId}" refusé : la politique restreint la délégation aux agents listés dans "allowed" (${policy.allowed.join(", ")}).`,
     };
   }
@@ -38,6 +52,7 @@ export function isDepthAllowed(policy: PolicyConfig, depth: number): Decision {
   if (depth >= policy.max_depth) {
     return {
       allowed: false,
+      rule: "depth",
       reason: `Profondeur de délégation ${depth} refusée : la politique limite à max_depth = ${policy.max_depth}.`,
     };
   }
@@ -59,6 +74,7 @@ export function isRecursionAllowed(policy: PolicyConfig, agentId: string): Decis
   if (!policy.allow_recursion && agentId === "claude") {
     return {
       allowed: false,
+      rule: "recursion",
       reason: `Agent "claude" refusé : allow_recursion est désactivé (déléguer à Claude depuis Claude Code serait une récursion).`,
     };
   }
@@ -98,4 +114,43 @@ export function describeAgentPolicy(policy: PolicyConfig, agentId: string): Deci
   const allowedDecision = isAgentAllowed(policy, agentId);
   if (!allowedDecision.allowed) return allowedDecision;
   return isRecursionAllowed(policy, agentId);
+}
+
+/**
+ * Le remède qui vaut effectivement pour `rule` — voir CONTRÔLEUR-1 de la
+ * revue finale. Centralisé ici plutôt que réécrit par chaque façade
+ * (`orch doctor`, l'écran Agents du TUI, un futur tool MCP de diagnostic) :
+ * c'est la même logique de correspondance rule → remède partout.
+ *
+ * - `"denied"` : seul `orch agents enable` retire l'agent de `denied` —
+ *   `orch policy allow` ne le ferait pas passer pour autant (`denied`
+ *   l'emporte toujours) et aurait l'effet de bord décrit sous `"allowlist"`.
+ * - `"allowlist"` : `orch policy allow` est le bon remède, mais avec
+ *   l'avertissement de CONTRÔLEUR-2 — si `allowed` était vide, cette
+ *   commande restreint désormais tous les autres agents non explicitement
+ *   listés.
+ * - `"recursion"` : aucune sous-commande CLI dédiée aujourd'hui ; seule
+ *   l'édition de `allow_recursion` (TUI, onglet Politique, ou le TOML
+ *   directement) lève ce refus.
+ * - `"depth"` : ne se corrige pas par agent — c'est la profondeur de la
+ *   délégation en cours qui dépasse `max_depth`, pas une propriété de
+ *   l'agent lui-même ; sans objet pour un diagnostic statique par agent
+ *   (`orch doctor`), qui n'atteint jamais ce cas (il n'appelle pas
+ *   `isDepthAllowed`).
+ */
+export function remedyFor(agentId: string, rule: PolicyRule): string {
+  switch (rule) {
+    case "denied":
+      return `Autorisez-le avec "orch agents enable ${agentId}".`;
+    case "allowlist":
+      return (
+        `Ajoutez-le avec "orch policy allow ${agentId}" — attention, si la liste "allowed" est vide aujourd'hui, ` +
+        `cette commande la fera passer de "tout agent non refusé" à "seulement ${agentId}", refusant du même geste ` +
+        `tous les autres agents (voir "orch policy show").`
+      );
+    case "recursion":
+      return `Activez "allow_recursion" (onglet Politique du TUI "orch config", ou éditez .orch/config.toml — aucune sous-commande dédiée aujourd'hui).`;
+    case "depth":
+      return `Sans objet par agent : c'est la profondeur de délégation en cours qui dépasse "max_depth", pas une propriété de l'agent.`;
+  }
 }

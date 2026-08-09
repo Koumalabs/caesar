@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { Channel, Finding, Isolation, OrchEvent, Report, ReportChannel, Task, TaskMode, TaskPaths } from "@orch/protocol";
 import {
   REPORT_PROTOCOL,
@@ -18,15 +18,17 @@ import {
   strictReportJsonSchema,
   taskEnv,
   taskPaths,
+  writeReport,
   writeTask,
 } from "@orch/protocol";
 import { resolveAgentDefinition } from "../registry/index.js";
 import type { AgentDefinition, SpawnPlan } from "../registry/types.js";
-import type { ReportSource, TaskRecord, TaskStatus, TaskStore } from "../store.js";
+import type { GenericAgentSpec } from "../registry/generic.js";
+import type { ChangesVerifiedBy, ReportSource, TaskRecord, TaskStatus, TaskStore } from "../store.js";
 import { resolveReport, reconcileChanges } from "./report.js";
 import { runAgentProcess } from "./spawn.js";
 import type { RunResult } from "./spawn.js";
-import { createWorktree, diffWorktree, repoRoot } from "./worktree.js";
+import { captureWorkspaceStatus, createWorktree, diffWorkspaceStatus, diffWorktree, repoRoot } from "./worktree.js";
 import type { Queue } from "./queue.js";
 import type { WorktreeDiff, WorktreeHandle } from "./worktree.js";
 
@@ -93,7 +95,18 @@ const FINAL_MESSAGE_FILE_NAME = "final-message.txt";
 export interface RunnerDeps {
   store: TaskStore;
   root: string;
-  queue?: Queue;
+  /**
+   * Sémaphore partageant le plafond `policy.max_parallel` entre tous les
+   * `runTask` d'une même façade. Obligatoire — quitte à passer `undefined`
+   * explicitement — voir C4/le durcissement de typage de la revue finale :
+   * une propriété optionnelle est précisément ce qui a laissé les trois
+   * façades (`orch run`, `orch_delegate`, `orch agents test`) omettre le
+   * câblage sans qu'aucune erreur de compilation ne le signale, rendant
+   * `max_parallel` inappliqué de bout en bout. `undefined` reste un choix
+   * légitime pour un appelant qui ne veut délibérément aucune limite (voir
+   * les tests) ; ce n'est plus un oubli silencieux.
+   */
+  queue: Queue | undefined;
 }
 
 export interface RunTaskInput {
@@ -109,6 +122,16 @@ export interface RunTaskInput {
   model?: string;
   timeoutMs?: number;
   depth?: number;
+  /**
+   * Agents génériques déclarés en configuration (`OrchConfig.agents`,
+   * `[[agent]]` du TOML), consultés en plus du catalogue natif pour résoudre
+   * `agentId` — voir `resolveAgentDefinition` et C1 de la revue finale.
+   * Absent ou vide : catalogue natif seul (comportement inchangé). Les
+   * appelants qui disposent déjà de la configuration (`orch run`,
+   * `orch_delegate`, `orch agents test`) la transmettent ici plutôt que de la
+   * faire recharger par `runTask`, qui n'a autrement que `deps.root`.
+   */
+  extraAgents?: GenericAgentSpec[];
   extraArgs?: string[];
   /**
    * Active le canal retour MCP bidirectionnel pour cette tâche, si l'agent
@@ -161,7 +184,7 @@ export interface TaskOutcome {
 }
 
 export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<TaskOutcome> {
-  const agentDef = resolveAgentDefinition(input.agentId);
+  const agentDef = resolveAgentDefinition(input.agentId, input.extraAgents ?? []);
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const depth = input.depth ?? 0;
 
@@ -229,6 +252,11 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     reportVia,
     schemaFile,
     finalMessageFile,
+    // C6 de la revue finale : `BuildContext.model` était laissé absent ici,
+    // silencieusement (champ jusqu'ici optionnel) — `--model`/`model:` était
+    // donc accepté par le CLI, le schéma zod du tool MCP et le README, sans
+    // jamais atteindre un seul des cinq adaptateurs qui le consomment.
+    model: input.model,
     extraArgs: input.extraArgs ?? [],
   });
   // Le contrat minimal d'un agent externe ($ORCH_TASK_FILE, $ORCH_REPORT_PATH…)
@@ -256,6 +284,38 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   };
   await deps.store.create(record);
 
+  // À partir d'ici, l'enregistrement existe dans le store avec le statut
+  // "running" : voir I13 de la revue finale. Sans ce `try/finally`, une
+  // exception inattendue entre `store.create` et le `store.update` final
+  // (E/S, sous-processus git...) laissait l'enregistrement bloqué "running"
+  // pour toujours — `orch ps` le classe alors "actif" à vie, et un futur
+  // `orch cancel` sur cet identifiant enverrait un signal à un pid que l'OS a
+  // pu réattribuer entre-temps (risque déjà identifié par le commentaire de
+  // `pid: undefined` plus bas, mais qui ne couvrait jusqu'ici que le chemin
+  // heureux). `finalized` évite un double `store.update` sur le chemin
+  // heureux : la mise à jour normale, plus bas, a déjà tout dit.
+  let finalized = false;
+  try {
+    return await runTaskBody();
+  } finally {
+    if (!finalized) {
+      await deps.store
+        .update(id, { status: "failed", ended_at: new Date().toISOString(), pid: undefined })
+        .catch(() => {
+          // Best-effort : ne doit jamais masquer l'exception d'origine, déjà en cours de propagation.
+        });
+    }
+  }
+
+  async function runTaskBody(): Promise<TaskOutcome> {
+  // Capturé juste avant le lancement, quand l'isolation est "inplace" : c'est
+  // le seul moyen de recouper `report.changes` avec la réalité git hors
+  // worktree — voir C2/C3 de la revue finale. `captureWorkspaceStatus` rend
+  // `null` sans lever si `workspace` n'est pas un dépôt git ; dans ce cas
+  // comme en isolation "worktree" (où le recoupement passe par
+  // `diffWorktree`), aucun recoupement n'est tenté plus bas.
+  const workspaceStatusBefore = isolation === "inplace" ? await captureWorkspaceStatus(workspace) : null;
+
   const execute = (): Promise<RunResult> =>
     runAgentProcess({
       agent: agentDef,
@@ -274,10 +334,34 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     });
   const run = deps.queue ? await deps.queue.run(execute) : await execute();
 
-  const diff = handle ? await diffWorktree(handle) : undefined;
+  // "Le diff git fait foi" doit tenir dans les deux isolations, pas
+  // seulement "worktree" (voir C2 de la revue finale) : `diffWorkspaceStatus`
+  // rejoue la même logique que `diffWorktree` (recoupement + détection
+  // d'écriture ci-dessous) sans worktree, à partir de deux instantanés
+  // `git status --porcelain` du workspace réel.
+  const rawDiff = handle
+    ? await diffWorktree(handle)
+    : workspaceStatusBefore !== null
+      ? await diffWorkspaceStatus(workspace, workspaceStatusBefore)
+      : undefined;
+  // Exclut les fichiers que l'orchestrateur lui-même a écrits dans le
+  // workspace de la tâche (p. ex. `opencode.json`, voir C5 de la revue
+  // finale) : sans ce filtre, un agent en lecture seule qui n'a jamais rien
+  // écrit se ferait accuser d'écriture par sa propre configuration MCP, et
+  // `reconcileChanges` ajouterait un constat "modification non déclarée"
+  // pour un fichier que l'agent n'a jamais touché.
+  const diff = rawDiff ? excludePlanFiles(rawDiff, finalPlan.files, handle ? handle.path : workspace) : undefined;
 
   const resolved = await resolveReport({ task, paths, run, diff, reportVia, finalMessageFile });
   let report = resolved.report;
+
+  // Provenance de `report.changes` pour le consommateur en bout de chaîne
+  // (`ReportSummary.changes_verified_by`, `orch_await`/`orch_delegate`) :
+  // "git" dès qu'un recoupement a pu être tenté (worktree, ou inplace dans un
+  // dépôt git), "declaration" seulement quand aucun `git status`/`git diff`
+  // n'était possible (workspace hors dépôt git) — c'est alors la seule
+  // parole de l'agent, jamais présentée comme davantage.
+  const changesVerifiedBy: ChangesVerifiedBy = diff ? "git" : "declaration";
 
   if (diff) {
     report = reconcileChanges(report, diff);
@@ -295,18 +379,35 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     report = withFinding(report, { severity: "low", title: "Isolation dégradée", detail: warning });
   }
 
+  // Persisté avant la mise à jour finale du store (voir C2 de la revue
+  // finale, second trou) : `writeReport` n'avait jusqu'ici qu'un seul
+  // appelant en production, `submit_report` du canal MCP
+  // (`packages/mcp-channel/src/server.ts`) — `runTask` calculait le rapport
+  // recoupé puis le laissait mourir avec le processus. Conséquence directe :
+  // `orch_await` sur une tâche lancée par un autre processus
+  // (`describeFromStore`, `packages/mcp-server`) relisait le rapport brut de
+  // l'agent, jamais recoupé, ou rien du tout quand le palier retenu
+  // n'écrivait pas `report.json` (paliers "extracted"/"synthesized"). Écrit
+  // avant `deps.store.update` : un lecteur qui verrait le statut passer à
+  // "succeeded"/"failed" trouve alors déjà le rapport final sur disque,
+  // jamais une version encore non recoupée.
+  await writeReport(paths, report);
+
   const finalStatus = deriveTaskStatus(run);
   const updated = await deps.store.update(id, {
     status: finalStatus,
     ended_at: new Date().toISOString(),
     exit_code: run.exitCode,
     report_source: resolved.source,
+    changes_verified_by: changesVerifiedBy,
     // Le processus n'existe plus : un pid effacé évite à `orch cancel` de
     // signaler un pid réutilisé entre-temps par un tout autre processus.
     pid: undefined,
   });
+  finalized = true;
 
   return { record: updated, report, source: resolved.source, diff };
+  }
 }
 
 /** Utilisée par `runTask` quand `input.taskId` est absent. Exportée pour que les
@@ -370,6 +471,22 @@ function withFinding(report: Report, finding: Finding): Report {
   return { ...report, findings: [...report.findings, finding] };
 }
 
+/**
+ * Retire du diff les fichiers que l'orchestrateur a lui-même déposés dans
+ * l'arborescence diffée (`plan.files`, p. ex. `opencode.json` — voir C5 de
+ * la revue finale). `diff.files[].path` est relatif à `base` (racine du
+ * worktree ou workspace réel selon l'isolation) ; `plan.files[].path` est
+ * absolu : la comparaison résout donc chaque chemin de diff contre `base`
+ * avant de le confronter à l'ensemble des chemins du plan.
+ */
+function excludePlanFiles(diff: WorktreeDiff, planFiles: readonly { path: string }[], base: string): WorktreeDiff {
+  if (planFiles.length === 0) return diff;
+  const excluded = new Set(planFiles.map((file) => resolve(file.path)));
+  const files = diff.files.filter((change) => !excluded.has(resolve(base, change.path)));
+  if (files.length === diff.files.length) return diff;
+  return { ...diff, files, isEmpty: files.length === 0 };
+}
+
 function deriveTaskStatus(run: RunResult): TaskStatus {
   if (run.aborted) return "cancelled";
   if (run.timedOut) return "timed_out";
@@ -389,6 +506,18 @@ interface IsolationPreparation {
  * Le dernier cas de la table — lecture seule chez un agent dépourvu de mode
  * lecture seule appliqué par son CLI — est délibéré : le worktree jetable
  * transforme une promesse de prompt en garantie constatable.
+ *
+ * C3 de la revue finale : cette transformation était jusqu'ici un défaut de
+ * la résolution `"auto"`, pas une contrainte — un `isolation: "inplace"`
+ * explicite (argument de `orch_delegate`, `role.isolation`,
+ * `policy.default_isolation`) la défaisait silencieusement, y compris pour
+ * le rôle `reviewer` livré par défaut. `mustForceWorktree` en fait une
+ * contrainte non contournable : dès qu'un agent en lecture seule sans mode
+ * natif tourne dans un dépôt git, l'isolation est forcée sur `"worktree"`
+ * quelle que soit la valeur demandée — avec un `warning` explicite dans le
+ * rapport quand cela contredit une demande explicite (silencieux seulement
+ * quand la demande était déjà `"worktree"` ou `"auto"`, où c'était déjà le
+ * résultat attendu).
  */
 async function prepareIsolation(
   root: string,
@@ -399,10 +528,19 @@ async function prepareIsolation(
   const requested = input.isolation ?? "auto";
   const base = await repoRoot(input.workspace);
 
+  const mustForceWorktree = input.mode === "read-only" && !agentDef.capabilities.nativeReadOnly && base !== null;
+
   let isolation: Isolation;
   let warning: string | undefined;
 
-  if (requested !== "auto") {
+  if (mustForceWorktree && requested !== "worktree") {
+    isolation = "worktree";
+    if (requested !== "auto") {
+      warning =
+        `Isolation "${requested}" demandée pour l'agent "${agentDef.id}" en lecture seule (sans mode natif) : ` +
+        `forcée sur "worktree" pour qu'une écriture éventuelle soit contenue et détectée plutôt que seulement promise par le prompt.`;
+    }
+  } else if (requested !== "auto") {
     isolation = requested;
   } else if (input.mode === "write") {
     if (base) {
@@ -413,9 +551,10 @@ async function prepareIsolation(
     }
   } else if (agentDef.capabilities.nativeReadOnly) {
     isolation = "inplace";
-  } else if (base) {
-    isolation = "worktree";
   } else {
+    // mode === "read-only", agent sans mode natif, et mustForceWorktree est
+    // faux : `base` est donc nécessairement `null` ici (sinon la branche
+    // ci-dessus l'aurait déjà pris en charge).
     isolation = "inplace";
     warning = `Le workspace "${input.workspace}" n'est pas un dépôt git : isolation repliée sur "inplace" malgré l'absence de mode lecture seule natif chez "${agentDef.id}".`;
   }

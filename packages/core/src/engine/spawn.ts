@@ -7,13 +7,13 @@
  * sortie.
  */
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline";
 import type { OrchEvent, TaskPaths } from "@orch/protocol";
 import { appendEvent, makeEvent } from "@orch/protocol";
-import type { AgentDefinition, PartialEvent, SpawnPlan } from "../registry/types.js";
+import type { AgentDefinition, PartialEvent, PreparedFile, SpawnPlan } from "../registry/types.js";
 
 /** Délai de grâce entre le SIGTERM et le SIGKILL, en cas d'absence de sortie. */
 const KILL_GRACE_MS = 5000;
@@ -58,10 +58,51 @@ export async function runAgentProcess(options: RunOptions): Promise<RunResult> {
     return { exitCode: null, signal: null, timedOut: false, aborted: true, eventCount: 0, durationMs: Date.now() - startedAt };
   }
 
-  for (const file of plan.files) {
+  const fileBackups = await prepareFiles(plan.files);
+  try {
+    return await runWithFiles(options, startedAt);
+  } finally {
+    await restoreFiles(fileBackups);
+  }
+}
+
+interface FileBackup {
+  path: string;
+  existed: boolean;
+  content: string;
+}
+
+/** Écrit chaque fichier du plan ; sauvegarde d'abord le contenu précédent de ceux marqués `restoreAfter` (voir `PreparedFile`, C5 de la revue finale). */
+async function prepareFiles(files: readonly PreparedFile[]): Promise<FileBackup[]> {
+  const backups: FileBackup[] = [];
+  for (const file of files) {
+    if (file.restoreAfter) {
+      try {
+        backups.push({ path: file.path, existed: true, content: await readFile(file.path, "utf8") });
+      } catch {
+        backups.push({ path: file.path, existed: false, content: "" });
+      }
+    }
     await mkdir(dirname(file.path), { recursive: true });
     await writeFile(file.path, file.content, "utf8");
   }
+  return backups;
+}
+
+/** Restaure le contenu précédent de chaque fichier sauvegardé, ou le supprime s'il n'existait pas avant. Best-effort : un échec de restauration ne doit jamais faire échouer la fin de la tâche. */
+async function restoreFiles(backups: readonly FileBackup[]): Promise<void> {
+  for (const backup of backups) {
+    try {
+      if (backup.existed) await writeFile(backup.path, backup.content, "utf8");
+      else await unlink(backup.path);
+    } catch {
+      // Volontairement ignoré : voir la documentation de la fonction.
+    }
+  }
+}
+
+async function runWithFiles(options: RunOptions, startedAt: number): Promise<RunResult> {
+  const { agent, plan, paths, taskId, timeoutMs, signal, onEvent, onSpawn } = options;
 
   await mkdir(dirname(paths.rawLog), { recursive: true });
   const rawLog = createWriteStream(paths.rawLog, { flags: "w" });

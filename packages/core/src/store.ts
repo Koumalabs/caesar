@@ -20,6 +20,16 @@ export type TaskStatus = "pending" | "running" | "succeeded" | "failed" | "cance
 /** Provenance du rapport finalement retenu, du plus fiable au plus dégradé. */
 export type ReportSource = "channel" | "schema" | "file" | "extracted" | "synthesized";
 
+/**
+ * Provenance de `report.changes` — voir C2 de la revue finale : "git" quand
+ * l'orchestrateur a pu recouper la déclaration de l'agent avec l'état git
+ * constaté du workspace (isolation `worktree`, ou `inplace` dans un dépôt
+ * git), "declaration" quand aucun recoupement n'était possible (workspace
+ * hors dépôt git) — dans ce seul cas, `changes` reste la parole de l'agent,
+ * jamais présentée comme davantage.
+ */
+export type ChangesVerifiedBy = "git" | "declaration";
+
 export interface TaskRecord {
   id: string;
   agent: string;
@@ -37,6 +47,7 @@ export interface TaskRecord {
   exit_code?: number | null;
   report_via: ReportChannel;
   report_source?: ReportSource;
+  changes_verified_by?: ChangesVerifiedBy;
   depth: number;
   /**
    * Identifiant du processus du sous-agent, le temps qu'il tourne. Renseigné

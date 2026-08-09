@@ -115,6 +115,89 @@ export async function applyWorktree(root: string, handle: WorktreeHandle): Promi
 }
 
 /**
+ * Capture l'état git du workspace réel (`git status --porcelain`), pour le
+ * comparer avant/après une exécution en isolation `"inplace"` — voir C2/C3
+ * de la revue finale : `git diff` ne faisait foi qu'en isolation `worktree`,
+ * jamais `inplace`, où aucun recoupement n'avait lieu et où une écriture par
+ * un agent en lecture seule n'était ni contenue, ni détectée.
+ *
+ * Le répertoire administratif `.orch/` (tâches, état, worktrees) est exclu
+ * du pathspec : contrairement au worktree jetable — dont l'arborescence ne
+ * contient structurellement jamais `.orch/tasks/<id>` (racine distincte,
+ * `deps.root` plutôt que `workspace`) — le workspace réel EST `deps.root`
+ * pour une tâche `inplace`, et `.orch/tasks/<id>` y est donc physiquement
+ * créé par l'orchestrateur lui-même pendant l'exécution. Sans cette
+ * exclusion, la simple existence du répertoire de tâche ferait croire à une
+ * écriture de l'agent sur toute tâche `inplace`, quel que soit son
+ * comportement réel — un faux positif systématique bien pire que le faux
+ * négatif, rare, d'un agent qui modifierait `.orch/config.toml` lui-même
+ * (alors masqué par cette même exclusion, tout `.orch/` étant écarté en bloc
+ * : `git status` réduit un répertoire entièrement non suivi à une seule
+ * ligne `?? .orch/`, qui rend inopérant tout pathspec d'exclusion plus fin
+ * que `.orch` entier — vérifié empiriquement).
+ *
+ * Jamais de `git add` ici, à la différence de `diffWorktree` : le workspace
+ * n'est pas jetable, et modifier l'index réel de l'utilisateur pour une
+ * simple observation serait un effet de bord que l'isolation `"inplace"` ne
+ * promet pas. `null` si `workspace` n'est pas un dépôt git (ou toute autre
+ * erreur) : jamais une exception, cette capture est un filet, pas une
+ * exigence.
+ */
+export async function captureWorkspaceStatus(workspace: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", workspace, "status", "--porcelain", "--", ".", ":(exclude).orch"]);
+    return stdout;
+  } catch {
+    return null;
+  }
+}
+
+/** `git status --porcelain` d'un chemin vers son code à deux lettres (`XY`, voir `git help status`). */
+function parsePorcelainStatus(status: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const line of status.split("\n")) {
+    if (line.length < 4) continue;
+    const code = line.slice(0, 2);
+    const rest = line.slice(3);
+    // "R  ancien -> nouveau" pour un renommage : seul le chemin final nous intéresse ici.
+    const path = rest.includes(" -> ") ? rest.split(" -> ").pop()! : rest;
+    map.set(path.trim(), code);
+  }
+  return map;
+}
+
+function porcelainCodeToAction(code: string): Change["action"] | undefined {
+  const x = code[0];
+  const y = code[1];
+  if (x === "?" || x === "A" || y === "A") return "created";
+  if (x === "D" || y === "D") return "deleted";
+  if (x === "R" || y === "R") return "renamed";
+  if (x === "M" || y === "M" || x === "U" || y === "U") return "modified";
+  return undefined;
+}
+
+/**
+ * Diffe deux instantanés `git status --porcelain` du même workspace, avant
+ * et après une exécution. Contrairement à `diffWorktree`, ne rend jamais de
+ * patch (`patch: ""`) : sans `git add`, seule la liste des chemins touchés
+ * est fiable à reconstituer depuis `git status`, pas le contenu du diff.
+ */
+export async function diffWorkspaceStatus(workspace: string, before: string): Promise<WorktreeDiff> {
+  const after = await captureWorkspaceStatus(workspace);
+  if (after === null) return { files: [], patch: "", isEmpty: true };
+
+  const beforeMap = parsePorcelainStatus(before);
+  const afterMap = parsePorcelainStatus(after);
+  const files: Change[] = [];
+  for (const [path, code] of afterMap) {
+    if (beforeMap.get(path) === code) continue;
+    const action = porcelainCodeToAction(code);
+    if (action) files.push({ path, action, summary: "" });
+  }
+  return { files, patch: "", isEmpty: files.length === 0 };
+}
+
+/**
  * Reconstruit le `WorktreeHandle` d'une tâche à partir de son enregistrement
  * (`TaskRecord`) — `null` si la tâche n'a pas tourné en isolation worktree.
  * Partagé par `orch diff`/`orch apply` (CLI) et `orch_diff`/`orch_apply`

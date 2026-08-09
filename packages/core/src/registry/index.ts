@@ -8,6 +8,8 @@ import { claudeAgent } from "../adapters/claude.js";
 import { codexAgent } from "../adapters/codex.js";
 import { copilotAgent } from "../adapters/copilot.js";
 import { opencodeAgent } from "../adapters/opencode.js";
+import { createGenericAgent } from "./generic.js";
+import type { GenericAgentSpec } from "./generic.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -20,19 +22,34 @@ export const AGENT_DEFINITIONS: readonly AgentDefinition[] = [
   claudeAgent,
 ];
 
-export function listAgentDefinitions(): readonly AgentDefinition[] {
-  return AGENT_DEFINITIONS;
+/**
+ * Le catalogue natif, étendu des agents génériques déclarés en configuration
+ * (`OrchConfig.agents`, section `[[agent]]` du TOML) — voir C1 de la revue
+ * finale : jusqu'ici, `createGenericAgent` n'était jamais appelé en
+ * production, et un agent déclaré en configuration restait invisible de
+ * `orch run`, `orch agents list`, `orch doctor` et `orch_list_agents`.
+ *
+ * `extraAgents` gagne en cas de collision d'identifiant avec le catalogue
+ * natif (même règle que `mergeConfig`/`mergeByKey`, `config.ts`) : une entrée
+ * `[[agent]] id = "codex"` remplacerait l'adaptateur natif du même nom plutôt
+ * que d'être ignorée silencieusement.
+ */
+export function listAgentDefinitions(extraAgents: readonly GenericAgentSpec[] = []): readonly AgentDefinition[] {
+  if (extraAgents.length === 0) return AGENT_DEFINITIONS;
+  const merged = new Map<string, AgentDefinition>(AGENT_DEFINITIONS.map((agent) => [agent.id, agent] as const));
+  for (const spec of extraAgents) merged.set(spec.id, createGenericAgent(spec));
+  return [...merged.values()];
 }
 
-export function findAgentDefinition(id: string): AgentDefinition | undefined {
-  return AGENT_DEFINITIONS.find((agent) => agent.id === id);
+export function findAgentDefinition(id: string, extraAgents: readonly GenericAgentSpec[] = []): AgentDefinition | undefined {
+  return listAgentDefinitions(extraAgents).find((agent) => agent.id === id);
 }
 
-/** Résout un agent par identifiant. Lève si l'identifiant est inconnu. */
-export function resolveAgentDefinition(id: string): AgentDefinition {
-  const found = findAgentDefinition(id);
+/** Résout un agent par identifiant, catalogue natif et agents de configuration confondus. Lève si l'identifiant est inconnu des deux. */
+export function resolveAgentDefinition(id: string, extraAgents: readonly GenericAgentSpec[] = []): AgentDefinition {
+  const found = findAgentDefinition(id, extraAgents);
   if (!found) {
-    const known = AGENT_DEFINITIONS.map((agent) => agent.id).join(", ");
+    const known = listAgentDefinitions(extraAgents).map((agent) => agent.id).join(", ");
     throw new Error(`Agent inconnu : "${id}" (connus : ${known})`);
   }
   return found;

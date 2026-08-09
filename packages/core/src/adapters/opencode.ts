@@ -25,7 +25,26 @@ const CAPABILITIES: AgentCapabilities = {
   model: true,
 };
 
-/** Config MCP projet, au format documenté par opencode (`opencode.json`, clé `mcp`). */
+/**
+ * Config MCP projet, au format documenté par opencode (`opencode.json`, clé
+ * `mcp`). Écrite à la racine du workspace — le seul emplacement où opencode
+ * la découvre (`mcpInjection: "project-config"`, pas de flag pour lui en
+ * désigner une autre, contrairement à `--mcp-config`/`--additional-mcp-config`
+ * chez claude/copilot) : contrairement à eux, ce fichier n'est donc pas sous
+ * `ctx.paths.dir`, qui appartient à l'orchestrateur.
+ *
+ * `restoreAfter: true` (voir C5 de la revue finale) : en isolation
+ * `"inplace"`, `workspace` est le répertoire réel de l'utilisateur — sans ce
+ * marqueur, un `opencode.json` existant y était écrasé silencieusement, sans
+ * sauvegarde ni restauration, y compris pour une tâche en lecture seule.
+ * `runAgentProcess` (`spawn.ts`) restaure le contenu précédent après
+ * l'exécution, ou supprime le fichier s'il n'existait pas avant. Ce même
+ * marqueur exclut aussi ce chemin du calcul de diff/recoupement
+ * (`runner.ts`) : en isolation `worktree`, où ce fichier atterrit tout de
+ * même dans l'arborescence du worktree jetable (`workspace` y vaut le
+ * chemin du worktree), il ne doit pas se faire passer pour une écriture de
+ * l'agent.
+ */
 function mcpConfigFile(workspace: string, channel: NonNullable<Task["channel"]>): PreparedFile {
   return {
     path: join(workspace, "opencode.json"),
@@ -44,6 +63,7 @@ function mcpConfigFile(workspace: string, channel: NonNullable<Task["channel"]>)
         null,
         2,
       ) + "\n",
+    restoreAfter: true,
   };
 }
 

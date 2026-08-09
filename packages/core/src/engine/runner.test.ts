@@ -167,7 +167,7 @@ describe("runTask", () => {
       expect(outcome.report.findings).toEqual([expect.objectContaining({ severity: "low" })]);
     });
 
-    it("lecture seule + mode natif appliqué par le CLI → inplace", async () => {
+    it("lecture seule + mode natif appliqué par le CLI → inplace, avec un diff constaté par git status (C2 de la revue finale)", async () => {
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
@@ -176,7 +176,15 @@ describe("runTask", () => {
 
       expect(outcome.record.isolation).toBe("inplace");
       expect(outcome.record.workspace).toBe(root);
-      expect(outcome.diff).toBeUndefined();
+      // Avant C2 de la revue finale, `outcome.diff` restait `undefined` en
+      // isolation "inplace" — aucun recoupement n'y était jamais tenté,
+      // c'était précisément le trou que "le diff git fait foi" promettait de
+      // ne jamais avoir. `diffWorkspaceStatus` (git status avant/après,
+      // `worktree.ts`) comble ce trou dès qu'un dépôt git est disponible :
+      // ici l'agent n'a rien écrit, le diff est donc défini mais vide.
+      expect(outcome.diff).toBeDefined();
+      expect(outcome.diff!.isEmpty).toBe(true);
+      expect(outcome.record.changes_verified_by).toBe("git");
     });
 
     it("lecture seule + agent sans mode natif → worktree forcé", async () => {

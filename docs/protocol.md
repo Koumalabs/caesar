@@ -109,7 +109,7 @@ Le sens des statuts :
 - **`failed`** — l'agent n'a pas abouti et n'a pas de chemin de sortie.
 - **`blocked`** — une décision hors de son périmètre est requise ; elle est posée dans `questions`.
 
-`changes` relève de la déclaration de l'agent. L'orchestrateur la recoupe systématiquement avec le diff git du worktree, **qui seul fait foi**.
+`changes` relève de la déclaration de l'agent. Quand le workspace de la tâche est un dépôt git — en isolation `worktree` comme `inplace` — l'orchestrateur la recoupe avec l'état git constaté, **qui seul fait foi** ; c'est alors le seul cas où `changes` reflète la réalité plutôt que la seule parole de l'agent. Hors dépôt git (aucun recoupement possible), `changes` reste la déclaration brute. Le rapport normalisé rendu par `orch_await`/`orch_delegate` porte cette distinction dans `changes_verified_by` (`"git"` ou `"declaration"`).
 
 ## `events.jsonl` — le flux
 
@@ -166,7 +166,7 @@ jq -n --arg s "Traité : $objective" '{
 }' > "$ORCH_REPORT_PATH"
 ```
 
-Déclaré dans `agents.toml`, il est orchestrable au même titre que Codex.
+Déclaré dans `.orch/config.toml` (section `[[agent]]`), il est orchestrable au même titre que Codex.
 
 ## Schémas exécutables
 

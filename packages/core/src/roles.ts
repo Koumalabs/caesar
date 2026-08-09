@@ -9,6 +9,7 @@ import type { OrchConfig, PolicyConfig, RoleConfig } from "./config.js";
 import { isEnoent } from "./config.js";
 import { isAgentAllowed, isRecursionAllowed } from "./policy.js";
 import { findAgentDefinition, findBinaryInPath } from "./registry/index.js";
+import type { GenericAgentSpec } from "./registry/generic.js";
 
 export interface ResolvedRole extends RoleConfig {
   systemPrompt: string;
@@ -50,11 +51,18 @@ export async function resolveRole(config: OrchConfig, root: string, name: string
  * (`packages/cli/src/commands/role.ts`, tous les rôles d'un coup) : les deux
  * façades resolvaient jusqu'ici cette même carte chacune de leur côté (tâche
  * 10, B).
+ *
+ * `extraAgents` (agents de configuration, `OrchConfig.agents`) permet à
+ * `role.agents` de nommer un agent générique, pas seulement le catalogue
+ * natif — voir C1 de la revue finale.
  */
-export async function resolveInstalledMap(agentIds: Iterable<string>): Promise<Map<string, boolean>> {
+export async function resolveInstalledMap(
+  agentIds: Iterable<string>,
+  extraAgents: readonly GenericAgentSpec[] = [],
+): Promise<Map<string, boolean>> {
   const entries = await Promise.all(
     [...new Set(agentIds)].map(async (id): Promise<[string, boolean]> => {
-      const def = findAgentDefinition(id);
+      const def = findAgentDefinition(id, extraAgents);
       if (!def) return [id, false];
       return [id, (await findBinaryInPath(def.bin)) !== null];
     }),
