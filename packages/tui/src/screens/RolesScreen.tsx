@@ -26,7 +26,7 @@ import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import type { RoleConfig } from "@orch/core";
 import { parseDuration } from "@orch/core";
-import { CATALOG_IDS, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
+import { catalogIds, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
 import {
   addRoleAgent,
   findRole,
@@ -179,7 +179,7 @@ export function RolesScreen({ state, installed, onChange, onEditingChange, notif
       onChange(moveRoleAgent(state, role.name, agentIndex, "up"));
       setAgentIndex((i) => Math.max(0, i - 1));
     } else if (key.name === "a") {
-      const next = CATALOG_IDS.find((id) => !role.agents.includes(id));
+      const next = catalogIds(state.draft.agents).find((id) => !role.agents.includes(id));
       if (next) onChange(addRoleAgent(state, role.name, next));
       else notify("Tous les agents du catalogue sont déjà dans la liste.", true);
     } else if (key.name === "r" || key.name === "delete") {

@@ -28,9 +28,18 @@ export interface AgentsScreenProps {
   onToggleDenied: (agentId: string) => void;
 }
 
-const CATALOG = listAgentDefinitions();
-
 export function AgentsScreen({ state, installed, onToggleDenied }: AgentsScreenProps) {
+  // Catalogue natif étendu des agents de configuration (`state.draft.agents`,
+  // `[[agent]]` du TOML) — même correction que `shared.ts` (`catalogIds`,
+  // voir C1 de la revue finale) : cette liste vivait jusqu'ici en constante
+  // de module, figée à `listAgentDefinitions()` sans argument au premier
+  // chargement, et ne pouvait donc jamais afficher un agent de configuration.
+  // Un agent nouvellement configuré sans détection encore lancée pour lui
+  // (`installed` n'en a pas d'entrée) affiche honnêtement "…" plutôt qu'un
+  // faux "absent" — limite résiduelle documentée dans le rapport de cette
+  // vague plutôt que résolue ici (`App` ne détecte l'installation qu'une
+  // seule fois, sans dépendre du chargement de la configuration).
+  const CATALOG = listAgentDefinitions(state.draft.agents);
   const [selected, setSelected] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
 

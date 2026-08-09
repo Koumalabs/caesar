@@ -18,7 +18,7 @@ import { useState } from "react";
 import { useKeyboard } from "@opentui/react";
 import type { PolicyConfig } from "@orch/core";
 import { parseDuration } from "@orch/core";
-import { CATALOG_IDS, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
+import { catalogIds, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
 import { setPolicyListEntry, updatePolicy, type ConfigState, type PolicyListField } from "../state/config-state";
 
 export interface PolicyScreenProps {
@@ -101,7 +101,7 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
     else if (key.name === "up") setEntryIndex((i) => Math.max(0, i - 1));
     else if (key.name === "down") setEntryIndex((i) => Math.min(Math.max(0, entries.length - 1), i + 1));
     else if (key.name === "a") {
-      const next = CATALOG_IDS.find((id) => !entries.includes(id));
+      const next = catalogIds(state.draft.agents).find((id) => !entries.includes(id));
       if (next) onChange(setPolicyListEntry(state, listField, next, true));
       else notify("Tous les agents du catalogue sont déjà dans cette liste.", true);
     } else if (key.name === "r" || key.name === "delete") {
