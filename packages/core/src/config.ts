@@ -53,6 +53,25 @@ export interface OrchConfig {
   agents: GenericAgentSpec[];
 }
 
+/**
+ * Une contribution à fusionner dans un `OrchConfig` de base — ce que `mergeConfig`
+ * accepte comme `override`, et ce qu'un seul fichier de configuration (global ou
+ * projet) apporte une fois parsé.
+ *
+ * `policy` est volontairement `Partial<PolicyConfig>`, pas `PolicyConfig` :
+ * `Partial<OrchConfig>` ne l'aurait rendu superficiellement optionnel qu'au
+ * niveau de `policy` lui-même, en exigeant qu'il soit complet dès qu'il est
+ * présent — alors que la fusion voulue (et testée) est champ par champ. `roles`
+ * et `agents` restent des listes d'entrées complètes : ces deux-là se
+ * fusionnent par clé, avec remplacement entier de l'entrée (voir `mergeConfig`),
+ * pas champ par champ.
+ */
+export interface ConfigOverride {
+  policy?: Partial<PolicyConfig>;
+  roles?: RoleConfig[];
+  agents?: GenericAgentSpec[];
+}
+
 export interface LoadedConfig {
   config: OrchConfig;
   sources: { global?: string; project?: string };
@@ -335,7 +354,8 @@ export function projectConfigPath(root: string): string {
   return join(root, ".orch", "config.toml");
 }
 
-function isEnoent(error: unknown): boolean {
+/** Vrai si `error` est un `ENOENT` (fichier ou répertoire absent) — partagée avec `roles.ts`, qui a le même besoin pour `system_prompt_file`. */
+export function isEnoent(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
@@ -349,8 +369,8 @@ async function readConfigFile(path: string): Promise<string | null> {
   }
 }
 
-/** Parse et valide le contenu TOML d'un fichier de configuration en une contribution partielle à fusionner. */
-function parseConfigFile(toml: string, filePath: string): Partial<OrchConfig> {
+/** Parse et valide le contenu TOML d'un fichier de configuration en une contribution à fusionner. */
+function parseConfigFile(toml: string, filePath: string): ConfigOverride {
   let raw: unknown;
   try {
     raw = parseToml(toml);
@@ -366,20 +386,17 @@ function parseConfigFile(toml: string, filePath: string): Partial<OrchConfig> {
     throw new Error(formatZodError(result.error, filePath));
   }
 
-  const partial: Partial<OrchConfig> = {
+  const override: ConfigOverride = {
     roles: result.data.role.map(toRoleConfig),
     agents: result.data.agent.map(toAgentSpec),
   };
   if (result.data.policy) {
-    // `toPolicyOverride` ne renvoie que les champs présents dans ce fichier :
-    // le cast ci-dessous est délibérément optimiste (voir sa documentation).
-    // `mergeConfig`, seul consommateur de cette valeur partielle, ne lit que
-    // les champs effectivement présents et retombe sur `base.policy` pour le
-    // reste — la « policy » de ce `Partial<OrchConfig>` n'est donc jamais
-    // traitée comme réellement complète.
-    partial.policy = toPolicyOverride(result.data.policy) as PolicyConfig;
+    // `toPolicyOverride` renvoie déjà un `Partial<PolicyConfig>` ne portant
+    // que les champs présents dans ce fichier — exactement la forme que
+    // `ConfigOverride.policy` attend, sans conversion ni cast.
+    override.policy = toPolicyOverride(result.data.policy);
   }
-  return partial;
+  return override;
 }
 
 /**
@@ -428,7 +445,7 @@ function mergeByKey<T>(base: readonly T[], override: readonly T[] | undefined, k
  * clé (`name`, `id`) : une entrée d'`override` remplace entièrement celle de
  * `base` de même clé, les entrées propres à chaque niveau sont conservées.
  */
-export function mergeConfig(base: OrchConfig, override: Partial<OrchConfig>): OrchConfig {
+export function mergeConfig(base: OrchConfig, override: ConfigOverride): OrchConfig {
   const policy: PolicyConfig = override.policy ? { ...base.policy, ...override.policy } : base.policy;
   const roles = mergeByKey(base.roles, override.roles, (role) => role.name);
   const agents = mergeByKey(base.agents, override.agents, (agent) => agent.id);

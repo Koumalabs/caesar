@@ -130,9 +130,10 @@ describe("mergeConfig", () => {
   it("policy se fusionne champ par champ", () => {
     const base: OrchConfig = { policy: policyOf({ max_parallel: 4, allow_recursion: false }), roles: [], agents: [] };
     // Un override qui ne précise qu'un sous-ensemble des champs réellement présents dans un
-    // fichier TOML : c'est exactement la forme que produit `parseConfigFile` en interne.
-    const override = { policy: { max_parallel: 8 } as PolicyConfig };
-    const merged = mergeConfig(base, override);
+    // fichier TOML : c'est exactement la forme que produit `parseConfigFile` en interne, et ce
+    // que le type de `override` (ConfigOverride, policy en Partial<PolicyConfig>) accepte
+    // directement, sans cast.
+    const merged = mergeConfig(base, { policy: { max_parallel: 8 } });
     expect(merged.policy.max_parallel).toBe(8);
     expect(merged.policy.allow_recursion).toBe(false);
   });

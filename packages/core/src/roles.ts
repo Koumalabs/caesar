@@ -6,14 +6,11 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { OrchConfig, PolicyConfig, RoleConfig } from "./config.js";
+import { isEnoent } from "./config.js";
 import { isAgentAllowed, isRecursionAllowed } from "./policy.js";
 
 export interface ResolvedRole extends RoleConfig {
   systemPrompt: string;
-}
-
-function isEnoent(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
 /**
