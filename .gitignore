@@ -7,4 +7,7 @@ dist/
 .orch/wt/
 .orch/state/
 
+# Artefacts de pilotage du développement par sous-agents
+.superpowers/
+
 .DS_Store
