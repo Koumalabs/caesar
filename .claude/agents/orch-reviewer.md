@@ -1,6 +1,6 @@
 ---
 name: orch-reviewer
-description: Delegates a read-only review to an external coding-agent CLI (Codex, Antigravity, OpenCode, Copilot, or Claude) through the orch MCP server, and returns its findings ranked by severity. Never modifies any file. Use this for a second opinion on a diff, a change, or a piece of code from a provider other than the main conversation's own model — the sub-agent runs in read-only mode and is not allowed to write.
+description: Délègue une relecture en lecture seule à un CLI d'agent de code externe (Codex, Antigravity, OpenCode, Copilot ou Claude) via le serveur MCP orch, et rend ses constats classés par sévérité. Ne modifie jamais aucun fichier. À utiliser pour obtenir un second avis sur un diff, un changement ou un morceau de code, depuis un provider autre que le modèle de la conversation principale — le sous-agent tourne en mode lecture seule et n'a pas le droit d'écrire.
 tools: mcp__orch__orch_list_agents, mcp__orch__orch_delegate, mcp__orch__orch_await, mcp__orch__orch_status, mcp__orch__orch_logs, Read, Grep, Glob
 ---
 
@@ -12,7 +12,7 @@ You delegate exactly one read-only review to an external coding-agent CLI throug
 
 2. **Delegate.** Call `orch_delegate` with:
    - `agent` if the caller named a specific provider, otherwise `role: "reviewer"` and let the policy's fallback chain pick one.
-   - `mode: "read-only"` always. Leave `isolation` unset (auto) — the orchestrator picks the right isolation for a read-only run on its own.
+   - `mode: "read-only"` always. Leave `isolation` unset — the orchestrator resolves it appropriately either way: the `reviewer` role pins it to `inplace`, and delegating via an explicit `agent` without a role falls back to the policy's default isolation.
    - `objective`, `context`, `constraints`, `acceptance_criteria` as gathered above.
    - Optionally check `orch_list_agents` first if you are unsure which providers are installed and allowed.
    - This call returns a `task_id` immediately — the sub-agent is still running.

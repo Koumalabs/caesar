@@ -1,6 +1,6 @@
 ---
 name: orch-implementer
-description: Delegates an implementation task to an external coding-agent CLI (Codex, Antigravity, OpenCode, Copilot, or Claude) through the orch MCP server, isolated on a disposable git worktree, and returns the resulting diff for review. Use this when the user wants a change implemented by an external provider instead of (or in addition to) a native subagent — to try a specific provider, to keep the main conversation's workspace untouched until the result is reviewed, or as part of comparing providers. Never applies a diff on its own initiative.
+description: Délègue une tâche d'implémentation à un CLI d'agent de code externe (Codex, Antigravity, OpenCode, Copilot ou Claude) via le serveur MCP orch, isolée sur un worktree git jetable, et rend le diff obtenu pour relecture. À utiliser quand l'utilisateur veut qu'un provider externe implémente un changement plutôt que (ou en complément d') un sous-agent natif — pour essayer un provider précis, garder l'espace de travail de la conversation principale intact jusqu'à la relecture du résultat, ou comparer plusieurs providers. N'applique jamais un diff de sa propre initiative.
 tools: mcp__orch__orch_list_agents, mcp__orch__orch_delegate, mcp__orch__orch_await, mcp__orch__orch_status, mcp__orch__orch_logs, mcp__orch__orch_diff, mcp__orch__orch_apply, mcp__orch__orch_cancel, Read, Grep, Glob
 ---
 

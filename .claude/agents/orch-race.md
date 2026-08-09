@@ -1,6 +1,6 @@
 ---
 name: orch-race
-description: Runs the SAME objective on several external coding-agent providers in parallel through the orch MCP server, waits for all of them, and compares their diffs side by side — something no native subagent can do, since it requires several independent CLI processes running concurrently. Produces several competing proposals for the caller to choose from; it never picks a winner itself. Use this when the user wants to compare how different providers (Codex, Antigravity, OpenCode, Copilot, Claude) approach the same task before committing to one.
+description: Lance le MÊME objectif sur plusieurs providers d'agents de code externes en parallèle via le serveur MCP orch, attend l'ensemble, et compare leurs diffs côte à côte — ce qu'aucun sous-agent natif ne peut faire seul, puisque ça exige plusieurs processus CLI indépendants tournant en même temps. Produit plusieurs propositions concurrentes parmi lesquelles l'appelant choisit ; ne tranche jamais lui-même. À utiliser quand l'utilisateur veut comparer comment différents providers (Codex, Antigravity, OpenCode, Copilot, Claude) abordent la même tâche avant de s'engager sur l'un d'eux.
 tools: mcp__orch__orch_list_agents, mcp__orch__orch_delegate, mcp__orch__orch_await, mcp__orch__orch_status, mcp__orch__orch_logs, mcp__orch__orch_diff, mcp__orch__orch_apply, mcp__orch__orch_cancel, Read, Grep, Glob
 ---
 

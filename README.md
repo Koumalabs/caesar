@@ -22,24 +22,22 @@ Un mot sur `claude` : il figure au catalogue (déléguer d'une instance de Claud
 
 ## Installation et premiers pas
 
-Monorepo pnpm, Node 24. Pas encore publié sur npm : on l'utilise depuis une copie du dépôt.
+Monorepo pnpm, Node 24. Pas encore publié sur npm : on l'utilise depuis une copie du dépôt, en ciblant avec `--root` le projet où vous voulez déléguer des tâches.
 
 ```bash
 pnpm install
 pnpm exec tsc -b        # build de tous les packages
+
+pnpm run orch init   --root <chemin-vers-votre-projet>   # crée <projet>/.orch/config.toml + les prompts système des rôles par défaut
+pnpm run orch doctor --root <chemin-vers-votre-projet>   # quels agents sont installés, avec quelles capacités, autorisés ou non
 ```
 
-Dans le projet où vous voulez déléguer des tâches :
-
-```bash
-pnpm run orch init      # crée <projet>/.orch/config.toml + les prompts système des rôles par défaut
-pnpm run orch doctor    # quels agents sont installés, avec quelles capacités, autorisés ou non
-```
+`pnpm run orch <commande>` est le script `orch` du `package.json` **racine de ce dépôt** (`node packages/cli/dist/bin.js`) : il s'exécute depuis ici, jamais depuis le projet cible lui-même — d'où `--root <chemin-vers-votre-projet>` pour lui dire où agir. Tapé depuis un répertoire qui n'est pas une copie de ce dépôt, `pnpm run orch …` échoue immédiatement (`ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND`) : ce script n'existe que dans le `package.json` racine de ce monorepo, nulle part ailleurs.
 
 `orch doctor` inspecte le catalogue et croise avec la politique effective. Exemple réel, sur une machine où les cinq agents sont installés :
 
 ```
-$ pnpm run orch doctor
+$ pnpm run orch doctor --root <chemin-vers-votre-projet>
 agent        binaire                    version              capacités                                          politique
 -----------  -------------------------  -------------------  --------------------------------------------------  -----------------------------
 codex        /Users/…/bin/codex         codex-cli 0.146.0    lecture-seule native, schéma de sortie, …            autorisé
@@ -49,9 +47,9 @@ copilot      /Users/…/bin/copilot       GitHub Copilot 1.0.78 lecture-seule na
 claude       /Users/…/bin/claude        2.1.226 (Claude Code) lecture-seule native, reprise, …                    refusé (récursion désactivée)
 ```
 
-`pnpm run orch <commande>` fonctionne depuis la racine de ce dépôt (c'est le script `orch` du `package.json` racine, qui lance `node packages/cli/dist/bin.js`) — c'est la commande utilisée pour tous les exemples réels de ce document. `packages/cli/package.json` déclare un binaire `orch` (`bin: { orch: "./dist/bin.js" }`) : une fois le paquet publié ou lié dans vos propres projets par les moyens habituels de pnpm, `orch <commande>` fonctionne directement sur le `PATH`. Le reste de ce document écrit `orch <commande>` pour rester lisible ; substituez `pnpm run orch <commande>` si vous travaillez depuis une copie de ce dépôt sans l'avoir lié.
+`packages/cli/package.json` déclare aussi un binaire `orch` (`bin: { orch: "./dist/bin.js" }`) : une fois publié, ou lié dans vos propres projets par les moyens habituels de pnpm, `orch <commande>` fonctionne directement sur le `PATH`, lancé **depuis le projet cible** — plus besoin de `--root` ni de revenir dans ce dépôt, `resolveRoot` remonte alors automatiquement jusqu'au premier `.orch/` ou `.git/` trouvé depuis le répertoire courant. **C'est le cas que suppose le reste de ce document** (`orch <commande>`, tapé depuis le projet cible) ; substituez `pnpm run orch <commande> --root <chemin-vers-votre-projet>` si vous travaillez depuis une copie non liée de ce dépôt, comme ci-dessus.
 
-Toute commande accepte `--root <dir>` (racine explicite du projet ; par défaut, recherche automatique de `.orch/` ou `.git/` en remontant depuis le répertoire courant) et `--json` (sortie machine, sans couleur ni mise en forme).
+Toute commande accepte `--root <dir>` (racine explicite du projet ; par défaut, recherche automatique de `.orch/` ou `.git/` en remontant depuis le répertoire courant). La plupart acceptent aussi `--json` (sortie machine, sans couleur ni mise en forme) — deux exceptions : `orch mcp serve` ne le connaît pas du tout (`unknown option`, cette commande ne doit rien écrire d'autre que le protocole MCP sur stdout) ; `orch config` le refuse explicitement (TUI interactif, il n'y a pas de sortie machine à produire).
 
 ## Usage en ligne de commande
 
