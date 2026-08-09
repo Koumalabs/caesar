@@ -52,6 +52,28 @@ describe("orch run", () => {
     );
   }, 20_000);
 
+  it("--channel active le canal retour : le palier de rapport devient \"channel\" (tâche 9)", async () => {
+    await withFakeHome(() =>
+      withFakeAgentAsBin("codex", async () => {
+        await initGitRepo(root);
+        const code = await runRun(
+          root,
+          "écrire un fichier, avec canal",
+          { agent: "codex", mode: "write", isolation: "inplace", json: true, channel: true },
+          io,
+        );
+        expect(code).toBe(EXIT_OK);
+        const parsed = JSON.parse(io.stdoutText());
+        expect(parsed.status).toBe("succeeded");
+        // "channel" plutôt que "file" (comparer à la première tâche de ce
+        // fichier, identique sans --channel) : preuve que le flag a bien
+        // atteint `runTask` via `RunTaskInput.channel`, et que "codex"
+        // (mcpInjection: "flag") le supporte.
+        expect(parsed.report_source).toBe("channel");
+      }),
+    );
+  }, 20_000);
+
   it("--json ne produit rien d'autre qu'un JSON valide sur stdout, sans ANSI", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {

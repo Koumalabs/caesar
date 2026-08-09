@@ -69,6 +69,47 @@ vi.mock("../registry/index.js", async (importOriginal) => {
   };
 });
 
+/**
+ * `vi.hoisted` : un état mutable sûr à référencer depuis l'intérieur d'un
+ * `vi.mock` hissé au-dessus de tout le reste du fichier (voir la doc
+ * vitest) — un simple `let` déclaré ici serait lu avant son initialisation
+ * (TDZ), puisque le mock qui le capture peut s'exécuter dès la résolution
+ * des imports hissés, avant que ce module n'ait fini de s'évaluer.
+ */
+const channelResolutionFailure = vi.hoisted(() => ({ active: false }));
+
+/**
+ * Simule l'échec de résolution du binaire du canal retour (`resolveChannelEntry`,
+ * `runner.ts`) sans toucher au vrai système de modules ni à l'installation
+ * réelle de `@orch/mcp-channel` : seule `require.resolve("@orch/mcp-channel")`
+ * est interceptée, et seulement quand `channelResolutionFailure.active` est
+ * vrai (activé le temps d'un seul test ci-dessous) — tout le reste de ce
+ * fichier continue de résoudre normalement, y compris les tests "canal
+ * retour" qui précèdent celui-ci et qui ont besoin d'une résolution réussie.
+ */
+vi.mock("node:module", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:module")>();
+  return {
+    ...actual,
+    createRequire: (...args: Parameters<typeof actual.createRequire>) => {
+      const real = actual.createRequire(...args);
+      return new Proxy(real, {
+        get(target, prop, receiver) {
+          if (prop === "resolve") {
+            return (id: string, options?: { paths?: string[] | null }) => {
+              if (id === "@orch/mcp-channel" && channelResolutionFailure.active) {
+                throw new Error("résolution simulée en échec, pour le test de dégradation (tâche 9)");
+              }
+              return target.resolve(id, options);
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+    },
+  };
+});
+
 const { runTask } = await import("./runner.js");
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -405,6 +446,30 @@ describe("runTask", () => {
       expect(outcome.record.report_via).not.toBe("channel");
       const task = await readTask(taskPaths(outcome.record.task_dir));
       expect(task.channel).toBeFalsy();
+    });
+
+    it("dégradation : une résolution du binaire du canal en échec n'empêche pas la tâche d'aboutir, par un palier inférieur", async () => {
+      // Cas distinct des deux précédents : ici, l'agent supporte bien
+      // mcpInjection et le canal est bien demandé — c'est sa construction
+      // elle-même (`buildChannel`/`resolveChannelEntry`, `runner.ts`) qui
+      // échoue (installation cassée, simulée via le mock `node:module`
+      // ci-dessus), exerçant réellement la branche `catch` plutôt qu'un cas
+      // voisin où l'agent ignore un canal par ailleurs construit avec succès.
+      channelResolutionFailure.active = true;
+      try {
+        const outcome = await runTask(
+          { store, root },
+          { agentId: "fake-agent-channel", objective: "résolution du binaire cassée", mode: "write", workspace: root, channel: true },
+        );
+
+        expect(outcome.record.status).toBe("succeeded");
+        expect(outcome.record.report_via).not.toBe("channel");
+        expect(outcome.source).not.toBe("channel");
+        const task = await readTask(taskPaths(outcome.record.task_dir));
+        expect(task.channel).toBeFalsy();
+      } finally {
+        channelResolutionFailure.active = false;
+      }
     });
   });
 });

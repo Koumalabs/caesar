@@ -40,7 +40,8 @@ export const orchDelegateDescription =
   "the returned task_id to get the actual result. To run several providers on the same objective in parallel, " +
   "call orch_delegate repeatedly back to back, then a single orch_await with every task_id — that is the whole " +
   "point of this call not blocking. A policy refusal or an unknown role/agent is reported as an error result " +
-  "instead of a task_id.";
+  "instead of a task_id. Pass channel: true to let the sub-agent ask you questions mid-run instead of guessing " +
+  "(see the channel parameter for how to answer them).";
 
 export const orchDelegateInputShape = {
   objective: z
@@ -88,6 +89,16 @@ export const orchDelegateInputShape = {
     .string()
     .optional()
     .describe("Maximum time budget before the task is aborted, e.g. \"10m\", \"90s\", \"1h\". Defaults to the role's or policy's timeout."),
+  channel: z
+    .boolean()
+    .optional()
+    .describe(
+      "Enable the MCP back-channel for this task, if the chosen agent supports loading an MCP server. With it, " +
+        "the sub-agent can call ask_orchestrator to ask you a question mid-run instead of guessing or giving up " +
+        "in status \"blocked\" — discover pending questions via orch_status/orch_await (pending_questions) and " +
+        "answer them with orch_answer while the task keeps running. Off by default: it adds a process and a " +
+        "configuration injection to every delegation, so it is opt-in rather than automatic.",
+    ),
 };
 
 const OrchDelegateInputSchema = z.object(orchDelegateInputShape);
@@ -126,6 +137,7 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
     timeoutMs: resolved.timeoutMs,
     taskId,
     signal: controller.signal,
+    ...(input.channel ? { channel: true } : {}),
   };
   launchTask(session, runInput, controller);
 

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadConfig, saveProjectConfig } from "@orch/core";
+import { readTask, taskPaths } from "@orch/protocol";
 import { withFakeAgentAsBin, withFakeHome } from "../../test/support.js";
 import { createSession } from "../session.js";
 import { orchDelegate } from "./delegate.js";
@@ -57,6 +58,31 @@ describe("orch_delegate", () => {
         const entry = session.tasks.get(data.task_id);
         entry?.controller.abort();
         await entry?.promise;
+      }),
+    );
+  }, 20_000);
+
+  it("channel: true active le canal retour pour la tâche déléguée (tâche 9) — sans lui, task.channel resterait vide", async () => {
+    await withFakeHome(() =>
+      withFakeAgentAsBin("codex", async () => {
+        const session = createSession(root);
+        const result = await orchDelegate(session, {
+          objective: "tâche avec canal",
+          agent: "codex",
+          mode: "write",
+          isolation: "inplace",
+          channel: true,
+        });
+        expect(result.isError).toBeFalsy();
+        const taskId = (result.structuredContent as { task_id: string }).task_id;
+
+        const entry = session.tasks.get(taskId);
+        const outcome = await entry?.promise;
+        expect(outcome?.record.report_via).toBe("channel");
+
+        const record = await session.store.get(taskId);
+        const task = await readTask(taskPaths(record!.task_dir));
+        expect(task.channel).toEqual(expect.objectContaining({ transport: "mcp-stdio", server_name: "orch" }));
       }),
     );
   }, 20_000);

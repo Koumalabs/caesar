@@ -237,10 +237,23 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
     .option("--timeout <durée>", "Délai maximal, p. ex. \"10m\".")
     .option("--model <model>", "Modèle à demander à l'agent, s'il le supporte.")
     .option("--context <texte>", "Contexte additionnel. Préfixer par @ pour lire un fichier (@chemin).")
+    .option(
+      "--channel",
+      "Active le canal retour MCP : le sous-agent peut interroger l'agent principal en cours de route (ask_orchestrator) au lieu de deviner ou d'abandonner. Ajoute un processus par délégation.",
+    )
     .action(
       async (
         objective: string,
-        options: GlobalOptions & { role?: string; agent?: string; mode?: string; isolation?: string; timeout?: string; model?: string; context?: string },
+        options: GlobalOptions & {
+          role?: string;
+          agent?: string;
+          mode?: string;
+          isolation?: string;
+          timeout?: string;
+          model?: string;
+          context?: string;
+          channel?: boolean;
+        },
         command: Command,
       ) => {
         const opts = command.optsWithGlobals<typeof options>();
@@ -257,6 +270,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
               model: opts.model,
               context: opts.context,
               json: opts.json,
+              channel: opts.channel,
             },
             io,
           ),

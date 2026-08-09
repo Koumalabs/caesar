@@ -41,6 +41,7 @@ export interface RunOptions {
   model?: string;
   context?: string;
   json?: boolean;
+  channel?: boolean;
 }
 
 const TASK_MODES: readonly TaskMode[] = ["read-only", "write"];
@@ -165,6 +166,7 @@ export async function runRun(root: string, objective: string, options: RunOption
         taskId,
         signal: controller.signal,
         ...(onEvent ? { onEvent } : {}),
+        ...(options.channel ? { channel: true } : {}),
       },
     );
   } catch (error) {
