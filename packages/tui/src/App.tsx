@@ -54,9 +54,19 @@ export function App({ root, renderer }: AppProps) {
     // Une seule détection, au montage — jamais relancée à chaque frappe
     // (voir le brief). `detectAgentInstallation` (`@orch/core`) est la même
     // détection qu'`orch doctor`/`orch agents list` font, pas une réécriture.
-    void Promise.all(listAgentDefinitions().map(async (def) => [def.id, await detectAgentInstallation(def)] as const)).then(
-      (entries) => setInstalledStatus(new Map(entries)),
-    );
+    void Promise.all(listAgentDefinitions().map(async (def) => [def.id, await detectAgentInstallation(def)] as const))
+      .then((entries) => setInstalledStatus(new Map(entries)))
+      .catch(() => {
+        // Dormant aujourd'hui : `detectAgentInstallation` avale déjà ses
+        // propres erreurs (sonde chaque binaire sans jamais lever). Ce filet
+        // reste nécessaire pour que ce comportement ne devienne pas un
+        // détail d'implémentation dont dépendrait silencieusement l'écran —
+        // sans lui, tous les écrans resteraient bloqués sur « détection en
+        // cours » si un appel se mettait un jour à lever. Un statut vide
+        // dégrade proprement : chaque agent apparaît "absent", sans bloquer
+        // le reste du TUI.
+        setInstalledStatus(new Map());
+      });
   }, []);
 
   function notify(text: string, isError = false): void {

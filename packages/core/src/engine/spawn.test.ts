@@ -77,14 +77,45 @@ function planFor(task: Task, paths: TaskPaths): SpawnPlan {
   };
 }
 
-/** Confirme qu'aucun processus fake-agent ne subsiste après la résolution de runAgentProcess. */
-async function expectNoOrphan(): Promise<void> {
+/**
+ * Interroge `pgrep` pour savoir si un processus fake-agent subsiste.
+ * `pgrep` sort en erreur (code 1) quand rien ne correspond : c'est le
+ * résultat attendu, traduit ici en chaîne vide. Toute autre erreur remonte
+ * telle quelle plutôt que d'être avalée par l'appelant.
+ */
+async function pgrepFakeAgent(): Promise<string> {
   try {
     const { stdout } = await execFileAsync("pgrep", ["-f", FAKE_AGENT]);
-    expect(stdout.trim()).toBe("");
+    return stdout.trim();
   } catch (error) {
-    // pgrep sort en erreur (code 1) quand rien ne correspond : c'est le résultat attendu.
-    expect((error as { code?: number }).code).toBe(1);
+    if ((error as { code?: number }).code === 1) return "";
+    throw error;
+  }
+}
+
+/**
+ * Confirme qu'aucun processus fake-agent ne subsiste après la résolution de
+ * `runAgentProcess`.
+ *
+ * Diagnostiqué comme instable sous charge (tâche 10, A1) : `close` sur le
+ * fils indique bien que Node l'a réputé terminé, mais sous forte contention
+ * (plusieurs dizaines de processus réels lancés en parallèle par la suite),
+ * `pgrep`, exécuté juste après, peut encore un instant voir l'entrée du
+ * processus dans la table du système avant qu'elle ne soit purgée — un délai
+ * de propagation côté OS, pas une fuite du moteur. Une poignée de nouvelles
+ * tentatives rapprochées absorbe ce délai sans jamais masquer une vraie
+ * fuite, qui survivrait, elle, à toutes les tentatives.
+ */
+async function expectNoOrphan(): Promise<void> {
+  const deadline = Date.now() + 1000;
+  for (;;) {
+    const remaining = await pgrepFakeAgent();
+    if (remaining === "") return;
+    if (Date.now() >= deadline) {
+      expect(remaining).toBe("");
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
 }
 
@@ -225,6 +256,42 @@ describe("runAgentProcess", () => {
 
     expect(spawnedPid).toBeGreaterThan(0);
     expect(result.exitCode).toBe(0);
+  });
+
+  it("un onSpawn qui lève (ou rejette) n'interrompt pas la tâche : elle va jusqu'au bout, sans orphelin", async () => {
+    const { task, paths } = await setupTask(dir, {});
+    const result = await runAgentProcess({
+      agent: stubAgent,
+      plan: planFor(task, paths),
+      paths,
+      taskId: task.id,
+      timeoutMs: 10_000,
+      onSpawn: () => {
+        // Simule un callback d'enregistrement du pid cassé — même profil de
+        // risque que l'onEvent du test suivant, appliqué à onSpawn (tâche 10, A2).
+        throw new Error("callback d'enregistrement du pid cassé");
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    await expectNoOrphan();
+  });
+
+  it("un onSpawn dont la promesse rejette n'interrompt pas la tâche : elle va jusqu'au bout, sans orphelin", async () => {
+    const { task, paths } = await setupTask(dir, {});
+    const result = await runAgentProcess({
+      agent: stubAgent,
+      plan: planFor(task, paths),
+      paths,
+      taskId: task.id,
+      timeoutMs: 10_000,
+      onSpawn: async () => {
+        throw new Error("promesse d'enregistrement du pid rejetée");
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    await expectNoOrphan();
   });
 
   it("un onEvent qui lève n'interrompt pas la tâche : elle va jusqu'au bout, sans orphelin", async () => {

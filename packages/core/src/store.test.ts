@@ -51,6 +51,25 @@ describe("fileTaskStore", () => {
     expect((await store.get("t_dup"))!.objective).toBe("premier");
   });
 
+  it("deux create concurrents sur le même identifiant : un seul gagne, sans écrasement", async () => {
+    const id = "t_race";
+    const results = await Promise.allSettled([
+      store.create(sampleRecord({ id, objective: "premier" })),
+      store.create(sampleRecord({ id, objective: "second" })),
+    ]);
+
+    // Exactement l'un des deux réussit, l'autre échoue en nommant l'identifiant.
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ message: expect.stringMatching(/t_race/) });
+
+    // L'enregistrement persisté est celui du gagnant, jamais un mélange des deux.
+    const persisted = await store.get(id);
+    expect(["premier", "second"]).toContain(persisted!.objective);
+  });
+
   it("écrit sous <root>/.orch/state/tasks/<id>.json", async () => {
     const record = sampleRecord();
     await store.create(record);

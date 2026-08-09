@@ -1,9 +1,10 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { makeEvent, taskPaths } from "@orch/protocol";
 import type { TaskRecord } from "@orch/core";
 import { fileTaskStore, runTask } from "@orch/core";
 import { makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
@@ -170,6 +171,52 @@ describe("orch logs / cancel / diff / apply — sur un store peuplé par de vrai
       throw new Error("aucune tâche en cours trouvée à temps");
     }
   }, 20_000);
+
+  it("logs --follow : une ligne malformée ou hors schéma est signalée sur stderr, sans interrompre le suivi ni polluer stdout", async () => {
+    const id = "t_bad_line";
+    const taskDir = join(root, ".orch", "tasks", id);
+    const paths = taskPaths(taskDir);
+    await mkdir(dirname(paths.eventsPath), { recursive: true });
+
+    const started = makeEvent(id, 0, "started", { agent: "codex", command: "codex run" });
+    const finished = makeEvent(id, 1, "finished", { status: "success", summary: "", exit_code: 0 });
+    const lines = [
+      JSON.stringify(started),
+      "{ceci n'est pas du JSON",
+      JSON.stringify({ type: "inconnu" }),
+      JSON.stringify(finished),
+    ];
+    await writeFile(paths.eventsPath, lines.join("\n") + "\n", "utf8");
+
+    const store = fileTaskStore(root);
+    await store.create({
+      id,
+      agent: "codex",
+      objective: "événements avec une ligne malformée",
+      status: "succeeded",
+      created_at: new Date().toISOString(),
+      task_dir: taskDir,
+      workspace: root,
+      isolation: "inplace",
+      mode: "write",
+      report_via: "file",
+      depth: 0,
+    });
+
+    const code = await runLogs(root, id, { follow: true }, io);
+    expect(code).toBe(EXIT_OK);
+
+    // Les deux événements valides atteignent stdout, dans l'ordre.
+    expect(io.stdoutText()).toContain("démarré");
+    expect(io.stdoutText()).toContain("terminé");
+
+    // Les deux lignes invalides sont signalées sur stderr, chacune pour sa raison.
+    expect(io.stderrText()).toMatch(/JSON invalide/);
+    expect(io.stderrText()).toMatch(/schéma/);
+
+    // stdout reste du NDJSON/texte exploitable : jamais de diagnostic dessus.
+    expect(io.stdoutText()).not.toMatch(/ignorée/);
+  });
 
   it("cancel : tâche inconnue traitée proprement", async () => {
     const code = await runCancel(root, "t_fantome", {}, io);

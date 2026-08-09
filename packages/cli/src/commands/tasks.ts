@@ -7,7 +7,7 @@ import { EventSchema, readEvents, taskPaths } from "@orch/protocol";
 import type { TaskRecord, TaskStatus, TaskStore } from "@orch/core";
 import { applyWorktree, diffWorktree, fileTaskStore, loadWorktreeHandle } from "@orch/core";
 import type { Io } from "../output.js";
-import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
+import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, printWarning, renderTable, writeLine } from "../output.js";
 
 const KNOWN_STATUSES: readonly TaskStatus[] = ["pending", "running", "succeeded", "failed", "cancelled", "timed_out"];
 const ACTIVE_STATUSES: readonly TaskStatus[] = ["pending", "running"];
@@ -131,15 +131,28 @@ function formatEvent(event: OrchEvent): string {
   }
 }
 
+/**
+ * Traite une ligne de `events.jsonl` pendant le suivi (`--follow`). Une ligne
+ * JSON invalide ou ne validant pas `EventSchema` est abandonnée — le suivi ne
+ * doit pas s'interrompre pour un événement isolé — mais signalée sur
+ * `stderr` : un abandon muet masquerait un désalignement de schéma entre ce
+ * qu'écrit le moteur et ce que ce CLI sait lire. `stdout` reste réservé au
+ * NDJSON exploitable (`--json`) ou à l'affichage formaté : jamais de
+ * diagnostic dessus.
+ */
 function printFollowedLine(io: Io, rawLine: string, json: boolean | undefined): void {
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawLine);
   } catch {
+    printWarning(io, `Ligne ignorée (JSON invalide) : ${rawLine}`);
     return;
   }
   const result = EventSchema.safeParse(parsed);
-  if (!result.success) return;
+  if (!result.success) {
+    printWarning(io, `Ligne ignorée (ne respecte pas le schéma d'événement) : ${rawLine}`);
+    return;
+  }
   if (json) printJson(io, result.data);
   else writeLine(io.stdout, formatEvent(result.data));
 }

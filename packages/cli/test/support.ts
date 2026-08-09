@@ -10,11 +10,11 @@
  * tourne alors pour de vrai, seul le processus externe est un agent
  * factice.
  */
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Io } from "../src/output.js";
 
 export interface CapturedIo extends Io {
@@ -83,11 +83,18 @@ export async function withShimmedPath<T>(shimDir: string, fn: () => Promise<T>):
   }
 }
 
-/** Dépose un script exécutable nommé `bin` dans `dir`, à partir du contenu de `sourcePath`. */
+/**
+ * Écrit, sous `dir/bin`, un redirecteur d'une ligne vers `sourcePath` plutôt
+ * qu'une copie de son contenu : une copie casserait la résolution de module
+ * de tout import que le script ferait lui-même (le mode "ask" de l'agent
+ * factice, tâche 9, importe dynamiquement `@modelcontextprotocol/sdk` — une
+ * copie déposée dans ce répertoire de shim temporaire, sans rapport avec le
+ * monorepo, ne le résoudrait pas). Même correction que `packages/mcp-server/test/support.ts` (tâche 10, A4).
+ */
 async function shimFrom(dir: string, bin: string, sourcePath: string): Promise<void> {
-  const content = await readFile(sourcePath, "utf8");
   const target = join(dir, bin);
-  await writeFile(target, content, "utf8");
+  const redirect = `#!/usr/bin/env node\nimport(${JSON.stringify(pathToFileURL(sourcePath).href)});\n`;
+  await writeFile(target, redirect, "utf8");
   await chmod(target, 0o755);
 }
 

@@ -51,8 +51,12 @@ export interface TaskStore {
    * pris — jamais un écrasement silencieux : deux exécutions qui partageraient
    * le même identifiant (bug d'un appelant, `taskId` imposé et réutilisé par
    * erreur) écriraient sinon dans le même répertoire de tâche, avec un
-   * `raw.log` tronqué et un `events.jsonl` entrelacé. `update` reste la seule
-   * façon de modifier un enregistrement existant.
+   * `raw.log` tronqué et un `events.jsonl` entrelacé. L'exclusivité est
+   * garantie par le système de fichiers (écriture en `wx`, qui échoue si la
+   * cible existe déjà), pas seulement par une relecture préalable : deux
+   * `create` concurrents sur le même identifiant ne peuvent pas tous les deux
+   * réussir. `update` reste la seule façon de modifier un enregistrement
+   * existant.
    */
   create(record: TaskRecord): Promise<void>;
   update(id: string, patch: Partial<TaskRecord>): Promise<TaskRecord>;
@@ -91,11 +95,19 @@ export function fileTaskStore(root: string): TaskStore {
 
   return {
     async create(record) {
-      const existing = await readRecord(record.id);
-      if (existing) {
-        throw new Error(`Tâche déjà existante : "${record.id}" (un enregistrement porte déjà cet identifiant ; utilisez update pour le modifier).`);
+      await mkdir(dir, { recursive: true });
+      try {
+        // `wx` : échoue avec EEXIST si la cible existe déjà, garanti par le
+        // système de fichiers — contrairement à un "relire puis écrire",
+        // aucune fenêtre ne subsiste entre les deux pour un `create`
+        // concurrent sur le même identifiant.
+        await writeFile(fileFor(record.id), JSON.stringify(record, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+          throw new Error(`Tâche déjà existante : "${record.id}" (un enregistrement porte déjà cet identifiant ; utilisez update pour le modifier).`);
+        }
+        throw error;
       }
-      await writeRecord(record);
     },
 
     async update(id, patch) {

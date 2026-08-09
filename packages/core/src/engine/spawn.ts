@@ -88,7 +88,7 @@ export async function runAgentProcess(options: RunOptions): Promise<RunResult> {
     spawnError = error;
   });
 
-  if (child.pid !== undefined) await onSpawn?.(child.pid);
+  if (child.pid !== undefined) await safeOnSpawn(onSpawn, child.pid);
 
   await emit({ type: "started", agent: agent.id, command: [plan.command, ...plan.args].join(" ") });
 
@@ -199,6 +199,22 @@ function safeOnEvent(onEvent: RunOptions["onEvent"], event: OrchEvent): void {
   if (!onEvent) return;
   try {
     onEvent(event);
+  } catch {
+    // Volontairement ignoré : voir la documentation de la fonction.
+  }
+}
+
+/**
+ * Invoque `onSpawn` sans jamais laisser une exception (synchrone ou dans la
+ * promesse qu'il renvoie) remonter jusqu'à l'appelant — même profil de
+ * risque que `safeOnEvent` : un callback cassé à cet instant précis
+ * laisserait sinon le sous-processus déjà lancé orphelin, faute d'atteindre
+ * la suite de la fonction qui le pilote.
+ */
+async function safeOnSpawn(onSpawn: RunOptions["onSpawn"], pid: number): Promise<void> {
+  if (!onSpawn) return;
+  try {
+    await onSpawn(pid);
   } catch {
     // Volontairement ignoré : voir la documentation de la fonction.
   }
