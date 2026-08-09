@@ -3,42 +3,32 @@
  * `copilot`, `opencode`, `antigravity`), l'état d'enregistrement du serveur
  * MCP "orch" et une action pour l'installer.
  *
- * Réutilise `checkMcpStatus`/`runMcpInstall`/`MCP_CLIENTS` de `@orch/cli`
- * (`commands/mcp.ts`) — la même logique que `orch mcp install`, jamais
- * réécrite ici (voir le brief). `claude` et `codex` n'ont pas de lecture de
- * statut fiable et sans effet de bord (`claude mcp list` fait un
- * health-check réseau et n'a pas de `--json` ; voir `checkMcpStatus`) : leur
- * statut reste honnêtement "non vérifiable" plutôt que deviné.
+ * Réutilise `checkMcpStatus`/`buildPlan`/`applyPlan`/`MCP_CLIENTS` de
+ * `@orch/core` (`mcp-registration.ts`) — la même logique que `orch mcp
+ * install` (`packages/cli/src/commands/mcp.ts`), jamais réécrite ici (voir
+ * le brief). Appelés directement depuis `@orch/core`, pas via
+ * `packages/cli` : ce module n'a besoin ni de sa forme `Io` ni de ses codes
+ * de sortie, seulement du résultat — voir le rapport de correction de la
+ * tâche 8 (dépendre de `packages/cli` pour ces quatre éléments créait une
+ * dépendance de workspace cyclique avec le sens `cli → tui` qu'`orch config`
+ * a légitimement besoin).
  *
- * `Entrée` installe/mets à jour l'enregistrement du client sélectionné —
+ * `claude` et `codex` n'ont pas de lecture de statut fiable et sans effet de
+ * bord (`claude mcp list` fait un health-check réseau et n'a pas de
+ * `--json` ; voir `checkMcpStatus`) : leur statut reste honnêtement "non
+ * vérifiable" plutôt que deviné.
+ *
+ * `Entrée` installe/met à jour l'enregistrement du client sélectionné —
  * l'action explicite qui déclenche l'écriture, jamais un chargement d'écran.
  */
 import { useEffect, useState } from "react";
-import { Writable } from "node:stream";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { checkMcpStatus, MCP_CLIENTS, runMcpInstall, type McpClient, type McpStatus } from "@orch/cli";
+import { applyPlan, buildPlan, checkMcpStatus, MCP_CLIENTS, type McpClient, type McpStatus } from "@orch/core";
 
 export interface IntegrationsScreenProps {
   root: string;
   notify: (message: string, isError?: boolean) => void;
-}
-
-/** `Io` minimal qui ne fait qu'accumuler stderr en mémoire — `runMcpInstall` en a besoin, cet écran n'affiche que le résultat. */
-function makeCaptureIo(): { io: { stdout: Writable; stderr: Writable }; getErr: () => string } {
-  let err = "";
-  const stdout = new Writable({
-    write(_chunk, _encoding, callback) {
-      callback();
-    },
-  });
-  const stderr = new Writable({
-    write(chunk: Buffer, _encoding, callback) {
-      err += chunk.toString();
-      callback();
-    },
-  });
-  return { io: { stdout, stderr }, getErr: () => err };
 }
 
 export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
@@ -66,12 +56,13 @@ export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
     else if (key.name === "return") {
       const client = MCP_CLIENTS[selected]!;
       setInstalling(client);
-      const { io, getErr } = makeCaptureIo();
-      void runMcpInstall(root, client, {}, io)
-        .then(async (code) => {
-          if (code === 0) notify(`"${client}" : installation effectuée.`);
-          else notify(`"${client}" : échec de l'installation${getErr().trim() ? " — " + getErr().trim() : ""}.`, true);
+      void applyPlan(buildPlan(client, root))
+        .then(async () => {
+          notify(`"${client}" : installation effectuée.`);
           await refresh();
+        })
+        .catch((error: unknown) => {
+          notify(`"${client}" : échec de l'installation — ${error instanceof Error ? error.message : String(error)}.`, true);
         })
         .finally(() => setInstalling(null));
     }

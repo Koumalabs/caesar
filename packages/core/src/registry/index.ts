@@ -92,5 +92,30 @@ export async function detectAgentInstallation(def: AgentDefinition): Promise<Age
     : { id: def.id, bin: def.bin, installed: true, path, version };
 }
 
+/**
+ * Capacités notables d'un agent, en une poignée de libellés compacts pour
+ * un humain.
+ *
+ * Déplacée depuis `packages/cli/src/commands/agents.ts` (tâche 8, rapport de
+ * correction) : `packages/tui` en avait besoin pour son écran Agents, et
+ * c'est une fonction pure sur `AgentDefinition` — rien d'une façade. La
+ * ramener ici, à côté du catalogue qu'elle décrit, évite qu'une façade
+ * (TUI) dépende d'une autre (CLI) pour deux lignes de logique, même
+ * raisonnement que `resolveDelegation` (`delegation.ts`) à la tâche
+ * précédente. `packages/cli` (`commands/agents.ts`, `commands/doctor.ts`)
+ * l'importe désormais d'ici.
+ */
+export function describeAgentCapabilities(def: AgentDefinition): string[] {
+  const caps: string[] = [];
+  if (def.capabilities.nativeReadOnly) caps.push("lecture-seule native");
+  if (def.capabilities.outputSchema) caps.push("schéma de sortie");
+  if (def.capabilities.finalMessageFile) caps.push("message final fichier");
+  if (def.capabilities.resume) caps.push("reprise");
+  if (def.capabilities.addDir) caps.push("répertoires additionnels");
+  if (def.capabilities.model) caps.push("choix du modèle");
+  if (def.capabilities.mcpInjection !== "none") caps.push(`mcp:${def.capabilities.mcpInjection}`);
+  return caps;
+}
+
 export { createGenericAgent, type GenericAgentSpec } from "./generic.js";
 export * from "./types.js";

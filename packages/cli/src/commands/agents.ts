@@ -1,14 +1,21 @@
 /**
  * `orch agents list|enable|disable|test`.
+ *
+ * `describeAgentCapabilities`/`describeAgentPolicy` vivent dans `@orch/core`
+ * (`registry/index.ts`, `policy.ts`) depuis le rapport de correction de la
+ * tâche 8 — `packages/tui` en avait besoin pour son écran Agents, et les y
+ * dupliquer ou faire dépendre le TUI du CLI pour deux fonctions pures était
+ * pire que de les déplacer à côté de ce qu'elles décrivent. Ce module se
+ * contente désormais de les appeler, comme `doctor.ts`.
  */
-import type { AgentDefinition, Decision, OrchConfig } from "@orch/core";
+import type { OrchConfig } from "@orch/core";
 import {
   checkDelegation,
+  describeAgentCapabilities,
+  describeAgentPolicy,
   fileTaskStore,
   findAgentDefinition,
   findBinaryInPath,
-  isAgentAllowed,
-  isRecursionAllowed,
   listAgentDefinitions,
   loadConfig,
   runTask,
@@ -16,30 +23,6 @@ import {
 } from "@orch/core";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
-
-/** Capacités notables d'un agent, en une poignée de libellés compacts (partagé avec `orch doctor`). */
-export function describeAgentCapabilities(def: AgentDefinition): string[] {
-  const caps: string[] = [];
-  if (def.capabilities.nativeReadOnly) caps.push("lecture-seule native");
-  if (def.capabilities.outputSchema) caps.push("schéma de sortie");
-  if (def.capabilities.finalMessageFile) caps.push("message final fichier");
-  if (def.capabilities.resume) caps.push("reprise");
-  if (def.capabilities.addDir) caps.push("répertoires additionnels");
-  if (def.capabilities.model) caps.push("choix du modèle");
-  if (def.capabilities.mcpInjection !== "none") caps.push(`mcp:${def.capabilities.mcpInjection}`);
-  return caps;
-}
-
-/**
- * Statut d'un agent vis-à-vis de la politique, hors profondeur de délégation
- * (qui n'a de sens que pour une tâche en cours — voir `pickAgentForRole`).
- * Partagé avec `orch doctor`.
- */
-export function describeAgentPolicy(policy: OrchConfig["policy"], id: string): Decision {
-  const allowedDecision = isAgentAllowed(policy, id);
-  if (!allowedDecision.allowed) return allowedDecision;
-  return isRecursionAllowed(policy, id);
-}
 
 export interface AgentsListOptions {
   json?: boolean;

@@ -3,8 +3,7 @@
  * catalogue — présence, chemin, version, capacités notables, statut vis-à-vis
  * de la politique — suivie de ce qui manque et de comment y remédier.
  */
-import { detectAgentInstallation, listAgentDefinitions, loadConfig } from "@orch/core";
-import { describeAgentCapabilities, describeAgentPolicy } from "./agents.js";
+import { describeAgentCapabilities, describeAgentPolicy, detectAgentInstallation, listAgentDefinitions, loadConfig } from "@orch/core";
 import type { Io } from "../output.js";
 import { EXIT_OK, printJson, renderTable, writeLine } from "../output.js";
 

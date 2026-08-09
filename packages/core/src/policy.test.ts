@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "./config.js";
-import { checkDelegation, isAgentAllowed, isDepthAllowed, isRecursionAllowed } from "./policy.js";
+import { checkDelegation, describeAgentPolicy, isAgentAllowed, isDepthAllowed, isRecursionAllowed } from "./policy.js";
 import type { PolicyConfig } from "./config.js";
 
 function policy(overrides: Partial<PolicyConfig> = {}): PolicyConfig {
@@ -126,5 +126,36 @@ describe("checkDelegation", () => {
       expect(decision.allowed).toBe(false);
       if (!decision.allowed) expect(decision.reason.trim().length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * Déplacée depuis `packages/cli/src/commands/agents.ts` (tâche 8, rapport de
+ * correction) — voir sa docstring pour le raisonnement. `packages/cli`
+ * (`agents.ts`, `doctor.ts`) l'appelle désormais d'ici ; ses tests
+ * continuent de passer sans modification (voir `packages/cli/src/commands/
+ * agents.test.ts`, exercée indirectement via `runAgentsList`).
+ */
+describe("describeAgentPolicy", () => {
+  it("autorisé : ni denied, ni hors allowed, ni récursion refusée", () => {
+    expect(describeAgentPolicy(policy(), "codex")).toEqual({ allowed: true });
+  });
+
+  it("reflète isAgentAllowed (denied l'emporte)", () => {
+    const decision = describeAgentPolicy(policy({ denied: ["codex"] }), "codex");
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.reason).toContain("denied");
+  });
+
+  it("reflète isRecursionAllowed, même sans figurer dans denied/allowed", () => {
+    const decision = describeAgentPolicy(policy({ allow_recursion: false }), "claude");
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.reason).toContain("récursion");
+  });
+
+  it("ne tient jamais compte de la profondeur : max_depth n'entre pas en jeu", () => {
+    // `checkDelegation` refuserait ici sur la règle de profondeur ;
+    // `describeAgentPolicy` n'a pas de profondeur à évaluer, par construction.
+    expect(describeAgentPolicy(policy({ max_depth: 0 }), "codex")).toEqual({ allowed: true });
   });
 });

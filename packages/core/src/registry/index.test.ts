@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createGenericAgent } from "./generic.js";
 import {
   AGENT_DEFINITIONS,
+  describeAgentCapabilities,
   detectAgentInstallation,
   findAgentDefinition,
   findBinaryInPath,
@@ -50,5 +51,50 @@ describe("détection d'installation", () => {
 
   it("findBinaryInPath renvoie un chemin pour un binaire présent", async () => {
     expect(await findBinaryInPath("node")).toBeTruthy();
+  });
+});
+
+/**
+ * Déplacée depuis `packages/cli/src/commands/agents.ts` (tâche 8, rapport de
+ * correction) — voir sa docstring pour le raisonnement. `packages/cli`
+ * (`agents.ts`, `doctor.ts`) l'appelle désormais d'ici ; ses tests
+ * continuent de passer sans modification.
+ */
+describe("describeAgentCapabilities", () => {
+  it("aucune capacité notable : liste vide", () => {
+    const agent = createGenericAgent({ id: "minimal", bin: "minimal-cli", args: [] });
+    expect(describeAgentCapabilities(agent)).toEqual([]);
+  });
+
+  it("chaque capacité notable produit son propre libellé", () => {
+    const agent = createGenericAgent({
+      id: "complet",
+      bin: "complet-cli",
+      args: [],
+      capabilities: {
+        nativeReadOnly: true,
+        outputSchema: true,
+        finalMessageFile: true,
+        resume: true,
+        addDir: true,
+        model: true,
+        mcpInjection: "flag",
+      },
+    });
+    expect(describeAgentCapabilities(agent)).toEqual([
+      "lecture-seule native",
+      "schéma de sortie",
+      "message final fichier",
+      "reprise",
+      "répertoires additionnels",
+      "choix du modèle",
+      "mcp:flag",
+    ]);
+  });
+
+  it("chaque agent du catalogue natif a au moins une capacité notable", () => {
+    for (const def of listAgentDefinitions()) {
+      expect(describeAgentCapabilities(def).length).toBeGreaterThan(0);
+    }
   });
 });

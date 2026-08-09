@@ -5,9 +5,17 @@
  * et le lance en sous-processus avec la racine du projet en premier
  * argument (`bun main.tsx <root>`).
  *
- * `exitOnCtrlC` reste à sa valeur par défaut d'OpenTUI (pas de
- * surcharge) : Ctrl+C reste un échappatoire même si l'écran actif ne répond
- * plus — `App` gère lui-même la confirmation avant de quitter avec "q".
+ * `exitOnCtrlC: false` : par défaut, `CliRenderer` intercepte Ctrl+C dans
+ * son propre gestionnaire interne et appelle `this.destroy()` sur
+ * `process.nextTick`, **inconditionnellement** — avant même que l'événement
+ * n'atteigne le `useKeyboard` d'`App`, et quel que soit ce que ce dernier en
+ * ferait. Avec des modifications en attente, un Ctrl+C (un réflexe de
+ * sortie de terminal au moins aussi répandu que "q") les perdrait donc
+ * silencieusement, sans jamais passer par la confirmation que le brief
+ * exige. La désactivation ici, combinée à l'interception explicite de
+ * Ctrl+C dans `App` (même chemin que "q" : `isDirty` puis confirmation),
+ * est ce qui rend cette confirmation réellement incontournable — trouvé en
+ * revue de cette tâche, voir le rapport de correction.
  */
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
@@ -20,5 +28,5 @@ import { App } from "./App";
 
 const root = process.argv[2] ?? process.cwd();
 
-const renderer = await createCliRenderer();
+const renderer = await createCliRenderer({ exitOnCtrlC: false });
 createRoot(renderer).render(<App root={root} renderer={renderer} />);

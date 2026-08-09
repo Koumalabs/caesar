@@ -79,3 +79,23 @@ export function checkDelegation(policy: PolicyConfig, input: { agentId: string; 
 
   return isRecursionAllowed(policy, input.agentId);
 }
+
+/**
+ * Statut d'un agent vis-à-vis de la politique, hors profondeur de délégation
+ * (qui n'a de sens que pour une tâche en cours — voir `pickAgentForRole`,
+ * `roles.ts`, qui applique la même paire `isAgentAllowed`/`isRecursionAllowed`
+ * sans profondeur non plus).
+ *
+ * Déplacée depuis `packages/cli/src/commands/agents.ts` (tâche 8, rapport de
+ * correction) : `packages/tui` en avait besoin pour son écran Agents, et la
+ * dupliquer dans le TUI ou faire dépendre `packages/tui` de `packages/cli`
+ * pour deux fonctions pures était pire que de la ramener ici, à côté des
+ * règles qu'elle compose — même raisonnement que `resolveDelegation`
+ * (`delegation.ts`) à la tâche précédente. `packages/cli`
+ * (`commands/agents.ts`, `commands/doctor.ts`) l'importe désormais d'ici.
+ */
+export function describeAgentPolicy(policy: PolicyConfig, agentId: string): Decision {
+  const allowedDecision = isAgentAllowed(policy, agentId);
+  if (!allowedDecision.allowed) return allowedDecision;
+  return isRecursionAllowed(policy, agentId);
+}

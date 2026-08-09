@@ -91,7 +91,12 @@ export function App({ root, renderer }: AppProps) {
     if (key.name === "tab" && key.shift) setTab((t) => (t - 1 + TABS.length) % TABS.length);
     else if (key.name === "tab") setTab((t) => (t + 1) % TABS.length);
     else if (key.name === "s") void handleSave();
-    else if (key.name === "q") {
+    else if (key.name === "q" || (key.name === "c" && key.ctrl)) {
+      // "q" et Ctrl+C empruntent exactement le même chemin : `main.tsx`
+      // désactive la sortie automatique d'OpenTUI sur Ctrl+C
+      // (`exitOnCtrlC: false`) précisément pour que ce garde-fou s'applique
+      // aussi à lui — sinon les modifications en attente seraient perdues
+      // sans confirmation, le pire défaut possible pour cet outil.
       if (state && isDirty(state)) setShowQuitConfirm(true);
       else quit();
     } else if (key.name === "?") setShowHelp(true);
@@ -141,7 +146,7 @@ export function App({ root, renderer }: AppProps) {
         {message ? <text fg={message.isError ? "red" : "gray"}>{"   " + message.text}</text> : null}
       </box>
       <box flexDirection="row" paddingLeft={1}>
-        <text fg="gray">Tab/Maj-Tab : écran · s : enregistrer · q : quitter · ? : aide</text>
+        <text fg="gray">Tab/Maj-Tab : écran · s : enregistrer · q ou Ctrl+C : quitter · ? : aide</text>
       </box>
     </box>
   );
@@ -153,7 +158,7 @@ function HelpOverlay({ onClose }: { onClose: () => void }) {
     <box flexDirection="column" border borderStyle="double" title="Aide (une touche pour fermer)">
       <text>Tab / Maj-Tab : écran suivant / précédent</text>
       <text>s : enregistrer les modifications en attente</text>
-      <text>q : quitter (confirmation si des modifications sont en attente)</text>
+      <text>q ou Ctrl+C : quitter (confirmation si des modifications sont en attente)</text>
       <text> </text>
       <text attributes={TextAttributes.BOLD}>Agents</text>
       <text>  Haut/Bas : ligne · Espace : autorisation · Entrée : détail des capacités</text>

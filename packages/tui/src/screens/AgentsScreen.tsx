@@ -4,18 +4,20 @@
  * `Entrée` déplie le détail des capacités.
  *
  * Capacités et statut vis-à-vis de la politique viennent de
- * `describeAgentCapabilities`/`describeAgentPolicy` (`@orch/cli`,
- * `commands/agents.ts`) — la même logique que `orch doctor`/`orch agents
- * list` affichent, réutilisée telle quelle plutôt que recopiée (voir le
- * brief). La détection d'installation, elle, est asynchrone et déjà
- * calculée par `App` (une seule fois, jamais à chaque frappe) : cet écran
- * ne fait qu'afficher `installed`, jamais la relancer lui-même.
+ * `describeAgentCapabilities`/`describeAgentPolicy` (`@orch/core`,
+ * `registry/index.ts`/`policy.ts`) — la même logique que `orch doctor`/
+ * `orch agents list` affichent (`packages/cli/src/commands/{doctor,agents}.ts`),
+ * réutilisée telle quelle plutôt que recopiée (voir le brief). Importées
+ * directement d'`@orch/core` (et non de `packages/cli`, qui les appelle
+ * elles aussi) : voir le rapport de correction de la tâche 8. La détection
+ * d'installation, elle, est asynchrone et déjà calculée par `App` (une
+ * seule fois, jamais à chaque frappe) : cet écran ne fait qu'afficher
+ * `installed`, jamais la relancer lui-même.
  */
 import { useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { describeAgentCapabilities, describeAgentPolicy } from "@orch/cli";
-import { listAgentDefinitions } from "@orch/core";
+import { describeAgentCapabilities, describeAgentPolicy, listAgentDefinitions } from "@orch/core";
 import type { ConfigState } from "../state/config-state";
 
 export interface AgentsScreenProps {
