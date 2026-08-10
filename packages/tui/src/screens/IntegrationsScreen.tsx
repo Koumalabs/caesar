@@ -25,6 +25,7 @@ import { useEffect, useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { applyPlan, buildPlan, checkMcpStatus, MCP_CLIENTS, type McpClient, type McpStatus } from "@orch/core";
+import { fitColumn } from "./shared";
 
 export interface IntegrationsScreenProps {
   root: string;
@@ -72,8 +73,8 @@ export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
     <box flexDirection="column" flexGrow={1}>
       <text fg="gray">Enregistrement du serveur MCP "orch" auprès de chaque client. Entrée : installer / mettre à jour.</text>
       <box flexDirection="row" marginTop={1}>
-        <text attributes={TextAttributes.BOLD}>{"client".padEnd(16)}</text>
-        <text attributes={TextAttributes.BOLD}>{"statut".padEnd(20)}</text>
+        <text attributes={TextAttributes.BOLD}>{fitColumn("client", 16)}</text>
+        <text attributes={TextAttributes.BOLD}>{fitColumn("statut", 20)}</text>
         <text attributes={TextAttributes.BOLD}>détail</text>
       </box>
       <box flexDirection="column">
@@ -93,8 +94,8 @@ export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
 
           return (
             <box key={client} flexDirection="row" backgroundColor={isSelected ? "#333366" : undefined}>
-              <text>{(isSelected ? "› " : "  ") + client.padEnd(14)}</text>
-              <text fg={color}>{label.padEnd(20)}</text>
+              <text>{(isSelected ? "› " : "  ") + fitColumn(client, 14)}</text>
+              <text fg={color}>{fitColumn(label, 20)}</text>
               <text fg="gray">{detail}</text>
             </box>
           );

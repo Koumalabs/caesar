@@ -13,13 +13,19 @@
  * d'installation, elle, est asynchrone et déjà calculée par `App` (une
  * seule fois, jamais à chaque frappe) : cet écran ne fait qu'afficher
  * `installed`, jamais la relancer lui-même.
+ *
+ * `policy.denied`/`allowed` se matérialisent en entier (voir
+ * `setPolicyListEntry`, `config-state.ts`) : leur provenance est donc un
+ * champ, pas une ligne — une seule marque d'héritage au-dessus du tableau
+ * suffit (tâche 15), plutôt que d'encombrer chaque ligne.
  */
 import { useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { describeAgentCapabilities, describeAgentPolicy, listAgentDefinitions } from "@orch/core";
 import type { AgentInstallStatus } from "@orch/core";
-import type { ConfigState } from "../state/config-state";
+import { effectiveConfig, formatInheritedMark, policyFieldMark, type ConfigState } from "../state/config-state";
+import { fitColumn } from "./shared";
 
 export interface AgentsScreenProps {
   state: ConfigState;
@@ -29,19 +35,24 @@ export interface AgentsScreenProps {
 }
 
 export function AgentsScreen({ state, installed, onToggleDenied }: AgentsScreenProps) {
-  // Catalogue natif étendu des agents de configuration (`state.draft.agents`,
-  // `[[agent]]` du TOML) — même correction que `shared.ts` (`catalogIds`,
-  // voir C1 de la revue finale) : cette liste vivait jusqu'ici en constante
-  // de module, figée à `listAgentDefinitions()` sans argument au premier
-  // chargement, et ne pouvait donc jamais afficher un agent de configuration.
-  // Un agent nouvellement configuré sans détection encore lancée pour lui
-  // (`installed` n'en a pas d'entrée) affiche honnêtement "…" plutôt qu'un
-  // faux "absent" — limite résiduelle documentée dans le rapport de cette
-  // vague plutôt que résolue ici (`App` ne détecte l'installation qu'une
-  // seule fois, sans dépendre du chargement de la configuration).
-  const CATALOG = listAgentDefinitions(state.draft.agents);
+  const config = effectiveConfig(state);
+  // Catalogue natif étendu des agents de configuration (`config.agents`,
+  // `[[agent]]` du TOML, fusion effective) — même correction que `shared.ts`
+  // (`catalogIds`, voir C1 de la revue finale) : cette liste vivait jusqu'ici
+  // en constante de module, figée à `listAgentDefinitions()` sans argument au
+  // premier chargement, et ne pouvait donc jamais afficher un agent de
+  // configuration. Un agent nouvellement configuré sans détection encore
+  // lancée pour lui (`installed` n'en a pas d'entrée) affiche honnêtement
+  // "…" plutôt qu'un faux "absent" — limite résiduelle documentée dans le
+  // rapport de cette vague plutôt que résolue ici (`App` ne détecte
+  // l'installation qu'une seule fois, sans dépendre du chargement de la
+  // configuration).
+  const CATALOG = listAgentDefinitions(config.agents);
   const [selected, setSelected] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  const deniedMark = formatInheritedMark(policyFieldMark(state, "denied"));
+  const allowedMark = formatInheritedMark(policyFieldMark(state, "allowed"));
 
   useKeyboard((key) => {
     if (key.name === "up" || key.name === "k") setSelected((i) => Math.max(0, i - 1));
@@ -58,11 +69,13 @@ export function AgentsScreen({ state, installed, onToggleDenied }: AgentsScreenP
   return (
     <box flexDirection="column" flexGrow={1}>
       <text fg="gray">Catalogue des agents — Espace : autorisation, Entrée : détail des capacités.</text>
+      {deniedMark ? <text fg="gray">"denied" hérité{deniedMark} — Espace le prend en charge sur la couche active.</text> : null}
+      {allowedMark ? <text fg="gray">"allowed" hérité{allowedMark} — le modifier le prendra en charge sur la couche active.</text> : null}
       <box flexDirection="row" marginTop={1}>
-        <text attributes={TextAttributes.BOLD}>{"agent".padEnd(14)}</text>
-        <text attributes={TextAttributes.BOLD}>{"binaire".padEnd(26)}</text>
-        <text attributes={TextAttributes.BOLD}>{"version".padEnd(14)}</text>
-        <text attributes={TextAttributes.BOLD}>{"capacités".padEnd(14)}</text>
+        <text attributes={TextAttributes.BOLD}>{fitColumn("agent", 14)}</text>
+        <text attributes={TextAttributes.BOLD}>{fitColumn("binaire", 26)}</text>
+        <text attributes={TextAttributes.BOLD}>{fitColumn("version", 14)}</text>
+        <text attributes={TextAttributes.BOLD}>{fitColumn("capacités", 14)}</text>
         <text attributes={TextAttributes.BOLD}>autorisation</text>
       </box>
       <box flexDirection="column">
@@ -71,7 +84,7 @@ export function AgentsScreen({ state, installed, onToggleDenied }: AgentsScreenP
           const status = installed?.get(def.id);
           const presence = status === undefined ? "…" : status.installed ? (status.path ?? "trouvé") : "absent";
           const version = status?.version ?? (status?.installed ? "?" : "-");
-          const policy = describeAgentPolicy(state.draft.policy, def.id);
+          const policy = describeAgentPolicy(config.policy, def.id);
           const policyText = policy.allowed ? "autorisé" : `refusé (${policy.reason})`;
           const caps = describeAgentCapabilities(def);
           const capsSummary = caps.length > 0 ? `${caps.length} notable(s)` : "aucune";
@@ -79,10 +92,10 @@ export function AgentsScreen({ state, installed, onToggleDenied }: AgentsScreenP
           return (
             <box key={def.id} flexDirection="column">
               <box flexDirection="row" backgroundColor={isSelected ? "#333366" : undefined}>
-                <text>{(isSelected ? "› " : "  ") + def.id.padEnd(12)}</text>
-                <text>{presence.padEnd(26)}</text>
-                <text>{version.padEnd(14)}</text>
-                <text>{capsSummary.padEnd(14)}</text>
+                <text>{(isSelected ? "› " : "  ") + fitColumn(def.id, 12)}</text>
+                <text>{fitColumn(presence, 26)}</text>
+                <text>{fitColumn(version, 14)}</text>
+                <text>{fitColumn(capsSummary, 14)}</text>
                 <text fg={policy.allowed ? "green" : "red"}>{policyText}</text>
               </box>
               {expanded === def.id ? (

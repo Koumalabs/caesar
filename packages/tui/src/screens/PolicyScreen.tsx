@@ -13,13 +13,28 @@
  * rappelée en permanence à l'écran ; elle n'est pas ré-implémentée ici,
  * c'est `isAgentAllowed` (`@orch/core`) qui la fait vivre partout ailleurs
  * dans l'orchestrateur.
+ *
+ * Chaque champ affiche sa valeur **effective** (`effectiveConfig`,
+ * `config-state.ts`) — jamais `state.draft` directement, qui ne porte que ce
+ * que la couche active déclare en propre. Une valeur héritée d'une couche
+ * moins spécifique que la couche active se marque (`← global`) : c'est ici,
+ * l'écran Politique, que le brief de la tâche 15 demande qu'elle compte le
+ * plus (une seule liste de champs, chacun individuellement surchargeable).
  */
 import { useState } from "react";
 import { useKeyboard } from "@opentui/react";
 import type { PolicyConfig } from "@orch/core";
 import { parseDuration } from "@orch/core";
-import { catalogIds, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
-import { setPolicyListEntry, updatePolicy, type ConfigState, type PolicyListField } from "../state/config-state";
+import { catalogIds, fitColumn, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
+import {
+  effectiveConfig,
+  formatInheritedMark,
+  policyFieldMark,
+  setPolicyListEntry,
+  updatePolicy,
+  type ConfigState,
+  type PolicyListField,
+} from "../state/config-state";
 
 export interface PolicyScreenProps {
   state: ConfigState;
@@ -43,7 +58,7 @@ const FIELD_LABELS: Record<Field, string> = {
 const LIST_FIELDS = new Set<Field>(["allowed", "denied"]);
 
 export function PolicyScreen({ state, onChange, onEditingChange, notify }: PolicyScreenProps) {
-  const policy = state.draft.policy;
+  const policy = effectiveConfig(state).policy;
   const [fieldIndex, setFieldIndex] = useState(0);
   const [focus, setFocus] = useState<"fields" | "list">("fields");
   const [entryIndex, setEntryIndex] = useState(0);
@@ -101,7 +116,7 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
     else if (key.name === "up") setEntryIndex((i) => Math.max(0, i - 1));
     else if (key.name === "down") setEntryIndex((i) => Math.min(Math.max(0, entries.length - 1), i + 1));
     else if (key.name === "a") {
-      const next = catalogIds(state.draft.agents).find((id) => !entries.includes(id));
+      const next = catalogIds(effectiveConfig(state).agents).find((id) => !entries.includes(id));
       if (next) onChange(setPolicyListEntry(state, listField, next, true));
       else notify("Tous les agents du catalogue sont déjà dans cette liste.", true);
     } else if (key.name === "r" || key.name === "delete") {
@@ -120,6 +135,7 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
         {FIELDS.map((field, index) => {
           const isSelected = index === fieldIndex;
           const rowColor = isSelected ? (focus === "list" ? "white" : "cyan") : "white";
+          const mark = formatInheritedMark(policyFieldMark(state, field));
           return (
             <box key={field} flexDirection="column" marginBottom={LIST_FIELDS.has(field) ? 0 : 0}>
               <box flexDirection="row">
@@ -149,6 +165,7 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
                   )
                 ) : null}
                 {LIST_FIELDS.has(field) ? <text fg="gray">{policy[field as PolicyListField].join(", ") || "(vide)"}</text> : null}
+                {mark ? <text fg="gray">{mark}</text> : null}
               </box>
               {LIST_FIELDS.has(field) && focus === "list" && isSelected
                 ? policy[field as PolicyListField].map((id, i) => (

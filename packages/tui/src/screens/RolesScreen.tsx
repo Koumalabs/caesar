@@ -20,6 +20,15 @@
  *  - "agents" : Haut/Bas choisit un agent de l'ordre de repli. "J"/"K" le
  *               déplace, "a" en ajoute un du catalogue non encore présent,
  *               "r" retire l'agent sélectionné. Échap revient à "fields".
+ *
+ * Chaque rôle affiché est la version **effective** (`findRole`,
+ * `config-state.ts` : la fusion, pas ce que la couche active déclare seule).
+ * Le panneau de droite indique si le rôle sélectionné est déclaré par la
+ * couche active ou hérité d'une couche moins spécifique (`roleMark`) — "x"
+ * ne peut retirer qu'un rôle que la couche active déclare elle-même, la
+ * fusion par clé ne sachant pas exprimer une suppression d'un rôle hérité
+ * (même limite que `orch role remove`) ; le tenter ailleurs le signale au
+ * lieu de ne rien faire silencieusement.
  */
 import { useState } from "react";
 import { TextAttributes } from "@opentui/core";
@@ -29,11 +38,15 @@ import { parseDuration } from "@orch/core";
 import { catalogIds, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
 import {
   addRoleAgent,
+  effectiveConfig,
   findRole,
+  formatInheritedMark,
   moveRoleAgent,
   pickAgentForRoleName,
   removeRole,
   removeRoleAgentAt,
+  roleDeclaredByActiveLayer,
+  roleMark,
   updateRole,
   upsertRole,
   type ConfigState,
@@ -60,7 +73,7 @@ const FIELD_LABELS: Record<Field, string> = {
 };
 
 export function RolesScreen({ state, installed, onChange, onEditingChange, notify }: RolesScreenProps) {
-  const roles = state.draft.roles;
+  const roles = effectiveConfig(state).roles;
   const [roleIndex, setRoleIndex] = useState(0);
   const [focus, setFocus] = useState<"roles" | "fields" | "agents">("roles");
   const [fieldIndex, setFieldIndex] = useState(0);
@@ -126,6 +139,14 @@ export function RolesScreen({ state, installed, onChange, onEditingChange, notif
       else if (key.name === "down") setRoleIndex((i) => Math.min(roles.length - 1, i + 1));
       else if (key.name === "n") setEditingAndNotifyApp({ kind: "new-role", buffer: "" });
       else if (key.name === "x" && role) {
+        if (!roleDeclaredByActiveLayer(state, role.name)) {
+          const mark = formatInheritedMark(roleMark(state, role.name));
+          notify(
+            `"${role.name}" n'est pas déclaré par la couche active${mark} : rien à supprimer ici. Modifiez-le (Entrée) pour le redéfinir sur cette couche, ou changez de portée (p) pour éditer la couche dont il vient.`,
+            true,
+          );
+          return;
+        }
         onChange(removeRole(state, role.name));
         notify(`Rôle "${role.name}" supprimé.`);
         setRoleIndex((i) => Math.max(0, Math.min(i, roles.length - 2)));
@@ -179,7 +200,7 @@ export function RolesScreen({ state, installed, onChange, onEditingChange, notif
       onChange(moveRoleAgent(state, role.name, agentIndex, "up"));
       setAgentIndex((i) => Math.max(0, i - 1));
     } else if (key.name === "a") {
-      const next = catalogIds(state.draft.agents).find((id) => !role.agents.includes(id));
+      const next = catalogIds(effectiveConfig(state).agents).find((id) => !role.agents.includes(id));
       if (next) onChange(addRoleAgent(state, role.name, next));
       else notify("Tous les agents du catalogue sont déjà dans la liste.", true);
     } else if (key.name === "r" || key.name === "delete") {
@@ -222,7 +243,13 @@ export function RolesScreen({ state, installed, onChange, onEditingChange, notif
         {!role ? (
           <text fg="gray">Sélectionnez ou créez un rôle.</text>
         ) : (
-          FIELDS.map((field, index) => {
+          <>
+          <text fg="gray">
+            {roleDeclaredByActiveLayer(state, role.name)
+              ? "Déclaré par la couche active."
+              : `Hérité${formatInheritedMark(roleMark(state, role.name))} — le modifier le redéfinira sur la couche active.`}
+          </text>
+          {FIELDS.map((field, index) => {
             const isFieldSelected = focus !== "roles" && index === fieldIndex;
             return (
               <box key={field} flexDirection="column" marginBottom={field === "agents" ? 0 : 1}>
@@ -296,7 +323,8 @@ export function RolesScreen({ state, installed, onChange, onEditingChange, notif
                 ) : null}
               </box>
             );
-          })
+          })}
+          </>
         )}
       </box>
     </box>

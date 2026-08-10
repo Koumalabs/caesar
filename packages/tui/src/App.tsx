@@ -2,14 +2,25 @@
  * Onglets et navigation générale du TUI de configuration.
  *
  * `Tab`/`Shift-Tab` change d'écran, `s` enregistre les modifications en
- * attente (`config-state.ts`, jamais implicite — voir le brief), `q` quitte
- * (avec confirmation si des modifications sont en attente), `?` affiche
- * l'aide. Un indicateur permanent (bas d'écran) signale les modifications
- * non enregistrées.
+ * attente sur la couche active (`config-state.ts`, jamais implicite — voir
+ * le brief), `p` fait cycler la **portée d'édition** (global → projet →
+ * local → global), `q` quitte (avec confirmation si des modifications sont
+ * en attente), `?` affiche l'aide. Un indicateur permanent (barre d'état)
+ * signale les modifications non enregistrées.
+ *
+ * La portée est l'information la plus importante de cet écran dès lors
+ * qu'on peut écrire à trois endroits (tâche 15) : elle reste visible en
+ * permanence dans la barre d'état, mise en évidence par une couleur propre à
+ * chaque couche — "global" en rouge, en particulier, puisque c'est l'erreur
+ * la plus difficile à défaire (modifier par mégarde un réglage qui vaut pour
+ * tous les projets en croyant régler celui-ci). Changer de portée avec des
+ * modifications en attente demande confirmation avant de les abandonner —
+ * même principe que la confirmation de sortie ci-dessous, rien ne se perd en
+ * silence.
  *
  * Cet écran (le premier affiché, l'onglet Agents) doit être utile
- * immédiatement : `state` (la configuration) charge vite — un fichier TOML
- * local — et s'affiche dès qu'il est prêt, sans attendre la détection
+ * immédiatement : `state` (la configuration) charge vite — trois fichiers
+ * TOML locaux — et s'affiche dès qu'il est prêt, sans attendre la détection
  * d'installation des agents, réellement lente (elle sonde chaque binaire).
  * Celle-ci se charge une seule fois ici, jamais à chaque frappe, et chaque
  * écran affiche son propre état de chargement tant qu'elle n'a pas répondu.
@@ -18,13 +29,26 @@ import { useEffect, useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import type { CliRenderer } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import type { AgentInstallStatus } from "@orch/core";
+import type { AgentInstallStatus, ConfigScope } from "@orch/core";
 import { detectAgentInstallation, listAgentDefinitions } from "@orch/core";
 import { AgentsScreen } from "./screens/AgentsScreen";
 import { IntegrationsScreen } from "./screens/IntegrationsScreen";
 import { PolicyScreen } from "./screens/PolicyScreen";
 import { RolesScreen } from "./screens/RolesScreen";
-import { isDirty, loadConfigState, saveConfigState, toggleAgentDenied, type ConfigState } from "./state/config-state";
+import {
+  activeScopePath,
+  isDirty,
+  loadConfigState,
+  nextScope,
+  saveConfigState,
+  scopeLabel,
+  setScope,
+  toggleAgentDenied,
+  type ConfigState,
+} from "./state/config-state";
+
+/** Couleur de la marque de portée dans la barre d'état — "global" en rouge : c'est l'erreur la plus difficile à défaire. */
+const SCOPE_COLOR: Record<ConfigScope, string> = { global: "red", project: "cyan", local: "magenta" };
 
 export interface AppProps {
   root: string;
@@ -42,6 +66,7 @@ export function App({ root, renderer }: AppProps) {
   const [saving, setSaving] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const [showScopeConfirm, setShowScopeConfirm] = useState(false);
   const [editingText, setEditingText] = useState(false);
 
   useEffect(() => {
@@ -79,7 +104,7 @@ export function App({ root, renderer }: AppProps) {
     try {
       const saved = await saveConfigState(root, state);
       setState(saved);
-      notify("Enregistré.");
+      notify(`Enregistré dans ${activeScopePath(root, saved)} (couche ${scopeLabel(saved.activeScope)}).`);
     } catch (error) {
       notify(error instanceof Error ? error.message : String(error), true);
     } finally {
@@ -92,15 +117,31 @@ export function App({ root, renderer }: AppProps) {
     process.exit(0);
   }
 
+  /** Bascule vers la portée suivante (global → projet → local → global) — jamais sans confirmation si des modifications sont en attente : voir l'en-tête de ce fichier. */
+  function switchScope(): void {
+    if (!state) return;
+    if (isDirty(state)) {
+      setShowScopeConfirm(true);
+      return;
+    }
+    setState(setScope(state, nextScope(state.activeScope)));
+  }
+
+  function confirmSwitchScope(): void {
+    if (state) setState(setScope(state, nextScope(state.activeScope)));
+    setShowScopeConfirm(false);
+  }
+
   useKeyboard((key) => {
     // Un champ texte ou une fenêtre modale possède le clavier : ce
     // gestionnaire global ne doit rien intercepter (sinon taper "s" dans un
     // nom de rôle déclencherait un enregistrement, entre autres surprises).
-    if (editingText || showHelp || showQuitConfirm) return;
+    if (editingText || showHelp || showQuitConfirm || showScopeConfirm) return;
 
     if (key.name === "tab" && key.shift) setTab((t) => (t - 1 + TABS.length) % TABS.length);
     else if (key.name === "tab") setTab((t) => (t + 1) % TABS.length);
     else if (key.name === "s") void handleSave();
+    else if (key.name === "p") switchScope();
     else if (key.name === "q" || (key.name === "c" && key.ctrl)) {
       // "q" et Ctrl+C empruntent exactement le même chemin : `main.tsx`
       // désactive la sortie automatique d'OpenTUI sur Ctrl+C
@@ -138,6 +179,13 @@ export function App({ root, renderer }: AppProps) {
           <HelpOverlay onClose={() => setShowHelp(false)} />
         ) : showQuitConfirm ? (
           <QuitConfirmOverlay onConfirm={quit} onCancel={() => setShowQuitConfirm(false)} />
+        ) : showScopeConfirm ? (
+          <ScopeConfirmOverlay
+            from={state.activeScope}
+            to={nextScope(state.activeScope)}
+            onConfirm={confirmSwitchScope}
+            onCancel={() => setShowScopeConfirm(false)}
+          />
         ) : tab === 0 ? (
           <AgentsScreen state={state} installed={installedStatus} onToggleDenied={(id) => setState(toggleAgentDenied(state, id))} />
         ) : tab === 1 ? (
@@ -150,13 +198,17 @@ export function App({ root, renderer }: AppProps) {
       </box>
 
       <box flexDirection="row" paddingLeft={1}>
+        <text attributes={TextAttributes.BOLD} fg="black" bg={SCOPE_COLOR[state?.activeScope ?? "project"]}>
+          {` PORTÉE : ${scopeLabel(state?.activeScope ?? "project").toUpperCase()} `}
+        </text>
+        <text fg="gray">{"  (p pour changer)   "}</text>
         <text fg={dirty ? "yellow" : "green"}>
           {saving ? "Enregistrement…" : dirty ? "● modifications non enregistrées" : "✓ tout est enregistré"}
         </text>
         {message ? <text fg={message.isError ? "red" : "gray"}>{"   " + message.text}</text> : null}
       </box>
       <box flexDirection="row" paddingLeft={1}>
-        <text fg="gray">Tab/Maj-Tab : écran · s : enregistrer · q ou Ctrl+C : quitter · ? : aide</text>
+        <text fg="gray">Tab/Maj-Tab : écran · s : enregistrer (couche active) · p : changer de portée · q ou Ctrl+C : quitter · ? : aide</text>
       </box>
     </box>
   );
@@ -167,7 +219,9 @@ function HelpOverlay({ onClose }: { onClose: () => void }) {
   return (
     <box flexDirection="column" border borderStyle="double" title="Aide (une touche pour fermer)">
       <text>Tab / Maj-Tab : écran suivant / précédent</text>
-      <text>s : enregistrer les modifications en attente</text>
+      <text>s : enregistrer les modifications en attente sur la couche active</text>
+      <text>p : changer de portée d'édition (global → projet → local → global)</text>
+      <text>  Ce que "s" enregistre — confirmation si des modifications sont en attente</text>
       <text>q ou Ctrl+C : quitter (confirmation si des modifications sont en attente)</text>
       <text> </text>
       <text attributes={TextAttributes.BOLD}>Agents</text>
@@ -194,6 +248,38 @@ function QuitConfirmOverlay({ onConfirm, onCancel }: { onConfirm: () => void; on
     <box flexDirection="column" border borderStyle="double" borderColor="red" title="Modifications non enregistrées">
       <text>Des modifications ne sont pas enregistrées. Quitter quand même ?</text>
       <text fg="gray">o : quitter sans enregistrer · n / Échap : annuler</text>
+    </box>
+  );
+}
+
+/**
+ * Changer de portée avec des modifications en attente les abandonnerait
+ * silencieusement (elles ne portent que sur la couche active — voir
+ * `config-state.ts`, `setScope`) : ce garde-fou demande confirmation avant,
+ * même principe que `QuitConfirmOverlay` juste au-dessus.
+ */
+function ScopeConfirmOverlay({
+  from,
+  to,
+  onConfirm,
+  onCancel,
+}: {
+  from: ConfigScope;
+  to: ConfigScope;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useKeyboard((key) => {
+    if (key.name === "o" || key.name === "y") onConfirm();
+    else if (key.name === "n" || key.name === "escape") onCancel();
+  });
+  return (
+    <box flexDirection="column" border borderStyle="double" borderColor="red" title="Modifications non enregistrées">
+      <text>
+        Les modifications en attente sur la couche {scopeLabel(from)} ne sont pas enregistrées. Basculer vers la couche{" "}
+        {scopeLabel(to)} les abandonnera. Continuer ?
+      </text>
+      <text fg="gray">o : changer de portée sans enregistrer · n / Échap : annuler</text>
     </box>
   );
 }

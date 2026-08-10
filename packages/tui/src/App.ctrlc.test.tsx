@@ -10,6 +10,11 @@
  * `createCliRenderer`) et vérifie le comportement réel, pas seulement la
  * lecture du code.
  *
+ * Même thème, même garde-fou (tâche 15) : changer de portée d'édition ("p")
+ * avec des modifications en attente ne doit pas non plus les abandonner en
+ * silence — reprend le même harnais (`mountApp`/`waitForLoaded` ci-dessous)
+ * pour le vérifier.
+ *
  * `HOME` et `PATH` sont neutralisés (répertoires temporaires, `PATH` sans
  * aucun binaire réel) : `loadConfigState`/`saveConfigState` ne touchent
  * jamais la configuration réelle de l'utilisateur, et `detectAgentInstallation`
@@ -28,6 +33,7 @@ import { join } from "node:path";
 import { act } from "react";
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing";
 import { createRoot } from "@opentui/react";
+import { configPathFor } from "@orch/core";
 import { App } from "./App";
 
 let home: string;
@@ -144,5 +150,110 @@ describe("Ctrl+C", () => {
     } finally {
       process.exit = originalExit;
     }
+  });
+});
+
+describe("portée d'édition", () => {
+  it("la barre d'état affiche la portée active en permanence, \"project\" au démarrage", async () => {
+    const setup = await mountApp();
+    await waitForLoaded(setup);
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("PORTÉE : PROJET");
+    setup.renderer.destroy();
+  });
+
+  it("\"p\" sans modification en attente change de portée directement, sans confirmation", async () => {
+    const setup = await mountApp();
+    await waitForLoaded(setup);
+    expect(setup.captureCharFrame()).toContain("PORTÉE : PROJET");
+
+    await act(async () => setup.mockInput.pressKey("p"));
+    await act(async () => setup.renderOnce());
+
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("PORTÉE : LOCAL"); // project → local, le cran suivant du cycle
+    expect(frame).not.toContain("Modifications non enregistrées");
+    setup.renderer.destroy();
+  });
+
+  it("\"p\" avec des modifications en attente demande confirmation, ne change rien tant qu'elle n'est pas donnée", async () => {
+    const setup = await mountApp();
+    await waitForLoaded(setup);
+
+    // Une vraie modification en attente sur la couche "project" (voir le test Ctrl+C ci-dessus, même geste).
+    await act(async () => setup.mockInput.pressKey(" "));
+    await act(async () => setup.renderOnce());
+    expect(setup.captureCharFrame()).toContain("modifications non enregistrées");
+
+    await act(async () => setup.mockInput.pressKey("p"));
+    await act(async () => setup.renderOnce());
+    let frame = setup.captureCharFrame();
+    expect(frame).toContain("Modifications non enregistrées");
+    expect(frame).toContain("PORTÉE : PROJET"); // toujours "project" : rien n'a changé tant que ce n'est pas confirmé
+
+    // "n" annule : la portée et la modification en attente survivent toutes les deux.
+    await act(async () => setup.mockInput.pressKey("n"));
+    await act(async () => setup.renderOnce());
+    frame = setup.captureCharFrame();
+    expect(frame).toContain("PORTÉE : PROJET");
+    expect(frame).toContain("modifications non enregistrées");
+
+    // "p" à nouveau puis "o" confirme : la portée change, et la modification en attente est abandonnée
+    // (jamais en silence : il a fallu la confirmation explicite ci-dessus).
+    await act(async () => setup.mockInput.pressKey("p"));
+    await act(async () => setup.renderOnce());
+    await act(async () => setup.mockInput.pressKey("o"));
+    await act(async () => setup.renderOnce());
+    frame = setup.captureCharFrame();
+    expect(frame).toContain("PORTÉE : LOCAL");
+    expect(frame).toContain("tout est enregistré"); // la nouvelle couche ("local") n'a, elle, rien en attente
+
+    setup.renderer.destroy();
+  });
+
+  it("le scénario qui compte, à travers l'interface réelle : \"p\" jusqu'à \"global\", puis \"s\" n'écrit que le fichier global", async () => {
+    const setup = await mountApp();
+    await waitForLoaded(setup);
+
+    // project → local → global : deux "p", aucune modification en attente entre les deux donc aucune confirmation.
+    await act(async () => setup.mockInput.pressKey("p"));
+    await act(async () => setup.renderOnce());
+    await act(async () => setup.mockInput.pressKey("p"));
+    await act(async () => setup.renderOnce());
+    expect(setup.captureCharFrame()).toContain("PORTÉE : GLOBAL");
+
+    // Espace sur la première ligne (onglet Agents, par défaut) : une vraie modification, en attente sur "global".
+    await act(async () => setup.mockInput.pressKey(" "));
+    await act(async () => setup.renderOnce());
+    expect(setup.captureCharFrame()).toContain("modifications non enregistrées");
+
+    await act(async () => setup.mockInput.pressKey("s"));
+    // `saveConfigState` est asynchrone (écriture disque, hors du planificateur de rendu d'OpenTUI) :
+    // `waitForFrame` s'arrête dès qu'il croit le planificateur inactif, avant que l'écriture disque
+    // n'ait eu le temps de se résoudre — un sondage à intervalles réels (comme `IntegrationsScreen.
+    // render.test.tsx`, même motif) est plus fiable ici qu'une seule attente courte.
+    let frame = "";
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await act(async () => {
+        await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 100));
+        await setup.renderOnce();
+      });
+      frame = setup.captureCharFrame();
+      if (frame.includes("Enregistré dans") || !frame.includes("Enregistrement…")) break;
+    }
+    // Le message de confirmation nomme le fichier écrit et la couche — sur cette largeur de terminal (100
+    // colonnes), la ligne de statut au complet (portée + indicateur + message) déborde sur deux lignes de la
+    // grille capturée : chercher "Enregistré dans"/"couche globale" séparément évite de dépendre de cet
+    // enchaînement visuel, non garanti par `captureCharFrame` (un simple artefact de largeur, pas un défaut).
+    expect(frame).toContain("Enregistré dans");
+    expect(frame).toContain("couche globale");
+
+    const globalContent = await readFile(configPathFor("global", root), "utf8");
+    expect(globalContent).toContain("denied");
+
+    // Le fichier projet, lui, n'a jamais été créé : aucune écriture n'a touché cette couche.
+    await expect(readFile(configPathFor("project", root), "utf8")).rejects.toThrow();
+
+    setup.renderer.destroy();
   });
 });
