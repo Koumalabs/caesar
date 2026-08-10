@@ -5,7 +5,7 @@
     "outDir": "./dist"
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts"],
+  "exclude": ["src/**/*.test.ts", "src/bun-entry.ts"],
   "references": [
     { "path": "../protocol" },
     { "path": "../core" },

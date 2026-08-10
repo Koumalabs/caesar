@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import packageJson from "../package.json" with { type: "json" };
 import { buildProgram } from "./bin.js";
 import { makeIo, type CapturedIo } from "../test/support.js";
 
@@ -26,7 +27,7 @@ describe("buildProgram (structurel)", () => {
     const io = makeIo();
     const program = buildProgram(io, { value: 0 });
     const names = program.commands.map((c) => c.name()).sort();
-    expect(names).toEqual(["agents", "apply", "cancel", "config", "diff", "doctor", "init", "logs", "mcp", "policy", "protocol", "ps", "role", "run"]);
+    expect(names).toEqual(["agents", "apply", "cancel", "channel", "config", "diff", "doctor", "init", "logs", "mcp", "policy", "protocol", "ps", "role", "run"]);
 
     const agents = program.commands.find((c) => c.name() === "agents")!;
     expect(agents.commands.map((c) => c.name()).sort()).toEqual(["disable", "enable", "list", "test"]);
@@ -42,6 +43,9 @@ describe("buildProgram (structurel)", () => {
 
     const mcp = program.commands.find((c) => c.name() === "mcp")!;
     expect(mcp.commands.map((c) => c.name()).sort()).toEqual(["install", "serve"]);
+
+    const channel = program.commands.find((c) => c.name() === "channel")!;
+    expect(channel.commands.map((c) => c.name()).sort()).toEqual(["serve"]);
   });
 
   it("\"config\" déclare --root/--json via withCommonOptions, comme les autres sous-commandes (tâche 10, C)", () => {
@@ -70,6 +74,28 @@ describe("orch (binaire compilé)", () => {
   it("--help sort en code 0", async () => {
     const { stdout } = await execFileAsync("node", [BIN_PATH, "--help"]);
     expect(stdout).toContain("Orchestrateur de sous-agents");
+  });
+
+  it("--version affiche la version du package.json, sort en code 0", async () => {
+    const { stdout } = await execFileAsync("node", [BIN_PATH, "--version"]);
+    expect(stdout.trim()).toBe(packageJson.version);
+  });
+
+  it("\"channel\" est masqué de l'aide (tâche 12, sous-commande interne), mais reste joignable", async () => {
+    const { stdout } = await execFileAsync("node", [BIN_PATH, "--help"]);
+    expect(stdout).not.toContain("channel");
+
+    // Joignable explicitement malgré l'absence de l'aide : une option requise
+    // manquante (`--task-dir`) produit son erreur habituelle (code 2, comme
+    // tout argument/option requis manquant ailleurs dans ce CLI) plutôt
+    // qu'une commande inconnue — la sous-commande est bien câblée, seulement
+    // cachée.
+    await expect(execFileAsync("node", [BIN_PATH, "channel", "serve"])).rejects.toMatchObject({ code: 2 });
+    try {
+      await execFileAsync("node", [BIN_PATH, "channel", "serve"]);
+    } catch (error) {
+      expect((error as { stderr: string }).stderr).toMatch(/--task-dir/);
+    }
   });
 
   it("un argument requis manquant sort en code 2, message une seule fois sur stderr", async () => {
