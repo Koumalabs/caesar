@@ -244,86 +244,86 @@ export function RolesScreen({ state, installed, onChange, onEditingChange, notif
           <text fg="gray">Sélectionnez ou créez un rôle.</text>
         ) : (
           <>
-          <text fg="gray">
-            {roleDeclaredByActiveLayer(state, role.name)
-              ? "Déclaré par la couche active."
-              : `Hérité${formatInheritedMark(roleMark(state, role.name))} — le modifier le redéfinira sur la couche active.`}
-          </text>
-          {FIELDS.map((field, index) => {
-            const isFieldSelected = focus !== "roles" && index === fieldIndex;
-            return (
-              <box key={field} flexDirection="column" marginBottom={field === "agents" ? 0 : 1}>
-                <text fg={isFieldSelected ? "cyan" : "white"} attributes={TextAttributes.BOLD}>
-                  {(isFieldSelected ? "› " : "  ") + FIELD_LABELS[field]}
-                </text>
-                {field === "purpose" && editing?.kind === "purpose" ? (
-                  <input
-                    focused
-                    value={editing.buffer}
-                    onInput={(value) => setEditing({ kind: "purpose", buffer: value })}
-                    onSubmit={commitEdit}
-                    onKeyDown={(key) => {
-                      if (key.name === "escape") setEditingAndNotifyApp(null);
-                    }}
-                  />
-                ) : field === "purpose" ? (
-                  <text>  {role.purpose || "(non précisée)"}</text>
-                ) : null}
+            <text fg="gray">
+              {roleDeclaredByActiveLayer(state, role.name)
+                ? "Déclaré par la couche active."
+                : `Hérité${formatInheritedMark(roleMark(state, role.name))} — le modifier le redéfinira sur la couche active.`}
+            </text>
+            {FIELDS.map((field, index) => {
+              const isFieldSelected = focus !== "roles" && index === fieldIndex;
+              return (
+                <box key={field} flexDirection="column" marginBottom={field === "agents" ? 0 : 1}>
+                  <text fg={isFieldSelected ? "cyan" : "white"} attributes={TextAttributes.BOLD}>
+                    {(isFieldSelected ? "› " : "  ") + FIELD_LABELS[field]}
+                  </text>
+                  {field === "purpose" && editing?.kind === "purpose" ? (
+                    <input
+                      focused
+                      value={editing.buffer}
+                      onInput={(value) => setEditing({ kind: "purpose", buffer: value })}
+                      onSubmit={commitEdit}
+                      onKeyDown={(key) => {
+                        if (key.name === "escape") setEditingAndNotifyApp(null);
+                      }}
+                    />
+                  ) : field === "purpose" ? (
+                    <text>  {role.purpose || "(non précisée)"}</text>
+                  ) : null}
 
-                {field === "mode" ? <text>  {role.mode}</text> : null}
-                {field === "isolation" ? <text>  {role.isolation}</text> : null}
+                  {field === "mode" ? <text>  {role.mode}</text> : null}
+                  {field === "isolation" ? <text>  {role.isolation}</text> : null}
 
-                {field === "timeout" && editing?.kind === "timeout" ? (
-                  <input
-                    focused
-                    value={editing.buffer}
-                    onInput={(value) => setEditing({ kind: "timeout", buffer: value })}
-                    onSubmit={commitEdit}
-                    onKeyDown={(key) => {
-                      if (key.name === "escape") setEditingAndNotifyApp(null);
-                    }}
-                  />
-                ) : field === "timeout" ? (
-                  <text>  {formatMs(role.timeout_ms)}</text>
-                ) : null}
+                  {field === "timeout" && editing?.kind === "timeout" ? (
+                    <input
+                      focused
+                      value={editing.buffer}
+                      onInput={(value) => setEditing({ kind: "timeout", buffer: value })}
+                      onSubmit={commitEdit}
+                      onKeyDown={(key) => {
+                        if (key.name === "escape") setEditingAndNotifyApp(null);
+                      }}
+                    />
+                  ) : field === "timeout" ? (
+                    <text>  {formatMs(role.timeout_ms)}</text>
+                  ) : null}
 
-                {field === "system_prompt_file" && editing?.kind === "system_prompt_file" ? (
-                  <input
-                    focused
-                    value={editing.buffer}
-                    placeholder="(aucun)"
-                    onInput={(value) => setEditing({ kind: "system_prompt_file", buffer: value })}
-                    onSubmit={commitEdit}
-                    onKeyDown={(key) => {
-                      if (key.name === "escape") setEditingAndNotifyApp(null);
-                    }}
-                  />
-                ) : field === "system_prompt_file" ? (
-                  <text>  {role.system_prompt_file ?? "(aucun)"}</text>
-                ) : null}
+                  {field === "system_prompt_file" && editing?.kind === "system_prompt_file" ? (
+                    <input
+                      focused
+                      value={editing.buffer}
+                      placeholder="(aucun)"
+                      onInput={(value) => setEditing({ kind: "system_prompt_file", buffer: value })}
+                      onSubmit={commitEdit}
+                      onKeyDown={(key) => {
+                        if (key.name === "escape") setEditingAndNotifyApp(null);
+                      }}
+                    />
+                  ) : field === "system_prompt_file" ? (
+                    <text>  {role.system_prompt_file ?? "(aucun)"}</text>
+                  ) : null}
 
-                {field === "agents" ? (
-                  <box flexDirection="column" marginLeft={2}>
-                    <text fg="gray">
-                      Retenu aujourd'hui :{" "}
-                      {pickedAgentId ?? (pick && "error" in pick ? pick.error : installed === null ? "(détection en cours…)" : "(aucun)")}
-                    </text>
-                    {role.agents.length === 0 ? <text fg="gray">(vide — "a" pour ajouter un agent)</text> : null}
-                    {role.agents.map((agentId, index) => {
-                      const isAgentSelected = focus === "agents" && index === agentIndex;
-                      const isPicked = agentId === pickedAgentId;
-                      const presence = installed === null ? "…" : installed.get(agentId) ? "installé" : "absent";
-                      return (
-                        <text key={`${agentId}-${index}`} fg={isAgentSelected ? "cyan" : isPicked ? "green" : "white"}>
-                          {(isAgentSelected ? "› " : "  ") + `${index + 1}. ${agentId} (${presence})` + (isPicked ? "  ← retenu" : "")}
-                        </text>
-                      );
-                    })}
-                  </box>
-                ) : null}
-              </box>
-            );
-          })}
+                  {field === "agents" ? (
+                    <box flexDirection="column" marginLeft={2}>
+                      <text fg="gray">
+                        Retenu aujourd'hui :{" "}
+                        {pickedAgentId ?? (pick && "error" in pick ? pick.error : installed === null ? "(détection en cours…)" : "(aucun)")}
+                      </text>
+                      {role.agents.length === 0 ? <text fg="gray">(vide — "a" pour ajouter un agent)</text> : null}
+                      {role.agents.map((agentId, index) => {
+                        const isAgentSelected = focus === "agents" && index === agentIndex;
+                        const isPicked = agentId === pickedAgentId;
+                        const presence = installed === null ? "…" : installed.get(agentId) ? "installé" : "absent";
+                        return (
+                          <text key={`${agentId}-${index}`} fg={isAgentSelected ? "cyan" : isPicked ? "green" : "white"}>
+                            {(isAgentSelected ? "› " : "  ") + `${index + 1}. ${agentId} (${presence})` + (isPicked ? "  ← retenu" : "")}
+                          </text>
+                        );
+                      })}
+                    </box>
+                  ) : null}
+                </box>
+              );
+            })}
           </>
         )}
       </box>
