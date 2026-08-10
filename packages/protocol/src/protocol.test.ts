@@ -104,6 +104,24 @@ describe("extraction du rapport depuis du texte libre", () => {
     expect(extractReportFromText(`${first}\n\nCorrection:\n${second}`)?.status).toBe("success");
   });
 
+  it("I1 (revue finale) : retrouve un rapport valide même quand \"protocol\" n'est pas la première clé, avec un objet imbriqué avant lui", () => {
+    // Repro littéral du rapport de revue : un objet imbriqué (changes[0])
+    // précède le champ "protocol" dans le même objet — avant I1, la
+    // première "{" remontée depuis le marqueur était celle de cet objet
+    // imbriqué, pas celle du rapport, et extractReportFromText rendait null.
+    const text = JSON.stringify({
+      task_id: "t1",
+      status: "success",
+      summary: "done",
+      changes: [{ path: "a.ts", action: "modified", summary: "x" }],
+      protocol: REPORT_PROTOCOL,
+    });
+    const parsed = extractReportFromText(text);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.status).toBe("success");
+    expect(parsed?.changes).toEqual([{ path: "a.ts", action: "modified", summary: "x" }]);
+  });
+
   it("renvoie null quand il n'y a rien d'exploitable", () => {
     expect(extractReportFromText("j'ai fini, tout va bien")).toBeNull();
     expect(extractReportFromText(`{"protocol":"${REPORT_PROTOCOL}"`)).toBeNull();

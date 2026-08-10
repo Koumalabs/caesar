@@ -130,7 +130,23 @@ export function extractReportFromText(text: string): Report | null {
   return null;
 }
 
-/** Positions d'ouverture d'objet plausibles, remontées depuis chaque marqueur trouvé. */
+/**
+ * Positions d'ouverture d'objet plausibles, remontées depuis chaque marqueur
+ * trouvé — voir I1 de la revue finale. Ne retenir que la première `{`
+ * rencontrée en arrière perdait un rapport pourtant valide dès qu'un objet
+ * imbriqué précédait le champ `protocol` dans le même objet (p. ex.
+ * `changes[0]` avant `protocol`, en fin de rapport) : c'est alors l'accolade
+ * de cet objet imbriqué qui était prise, jamais celle du rapport lui-même.
+ * Toutes les positions d'ouverture avant chaque marqueur sont donc
+ * collectées, pour être essayées de la plus proche à la plus lointaine par
+ * `extractReportFromText` — l'ordre de la valeur de retour ci-dessous est
+ * délibérément inversé (le plus loin en premier) : `extractReportFromText`
+ * relit ses candidats via `.reverse()` pour que la dernière occurrence du
+ * marqueur l'emporte (un agent qui se reprend a le dernier mot) ; les
+ * empiler ici du plus loin au plus proche est ce qui fait qu'après ce
+ * `reverse()` global, les candidats d'une même occurrence ressortent bien
+ * du plus proche au plus lointain, sans perdre l'ordre entre occurrences.
+ */
 function markerObjectStarts(text: string): number[] {
   const starts: number[] = [];
   let from = 0;
@@ -138,12 +154,11 @@ function markerObjectStarts(text: string): number[] {
     const marker = text.indexOf(REPORT_PROTOCOL, from);
     if (marker === -1) break;
     from = marker + REPORT_PROTOCOL.length;
+    const forThisMarker: number[] = [];
     for (let i = marker; i >= 0; i--) {
-      if (text[i] === "{") {
-        starts.push(i);
-        break;
-      }
+      if (text[i] === "{") forThisMarker.push(i);
     }
+    starts.push(...forThisMarker.reverse());
   }
   return starts;
 }
