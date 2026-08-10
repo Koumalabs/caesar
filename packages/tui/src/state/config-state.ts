@@ -3,18 +3,28 @@
  * — le cœur du TUI, volontairement sans aucun rendu : chaque écran ne fait
  * qu'appeler ces fonctions et afficher le résultat.
  *
- * `@orch/core` reste la seule source de vérité (`loadConfig`,
- * `saveProjectConfig`) : ce module ne relit ni ne réécrit le TOML lui-même,
- * il tient juste la copie de travail (`draft`) que l'utilisateur modifie
- * avant d'enregistrer explicitement — voir le brief de la tâche 8, "aucune
- * modification ne s'écrit sans action explicite".
+ * `@orch/core` reste la seule source de vérité (`loadConfig`, `saveLayer`) :
+ * ce module ne relit ni ne réécrit le TOML lui-même, il tient juste la copie
+ * de travail (`draft`) que l'utilisateur modifie avant d'enregistrer
+ * explicitement — voir le brief de la tâche 8, "aucune modification ne
+ * s'écrit sans action explicite".
+ *
+ * `saveConfigState` écrit tout `draft` (fusion comprise) dans la couche
+ * projet — comportement conservé tel quel de `saveProjectConfig`, supprimée
+ * par la tâche 13 au profit de `saveLayer`. C'est un correctif minimal pour
+ * rester compilable après cette suppression, pas une adoption de la
+ * superposition en écriture : le TUI n'a ni sélecteur de portée ni notion de
+ * "ce que cette couche déclare en propre" pour l'instant — voir la tâche 15
+ * ("Portée d'édition dans le TUI"), qui doit reprendre ce module pour cesser
+ * d'aplatir la fusion dans le projet, exactement le défaut I11 que la tâche
+ * 13 corrige côté CLI.
  *
  * Toutes les mutations sont pures : elles reçoivent un `ConfigState` et en
  * renvoient un nouveau, sans jamais toucher au disque ni à `state.saved`.
  * Seul `saveConfigState` écrit, et seul `loadConfigState` lit.
  */
 import type { OrchConfig, PolicyConfig, RoleConfig } from "@orch/core";
-import { loadConfig, pickAgentForRole, saveProjectConfig } from "@orch/core";
+import { loadConfig, pickAgentForRole, saveLayer } from "@orch/core";
 import type { AgentPick } from "@orch/core";
 
 export interface ConfigState {
@@ -42,7 +52,9 @@ export async function loadConfigState(root: string): Promise<ConfigState> {
 
 /** Enregistre `draft` sur disque puis fait de ce `draft` le nouveau `saved` — `isDirty` redevient faux. */
 export async function saveConfigState(root: string, state: ConfigState): Promise<ConfigState> {
-  await saveProjectConfig(root, state.draft);
+  // `state.draft` (un `OrchConfig` complet) satisfait structurellement `ConfigOverride` (tous ses champs sont
+  // renseignés) : voir la note de tête de fichier, ce correctif minimal ne change pas ce qui est écrit.
+  await saveLayer("project", root, state.draft);
   return { ...state, saved: state.draft };
 }
 
