@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -139,5 +139,56 @@ describe("fileTaskStore", () => {
     await Promise.all([readerLoop, writerLoop]);
     expect(sawComplete).toBe(true);
     expect(sawTruncated).toBe(false);
+  });
+
+  /**
+   * I9 de la revue finale : vérifié à l'époque en exécutant le code compilé
+   * (`store.get("../../../secret")` rendait le contenu d'un fichier
+   * arbitraire hors du store). Reproduit ici littéralement, plus le second
+   * geste du même correctif (validation de forme au lieu d'un cast).
+   */
+  describe("I9 — traversée de chemin sur task_id", () => {
+    it("get/update/create rejettent un identifiant contenant un séparateur de chemin, sans jamais sortir de dir", async () => {
+      // Dépose "le secret" juste à côté de dir (donc atteignable par ../../../secret
+      // depuis un id mal validé), pour prouver qu'il n'est jamais lu.
+      const secretPath = join(root, "secret.json");
+      await writeFile(secretPath, JSON.stringify({ status: "top-secret-value", pid: 999999 }), "utf8");
+
+      const traversal = "../secret";
+      await expect(store.get(traversal)).resolves.toBeNull();
+      // `update` lit d'abord l'enregistrement existant (`readRecord`, qui
+      // avale l'erreur de validation en `null`, comme n'importe quel id
+      // inconnu) : le refus prend donc la forme "Tâche inconnue", pas
+      // "invalide" — les deux ferment la traversée, aucune ne l'atteint.
+      await expect(store.update(traversal, { status: "cancelled" })).rejects.toThrow(/inconnue/);
+      // `create` valide directement (`writeTemp`), sans passer par cette lecture.
+      await expect(store.create(sampleRecord({ id: traversal }))).rejects.toThrow(/invalide/);
+
+      // Le "secret" existe toujours, intact : aucune des trois opérations n'y a touché.
+      expect(JSON.parse(await readFile(secretPath, "utf8"))).toEqual({ status: "top-secret-value", pid: 999999 });
+    });
+
+    it("un identifiant lisible sans séparateur (usage documenté de RunTaskInput.taskId) reste accepté", async () => {
+      const record = sampleRecord({ id: "t_imposed-readable-id" });
+      await store.create(record);
+      expect(await store.get("t_imposed-readable-id")).toEqual(record);
+    });
+
+    it("un fichier du store dont le contenu n'est pas un TaskRecord valide est ignoré plutôt qu'interprété tel quel (schéma, pas un cast)", async () => {
+      const tasksDir = join(root, ".orch", "state", "tasks");
+      await mkdir(tasksDir, { recursive: true });
+      // Un JSON syntaxiquement valide, mais dont la forme ne correspond à
+      // aucun TaskRecord (status hors énumération, pid non numérique) :
+      // avant le schéma zod, `JSON.parse(...) as TaskRecord` l'aurait rendu
+      // tel quel, "status" et "pid" compris — c'est précisément ce que
+      // `orch_cancel` utiliserait pour signaler un pid arbitraire.
+      await writeFile(
+        join(tasksDir, "t_malformed.json"),
+        JSON.stringify({ status: "top-secret-value", pid: "pas-un-pid" }),
+        "utf8",
+      );
+      expect(await store.get("t_malformed")).toBeNull();
+      expect(await store.list()).toEqual([]);
+    });
   });
 });

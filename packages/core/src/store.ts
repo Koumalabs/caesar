@@ -13,6 +13,8 @@
 import { randomUUID } from "node:crypto";
 import { link, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { z } from "zod";
+import { IsolationSchema, TaskModeSchema } from "@orch/protocol";
 import type { Isolation, ReportChannel, TaskMode } from "@orch/protocol";
 
 export type TaskStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
@@ -80,17 +82,73 @@ export interface TaskStore {
 
 const SUFFIX = ".json";
 
+/**
+ * Rejette tout `id` qui pourrait s'échapper de `dir` une fois composé dans
+ * un chemin de fichier — voir I9 de la revue finale, vérifié en exécutant
+ * le code : `fileFor` faisait `join(dir, \`${id}.json\`)` sans normalisation
+ * ni validation, et `store.get("../../../secret")` rendait le contenu d'un
+ * fichier arbitraire hors du store (`{"status":"top-secret-value",...}`).
+ * `task_id` est déclaré `z.string().min(1)` dans sept tools MCP pilotés par
+ * le modèle (`orch_logs`/`orch_status`/`orch_diff`/`orch_apply`/
+ * `orch_cancel`/`orch_await`/`orch_answer`) : ce garde, unique et placé ici
+ * plutôt que répété dans chacun, ferme la catégorie entière d'un geste.
+ *
+ * N'impose pas le format généré par `generateTaskId` (`t_` + 32 hex) : des
+ * identifiants lisibles ("t_imposed", "t_test"…) sont un usage légitime et
+ * testé de `RunTaskInput.taskId`, documenté comme personnalisable par
+ * l'appelant. Seuls les séparateurs de chemin, les octets nuls et les noms
+ * de répertoire spéciaux (".", "..") sont interdits.
+ */
+function assertSafeTaskId(id: string): void {
+  if (id === "" || id === "." || id === ".." || id.includes("/") || id.includes("\\") || id.includes("\0")) {
+    throw new Error(`Identifiant de tâche invalide : "${id}".`);
+  }
+}
+
+/**
+ * Valide la forme d'un enregistrement relu depuis le disque, plutôt qu'un
+ * cast `as TaskRecord` — second geste d'I9 de la revue finale : sans lui,
+ * un fichier `.json` du store dont le contenu ne serait pas un vrai
+ * `TaskRecord` (corruption, écriture partielle échappée à l'atomicité
+ * habituelle, fichier déposé par autre chose) serait néanmoins interprété
+ * comme tel — notamment son `status`/`pid`, que `orch_cancel` utilise pour
+ * envoyer un signal à un processus (`cancel.ts`, repli par pid).
+ */
+const TaskRecordSchema = z.object({
+  id: z.string().min(1),
+  agent: z.string().min(1),
+  role: z.string().optional(),
+  objective: z.string(),
+  status: z.enum(["pending", "running", "succeeded", "failed", "cancelled", "timed_out"]),
+  created_at: z.string(),
+  started_at: z.string().optional(),
+  ended_at: z.string().optional(),
+  task_dir: z.string(),
+  workspace: z.string(),
+  isolation: IsolationSchema,
+  mode: TaskModeSchema,
+  branch: z.string().optional(),
+  exit_code: z.number().int().nullish(),
+  report_via: z.enum(["channel", "schema", "file"]),
+  report_source: z.enum(["channel", "schema", "file", "extracted", "synthesized"]).optional(),
+  changes_verified_by: z.enum(["git", "declaration"]).optional(),
+  depth: z.number().int().nonnegative(),
+  pid: z.number().int().positive().optional(),
+});
+
 export function fileTaskStore(root: string): TaskStore {
   const dir = join(root, ".orch", "state", "tasks");
 
   function fileFor(id: string): string {
+    assertSafeTaskId(id);
     return join(dir, `${id}${SUFFIX}`);
   }
 
   async function readRecord(id: string): Promise<TaskRecord | null> {
     try {
       const raw = await readFile(fileFor(id), "utf8");
-      return JSON.parse(raw) as TaskRecord;
+      const parsed = TaskRecordSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? (parsed.data as TaskRecord) : null;
     } catch {
       return null;
     }
@@ -104,6 +162,10 @@ export function fileTaskStore(root: string): TaskStore {
    * chacun à sa façon — voir l'en-tête du fichier.
    */
   async function writeTemp(record: TaskRecord): Promise<string> {
+    // Construit son propre chemin à partir de `record.id`, sans passer par
+    // `fileFor` : validé ici séparément pour ne pas dépendre de l'ordre
+    // d'appel avec `fileFor` plus bas.
+    assertSafeTaskId(record.id);
     await mkdir(dir, { recursive: true });
     const tmp = join(dir, `.${record.id}.${randomUUID()}.tmp`);
     await writeFile(tmp, JSON.stringify(record, null, 2) + "\n", "utf8");
