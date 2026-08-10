@@ -689,6 +689,27 @@ describe("materializePolicyList", () => {
     });
   });
 
+  it("retrait dans une liste héritée : la moitié symétrique de l'augmentation — le global déclare denied = [a, b], le projet retire a, et matérialise denied = [b]", async () => {
+    await withFakeHome(async (home) => {
+      await mkdir(join(home, ".config", "orch"), { recursive: true });
+      await writeFile(join(home, ".config", "orch", "config.toml"), '[policy]\ndenied = ["copilot", "opencode"]\n', "utf8");
+
+      const result = await materializePolicyList(root, "project", "denied", "copilot", false);
+      expect(result.materialized).toBe(true);
+      // "copilot" retiré, "opencode" (hérité du global) survit dans la liste matérialisée — pas juste "sans copilot".
+      expect(result.effective).toEqual(["opencode"]);
+
+      // Le projet porte désormais cette liste en propre ; le global, lui, n'a pas bougé.
+      const projectLayer = await loadLayer("project", root);
+      expect(projectLayer).toEqual({ policy: { denied: ["opencode"] } });
+      const globalLayer = await loadLayer("global", root);
+      expect(globalLayer).toEqual({ policy: { denied: ["copilot", "opencode"] } });
+
+      const { config } = await loadConfig(root);
+      expect(config.policy.denied).toEqual(["opencode"]);
+    });
+  });
+
   it("le défaut I11 : deux couches, la globale et la projet, se matérialisent indépendamment", async () => {
     // Scénario minimal (voir le scénario complet côté CLI, packages/cli/src/commands/policy.test.ts) : la couche
     // globale ne doit jamais se retrouver aplatie dans la couche projet par une matérialisation de liste.
