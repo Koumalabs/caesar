@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig, saveProjectConfig } from "@orch/core";
+import { loadConfig, saveLayer } from "@orch/core";
 import { withFakeAgentAsBin, withFakeHome } from "../../test/support.js";
 import { createSession } from "../session.js";
 import { orchListRoles } from "./list-roles.js";
@@ -65,7 +65,7 @@ describe("orch_list_roles", () => {
       // mais pas refusé, donc lui aussi écarté, avec un motif différent.
       withFakeAgentAsBin("codex", async () => {
         const { config } = await loadConfig(root);
-        await saveProjectConfig(root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
+        await saveLayer("project", root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
 
         const session = await createSession(root);
         const result = await orchListRoles(session);

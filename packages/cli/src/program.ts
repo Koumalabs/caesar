@@ -67,6 +67,19 @@ function withCommonOptions(command: Command): Command {
 }
 
 /**
+ * `--global`/`--local` : la couche visée par une commande qui écrit (`policy
+ * allow|deny`, `agents enable|disable`, `role add|remove`). Sans l'une ou
+ * l'autre : couche projet, comme avant la tâche 13. Mutuellement exclusives
+ * — `resolveScope` (`../scope.js`) le vérifie à l'exécution et le dit
+ * clairement plutôt que de laisser la dernière lue l'emporter en silence.
+ */
+function withScopeOptions(command: Command): Command {
+  return command
+    .option("--global", "Cible la couche globale (~/.config/orch/config.toml) plutôt que la couche projet.")
+    .option("--local", "Cible la couche locale du projet (.orch/config.local.toml, non versionnée) plutôt que la couche projet.");
+}
+
+/**
  * Construit le programme commander. Ne parse rien : `exitCodeRef` reçoit le
  * code de sortie de la commande exécutée, lu par l'appelant après
  * `parseAsync`.
@@ -110,13 +123,14 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
   // ---------------------------------------------------------------------
 
   withCommonOptions(program.command("init"))
-    .description("Crée <root>/.orch/config.toml et les prompts système par défaut de chaque rôle.")
-    .option("--force", "Écrase une configuration de projet existante.")
-    .action(async (options: GlobalOptions & { force?: boolean }, command: Command) => {
-      const opts = command.optsWithGlobals<GlobalOptions & { force?: boolean }>();
+    .description("Crée <root>/.orch/config.toml et les prompts système par défaut de chaque rôle (--global : ~/.config/orch/config.toml).")
+    .option("--force", "Écrase une configuration existante.")
+    .option("--global", "Crée la couche globale (~/.config/orch/config.toml) plutôt que la couche projet.")
+    .action(async (options: GlobalOptions & { force?: boolean; global?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<GlobalOptions & { force?: boolean; global?: boolean }>();
       await run(async () => {
         const root = await resolveRoot(opts.root);
-        return runInit(root, { force: opts.force, json: opts.json }, io);
+        return runInit(root, { force: opts.force, json: opts.json, global: opts.global }, io);
       });
     });
 
@@ -161,20 +175,24 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
       await run(async () => runAgentsList(await resolveRoot(opts.root), { json: opts.json }, io));
     });
 
-  withCommonOptions(agents.command("enable"))
-    .description("Retire un agent de la liste \"denied\" de la politique.")
+  withScopeOptions(withCommonOptions(agents.command("enable")))
+    .description("Retire un agent de la liste \"denied\" de la politique (couche projet par défaut ; --global/--local).")
     .argument("<id>", "Identifiant de l'agent")
-    .action(async (id: string, _options: GlobalOptions, command: Command) => {
-      const opts = command.optsWithGlobals<GlobalOptions>();
-      await run(async () => runAgentsEnable(await resolveRoot(opts.root), id, { json: opts.json }, io));
+    .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<typeof options>();
+      await run(async () =>
+        runAgentsEnable(await resolveRoot(opts.root), id, { json: opts.json, global: opts.global, local: opts.local }, io),
+      );
     });
 
-  withCommonOptions(agents.command("disable"))
-    .description("Ajoute un agent à la liste \"denied\" de la politique.")
+  withScopeOptions(withCommonOptions(agents.command("disable")))
+    .description("Ajoute un agent à la liste \"denied\" de la politique (couche projet par défaut ; --global/--local).")
     .argument("<id>", "Identifiant de l'agent")
-    .action(async (id: string, _options: GlobalOptions, command: Command) => {
-      const opts = command.optsWithGlobals<GlobalOptions>();
-      await run(async () => runAgentsDisable(await resolveRoot(opts.root), id, { json: opts.json }, io));
+    .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<typeof options>();
+      await run(async () =>
+        runAgentsDisable(await resolveRoot(opts.root), id, { json: opts.json, global: opts.global, local: opts.local }, io),
+      );
     });
 
   withCommonOptions(agents.command("test"))
@@ -199,20 +217,24 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
       await run(async () => runPolicyShow(await resolveRoot(opts.root), { json: opts.json }, io));
     });
 
-  withCommonOptions(policy.command("allow"))
-    .description("Ajoute un agent à la liste \"allowed\".")
+  withScopeOptions(withCommonOptions(policy.command("allow")))
+    .description("Ajoute un agent à la liste \"allowed\" (couche projet par défaut ; --global/--local).")
     .argument("<id>", "Identifiant de l'agent")
-    .action(async (id: string, _options: GlobalOptions, command: Command) => {
-      const opts = command.optsWithGlobals<GlobalOptions>();
-      await run(async () => runPolicyAllow(await resolveRoot(opts.root), id, { json: opts.json }, io));
+    .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<typeof options>();
+      await run(async () =>
+        runPolicyAllow(await resolveRoot(opts.root), id, { json: opts.json, global: opts.global, local: opts.local }, io),
+      );
     });
 
-  withCommonOptions(policy.command("deny"))
-    .description("Ajoute un agent à la liste \"denied\".")
+  withScopeOptions(withCommonOptions(policy.command("deny")))
+    .description("Ajoute un agent à la liste \"denied\" (couche projet par défaut ; --global/--local).")
     .argument("<id>", "Identifiant de l'agent")
-    .action(async (id: string, _options: GlobalOptions, command: Command) => {
-      const opts = command.optsWithGlobals<GlobalOptions>();
-      await run(async () => runPolicyDeny(await resolveRoot(opts.root), id, { json: opts.json }, io));
+    .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<typeof options>();
+      await run(async () =>
+        runPolicyDeny(await resolveRoot(opts.root), id, { json: opts.json, global: opts.global, local: opts.local }, io),
+      );
     });
 
   // ---------------------------------------------------------------------
@@ -236,16 +258,18 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
       await run(async () => runRoleShow(await resolveRoot(opts.root), name, { json: opts.json }, io));
     });
 
-  withCommonOptions(role.command("remove"))
-    .description("Supprime un rôle du projet.")
+  withScopeOptions(withCommonOptions(role.command("remove")))
+    .description("Supprime un rôle (couche projet par défaut ; --global/--local — uniquement si cette couche le déclare).")
     .argument("<name>", "Nom du rôle")
-    .action(async (name: string, _options: GlobalOptions, command: Command) => {
-      const opts = command.optsWithGlobals<GlobalOptions>();
-      await run(async () => runRoleRemove(await resolveRoot(opts.root), name, { json: opts.json }, io));
+    .action(async (name: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<typeof options>();
+      await run(async () =>
+        runRoleRemove(await resolveRoot(opts.root), name, { json: opts.json, global: opts.global, local: opts.local }, io),
+      );
     });
 
-  withCommonOptions(role.command("add"))
-    .description("Crée ou remplace un rôle. Non interactif — l'édition confortable relève du TUI.")
+  withScopeOptions(withCommonOptions(role.command("add")))
+    .description("Crée ou remplace un rôle (couche projet par défaut ; --global/--local). Non interactif — l'édition confortable relève du TUI.")
     .argument("<name>", "Nom du rôle")
     .option("--purpose <text>", "Intention du rôle, en une phrase.")
     .option("--agents <ids>", "Agents candidats, dans l'ordre de repli, séparés par des virgules (a,b,c).")
@@ -255,7 +279,15 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
     .action(
       async (
         name: string,
-        options: GlobalOptions & { purpose?: string; agents?: string; mode?: string; isolation?: string; timeout?: string },
+        options: GlobalOptions & {
+          purpose?: string;
+          agents?: string;
+          mode?: string;
+          isolation?: string;
+          timeout?: string;
+          global?: boolean;
+          local?: boolean;
+        },
         command: Command,
       ) => {
         const opts = command.optsWithGlobals<typeof options>();
@@ -263,7 +295,16 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
           runRoleAdd(
             await resolveRoot(opts.root),
             name,
-            { purpose: opts.purpose, agents: opts.agents, mode: opts.mode, isolation: opts.isolation, timeout: opts.timeout, json: opts.json },
+            {
+              purpose: opts.purpose,
+              agents: opts.agents,
+              mode: opts.mode,
+              isolation: opts.isolation,
+              timeout: opts.timeout,
+              json: opts.json,
+              global: opts.global,
+              local: opts.local,
+            },
             io,
           ),
         );

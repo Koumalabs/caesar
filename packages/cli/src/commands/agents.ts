@@ -7,9 +7,15 @@
  * dupliquer ou faire dépendre le TUI du CLI pour deux fonctions pures était
  * pire que de les déplacer à côté de ce qu'elles décrivent. Ce module se
  * contente désormais de les appeler, comme `doctor.ts`.
+ *
+ * `enable`/`disable` écrivent une seule couche (`--global`/`--local`, projet
+ * par défaut) via `materializePolicyList` (`@orch/core`, même mécanisme que
+ * `orch policy allow|deny` — "denied" est le même champ) : jamais la fusion,
+ * voir le brief de la tâche 13.
  */
-import type { OrchConfig } from "@orch/core";
+import type { ConfigScope } from "@orch/core";
 import {
+  agentProvenance,
   checkDelegation,
   createQueue,
   describeAgentCapabilities,
@@ -19,18 +25,20 @@ import {
   findBinaryInPath,
   listAgentDefinitions,
   loadConfig,
+  materializePolicyList,
   runTask,
-  saveProjectConfig,
 } from "@orch/core";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
+import type { ScopeOptions } from "../scope.js";
+import { materializationNotice, resolveScope, scopeLabel } from "../scope.js";
 
 export interface AgentsListOptions {
   json?: boolean;
 }
 
 export async function runAgentsList(root: string, options: AgentsListOptions, io: Io): Promise<number> {
-  const { config } = await loadConfig(root);
+  const { config, layers } = await loadConfig(root);
   // Catalogue natif étendu des agents de configuration ([[agent]]) : voir C1
   // de la revue finale — sans quoi un agent déclaré en TOML restait invisible
   // de "orch agents list".
@@ -47,6 +55,8 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
         path: path ?? undefined,
         capabilities: describeAgentCapabilities(def),
         policy: describeAgentPolicy(config.policy, def.id),
+        // "default" pour les cinq agents du catalogue natif : aucune couche ne les déclare, ils sont câblés dans le registre.
+        provenance: agentProvenance(layers, def.id),
       };
     }),
   );
@@ -61,45 +71,67 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
     r.installed ? (r.path ?? "trouvé") : "absent",
     r.capabilities.join(", ") || "-",
     r.policy.allowed ? "autorisé" : `refusé (${r.policy.reason})`,
+    r.provenance,
   ]);
-  writeLine(io.stdout, renderTable(["agent", "binaire", "capacités", "politique"], tableRows));
+  writeLine(io.stdout, renderTable(["agent", "binaire", "capacités", "politique", "provenance"], tableRows));
   return EXIT_OK;
 }
 
-async function setAgentDenied(root: string, id: string, denied: boolean): Promise<OrchConfig> {
-  const { config } = await loadConfig(root);
-  const deniedSet = new Set(config.policy.denied);
-  if (denied) deniedSet.add(id);
-  else deniedSet.delete(id);
-  const updated: OrchConfig = { ...config, policy: { ...config.policy, denied: [...deniedSet] } };
-  await saveProjectConfig(root, updated);
-  return updated;
-}
-
-export interface AgentsToggleOptions {
+export interface AgentsToggleOptions extends ScopeOptions {
   json?: boolean;
 }
 
-function reportToggle(io: Io, options: AgentsToggleOptions, id: string, enabled: boolean, config: OrchConfig): number {
+async function setAgentDenied(
+  root: string,
+  id: string,
+  denied: boolean,
+  options: AgentsToggleOptions,
+): Promise<{ scope: ConfigScope; effective: string[]; materialized: boolean } | { error: string }> {
+  const scope = resolveScope(options);
+  if (typeof scope !== "string") return scope;
+  const { effective, materialized } = await materializePolicyList(root, scope, "denied", id, denied);
+  return { scope, effective, materialized };
+}
+
+function reportToggle(
+  io: Io,
+  options: AgentsToggleOptions,
+  id: string,
+  enabled: boolean,
+  scope: ConfigScope,
+  denied: string[],
+  materialized: boolean,
+): number {
   if (options.json) {
-    printJson(io, { id, enabled, denied: config.policy.denied });
+    printJson(io, { id, enabled, scope, denied, materialized });
   } else {
     writeLine(
       io.stdout,
-      enabled ? `Agent "${id}" retiré de la liste "denied".` : `Agent "${id}" ajouté à la liste "denied".`,
+      enabled
+        ? `Agent "${id}" retiré de la liste "denied" (couche ${scopeLabel(scope)}).`
+        : `Agent "${id}" ajouté à la liste "denied" (couche ${scopeLabel(scope)}).`,
     );
+    if (materialized) writeLine(io.stdout, materializationNotice("denied", scope, denied));
   }
   return EXIT_OK;
 }
 
 export async function runAgentsEnable(root: string, id: string, options: AgentsToggleOptions, io: Io): Promise<number> {
-  const config = await setAgentDenied(root, id, false);
-  return reportToggle(io, options, id, true, config);
+  const result = await setAgentDenied(root, id, false, options);
+  if ("error" in result) {
+    printError(io, result.error);
+    return EXIT_USAGE;
+  }
+  return reportToggle(io, options, id, true, result.scope, result.effective, result.materialized);
 }
 
 export async function runAgentsDisable(root: string, id: string, options: AgentsToggleOptions, io: Io): Promise<number> {
-  const config = await setAgentDenied(root, id, true);
-  return reportToggle(io, options, id, false, config);
+  const result = await setAgentDenied(root, id, true, options);
+  if ("error" in result) {
+    printError(io, result.error);
+    return EXIT_USAGE;
+  }
+  return reportToggle(io, options, id, false, result.scope, result.effective, result.materialized);
 }
 
 export interface AgentsTestOptions {

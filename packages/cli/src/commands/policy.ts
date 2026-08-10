@@ -1,127 +1,91 @@
 /**
  * `orch policy show|allow|deny`.
  *
- * `policy show` doit indiquer, pour chaque valeur, de quel fichier elle
- * vient (global, projet, ou défaut). `@orch/core` ne publie que le résultat
- * déjà fusionné (`loadConfig`) : ce module ne réimplémente pas la lecture du
- * TOML pour en retrouver la provenance — il compose trois appels à
- * `loadConfig`, la seule fonction habilitée à lire ces fichiers, avec un
- * `HOME` ou une racine de projet momentanément neutralisés pour isoler la
- * contribution de chaque couche. Voir `computeProvenance` ci-dessous.
- */
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { OrchConfig, PolicyConfig } from "@orch/core";
-import { defaultConfig, loadConfig, saveProjectConfig } from "@orch/core";
-import type { Io } from "../output.js";
-import { EXIT_OK, printJson, renderTable, writeLine } from "../output.js";
-
-type Source = "global" | "project" | "default";
-
-function sameValue(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
-async function withTempHome<T>(fn: () => Promise<T>): Promise<T> {
-  const fakeHome = await mkdtemp(join(tmpdir(), "orch-cli-home-"));
-  const previous = process.env["HOME"];
-  process.env["HOME"] = fakeHome;
-  try {
-    return await fn();
-  } finally {
-    if (previous === undefined) delete process.env["HOME"];
-    else process.env["HOME"] = previous;
-    await rm(fakeHome, { recursive: true, force: true });
-  }
-}
-
-/**
- * Provenance de chaque champ de la politique effective, calculée en
- * comparant trois fusions obtenues via `loadConfig` (jamais en relisant le
- * TOML nous-mêmes) : la fusion réelle, une fusion "projet seul" (`HOME`
- * neutralisé) et une fusion "global seul" (racine neutralisée). Un champ qui
- * diffère du défaut dans la fusion "projet seul" vient du projet ; sinon,
- * s'il diffère du défaut dans la fusion "global seul", il vient du global ;
- * sinon, il vient du défaut.
+ * `policy show` indique, pour chaque valeur, de quelle couche elle vient
+ * (global, projet, local, ou défaut) — directement à partir de `layers`
+ * (`@orch/core`, `loadConfig`) : chaque couche expose exactement ce qu'elle
+ * déclare, la provenance est donc la dernière couche qui déclare un champ,
+ * sans avoir à recharger la configuration plusieurs fois pour le deviner par
+ * différence (voir `policyFieldProvenance`, qui a remplacé l'ancien
+ * `computeProvenance` de ce module — trois chargements de `loadConfig`, avec
+ * `HOME` ou la racine du projet momentanément neutralisés).
  *
- * Limite assumée : un fichier qui fixe explicitement un champ à sa valeur
- * par défaut est indiscernable d'un champ absent — inhérent à une
- * comparaison par valeur plutôt que par présence syntaxique.
+ * `policy allow|deny` écrivent une seule couche (`--global`/`--local`,
+ * projet par défaut) — jamais la fusion : voir `materializePolicyList`
+ * (`@orch/core`), qui porte toute la logique de matérialisation de liste.
+ * Cette façade ne fait que choisir la couche et mettre le résultat en forme.
  */
-export async function computeProvenance(root: string): Promise<{ policy: PolicyConfig; provenance: Record<keyof PolicyConfig, Source> }> {
-  const def = defaultConfig().policy;
-  const { config: merged } = await loadConfig(root);
-
-  const projectOnly = await withTempHome(async () => (await loadConfig(root)).config);
-
-  const fakeRoot = await mkdtemp(join(tmpdir(), "orch-cli-root-"));
-  let globalOnly: OrchConfig;
-  try {
-    globalOnly = (await loadConfig(fakeRoot)).config;
-  } finally {
-    await rm(fakeRoot, { recursive: true, force: true });
-  }
-
-  const provenance = {} as Record<keyof PolicyConfig, Source>;
-  for (const key of Object.keys(def) as (keyof PolicyConfig)[]) {
-    if (!sameValue(projectOnly.policy[key], def[key])) provenance[key] = "project";
-    else if (!sameValue(globalOnly.policy[key], def[key])) provenance[key] = "global";
-    else provenance[key] = "default";
-  }
-
-  return { policy: merged.policy, provenance };
-}
+import type { ConfigScope, PolicyConfig } from "@orch/core";
+import { loadConfig, materializePolicyList, policyFieldProvenance } from "@orch/core";
+import type { Io } from "../output.js";
+import { EXIT_OK, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
+import type { ScopeOptions } from "../scope.js";
+import { materializationNotice, resolveScope, scopeLabel } from "../scope.js";
 
 export interface PolicyShowOptions {
   json?: boolean;
 }
 
 export async function runPolicyShow(root: string, options: PolicyShowOptions, io: Io): Promise<number> {
-  const { config, sources } = await loadConfig(root);
-  const { provenance } = await computeProvenance(root);
+  const { config, sources, layers } = await loadConfig(root);
+
+  const keys = Object.keys(config.policy) as (keyof PolicyConfig)[];
+  const provenance = Object.fromEntries(keys.map((key) => [key, policyFieldProvenance(layers, key)])) as Record<
+    keyof PolicyConfig,
+    ReturnType<typeof policyFieldProvenance>
+  >;
 
   if (options.json) {
     printJson(io, { policy: config.policy, provenance, sources });
     return EXIT_OK;
   }
 
-  const rows = (Object.keys(config.policy) as (keyof PolicyConfig)[]).map((key) => [
-    key,
-    JSON.stringify(config.policy[key]),
-    provenance[key],
-  ]);
+  const rows = keys.map((key) => [key, JSON.stringify(config.policy[key]), provenance[key]]);
   writeLine(io.stdout, renderTable(["champ", "valeur", "provenance"], rows));
   return EXIT_OK;
 }
 
-interface PolicyListUpdate {
-  config: OrchConfig;
-  /** Vrai si la liste passait de vide à non vide — voir CONTRÔLEUR-2 de la revue finale. */
-  wasEmptyAllowlist: boolean;
-}
-
-async function setPolicyList(root: string, id: string, list: "allowed" | "denied", present: boolean): Promise<PolicyListUpdate> {
-  const { config } = await loadConfig(root);
-  const wasEmptyAllowlist = list === "allowed" && present && config.policy.allowed.length === 0;
-  const set = new Set(config.policy[list]);
-  if (present) set.add(id);
-  else set.delete(id);
-  const updated: OrchConfig = { ...config, policy: { ...config.policy, [list]: [...set] } };
-  await saveProjectConfig(root, updated);
-  return { config: updated, wasEmptyAllowlist };
-}
-
-export interface PolicyEditOptions {
+export interface PolicyEditOptions extends ScopeOptions {
   json?: boolean;
 }
 
+interface PolicyListUpdate {
+  scope: ConfigScope;
+  effective: string[];
+  materialized: boolean;
+  /** Vrai si la liste "allowed" passait de vide à non vide — voir CONTRÔLEUR-2 de la revue finale. */
+  wasEmptyAllowlist: boolean;
+}
+
+async function setPolicyList(
+  root: string,
+  id: string,
+  field: "allowed" | "denied",
+  present: boolean,
+  options: PolicyEditOptions,
+): Promise<PolicyListUpdate | { error: string }> {
+  const scope = resolveScope(options);
+  if (typeof scope !== "string") return scope;
+
+  const { config: before } = await loadConfig(root);
+  const wasEmptyAllowlist = field === "allowed" && present && before.policy.allowed.length === 0;
+
+  const { effective, materialized } = await materializePolicyList(root, scope, field, id, present);
+  return { scope, effective, materialized, wasEmptyAllowlist };
+}
+
 export async function runPolicyAllow(root: string, id: string, options: PolicyEditOptions, io: Io): Promise<number> {
-  const { config, wasEmptyAllowlist } = await setPolicyList(root, id, "allowed", true);
+  const result = await setPolicyList(root, id, "allowed", true, options);
+  if ("error" in result) {
+    printError(io, result.error);
+    return EXIT_USAGE;
+  }
+  const { scope, effective, materialized, wasEmptyAllowlist } = result;
+
   if (options.json) {
-    printJson(io, { id, allowed: config.policy.allowed, narrowed_allowlist: wasEmptyAllowlist });
+    printJson(io, { id, scope, allowed: effective, narrowed_allowlist: wasEmptyAllowlist, materialized });
   } else {
-    writeLine(io.stdout, `Agent "${id}" ajouté à la liste "allowed".`);
+    writeLine(io.stdout, `Agent "${id}" ajouté à la liste "allowed" (couche ${scopeLabel(scope)}).`);
     // CONTRÔLEUR-2 de la revue finale : "allow" partait d'une liste vide —
     // où tout agent non refusé passait — et la rend désormais restrictive.
     // Un utilisateur qui voulait "autoriser un agent de plus" vient d'en
@@ -135,13 +99,24 @@ export async function runPolicyAllow(root: string, id: string, options: PolicyEd
           `restreindre les autres, préférez "orch policy deny"/"orch agents disable" sur ce que vous voulez exclure.`,
       );
     }
+    if (materialized) writeLine(io.stdout, materializationNotice("allowed", scope, effective));
   }
   return EXIT_OK;
 }
 
 export async function runPolicyDeny(root: string, id: string, options: PolicyEditOptions, io: Io): Promise<number> {
-  const { config } = await setPolicyList(root, id, "denied", true);
-  if (options.json) printJson(io, { id, denied: config.policy.denied });
-  else writeLine(io.stdout, `Agent "${id}" ajouté à la liste "denied".`);
+  const result = await setPolicyList(root, id, "denied", true, options);
+  if ("error" in result) {
+    printError(io, result.error);
+    return EXIT_USAGE;
+  }
+  const { scope, effective, materialized } = result;
+
+  if (options.json) {
+    printJson(io, { id, scope, denied: effective, materialized });
+  } else {
+    writeLine(io.stdout, `Agent "${id}" ajouté à la liste "denied" (couche ${scopeLabel(scope)}).`);
+    if (materialized) writeLine(io.stdout, materializationNotice("denied", scope, effective));
+  }
   return EXIT_OK;
 }
