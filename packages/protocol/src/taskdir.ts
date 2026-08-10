@@ -77,16 +77,41 @@ export async function readEvents(paths: TaskPaths): Promise<OrchEvent[]> {
   return events;
 }
 
+/**
+ * Ramène tout `null` à un champ absent, récursivement.
+ *
+ * Le standard dit « facultatif = absent », mais les sorties structurées natives
+ * imposent l'inverse : leur mode strict exige que `required` couvre toutes les
+ * propriétés, si bien qu'un champ facultatif s'y déclare nullable et revient
+ * rempli d'un `null` explicite (voir `strictReportJsonSchema` dans
+ * `jsonschema.ts`). Sans cette normalisation, un `"usage": null` parfaitement
+ * légitime ferait échouer la validation d'un rapport par ailleurs impeccable, et
+ * l'orchestrateur retomberait sur un palier dégradé pour rien.
+ *
+ * Les tableaux sont parcourus mais leurs éléments conservés tels quels : un
+ * `null` y est une valeur, pas un champ omis.
+ */
+function dropNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(dropNulls);
+  if (value === null || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (item === null) continue;
+    out[key] = dropNulls(item);
+  }
+  return out;
+}
+
 /** Valide un rapport, quelle que soit sa provenance. */
 export function parseReport(value: unknown): Report {
-  return ReportSchema.parse(value);
+  return ReportSchema.parse(dropNulls(value));
 }
 
 /** Lit `report.json` s'il existe et s'il est conforme. */
 export async function readReport(paths: TaskPaths): Promise<Report | null> {
   try {
     const raw = await readFile(paths.reportPath, "utf8");
-    const parsed = ReportSchema.safeParse(safeJsonParse(raw));
+    const parsed = ReportSchema.safeParse(dropNulls(safeJsonParse(raw)));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -124,7 +149,7 @@ export function extractReportFromText(text: string): Report | null {
 
   // Le dernier rapport valide l'emporte : un agent qui se reprend a le dernier mot.
   for (const candidate of candidates.reverse()) {
-    const parsed = ReportSchema.safeParse(safeJsonParse(candidate));
+    const parsed = ReportSchema.safeParse(dropNulls(safeJsonParse(candidate)));
     if (parsed.success) return parsed.data;
   }
   return null;

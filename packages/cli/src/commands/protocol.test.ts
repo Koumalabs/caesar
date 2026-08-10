@@ -32,23 +32,25 @@ describe("orch protocol schema", () => {
     expect(io.stdoutText()).not.toMatch(/\x1b\[/);
   });
 
-  it("--strict : variante \"report\" avec additionalProperties: false, mais pas tout requis (I2 de la revue finale)", async () => {
-    // Avant I2, `schema.required` valait littéralement `Object.keys(schema.properties)` :
-    // le modèle devait fabriquer une valeur pour tout champ purement
-    // optionnel sans défaut (un `usage.cost_usd` mesuré, une
-    // `findings[].line` inventée). Seuls les champs déjà mandatoires côté
-    // zod (`protocol`/`status`/`summary`) et ceux porteurs d'un défaut
-    // (`changes`, `details`…) restent obligatoires désormais — `usage` reste
-    // une propriété déclarée (`additionalProperties: false` ne l'interdit
-    // pas), simplement plus dans `required`.
+  it("--strict : variante \"report\" avec additionalProperties: false et tout requis, l'optionnel étant rendu nullable", async () => {
+    // Ce que publie la commande doit être exactement ce que le fournisseur
+    // accepte : `required` couvre l'intégralité de `properties`, faute de quoi
+    // l'API refuse la requête entière (constaté sur une délégation réelle à
+    // Codex, sur `commands_run.items.exit_code`). L'intention d'I2 — ne pas
+    // faire fabriquer un `usage.cost_usd` mesuré ni une `findings[].line`
+    // inventée — tient par la nullabilité de ces champs. La règle elle-même
+    // est vérifiée à toute profondeur côté `@orch/protocol` ; ici on vérifie
+    // que la commande la publie sans la déformer.
     const io: CapturedIo = makeIo();
     const code = await runProtocolSchema("report", { strict: true }, io);
     expect(code).toBe(EXIT_OK);
     const schema = JSON.parse(io.stdoutText());
     expect(schema.additionalProperties).toBe(false);
-    expect(schema.required).toEqual(expect.arrayContaining(["protocol", "status", "summary", "changes", "details"]));
-    expect(schema.required).not.toContain("usage");
-    expect(Object.keys(schema.properties)).toContain("usage");
+    expect(schema.required).toEqual(Object.keys(schema.properties));
+    expect(schema.required).toContain("usage");
+    expect(schema.properties.usage.anyOf).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "null" })]),
+    );
   });
 
   it("--strict sur autre chose que \"report\" : erreur d'usage", async () => {

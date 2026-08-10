@@ -32,9 +32,19 @@ export function jsonSchemaFor(name: SchemaName): JsonSchema {
  * `agy --json-schema`).
  *
  * Ces fournisseurs imposent que chaque objet interdise les propriétés
- * supplémentaires et déclare toutes ses propriétés comme requises. On rend donc
- * l'ensemble obligatoire : le modèle devra fournir les tableaux vides plutôt que
- * de les omettre, ce qui reste conforme au standard.
+ * supplémentaires et déclare **toutes** ses propriétés comme requises — la
+ * contrainte est vérifiée côté API, qui refuse la requête entière sinon :
+ *
+ *     Invalid schema for response_format 'codex_output_schema':
+ *     In context=('properties', 'commands_run', 'items'), 'required' is required
+ *     to be supplied and to be an array including every key in properties.
+ *     Missing 'exit_code'.
+ *
+ * Un champ facultatif ne s'exprime donc pas en le retirant de `required`, mais
+ * en l'autorisant à valoir `null` : le modèle n'a rien à fabriquer, il répond
+ * `null`. `dropNulls` (voir `taskdir.ts`) ramène ensuite ces `null` à des champs
+ * absents avant validation, de sorte que le standard, lui, garde sa forme
+ * « facultatif = absent ».
  */
 export function strictReportJsonSchema(): JsonSchema {
   return tightenObjects(jsonSchemaFor("report"));
@@ -49,6 +59,29 @@ function hasDefault(propertySchema: unknown): boolean {
   return typeof propertySchema === "object" && propertySchema !== null && "default" in propertySchema;
 }
 
+/** Vrai si le schéma admet déjà `null` — `exit_code` l'admet, son zod étant `.nullish()`. */
+function allowsNull(node: unknown): boolean {
+  if (typeof node !== "object" || node === null) return false;
+  const schema = node as Record<string, unknown>;
+  const type = schema["type"];
+  if (type === "null") return true;
+  if (Array.isArray(type) && type.includes("null")) return true;
+  const anyOf = schema["anyOf"];
+  return Array.isArray(anyOf) && anyOf.some(allowsNull);
+}
+
+/**
+ * Autorise `null` en plus de la forme d'origine.
+ *
+ * L'union explicite convient à toutes les formes rencontrées ici — un type
+ * scalaire (`file`), un entier contraint (`line`), un objet imbriqué (`usage`) —
+ * là où l'ajout de `"null"` au champ `type` supposerait que ce champ existe et
+ * soit une chaîne.
+ */
+function nullable(node: unknown): unknown {
+  return allowsNull(node) ? node : { anyOf: [node, { type: "null" }] };
+}
+
 function walk(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(walk);
   if (node === null || typeof node !== "object") return node;
@@ -61,26 +94,33 @@ function walk(node: unknown): unknown {
   const properties = out["properties"];
   if (properties && typeof properties === "object") {
     out["additionalProperties"] = false;
-    // I2 de la revue finale : `Object.keys(properties)` rendait tout
-    // obligatoire sans distinction, y compris des champs purement
-    // optionnels sans défaut (`usage`, `findings[].file`,
-    // `findings[].line`) — le modèle devait alors fabriquer une valeur (un
-    // coût en dollars mesuré, une ligne inventée), et un `0` de repli pour
-    // `line` échouait ensuite à la revalidation par `ReportSchema`
-    // (`exclusiveMinimum: 0`, vérifié par la revue : `too_small: expected
-    // number to be >0`).
+    // Le fournisseur exige que `required` couvre l'intégralité de
+    // `properties` (voir l'erreur citée en tête de fichier). Ce qui a été
+    // appris à l'usage : retirer un champ de `required` — la première forme
+    // d'I2 — ne dispense pas le modèle de le fournir, elle fait refuser la
+    // requête entière avant même qu'il ne réponde.
     //
-    // Restent obligatoires uniquement : les champs déjà mandatoires côté
-    // zod — repris tels quels du `required` que `z.toJSONSchema` (mode
-    // "input") a déjà calculé correctement pour ce noeud, avant qu'il ne
-    // soit écrasé ci-dessous (`protocol`/`status`/`summary` au niveau
-    // racine, `path`/`action` pour un `Change`…) — et les champs porteurs
-    // d'une valeur par défaut (`hasDefault`) : répéter le défaut n'est
-    // jamais une fabrication, contrairement à inventer un champ purement
-    // optionnel qui n'en a pas.
+    // L'intention d'I2 reste tenue, par l'autre bout : un champ purement
+    // facultatif (`usage`, `findings[].file`, `findings[].line`) devient
+    // nullable. Le modèle répond `null` plutôt que d'inventer un coût mesuré
+    // ou un numéro de ligne — et le `0` de repli pour `line`, qui échouait
+    // ensuite à la revalidation par `ReportSchema` (`exclusiveMinimum: 0`,
+    // vérifié par la revue : `too_small: expected number to be >0`), n'a plus
+    // lieu d'être.
+    //
+    // `alreadyRequired` : le `required` que `z.toJSONSchema` (mode "input") a
+    // calculé pour ce noeud, lu avant d'être écrasé ci-dessous —
+    // `protocol`/`status`/`summary` au niveau racine, `path`/`action` pour un
+    // `Change`… Ces champs-là, comme ceux porteurs d'une valeur par défaut
+    // (`hasDefault`), ne deviennent pas nullables : répéter un défaut n'est
+    // jamais une fabrication.
     const alreadyRequired = new Set(Array.isArray(out["required"]) ? (out["required"] as unknown[]) : []);
     const props = properties as Record<string, unknown>;
-    out["required"] = Object.keys(props).filter((key) => alreadyRequired.has(key) || hasDefault(props[key]));
+    for (const [key, value] of Object.entries(props)) {
+      if (alreadyRequired.has(key) || hasDefault(value)) continue;
+      props[key] = nullable(value);
+    }
+    out["required"] = Object.keys(props);
   }
   return out;
 }

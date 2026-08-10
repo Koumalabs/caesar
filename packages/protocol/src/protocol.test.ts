@@ -6,6 +6,7 @@ import {
   extractReportFromText,
   jsonSchemaFor,
   makeEvent,
+  parseReport,
   renderTaskPrompt,
   strictReportJsonSchema,
   REPORT_PROTOCOL,
@@ -166,34 +167,88 @@ describe("publication du standard", () => {
     expect(schema.required).toContain("changes");
   });
 
-  it("I2 (revue finale) : ne force pas les champs purement optionnels sans défaut (usage, findings[].file, findings[].line)", () => {
-    // Avant I2, `required` valait `Object.keys(properties)` sans distinction :
-    // le modèle devait fabriquer un `usage.cost_usd` (coût mesuré inventé)
-    // et une `findings[].line` (un `0` de repli y échouait ensuite à la
-    // revalidation par ReportSchema, exclusiveMinimum: 0).
+  it("tout objet déclare `required` sur l'intégralité de ses propriétés, à toute profondeur", () => {
+    // L'invariant que le fournisseur applique, et que rien ne vérifiait : une
+    // seule propriété absente de `required`, si profonde soit-elle, fait
+    // refuser la requête entière avant que le modèle ne réponde. Constaté sur
+    // une délégation réelle à Codex, sur `commands_run.items.exit_code` :
+    //   Invalid schema for response_format 'codex_output_schema':
+    //   In context=('properties', 'commands_run', 'items'), 'required' is
+    //   required to be supplied and to be an array including every key in
+    //   properties. Missing 'exit_code'.
+    const incomplete: string[] = [];
+    const visit = (node: unknown, path: string): void => {
+      if (Array.isArray(node)) {
+        node.forEach((item, index) => visit(item, `${path}[${index}]`));
+        return;
+      }
+      if (node === null || typeof node !== "object") return;
+      const schema = node as Record<string, unknown>;
+      const properties = schema["properties"];
+      if (properties && typeof properties === "object") {
+        const declared = Object.keys(properties as Record<string, unknown>);
+        const required = new Set(Array.isArray(schema["required"]) ? (schema["required"] as string[]) : []);
+        const missing = declared.filter((key) => !required.has(key));
+        if (missing.length > 0) incomplete.push(`${path} → ${missing.join(", ")}`);
+      }
+      for (const [key, value] of Object.entries(schema)) visit(value, `${path}/${key}`);
+    };
+    visit(strictReportJsonSchema(), "#");
+
+    expect(incomplete).toEqual([]);
+  });
+
+  it("I2 (revue finale) : un champ purement optionnel est nullable plutôt qu'omis de `required`", () => {
+    // L'intention d'I2 tient toujours — ne pas contraindre le modèle à
+    // fabriquer un `usage.cost_usd` (un coût mesuré inventé) ni une
+    // `findings[].line` (un `0` de repli échouait ensuite à la revalidation
+    // par ReportSchema, exclusiveMinimum: 0) — mais elle se tient désormais
+    // par la nullabilité, seul moyen compatible avec l'invariant ci-dessus.
     const schema = strictReportJsonSchema() as {
       properties: {
         findings: { items: { properties: Record<string, unknown>; required: string[] } };
-        usage: { properties: Record<string, unknown> };
+        details: Record<string, unknown>;
       };
       required: string[];
     };
 
-    // `usage` reste une propriété déclarée (le modèle peut toujours la
-    // fournir s'il a une vraie mesure) mais n'est plus dans `required`.
-    expect(schema.properties.usage.properties).toHaveProperty("cost_usd");
-    expect(schema.required).not.toContain("usage");
+    const acceptsNull = (node: unknown): boolean => {
+      const anyOf = (node as { anyOf?: unknown[] }).anyOf;
+      return Array.isArray(anyOf) && anyOf.some((branch) => (branch as { type?: string }).type === "null");
+    };
 
-    const findingRequired = schema.properties.findings.items.required;
-    expect(findingRequired).toContain("severity");
-    expect(findingRequired).toContain("title");
-    expect(findingRequired).not.toContain("file");
-    expect(findingRequired).not.toContain("line");
+    expect(schema.required).toContain("usage");
+    expect(acceptsNull(schema.properties["usage" as keyof typeof schema.properties])).toBe(true);
 
-    // Les champs porteurs d'un défaut (`changes`, `details`…) restent
-    // obligatoires : répéter le défaut n'est jamais une fabrication.
+    const finding = schema.properties.findings.items;
+    expect(finding.required).toEqual(expect.arrayContaining(["severity", "title", "file", "line"]));
+    expect(acceptsNull(finding.properties["file"])).toBe(true);
+    expect(acceptsNull(finding.properties["line"])).toBe(true);
+
+    // Un champ porteur d'un défaut ne devient pas nullable : répéter le défaut
+    // n'est jamais une fabrication.
+    expect(acceptsNull(schema.properties.details)).toBe(false);
     expect(schema.required).toContain("changes");
     expect(schema.required).toContain("details");
+  });
+
+  it("un rapport dont les champs facultatifs valent `null` est accepté", () => {
+    // La contrepartie du schéma nullable : ce que le modèle renvoie
+    // effectivement doit rester validable, sans quoi le palier « schéma de
+    // sortie natif » retomberait sur un palier dégradé pour rien.
+    const report = parseReport({
+      protocol: REPORT_PROTOCOL,
+      status: "success",
+      summary: "Fait.",
+      usage: null,
+      findings: [{ severity: "info", title: "Note", file: null, line: null, detail: "" }],
+      commands_run: [{ command: "ls", exit_code: null, note: "" }],
+    });
+
+    expect(report.usage).toBeUndefined();
+    expect(report.findings[0]?.file).toBeUndefined();
+    expect(report.findings[0]?.line).toBeUndefined();
+    expect(report.commands_run[0]?.command).toBe("ls");
   });
 });
 
