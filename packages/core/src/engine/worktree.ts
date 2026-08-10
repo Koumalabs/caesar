@@ -26,6 +26,24 @@ export async function repoRoot(dir: string): Promise<string | null> {
   }
 }
 
+/**
+ * Vrai si le dépôt porte au moins un commit.
+ *
+ * Un dépôt fraîchement initialisé n'en porte aucun : sa branche n'est pas née et
+ * `HEAD` ne désigne rien. `git worktree add … HEAD` y échoue alors sur un
+ * `fatal: invalid reference: HEAD` que rien ne rattache à sa cause. Le cas se
+ * distingue de « ce n'est pas un dépôt git » — `repoRoot` réussit — et appelle
+ * un autre remède : un premier commit.
+ */
+export async function hasCommits(repo: string): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["rev-parse", "--verify", "--quiet", "HEAD"], { cwd: repo });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface WorktreeHandle {
   path: string;
   branch: string;

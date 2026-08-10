@@ -127,6 +127,18 @@ async function initGitRepo(root: string): Promise<void> {
   await git(root, ["commit", "-q", "-m", "init"]);
 }
 
+/**
+ * Un dépôt git tout juste initialisé, sans le moindre commit : sa branche
+ * n'est pas née et `HEAD` ne désigne rien. `repoRoot` le résout comme n'importe
+ * quel dépôt — c'est précisément ce qui rend le cas distinct du « pas un dépôt
+ * git » testé juste à côté.
+ */
+async function initGitRepoWithoutCommit(root: string): Promise<void> {
+  await git(root, ["init", "-q"]);
+  await git(root, ["config", "user.email", "orch-test@example.com"]);
+  await git(root, ["config", "user.name", "Orch Test"]);
+}
+
 describe("runTask", () => {
   let root: string;
   let store: TaskStore;
@@ -207,6 +219,52 @@ describe("runTask", () => {
           { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "worktree" },
         ),
       ).rejects.toThrow(/dépôt git/);
+    });
+
+    it("worktree demandé sur un dépôt sans commit : l'erreur nomme la cause et le remède, pas HEAD", async () => {
+      // Constaté à l'usage sur un dépôt fraîchement initialisé : la commande
+      // échouait sur le message brut de git, « Command failed: git worktree
+      // add … HEAD / fatal: invalid reference: HEAD », qui ne dit ni pourquoi
+      // ni quoi faire. `repoRoot` réussit ici — c'est bien un dépôt —, seul
+      // le point de départ manque.
+      await initGitRepoWithoutCommit(root);
+      await expect(
+        runTask(
+          { store, root },
+          { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "worktree" },
+        ),
+      ).rejects.toThrow(/aucun commit[\s\S]*premier commit/);
+    });
+
+    it("write + \"auto\" sur un dépôt sans commit → inplace, avec un constat qui explique le repli", async () => {
+      await initGitRepoWithoutCommit(root);
+      const outcome = await runTask(
+        { store, root, queue: createQueue(2) },
+        { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root },
+      );
+
+      expect(outcome.record.isolation).toBe("inplace");
+      expect(outcome.record.branch).toBeUndefined();
+      expect(outcome.report.findings).toEqual([
+        expect.objectContaining({ severity: "low", detail: expect.stringMatching(/aucun commit/) }),
+      ]);
+    });
+
+    it("lecture seule sans mode natif sur un dépôt sans commit → inplace, le constat disant que la garantie manque et pourquoi", async () => {
+      // Même traitement que le cas jumeau « workspace hors dépôt git » : le
+      // worktree que `mustForceWorktree` impose d'ordinaire est ici hors
+      // d'atteinte, et la tâche se poursuit sans lui. Ce qui compte alors est
+      // que le rapport porte la trace de la garantie manquante, et sa cause.
+      await initGitRepoWithoutCommit(root);
+      const outcome = await runTask(
+        { store, root },
+        { agentId: "fake-agent", objective: "lire", mode: "read-only", workspace: root },
+      );
+
+      expect(outcome.record.isolation).toBe("inplace");
+      expect(outcome.report.findings).toEqual([
+        expect.objectContaining({ detail: expect.stringMatching(/aucun commit[\s\S]*premier commit/) }),
+      ]);
     });
   });
 

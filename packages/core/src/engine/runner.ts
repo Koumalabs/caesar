@@ -28,7 +28,14 @@ import type { ChangesVerifiedBy, ReportSource, TaskRecord, TaskStatus, TaskStore
 import { resolveReport, reconcileChanges } from "./report.js";
 import { runAgentProcess } from "./spawn.js";
 import type { RunResult } from "./spawn.js";
-import { captureWorkspaceStatus, createWorktree, diffWorkspaceStatus, diffWorktree, repoRoot } from "./worktree.js";
+import {
+  captureWorkspaceStatus,
+  createWorktree,
+  diffWorkspaceStatus,
+  diffWorktree,
+  hasCommits,
+  repoRoot,
+} from "./worktree.js";
 import type { Queue } from "./queue.js";
 import type { WorktreeDiff, WorktreeHandle } from "./worktree.js";
 
@@ -583,7 +590,22 @@ async function prepareIsolation(
   const requested = input.isolation ?? "auto";
   const base = await repoRoot(input.workspace);
 
-  const mustForceWorktree = input.mode === "read-only" && !agentDef.capabilities.nativeReadOnly && base !== null;
+  // Un dépôt sans commit est un dépôt : `repoRoot` le résout. Mais aucune
+  // branche n'y est née, `HEAD` ne désigne rien, et il ne peut donc servir de
+  // point de départ à un worktree. Pour l'isolation, il compte comme un
+  // non-dépôt — avec un remède qui, lui, diffère : un premier commit.
+  const baseUsable = base !== null && (await hasCommits(base));
+  const unusable =
+    base === null
+      ? `le workspace "${input.workspace}" n'est pas un dépôt git`
+      : `le dépôt "${base}" n'a encore aucun commit : sa branche n'est pas née, "HEAD" ne désigne rien, ` +
+        `et git ne sait pas créer un worktree à partir de rien`;
+  const remedy =
+    base === null
+      ? `Initialisez un dépôt ("git init" puis un premier commit) pour isoler le travail, ou demandez explicitement "inplace" en connaissance de cause.`
+      : `Faites un premier commit ("git add -A && git commit -m …", au besoin "git commit --allow-empty -m init"), ou demandez explicitement "inplace" — l'agent travaillera alors directement dans le workspace.`;
+
+  const mustForceWorktree = input.mode === "read-only" && !agentDef.capabilities.nativeReadOnly && baseUsable;
 
   let isolation: Isolation;
   let warning: string | undefined;
@@ -598,28 +620,34 @@ async function prepareIsolation(
   } else if (requested !== "auto") {
     isolation = requested;
   } else if (input.mode === "write") {
-    if (base) {
+    if (baseUsable) {
       isolation = "worktree";
     } else {
       isolation = "inplace";
-      warning = `Le workspace "${input.workspace}" n'est pas un dépôt git : isolation repliée sur "inplace" malgré le mode écriture.`;
+      warning = `Isolation repliée sur "inplace" malgré le mode écriture : ${unusable}. ${remedy}`;
     }
   } else if (agentDef.capabilities.nativeReadOnly) {
     isolation = "inplace";
   } else {
     // mode === "read-only", agent sans mode natif, et mustForceWorktree est
-    // faux : `base` est donc nécessairement `null` ici (sinon la branche
+    // faux : `baseUsable` est donc nécessairement faux ici (sinon la branche
     // ci-dessus l'aurait déjà pris en charge).
     isolation = "inplace";
-    warning = `Le workspace "${input.workspace}" n'est pas un dépôt git : isolation repliée sur "inplace" malgré l'absence de mode lecture seule natif chez "${agentDef.id}".`;
+    warning =
+      `Isolation repliée sur "inplace" malgré l'absence de mode lecture seule natif chez "${agentDef.id}" : ${unusable}. ${remedy}`;
   }
 
   if (isolation !== "worktree") {
     return { isolation, warning };
   }
 
-  if (!base) {
-    throw new Error(`Isolation "worktree" demandée pour la tâche "${taskId}", mais "${input.workspace}" n'est pas un dépôt git.`);
+  if (!baseUsable) {
+    // Le worktree a été demandé explicitement, ou imposé par
+    // `mustForceWorktree` : y renoncer en silence retirerait la garantie même
+    // pour laquelle il était exigé. On refuse, en nommant la cause et l'issue.
+    throw new Error(
+      `Isolation "worktree" impossible pour la tâche "${taskId}" : ${unusable}. ${remedy}`,
+    );
   }
 
   const handle = await createWorktree(base, taskId);
