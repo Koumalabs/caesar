@@ -34,8 +34,8 @@ import type { WorktreeDiff, WorktreeHandle } from "./worktree.js";
 
 const DEFAULT_TIMEOUT_MS = 600_000;
 
-/** Nom sous lequel le canal retour est déclaré côté agent (voir `Channel.server_name`). */
-const CHANNEL_SERVER_NAME = "orch";
+/** Nom sous lequel le canal retour est déclaré côté agent (voir `Channel.server_name`). Exporté : un lanceur alternatif (voir `ChannelLauncher`) doit pouvoir le reprendre sans le redéfinir. */
+export const CHANNEL_SERVER_NAME = "orch";
 
 /**
  * Chemin absolu de `dist/bin.js` dans `@orch/mcp-channel`, résolu via la
@@ -55,6 +55,12 @@ const CHANNEL_SERVER_NAME = "orch";
  * descend vers son voisin `dist/bin.js`, toujours émis dans le même
  * répertoire par `tsc` puisque `src/index.ts` et `src/bin.ts` sont tous deux
  * à la racine de `src/`, sans sous-répertoire.
+ *
+ * N'a de sens que sous Node : un binaire compilé (tâche 12) n'a plus de
+ * `node_modules` où chercher quoi que ce soit — c'est précisément pourquoi
+ * cette résolution n'est plus appelée en dur par `buildChannel`, seulement
+ * depuis `defaultChannelLauncher`, le lanceur par défaut (comportement
+ * historique, inchangé).
  */
 function resolveChannelEntry(): string {
   const require = createRequire(import.meta.url);
@@ -63,20 +69,60 @@ function resolveChannelEntry(): string {
 }
 
 /**
- * Construit les coordonnées du canal retour pour une tâche. `command` est le
- * binaire Node lui-même (`process.execPath`), jamais `orch-channel` par son
- * nom ni le fichier résolu directement : ni l'un ni l'autre ne peuvent être
- * supposés exécutables ou présents dans le `PATH` du sous-agent qui le
- * lancera — voir le brief.
+ * Construit les coordonnées du canal retour pour une tâche : un lanceur, `taskDir`
+ * en entrée, un `Channel | undefined` en sortie (jamais d'erreur).
  *
- * Ne lève jamais : une résolution en échec (installation cassée, paquet
- * introuvable…) rend `undefined` plutôt que de faire échouer toute la
- * tâche — le canal n'est jamais un point de défaillance.
+ * Point d'extension de la tâche 12 : dans un binaire compilé (`bun build
+ * --compile`), plus aucune résolution de module n'a de sens
+ * (`resolveChannelEntry` échoue, il n'y a plus de `node_modules`) — le
+ * binaire ne peut plus *déduire* comment lancer le canal, il doit se le
+ * faire dire. `configureChannelLauncher`, appelée une fois par le point
+ * d'entrée (voir `packages/cli/src/bun-entry.ts`), est ce point de
+ * configuration — une fonction plutôt qu'une variable d'environnement :
+ * testable directement (un test appelle `configureChannelLauncher` avec un
+ * lanceur factice et observe `task.channel`), sans dépendre d'un état
+ * ambiant que `vitest` devrait manipuler et restaurer à chaque test.
+ */
+export type ChannelLauncher = (taskDir: string) => Channel | undefined;
+
+/**
+ * Lanceur par défaut, jamais reconfiguré par le chemin Node (`bin.ts`) :
+ * c'est le comportement historique de `buildChannel`, avant la tâche 12,
+ * repris tel quel — `command` est le binaire Node lui-même
+ * (`process.execPath`), jamais `orch-channel` par son nom ni le fichier
+ * résolu directement : ni l'un ni l'autre ne peuvent être supposés
+ * exécutables ou présents dans le `PATH` du sous-agent qui le lancera — voir
+ * le brief de la tâche 9. Lève si `resolveChannelEntry` échoue ;
+ * `buildChannel`, son seul appelant, absorbe cette exception.
+ */
+export function defaultChannelLauncher(taskDir: string): Channel | undefined {
+  const entry = resolveChannelEntry();
+  return { transport: "mcp-stdio", command: process.execPath, args: [entry, taskDir], server_name: CHANNEL_SERVER_NAME };
+}
+
+let channelLauncher: ChannelLauncher = defaultChannelLauncher;
+
+/**
+ * Point d'entrée de l'extension de la tâche 12 : remplace le lanceur du
+ * canal retour utilisé par tout `runTask` ultérieur. Le point d'entrée Bun
+ * (`bun-entry.ts`) l'appelle une fois au démarrage avec un lanceur qui
+ * auto-invoque le binaire compilé (`orch channel serve --task-dir <dir>`) ;
+ * le point d'entrée Node (`bin.ts`) ne l'appelle jamais, laissant
+ * `defaultChannelLauncher` en place — comportement inchangé.
+ */
+export function configureChannelLauncher(launcher: ChannelLauncher): void {
+  channelLauncher = launcher;
+}
+
+/**
+ * Ne lève jamais, quel que soit le lanceur configuré : une résolution en
+ * échec (installation cassée, paquet introuvable, lanceur personnalisé qui
+ * lève…) rend `undefined` plutôt que de faire échouer toute la tâche — le
+ * canal n'est jamais un point de défaillance, dans aucun des deux mondes.
  */
 function buildChannel(taskDir: string): Channel | undefined {
   try {
-    const entry = resolveChannelEntry();
-    return { transport: "mcp-stdio", command: process.execPath, args: [entry, taskDir], server_name: CHANNEL_SERVER_NAME };
+    return channelLauncher(taskDir);
   } catch {
     return undefined;
   }

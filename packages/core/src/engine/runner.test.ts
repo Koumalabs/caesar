@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Channel } from "@orch/protocol";
 import { REPORT_PROTOCOL, readTask, taskPaths } from "@orch/protocol";
 import { fileTaskStore, type TaskStore } from "../store.js";
 import { createQueue } from "./queue.js";
@@ -110,7 +111,7 @@ vi.mock("node:module", async (importOriginal) => {
   };
 });
 
-const { runTask } = await import("./runner.js");
+const { runTask, configureChannelLauncher, defaultChannelLauncher } = await import("./runner.js");
 
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd });
@@ -639,6 +640,61 @@ describe("runTask", () => {
         expect(task.channel).toBeFalsy();
       } finally {
         channelResolutionFailure.active = false;
+      }
+    });
+
+    it("configureChannelLauncher (tâche 12) : un lanceur personnalisé remplace la résolution par défaut", async () => {
+      // Exerce le point d'extension à travers la vraie façade (`runTask`),
+      // pas en appelant une fonction interne directement — voir le rapport
+      // de la tâche 12 : un test qui contournerait `configureChannelLauncher`
+      // pour construire `task.channel` à la main ne protégerait rien de ce
+      // que `bun-entry.ts` fait réellement en production.
+      configureChannelLauncher((taskDir): Channel => ({
+        transport: "mcp-stdio",
+        command: "orch",
+        args: ["channel", "serve", "--task-dir", taskDir],
+        server_name: "orch",
+      }));
+      try {
+        const outcome = await runTask(
+          { store, root },
+          { agentId: "fake-agent-channel", objective: "lanceur personnalisé", mode: "write", workspace: root, channel: true },
+        );
+
+        expect(outcome.record.report_via).toBe("channel");
+        const task = await readTask(taskPaths(outcome.record.task_dir));
+        expect(task.channel).toEqual({
+          transport: "mcp-stdio",
+          command: "orch",
+          args: ["channel", "serve", "--task-dir", outcome.record.task_dir],
+          server_name: "orch",
+        });
+      } finally {
+        configureChannelLauncher(defaultChannelLauncher);
+      }
+    });
+
+    it("configureChannelLauncher (tâche 12) : un lanceur personnalisé qui lève dégrade sans faire échouer la tâche", async () => {
+      // Même garantie que pour `resolveChannelEntry` (test précédent), mais
+      // côté lanceur injecté : le brief l'exige explicitement ("la garantie
+      // […] doit tenir dans les deux mondes"), donc dans les deux sources
+      // d'échec possibles, pas seulement la résolution par défaut.
+      configureChannelLauncher(() => {
+        throw new Error("lanceur personnalisé cassé, simulé pour ce test");
+      });
+      try {
+        const outcome = await runTask(
+          { store, root },
+          { agentId: "fake-agent-channel", objective: "lanceur personnalisé cassé", mode: "write", workspace: root, channel: true },
+        );
+
+        expect(outcome.record.status).toBe("succeeded");
+        expect(outcome.record.report_via).not.toBe("channel");
+        expect(outcome.source).not.toBe("channel");
+        const task = await readTask(taskPaths(outcome.record.task_dir));
+        expect(task.channel).toBeFalsy();
+      } finally {
+        configureChannelLauncher(defaultChannelLauncher);
       }
     });
   });
