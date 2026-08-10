@@ -4,6 +4,7 @@
   "description": "TUI de configuration de l'orchestrateur (OpenTUI, exécuté sous Bun)",
   "type": "module",
   "private": true,
+  "main": "./src/main.tsx",
   "scripts": {
     "start": "bun src/main.tsx",
     "typecheck": "tsc --noEmit",

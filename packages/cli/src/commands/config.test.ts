@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeIo, withShimmedPath, type CapturedIo } from "../../test/support.js";
-import { runConfig } from "./config.js";
+import { configureInProcessTui, runConfig } from "./config.js";
 import { EXIT_RUNTIME } from "../output.js";
 
 /**
@@ -90,5 +90,40 @@ describe("orch config — bun présent", () => {
       const code = await runConfig(root, io);
       expect(code).toBe(7);
     });
+  });
+});
+
+describe("orch config — lanceur in-process configuré (tâche 12)", () => {
+  let root: string;
+  let io: CapturedIo;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-cli-config-root-"));
+    io = makeIo();
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+    // Toujours restaurer l'absence de lanceur : un test qui laisserait un
+    // lanceur configuré empoisonnerait tous les tests suivants de ce
+    // fichier, y compris ceux du chemin Node par défaut ci-dessus.
+    configureInProcessTui(undefined);
+  });
+
+  it("délègue au lanceur configuré plutôt que de chercher \"bun\", et rend son code de sortie — sans jamais toucher au PATH", async () => {
+    let receivedRoot: string | undefined;
+    configureInProcessTui(async (r) => {
+      receivedRoot = r;
+      return 3;
+    });
+
+    // Aucun `withShimmedPath` ici, délibérément : si `runConfig` retombait
+    // par erreur sur le chemin spawn (bug de régression), l'absence de
+    // "bun" shimmé le ferait échouer de façon visible plutôt que de
+    // masquer le bug en fournissant un faux binaire qui répondrait quand
+    // même correctement.
+    const code = await runConfig(root, io);
+    expect(code).toBe(3);
+    expect(receivedRoot).toBe(root);
   });
 });
