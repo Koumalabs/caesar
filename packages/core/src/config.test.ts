@@ -2,14 +2,23 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { parse as parseToml } from "smol-toml";
 import {
+  agentProvenance,
+  configPathFor,
   defaultConfig,
   globalConfigPath,
   loadConfig,
+  loadLayer,
+  localConfigPath,
+  materializePolicyList,
   mergeConfig,
   parseDuration,
+  policyFieldProvenance,
   projectConfigPath,
-  saveProjectConfig,
+  roleProvenance,
+  saveLayer,
+  type ConfigLayer,
   type OrchConfig,
   type PolicyConfig,
   type RoleConfig,
@@ -98,6 +107,14 @@ describe("defaultConfig", () => {
 
   it("aucun agent personnalisé par défaut", () => {
     expect(defaultConfig().agents).toEqual([]);
+  });
+
+  it("chaque rôle par défaut porte déjà la convention system_prompt_file (roles/<name>.md), sans qu'aucune couche ne l'ait déclarée", () => {
+    // Voir l'en-tête de `DEFAULT_ROLES" (config.ts) : c'est ce qui permet à `orch init` (couche projet) de ne
+    // matérialiser que les fichiers de prompt, sans avoir à déclarer les rôles dans le TOML du projet.
+    for (const role of defaultConfig().roles) {
+      expect(role.system_prompt_file).toBe(`roles/${role.name}.md`);
+    }
   });
 
   it("renvoie une copie fraîche à chaque appel", () => {
@@ -374,7 +391,7 @@ describe("loadConfig", () => {
   });
 });
 
-describe("saveProjectConfig / loadConfig — aller-retour", () => {
+describe("saveLayer / loadConfig — aller-retour", () => {
   let projectRoot: string;
 
   beforeEach(async () => {
@@ -392,7 +409,8 @@ describe("saveProjectConfig / loadConfig — aller-retour", () => {
       // doit déjà être la forme complète (post-fusion) qu'on veut retrouver —
       // exactement ce que produirait un vrai fichier projet une fois fusionné
       // à la configuration par défaut, `reviewer`/`implementer`/`investigator`
-      // compris.
+      // compris. `saveLayer` accepte directement un `OrchConfig` complet : il
+      // satisfait structurellement `ConfigOverride` (tous ses champs présents).
       const config: OrchConfig = mergeConfig(defaultConfig(), {
         policy: {
           allowed: ["codex", "antigravity"],
@@ -418,7 +436,7 @@ describe("saveProjectConfig / loadConfig — aller-retour", () => {
         agents: [{ id: "monagent", displayName: "Mon agent", bin: "mon-cli", args: ["--prompt", "{{prompt}}"], cwdMode: "process" }],
       });
 
-      await saveProjectConfig(projectRoot, config);
+      await saveLayer("project", projectRoot, config);
       const loaded = await loadConfig(projectRoot);
 
       expect(loaded.config).toEqual(config);
@@ -427,14 +445,264 @@ describe("saveProjectConfig / loadConfig — aller-retour", () => {
   });
 
   it("écrit un en-tête avertissant que les commentaires manuels ne survivent pas", async () => {
-    await saveProjectConfig(projectRoot, defaultConfig());
+    await saveLayer("project", projectRoot, defaultConfig());
     const raw = await readFile(projectConfigPath(projectRoot), "utf8");
     expect(raw.split("\n")[0]).toMatch(/^#.*commentaire/i);
   });
 
   it("écrit de façon atomique (fichier temporaire renommé, aucun résidu)", async () => {
-    await saveProjectConfig(projectRoot, defaultConfig());
+    await saveLayer("project", projectRoot, defaultConfig());
     const entries = await readdir(join(projectRoot, ".orch"));
     expect(entries).toEqual(["config.toml"]);
+  });
+
+  it("ne sérialise que ce que l'override déclare : un override partiel produit un fichier qui ne porte que ce champ", async () => {
+    await saveLayer("project", projectRoot, { policy: { denied: ["copilot", "opencode"] } });
+    const raw = await readFile(projectConfigPath(projectRoot), "utf8");
+
+    // Le fichier ne doit porter aucune trace des défauts (max_parallel, rôles…) : uniquement ce que l'override a
+    // déclaré. C'est la preuve, au niveau du fichier, que `saveLayer` ne réécrit jamais la fusion. Comparaison
+    // structurelle (via `parseToml`) plutôt que sous-chaîne littérale : insensible au formatage des espaces dans
+    // les tableaux TOML (smol-toml écrit `[ "a", "b" ]`, pas `["a", "b"]`).
+    expect(parseToml(raw)).toEqual({ policy: { denied: ["copilot", "opencode"] } });
+    expect(raw).not.toContain("max_parallel");
+    expect(raw).not.toContain("[[role]]");
+    expect(raw).not.toContain("[[agent]]");
+    expect(raw).not.toContain("allowed");
+
+    // Et la relecture de cette seule couche ne rend que ce qui a été déclaré.
+    const layer = await loadLayer("project", projectRoot);
+    expect(layer).toEqual({ policy: { denied: ["copilot", "opencode"] } });
+  });
+
+  it("un override vide n'écrit aucune section — juste l'en-tête", async () => {
+    await saveLayer("project", projectRoot, {});
+    const raw = await readFile(projectConfigPath(projectRoot), "utf8");
+    expect(raw.trim()).toBe(
+      "# Fichier généré par @orch/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.",
+    );
+    expect(await loadLayer("project", projectRoot)).toEqual({});
+  });
+});
+
+describe("configPathFor / localConfigPath", () => {
+  it("délègue à globalConfigPath/projectConfigPath/localConfigPath selon la couche", async () => {
+    await withFakeHome(async (home) => {
+      expect(configPathFor("global", "/repo")).toBe(join(home, ".config", "orch", "config.toml"));
+      expect(configPathFor("project", "/repo")).toBe(join("/repo", ".orch", "config.toml"));
+      expect(configPathFor("local", "/repo")).toBe(join("/repo", ".orch", "config.local.toml"));
+      expect(localConfigPath("/repo")).toBe(join("/repo", ".orch", "config.local.toml"));
+    });
+  });
+});
+
+describe("loadLayer", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-loadlayer-"));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("un fichier absent rend un override vide, pas une erreur", async () => {
+    await withFakeHome(async () => {
+      expect(await loadLayer("global", root)).toEqual({});
+      expect(await loadLayer("project", root)).toEqual({});
+      expect(await loadLayer("local", root)).toEqual({});
+    });
+  });
+
+  it("rend exactement ce que le fichier déclare, jamais les défauts ni les autres couches", async () => {
+    await mkdir(join(root, ".orch"), { recursive: true });
+    await writeFile(join(root, ".orch", "config.toml"), '[policy]\nmax_parallel = 9\n', "utf8");
+
+    const layer = await loadLayer("project", root);
+    expect(layer).toEqual({ policy: { max_parallel: 9 } });
+    // Ni "denied"/"allowed" (absents du fichier), ni les rôles par défaut.
+    expect(layer.roles).toBeUndefined();
+  });
+
+  it("lit la couche locale (config.local.toml), distincte de la couche projet", async () => {
+    await mkdir(join(root, ".orch"), { recursive: true });
+    await writeFile(join(root, ".orch", "config.toml"), '[policy]\nmax_parallel = 2\n', "utf8");
+    await writeFile(join(root, ".orch", "config.local.toml"), '[policy]\nmax_parallel = 7\n', "utf8");
+
+    expect(await loadLayer("project", root)).toEqual({ policy: { max_parallel: 2 } });
+    expect(await loadLayer("local", root)).toEqual({ policy: { max_parallel: 7 } });
+  });
+});
+
+describe("loadConfig — trois couches, la locale incluse", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-threelayers-"));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("le local l'emporte sur le projet, qui l'emporte sur le global, sur les champs qu'il précise", async () => {
+    await withFakeHome(async (home) => {
+      await mkdir(join(home, ".config", "orch"), { recursive: true });
+      await writeFile(join(home, ".config", "orch", "config.toml"), "[policy]\nmax_parallel = 9\nallow_recursion = true\n", "utf8");
+      await mkdir(join(root, ".orch"), { recursive: true });
+      await writeFile(join(root, ".orch", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
+      await writeFile(join(root, ".orch", "config.local.toml"), "[policy]\nmax_parallel = 5\n", "utf8");
+
+      const loaded = await loadConfig(root);
+      // Précisé par les trois : le local (le plus spécifique) gagne.
+      expect(loaded.config.policy.max_parallel).toBe(5);
+      // Précisé par le global seulement : survit, aucune couche plus spécifique ne l'a touché.
+      expect(loaded.config.policy.allow_recursion).toBe(true);
+      expect(loaded.sources.global).toBeDefined();
+      expect(loaded.sources.project).toBeDefined();
+      expect(loaded.sources.local).toBe(join(root, ".orch", "config.local.toml"));
+    });
+  });
+
+  it("expose les trois couches dans l'ordre d'application, y compris celles dont le fichier est absent", async () => {
+    await withFakeHome(async () => {
+      await mkdir(join(root, ".orch"), { recursive: true });
+      await writeFile(join(root, ".orch", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
+
+      const loaded = await loadConfig(root);
+      expect(loaded.layers.map((l) => l.scope)).toEqual(["global", "project", "local"]);
+      expect(loaded.layers[0]!.override).toEqual({});
+      expect(loaded.layers[1]!.override).toEqual({ policy: { max_parallel: 2 } });
+      expect(loaded.layers[2]!.override).toEqual({});
+    });
+  });
+
+  it("aucune couche : loadConfig(...).config reste la configuration par défaut, comme avant l'introduction du local", async () => {
+    await withFakeHome(async () => {
+      const loaded = await loadConfig(root);
+      expect(loaded.config).toEqual(defaultConfig());
+      expect(loaded.sources).toEqual({});
+    });
+  });
+});
+
+describe("policyFieldProvenance / roleProvenance / agentProvenance", () => {
+  function layersOf(overrides: Partial<Record<ConfigLayer["scope"], ConfigLayer["override"]>>): ConfigLayer[] {
+    return (["global", "project", "local"] as const).map((scope) => ({
+      scope,
+      path: `/fake/${scope}.toml`,
+      override: overrides[scope] ?? {},
+    }));
+  }
+
+  it("policyFieldProvenance : \"default\" quand aucune couche ne déclare le champ", () => {
+    const layers = layersOf({});
+    expect(policyFieldProvenance(layers, "max_parallel")).toBe("default");
+  });
+
+  it("policyFieldProvenance : la couche la plus spécifique qui déclare le champ l'emporte", () => {
+    const layers = layersOf({
+      global: { policy: { max_parallel: 9, allow_recursion: true } },
+      project: { policy: { max_parallel: 2 } },
+    });
+    // Déclaré par project (plus spécifique que global) : provenance "project".
+    expect(policyFieldProvenance(layers, "max_parallel")).toBe("project");
+    // Déclaré par global seulement : provenance "global".
+    expect(policyFieldProvenance(layers, "allow_recursion")).toBe("global");
+    // Jamais déclaré : "default".
+    expect(policyFieldProvenance(layers, "max_depth")).toBe("default");
+  });
+
+  it("roleProvenance : la couche qui déclare une entrée [[role]] de ce nom, \"default\" sinon", () => {
+    const role = (name: string): RoleConfig => ({ name, purpose: "", agents: [], mode: "write", isolation: "auto", timeout_ms: 1 });
+    const layers = layersOf({
+      global: { roles: [role("reviewer")] },
+      local: { roles: [role("reviewer")] },
+    });
+    // Déclaré par global ET local : le local (plus spécifique) l'emporte.
+    expect(roleProvenance(layers, "reviewer")).toBe("local");
+    expect(roleProvenance(layers, "implementer")).toBe("default");
+  });
+
+  it("agentProvenance : la couche qui déclare une entrée [[agent]] de cet id, \"default\" sinon (agents natifs compris)", () => {
+    const layers = layersOf({ project: { agents: [{ id: "monagent", bin: "mon-cli", args: [] }] } });
+    expect(agentProvenance(layers, "monagent")).toBe("project");
+    expect(agentProvenance(layers, "codex")).toBe("default");
+  });
+});
+
+describe("materializePolicyList", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-materialize-"));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("augmente la liste effective (pas seulement l'id ajouté) et écrit ce résultat dans la couche visée", async () => {
+    await withFakeHome(async (home) => {
+      await mkdir(join(home, ".config", "orch"), { recursive: true });
+      await writeFile(join(home, ".config", "orch", "config.toml"), '[policy]\ndenied = ["copilot"]\n', "utf8");
+
+      const result = await materializePolicyList(root, "project", "denied", "opencode", true);
+      expect(result.effective).toEqual(["copilot", "opencode"]);
+      expect(result.materialized).toBe(true);
+
+      // La couche projet porte désormais la liste effective entière, pas seulement "opencode".
+      const layer = await loadLayer("project", root);
+      expect(layer.policy?.denied).toEqual(["copilot", "opencode"]);
+    });
+  });
+
+  it("materialized est faux quand la couche déclarait déjà ce champ", async () => {
+    await withFakeHome(async () => {
+      await mkdir(join(root, ".orch"), { recursive: true });
+      await writeFile(join(root, ".orch", "config.toml"), '[policy]\ndenied = ["codex"]\n', "utf8");
+
+      const result = await materializePolicyList(root, "project", "denied", "opencode", true);
+      expect(result.materialized).toBe(false);
+      expect(result.effective).toEqual(["codex", "opencode"]);
+    });
+  });
+
+  it("ne touche pas aux autres champs déjà déclarés par la couche visée", async () => {
+    await withFakeHome(async () => {
+      await mkdir(join(root, ".orch"), { recursive: true });
+      await writeFile(join(root, ".orch", "config.toml"), '[policy]\nmax_parallel = 7\n', "utf8");
+
+      await materializePolicyList(root, "project", "denied", "codex", true);
+
+      const layer = await loadLayer("project", root);
+      expect(layer.policy?.max_parallel).toBe(7);
+      expect(layer.policy?.denied).toEqual(["codex"]);
+    });
+  });
+
+  it("retirer un id absent laisse la liste effective inchangée (present=false, ensemble)", async () => {
+    await withFakeHome(async () => {
+      const result = await materializePolicyList(root, "project", "allowed", "codex", false);
+      expect(result.effective).toEqual([]);
+    });
+  });
+
+  it("le défaut I11 : deux couches, la globale et la projet, se matérialisent indépendamment", async () => {
+    // Scénario minimal (voir le scénario complet côté CLI, packages/cli/src/commands/policy.test.ts) : la couche
+    // globale ne doit jamais se retrouver aplatie dans la couche projet par une matérialisation de liste.
+    await withFakeHome(async () => {
+      await materializePolicyList(root, "global", "denied", "copilot", true);
+      await materializePolicyList(root, "project", "denied", "opencode", true);
+
+      const globalLayer = await loadLayer("global", root);
+      const projectLayer = await loadLayer("project", root);
+      expect(globalLayer).toEqual({ policy: { denied: ["copilot"] } });
+      expect(projectLayer).toEqual({ policy: { denied: ["copilot", "opencode"] } });
+
+      const { config } = await loadConfig(root);
+      expect(config.policy.denied).toEqual(["copilot", "opencode"]);
+    });
   });
 });

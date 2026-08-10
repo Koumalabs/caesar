@@ -1,15 +1,28 @@
 /**
  * Configuration de l'orchestrateur : schéma, chargement, fusion et écriture.
  *
- * Deux emplacements sur disque, fusionnés au chargement — le projet
- * l'emportant sur le global :
- *   - global  : `~/.config/orch/config.toml`
- *   - projet  : `<root>/.orch/config.toml`
+ * Trois emplacements sur disque, fusionnés au chargement dans cet ordre — le
+ * plus spécifique l'emportant, champ par champ :
+ *   - global  : `~/.config/orch/config.toml`               (non versionné, propre au poste)
+ *   - projet  : `<root>/.orch/config.toml`                 (versionné, partagé avec l'équipe)
+ *   - local   : `<root>/.orch/config.local.toml`            (non versionné, propre au poste — à ajouter au `.gitignore`)
  *
  * `@orch/core` est la seule source de vérité de cette configuration (voir
  * les contraintes globales du projet) : aucune façade (CLI, TUI, serveur
  * MCP) ne doit relire ni réécrire le TOML pour son propre compte, elles
  * passent toutes par ce module.
+ *
+ * La fusion (`mergeConfig`, appelée par `loadConfig`) reste la seule source
+ * de vérité de ce qu'un consommateur (moteur, serveur MCP, rôles, politique)
+ * doit lire — `loadConfig(...).config`. L'**écriture**, elle, ne doit jamais
+ * réécrire le résultat de cette fusion dans une seule couche : ce serait y
+ * figer les valeurs de toutes les couches moins spécifiques, qui perdraient
+ * alors tout effet (c'était le défaut I11 de la revue finale de branche).
+ * `loadLayer`/`saveLayer` donnent donc accès à une couche précise, isolée de
+ * la fusion : un fichier absent rend un `ConfigOverride` vide, jamais une
+ * erreur ni des valeurs par défaut, et `saveLayer` ne sérialise que ce que
+ * l'appelant lui donne explicitement — jamais plus que ce que la couche doit
+ * déclarer.
  *
  * La configuration est un fichier édité à la main : les erreurs de
  * validation nomment systématiquement le fichier et le champ en cause, et
@@ -72,9 +85,21 @@ export interface ConfigOverride {
   agents?: GenericAgentSpec[];
 }
 
+/** Les trois couches, du plus général au plus spécifique — voir l'en-tête de ce module. */
+export type ConfigScope = "global" | "project" | "local";
+
+/** Une couche telle qu'elle existe sur disque : `override` est exactement ce que le fichier déclare, jamais le résultat d'une fusion (voir `loadLayer`). */
+export interface ConfigLayer {
+  scope: ConfigScope;
+  path: string;
+  override: ConfigOverride;
+}
+
 export interface LoadedConfig {
   config: OrchConfig;
-  sources: { global?: string; project?: string };
+  /** Les trois couches, dans l'ordre d'application (global, projet, local) — y compris celles dont le fichier est absent (`override` vide alors). */
+  layers: ConfigLayer[];
+  sources: { global?: string; project?: string; local?: string };
   /**
    * Réservé aux avertissements non bloquants (fichier chargé mais
    * comportant une incohérence mineure). Aucune condition de ce type n'est
@@ -247,20 +272,29 @@ function toAgentSpec(raw: RawAgent): GenericAgentSpec {
   return spec;
 }
 
-function fromPolicyConfig(policy: PolicyConfig): Record<string, unknown> {
-  return {
-    allowed: policy.allowed,
-    denied: policy.denied,
-    max_parallel: policy.max_parallel,
-    default_isolation: policy.default_isolation,
-    default_mode: policy.default_mode,
-    // Stockée en millisecondes brutes plutôt que reformatée en "10m" : une
-    // forme, `parseDuration` l'accepte aussi bien, et l'aller-retour
-    // save/load reste ainsi exact au lieu de dépendre d'un formatage inverse.
-    default_timeout: policy.default_timeout_ms,
-    allow_recursion: policy.allow_recursion,
-    max_depth: policy.max_depth,
-  };
+/**
+ * Inverse de `toPolicyOverride` : ne rend que les champs effectivement
+ * présents dans `policy`. `PolicyConfig` (complet) se passe aussi bien à
+ * cette fonction que `Partial<PolicyConfig>` — un objet complet a, par
+ * définition, tous ses champs "présents" — ce qui lui permet de servir aussi
+ * bien à sérialiser une couche partielle (`saveLayer`, la matérialisation
+ * d'une liste) qu'une configuration complète (`orch init --global`, qui
+ * écrit `defaultConfig()` intégralement à la couche globale).
+ */
+function fromPolicyOverride(policy: Partial<PolicyConfig>): Record<string, unknown> {
+  const raw: Record<string, unknown> = {};
+  if (policy.allowed !== undefined) raw.allowed = policy.allowed;
+  if (policy.denied !== undefined) raw.denied = policy.denied;
+  if (policy.max_parallel !== undefined) raw.max_parallel = policy.max_parallel;
+  if (policy.default_isolation !== undefined) raw.default_isolation = policy.default_isolation;
+  if (policy.default_mode !== undefined) raw.default_mode = policy.default_mode;
+  // Stockée en millisecondes brutes plutôt que reformatée en "10m" : une
+  // forme, `parseDuration` l'accepte aussi bien, et l'aller-retour
+  // save/load reste ainsi exact au lieu de dépendre d'un formatage inverse.
+  if (policy.default_timeout_ms !== undefined) raw.default_timeout = policy.default_timeout_ms;
+  if (policy.allow_recursion !== undefined) raw.allow_recursion = policy.allow_recursion;
+  if (policy.max_depth !== undefined) raw.max_depth = policy.max_depth;
+  return raw;
 }
 
 function fromRoleConfig(role: RoleConfig): Record<string, unknown> {
@@ -354,6 +388,23 @@ export function projectConfigPath(root: string): string {
   return join(root, ".orch", "config.toml");
 }
 
+/** Couche locale : jamais versionnée (voir `orch init`, qui la déclare au `.gitignore`), propre à un poste de travail pour un projet donné. */
+export function localConfigPath(root: string): string {
+  return join(root, ".orch", "config.local.toml");
+}
+
+/** Chemin du fichier d'une couche donnée — la seule fonction qui doit choisir entre `globalConfigPath`/`projectConfigPath`/`localConfigPath`, pour que le choix de la couche reste un simple paramètre partout ailleurs (`loadLayer`, `saveLayer`, les façades CLI). */
+export function configPathFor(scope: ConfigScope, root: string): string {
+  switch (scope) {
+    case "global":
+      return globalConfigPath();
+    case "project":
+      return projectConfigPath(root);
+    case "local":
+      return localConfigPath(root);
+  }
+}
+
 /** Vrai si `error` est un `ENOENT` (fichier ou répertoire absent) — partagée avec `roles.ts`, qui a le même besoin pour `system_prompt_file`. */
 export function isEnoent(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
@@ -386,10 +437,19 @@ function parseConfigFile(toml: string, filePath: string): ConfigOverride {
     throw new Error(formatZodError(result.error, filePath));
   }
 
-  const override: ConfigOverride = {
-    roles: result.data.role.map(toRoleConfig),
-    agents: result.data.agent.map(toAgentSpec),
-  };
+  // `RawFileSchema` défaute `role`/`agent` à `[]` (`z.array(...).default([])`)
+  // pour que le schéma reste simple à écrire — mais ça rendrait `override`
+  // infidèle au fichier : un fichier qui ne déclare aucun `[[role]]` doit
+  // produire un `override.roles` absent (`undefined`), pas `[]` — c'est ce
+  // que `loadLayer` promet ("exactement ce que le fichier déclare, rien de
+  // plus"). D'où la vérification sur `raw` lui-même (avant l'application des
+  // défauts du schéma), seule source qui distingue encore "absent du
+  // fichier" de "présent mais vide" (impossible à écrire pour un array de
+  // tables TOML, mais on ne présume pas de la forme de `raw` avant coup).
+  const rawRecord = raw as Record<string, unknown>;
+  const override: ConfigOverride = {};
+  if (rawRecord["role"] !== undefined) override.roles = result.data.role.map(toRoleConfig);
+  if (rawRecord["agent"] !== undefined) override.agents = result.data.agent.map(toAgentSpec);
   if (result.data.policy) {
     // `toPolicyOverride` renvoie déjà un `Partial<PolicyConfig>` ne portant
     // que les champs présents dans ce fichier — exactement la forme que
@@ -399,30 +459,83 @@ function parseConfigFile(toml: string, filePath: string): ConfigOverride {
   return override;
 }
 
+const CONFIG_SCOPES: readonly ConfigScope[] = ["global", "project", "local"];
+
+/** Lit et parse une couche, sans savoir si le fichier existait — partagé par `loadLayer` (qui n'a besoin que de l'override) et `loadConfig` (qui a aussi besoin de savoir si la couche a une source). */
+async function readLayer(scope: ConfigScope, root: string): Promise<{ path: string; text: string | null; override: ConfigOverride }> {
+  const path = configPathFor(scope, root);
+  const text = await readConfigFile(path);
+  const override = text !== null ? parseConfigFile(text, path) : {};
+  return { path, text, override };
+}
+
 /**
- * Charge la configuration : `defaultConfig()` fusionnée avec le global puis
- * le projet, s'ils existent. Un fichier absent des deux côtés n'est pas une
- * erreur — la configuration par défaut suffit.
+ * Rend exactement ce que la couche `scope` déclare — pas le résultat d'une
+ * fusion avec les autres couches, jamais des valeurs par défaut. Un fichier
+ * absent rend un override vide (`{}`), pas une erreur : c'est ce qui permet
+ * à une façade d'éditer une couche sans se soucier de son existence
+ * préalable (voir `saveLayer`, et le brief de la tâche 13).
+ */
+export async function loadLayer(scope: ConfigScope, root: string): Promise<ConfigOverride> {
+  return (await readLayer(scope, root)).override;
+}
+
+/**
+ * Charge la configuration : `defaultConfig()` fusionnée avec le global, puis
+ * le projet, puis le local, dans cet ordre — chacun s'il existe. Un fichier
+ * absent des trois côtés n'est pas une erreur — la configuration par défaut
+ * suffit. `config` est la fusion, seule lue par les consommateurs (moteur,
+ * serveur MCP, rôles, politique) ; `layers` donne accès à la contribution
+ * propre de chaque couche, pour les façades qui doivent savoir *où* vit une
+ * valeur plutôt que seulement *laquelle* (provenance, écriture ciblée).
  */
 export async function loadConfig(root: string): Promise<LoadedConfig> {
-  const sources: { global?: string; project?: string } = {};
+  const sources: { global?: string; project?: string; local?: string } = {};
+  const layers: ConfigLayer[] = [];
   let config = defaultConfig();
 
-  const globalPath = globalConfigPath();
-  const globalText = await readConfigFile(globalPath);
-  if (globalText !== null) {
-    sources.global = globalPath;
-    config = mergeConfig(config, parseConfigFile(globalText, globalPath));
+  for (const scope of CONFIG_SCOPES) {
+    const { path, text, override } = await readLayer(scope, root);
+    layers.push({ scope, path, override });
+    if (text !== null) {
+      sources[scope] = path;
+      config = mergeConfig(config, override);
+    }
   }
 
-  const projectPath = projectConfigPath(root);
-  const projectText = await readConfigFile(projectPath);
-  if (projectText !== null) {
-    sources.project = projectPath;
-    config = mergeConfig(config, parseConfigFile(projectText, projectPath));
-  }
+  return { config, layers, sources, warnings: [] };
+}
 
-  return { config, sources, warnings: [] };
+export type ProvenanceSource = ConfigScope | "default";
+
+/** La dernière couche (la plus spécifique) dont `predicate(override)` est vrai, "default" si aucune. `layers` doit être dans l'ordre d'application (`loadConfig` le garantit). */
+function lastLayerDeclaring(layers: readonly ConfigLayer[], predicate: (override: ConfigOverride) => boolean): ProvenanceSource {
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const layer = layers[i]!;
+    if (predicate(layer.override)) return layer.scope;
+  }
+  return "default";
+}
+
+/**
+ * Provenance d'un champ de `policy` : la couche la plus spécifique qui le
+ * déclare explicitement, "default" si aucune ne le fait. Calcul direct à
+ * partir de `layers` — remplace le contournement à trois chargements
+ * (`computeProvenance`, `packages/cli/src/commands/policy.ts`) que ce module
+ * ne permettait pas d'éviter avant l'introduction des couches.
+ */
+export function policyFieldProvenance(layers: readonly ConfigLayer[], field: keyof PolicyConfig): ProvenanceSource {
+  return lastLayerDeclaring(layers, (override) => override.policy?.[field] !== undefined);
+}
+
+/** Provenance d'un rôle par nom : la couche la plus spécifique qui déclare une entrée `[[role]]` de ce nom. */
+export function roleProvenance(layers: readonly ConfigLayer[], name: string): ProvenanceSource {
+  return lastLayerDeclaring(layers, (override) => override.roles?.some((role) => role.name === name) ?? false);
+}
+
+/** Provenance d'un agent générique par identifiant : la couche la plus spécifique qui déclare une entrée `[[agent]]` de cet id. Les agents du catalogue natif (codex, antigravity…) ne sont déclarés par aucune couche : toujours "default". */
+export function agentProvenance(layers: readonly ConfigLayer[], id: string): ProvenanceSource {
+  return lastLayerDeclaring(layers, (override) => override.agents?.some((agent) => agent.id === id) ?? false);
 }
 
 // ---------------------------------------------------------------------------
@@ -467,6 +580,22 @@ const DEFAULT_POLICY: PolicyConfig = {
   max_depth: 2,
 };
 
+/**
+ * `system_prompt_file` pointe déjà ici vers la convention `roles/<name>.md`
+ * (résolue par `resolveRole`, relativement à `<root>/.orch/`), alors même
+ * qu'aucune couche ne l'a déclaré : c'est délibéré, depuis la tâche 13.
+ *
+ * `orch init` (variante projet) matérialise le *fichier* (`.orch/roles/<name>.md`,
+ * un prompt système par défaut) mais ne déclare plus le rôle lui-même dans la
+ * couche projet — sans quoi cette couche figerait la politique et les rôles
+ * par défaut au moment de l'init, masquant toute configuration globale
+ * ultérieure (exactement le défaut I11 que cette tâche corrige). En portant
+ * la référence au fichier ici, dans la base commune à toutes les couches, le
+ * rôle reste utilisable (prompt vide, `resolveRole` tolère un fichier
+ * absent) même sans `orch init`, et se remplit dès que `orch init` a écrit
+ * le fichier — quel que soit le projet, sans que la couche projet ait besoin
+ * de le répéter.
+ */
 const DEFAULT_ROLES: RoleConfig[] = [
   {
     name: "reviewer",
@@ -475,6 +604,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
     mode: "read-only",
     isolation: "inplace",
     timeout_ms: parseDuration("10m"),
+    system_prompt_file: "roles/reviewer.md",
   },
   {
     name: "implementer",
@@ -483,6 +613,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
     mode: "write",
     isolation: "worktree",
     timeout_ms: parseDuration("10m"),
+    system_prompt_file: "roles/implementer.md",
   },
   {
     name: "investigator",
@@ -491,6 +622,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
     mode: "read-only",
     isolation: "auto",
     timeout_ms: parseDuration("10m"),
+    system_prompt_file: "roles/investigator.md",
   },
 ];
 
@@ -511,22 +643,77 @@ const SAVE_HEADER =
   "# Fichier généré par @orch/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n\n";
 
 /**
- * Régénère `<root>/.orch/config.toml` à partir de `config`. Écriture
- * atomique — fichier temporaire dans le même répertoire puis `rename` —
- * même motif que `packages/core/src/store.ts`.
+ * Régénère le fichier de la couche `scope`, à partir de `override` — pas
+ * d'un `OrchConfig` fusionné. `override` ne sérialise que ce qu'il porte
+ * explicitement : une section `[policy]` uniquement pour les champs présents
+ * dans `override.policy`, des sections `[[role]]`/`[[agent]]` uniquement si
+ * `override.roles`/`override.agents` sont définis. C'est ce qui rend une
+ * couche fidèle à ce qu'elle déclare en propre, jamais un aplatissement de
+ * la fusion (voir l'en-tête de ce module, et le défaut I11 qu'il corrige) :
+ * un appelant qui ne veut modifier qu'un seul champ doit lire la couche au
+ * préalable (`loadLayer`) et ne réécrire que le champ voulu dans l'override
+ * relu, sous peine d'effacer le reste de ce qu'elle déclarait.
+ *
+ * Écriture atomique — fichier temporaire dans le même répertoire puis
+ * `rename` — même motif que `packages/core/src/store.ts`.
  */
-export async function saveProjectConfig(root: string, config: OrchConfig): Promise<void> {
-  const raw = {
-    policy: fromPolicyConfig(config.policy),
-    role: config.roles.map(fromRoleConfig),
-    agent: config.agents.map(fromAgentSpec),
-  };
+export async function saveLayer(scope: ConfigScope, root: string, override: ConfigOverride): Promise<void> {
+  const raw: Record<string, unknown> = {};
+  if (override.policy !== undefined) raw.policy = fromPolicyOverride(override.policy);
+  if (override.roles !== undefined) raw.role = override.roles.map(fromRoleConfig);
+  if (override.agents !== undefined) raw.agent = override.agents.map(fromAgentSpec);
   const content = SAVE_HEADER + stringifyToml(raw);
 
-  const path = projectConfigPath(root);
+  const path = configPathFor(scope, root);
   const dir = dirname(path);
   await mkdir(dir, { recursive: true });
   const tmp = join(dir, `.config.${randomUUID()}.tmp`);
   await writeFile(tmp, content, "utf8");
   await rename(tmp, path);
+}
+
+export interface PolicyListEdit {
+  /** Liste effective (fusionnée) après la modification — ce que la couche `scope` porte désormais. */
+  effective: string[];
+  /** Vrai si la couche `scope` ne déclarait pas encore ce champ avant cette écriture. */
+  materialized: boolean;
+}
+
+/**
+ * Ajoute ou retire `id` de `policy.allowed`/`policy.denied`, à la couche
+ * `scope` — la matérialisation de liste décrite par le brief de la tâche 13.
+ *
+ * `allowed`/`denied` se fusionnent par remplacement entier, pas par union
+ * (voir `mergeConfig`) : une couche qui déclare `denied` remplace celui des
+ * couches moins spécifiques. Se contenter d'écrire `[id]` à la couche visée
+ * effacerait donc tout ce que ces couches y avaient placé. Cette fonction
+ * calcule d'abord la liste **effective** (celle que `loadConfig` calculerait
+ * pour ce champ), l'augmente ou l'ampute de `id`, puis écrit ce résultat —
+ * jamais `id` seul — dans la couche visée, en conservant le reste de ce
+ * qu'elle déclarait déjà (`loadLayer` relu avant d'écrire).
+ *
+ * `materialized` vaut vrai quand la couche ne déclarait pas encore ce champ :
+ * elle en prend désormais la main sur toute la liste, et une couche moins
+ * spécifique modifiée ensuite n'aura plus d'effet sur ce champ ici. Un
+ * signal que l'appelant (CLI, TUI) doit rendre visible, pas seulement
+ * consigner.
+ */
+export async function materializePolicyList(
+  root: string,
+  scope: ConfigScope,
+  field: "allowed" | "denied",
+  id: string,
+  present: boolean,
+): Promise<PolicyListEdit> {
+  const { config: merged } = await loadConfig(root);
+  const layer = await loadLayer(scope, root);
+  const materialized = layer.policy?.[field] === undefined;
+
+  const set = new Set(merged.policy[field]);
+  if (present) set.add(id);
+  else set.delete(id);
+  const effective = [...set];
+
+  await saveLayer(scope, root, { ...layer, policy: { ...layer.policy, [field]: effective } });
+  return { effective, materialized };
 }
