@@ -11,6 +11,7 @@ export * from "./roles.js";
 export * from "./delegation.js";
 export * from "./mcp-registration.js";
 export * from "./engine/worktree.js";
+export * from "./engine/gc.js";
 export * from "./engine/spawn.js";
 export * from "./engine/report.js";
 export * from "./engine/queue.js";

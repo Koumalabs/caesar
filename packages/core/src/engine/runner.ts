@@ -38,6 +38,7 @@ import {
 } from "./worktree.js";
 import type { Queue } from "./queue.js";
 import type { WorktreeDiff, WorktreeHandle } from "./worktree.js";
+import { clearWorktreeInUse, markWorktreeInUse } from "./gc.js";
 
 const DEFAULT_TIMEOUT_MS = 600_000;
 
@@ -254,6 +255,11 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     return abortBeforeStart(deps, input, id, paths, agentDef, depth);
   }
 
+  // Posé avant toute création possible de worktree et conservé jusqu'à la
+  // fin : `orch gc` peut ainsi distinguer une vraie tâche en démarrage d'un
+  // orphelin, même pendant la fenêtre précédant `store.create`.
+  const worktreeLease = await markWorktreeInUse(deps.root, id);
+  try {
   const { isolation, warning, handle } = await prepareIsolation(deps.root, id, input, agentDef);
   const workspace = handle ? handle.path : input.workspace;
 
@@ -355,7 +361,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
       await deps.store
         .update(id, { status: "failed", ended_at: new Date().toISOString(), pid: undefined })
         .catch(() => {
-          // Best-effort : ne doit jamais masquer l'exception d'origine, déjà en cours de propagation.
+          // Au mieux : ne doit jamais masquer l'exception d'origine, déjà en cours de propagation.
         });
     }
   }
@@ -468,6 +474,9 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   finalized = true;
 
   return { record: updated, report, source: resolved.source, diff };
+  }
+  } finally {
+    await clearWorktreeInUse(worktreeLease);
   }
 }
 

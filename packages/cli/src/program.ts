@@ -38,6 +38,7 @@ import { runAgentsDisable, runAgentsEnable, runAgentsList, runAgentsTest } from 
 import { runChannelServe } from "./commands/channel.js";
 import { runConfig } from "./commands/config.js";
 import { runDoctor } from "./commands/doctor.js";
+import { runGc } from "./commands/gc.js";
 import { runInit } from "./commands/init.js";
 import { runMcpInstall, runMcpServe } from "./commands/mcp.js";
 import { runPolicyAllow, runPolicyDeny, runPolicyShow } from "./commands/policy.js";
@@ -411,6 +412,17 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
     .action(async (id: string, _options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => runApply(await resolveRoot(opts.root), id, { json: opts.json }, io));
+    });
+
+  withCommonOptions(program.command("gc"))
+    .description("Nettoie les worktrees et branches laissés par les tâches terminées.")
+    .option("--dry-run", "Montre les suppressions et conservations sans rien modifier.")
+    .option("--force", "Supprime aussi les worktrees terminés portant des modifications non intégrées.")
+    .action(async (options: GlobalOptions & { dryRun?: boolean; force?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<typeof options>();
+      await run(async () =>
+        runGc(await resolveRoot(opts.root), { dryRun: opts.dryRun, force: opts.force, json: opts.json }, io),
+      );
     });
 
   // ---------------------------------------------------------------------

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Channel } from "@orch/protocol";
 import { REPORT_PROTOCOL, readTask, taskPaths } from "@orch/protocol";
 import { fileTaskStore, type TaskStore } from "../store.js";
+import { garbageCollectWorktrees } from "./gc.js";
 import { createQueue } from "./queue.js";
 
 const execFileAsync = promisify(execFile);
@@ -166,6 +167,69 @@ describe("runTask", () => {
       expect(outcome.record.status).toBe("succeeded");
       expect(outcome.report.status).toBe("success");
       expect(outcome.report.findings).toEqual([]);
+    });
+
+    it("protège le worktree contre gc avant que son enregistrement running soit publié", async () => {
+      await initGitRepo(root);
+      let releaseCreate!: () => void;
+      let notifyCreate!: () => void;
+      const createReached = new Promise<void>((resolvePromise) => {
+        notifyCreate = resolvePromise;
+      });
+      const createReleased = new Promise<void>((resolvePromise) => {
+        releaseCreate = resolvePromise;
+      });
+      const delayedStore: TaskStore = {
+        create: async (record) => {
+          notifyCreate();
+          await createReleased;
+          await store.create(record);
+        },
+        update: (id, patch) => store.update(id, patch),
+        get: (id) => store.get(id),
+        list: (filter) => store.list(filter),
+      };
+
+      const running = runTask(
+        { store: delayedStore, root },
+        {
+          taskId: "t_demarrage_concurrent",
+          agentId: "fake-agent",
+          objective: "démarrer pendant gc",
+          mode: "write",
+          isolation: "worktree",
+          workspace: root,
+        },
+      );
+      await createReached;
+
+      await expect(
+        runTask(
+          { store, root },
+          {
+            taskId: "t_demarrage_concurrent",
+            agentId: "fake-agent",
+            objective: "démarrage concurrent avec le même identifiant",
+            mode: "write",
+            isolation: "worktree",
+            workspace: root,
+          },
+        ),
+      ).rejects.toThrow();
+
+      const duringStartup = await garbageCollectWorktrees(root, { force: true });
+      expect(duringStartup.entries).toEqual([
+        expect.objectContaining({ id: "t_demarrage_concurrent", action: "kept", reason: "active", orphan: true }),
+      ]);
+
+      releaseCreate();
+      const outcome = await running;
+      expect(outcome.record.status).toBe("succeeded");
+
+      const afterCompletion = await garbageCollectWorktrees(root);
+      expect(afterCompletion.entries).toEqual([
+        expect.objectContaining({ id: "t_demarrage_concurrent", action: "removed", reason: "clean", orphan: false }),
+      ]);
     });
 
     it("write + workspace hors dépôt git → inplace, avec un constat d'isolation dégradée", async () => {
