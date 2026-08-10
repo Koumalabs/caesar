@@ -11,6 +11,7 @@ import {
   loadConfig,
   loadLayer,
   localConfigPath,
+  materializeListEdit,
   materializePolicyList,
   mergeConfig,
   parseDuration,
@@ -136,6 +137,16 @@ describe("globalConfigPath / projectConfigPath", () => {
 
   it("le chemin projet se trouve sous <root>/.orch/config.toml", () => {
     expect(projectConfigPath("/repo")).toBe(join("/repo", ".orch", "config.toml"));
+  });
+
+  it("suit $HOME même quand il diffère de ce que os.homedir() rendrait — Bun ignore $HOME dans os.homedir() (tâche 15)", async () => {
+    // Ce test passe trivialement sous Node (vitest, ce fichier) : `os.homedir()` y respecte déjà `$HOME`. Sa
+    // valeur est de figer le comportement pour Bun (`packages/tui`, qui consomme ce module compilé) : y écrire
+    // `os.homedir()` à la place de `process.env.HOME` régresserait silencieusement sous Bun uniquement, sans
+    // qu'aucun test Node ne le détecte — voir `globalConfigPath` pour l'incident qui a révélé ce défaut.
+    await withFakeHome(async (home) => {
+      expect(globalConfigPath().startsWith(home)).toBe(true);
+    });
   });
 });
 
@@ -629,6 +640,39 @@ describe("policyFieldProvenance / roleProvenance / agentProvenance", () => {
     const layers = layersOf({ project: { agents: [{ id: "monagent", bin: "mon-cli", args: [] }] } });
     expect(agentProvenance(layers, "monagent")).toBe("project");
     expect(agentProvenance(layers, "codex")).toBe("default");
+  });
+});
+
+describe("materializeListEdit", () => {
+  it("ajoute un id à la liste effective, matérialisée si la couche ne déclarait pas encore le champ", () => {
+    const result = materializeListEdit(["copilot"], undefined, "opencode", true);
+    expect(result).toEqual({ effective: ["copilot", "opencode"], materialized: true });
+  });
+
+  it("n'est pas matérialisée quand la couche déclare déjà le champ, même vide", () => {
+    const result = materializeListEdit(["codex"], [], "codex", true);
+    expect(result).toEqual({ effective: ["codex"], materialized: false });
+  });
+
+  it("retire un id, sans dupliquer si présent plusieurs fois dans l'effectif", () => {
+    const result = materializeListEdit(["codex", "opencode"], ["codex", "opencode"], "codex", false);
+    expect(result).toEqual({ effective: ["opencode"], materialized: false });
+  });
+
+  it("est le calcul que materializePolicyList applique ensuite au disque (même résultat, en mémoire)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "orch-materialize-pure-"));
+    try {
+      await withFakeHome(async () => {
+        await mkdir(join(root, ".orch"), { recursive: true });
+        await writeFile(join(root, ".orch", "config.toml"), '[policy]\ndenied = ["codex"]\n', "utf8");
+
+        const pure = materializeListEdit(["codex"], ["codex"], "opencode", true);
+        const io = await materializePolicyList(root, "project", "denied", "opencode", true);
+        expect(io).toEqual(pure);
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

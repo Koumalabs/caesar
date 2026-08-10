@@ -380,8 +380,27 @@ function formatZodError(error: z.ZodError, filePath: string): string {
 // Chargement
 // ---------------------------------------------------------------------------
 
+/**
+ * Répertoire personnel de l'utilisateur, pour la couche globale.
+ * `os.homedir()` (Node) préfère déjà `$HOME` sur POSIX, mais **Bun** — le
+ * runtime de `packages/tui`, voir les contraintes globales du projet —
+ * ignore silencieusement `$HOME` et retombe toujours sur l'utilisateur
+ * système réel, constaté en écrivant les tests de la tâche 15 : neutraliser
+ * `HOME` pour isoler un test (le motif déjà en place dans
+ * `packages/core/src/config.test.ts` et `packages/cli/test/support.ts`)
+ * n'empêchait pas `globalConfigPath()` de résoudre le vrai
+ * `~/.config/orch/` sous Bun, avec le risque réel d'écrire dedans — ce qui
+ * s'est produit en écrivant le test qui a révélé le défaut. Lire `$HOME`
+ * explicitement avant de retomber sur `homedir()` reproduit le comportement
+ * Node existant (aucun changement sous Node, où `$HOME` l'emportait déjà) et
+ * le rend fiable sous Bun aussi.
+ */
+function homeDirectory(): string {
+  return process.env["HOME"] || homedir();
+}
+
 export function globalConfigPath(): string {
-  return join(homedir(), ".config", "orch", "config.toml");
+  return join(homeDirectory(), ".config", "orch", "config.toml");
 }
 
 export function projectConfigPath(root: string): string {
@@ -680,6 +699,34 @@ export interface PolicyListEdit {
 }
 
 /**
+ * Calcul pur de la matérialisation d'une liste — ajoute ou retire `id` de la
+ * liste **effective** (`effective`, celle que `loadConfig` calculerait pour
+ * ce champ), et signale si `currentOverride` (ce que la couche visée déclare
+ * aujourd'hui ; `undefined` si elle ne déclare pas encore ce champ) va être
+ * pris en main par cette écriture.
+ *
+ * Séparée de `materializePolicyList` (qui lit/écrit le disque) pour qu'une
+ * façade tenant sa propre copie de travail en mémoire — le TUI
+ * (`packages/tui/src/state/config-state.ts`), qui ne peut pas relire/réécrire
+ * le disque à chaque frappe sans violer "aucune écriture sans action
+ * explicite de l'utilisateur" — applique exactement la même règle plutôt que
+ * de la recopier (voir le brief de la tâche 15, et les deux duplications de
+ * règles entre façades que ce projet a déjà connues).
+ */
+export function materializeListEdit(
+  effective: readonly string[],
+  currentOverride: readonly string[] | undefined,
+  id: string,
+  present: boolean,
+): PolicyListEdit {
+  const materialized = currentOverride === undefined;
+  const set = new Set(effective);
+  if (present) set.add(id);
+  else set.delete(id);
+  return { effective: [...set], materialized };
+}
+
+/**
  * Ajoute ou retire `id` de `policy.allowed`/`policy.denied`, à la couche
  * `scope` — la matérialisation de liste décrite par le brief de la tâche 13.
  *
@@ -687,10 +734,10 @@ export interface PolicyListEdit {
  * (voir `mergeConfig`) : une couche qui déclare `denied` remplace celui des
  * couches moins spécifiques. Se contenter d'écrire `[id]` à la couche visée
  * effacerait donc tout ce que ces couches y avaient placé. Cette fonction
- * calcule d'abord la liste **effective** (celle que `loadConfig` calculerait
- * pour ce champ), l'augmente ou l'ampute de `id`, puis écrit ce résultat —
- * jamais `id` seul — dans la couche visée, en conservant le reste de ce
- * qu'elle déclarait déjà (`loadLayer` relu avant d'écrire).
+ * charge la liste effective et la déclaration actuelle de la couche visée,
+ * délègue le calcul à `materializeListEdit`, puis écrit son résultat — jamais
+ * `id` seul — dans la couche visée, en conservant le reste de ce qu'elle
+ * déclarait déjà (`loadLayer` relu avant d'écrire).
  *
  * `materialized` vaut vrai quand la couche ne déclarait pas encore ce champ :
  * elle en prend désormais la main sur toute la liste, et une couche moins
@@ -707,13 +754,7 @@ export async function materializePolicyList(
 ): Promise<PolicyListEdit> {
   const { config: merged } = await loadConfig(root);
   const layer = await loadLayer(scope, root);
-  const materialized = layer.policy?.[field] === undefined;
-
-  const set = new Set(merged.policy[field]);
-  if (present) set.add(id);
-  else set.delete(id);
-  const effective = [...set];
-
+  const { effective, materialized } = materializeListEdit(merged.policy[field], layer.policy?.[field], id, present);
   await saveLayer(scope, root, { ...layer, policy: { ...layer.policy, [field]: effective } });
   return { effective, materialized };
 }
