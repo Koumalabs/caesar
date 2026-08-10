@@ -2,9 +2,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ENV } from "@orch/protocol";
 import { defaultConfig } from "./config.js";
 import type { OrchConfig, RoleConfig } from "./config.js";
-import { resolveDelegation } from "./delegation.js";
+import { nextDelegationDepth, resolveDelegation } from "./delegation.js";
 
 function role(overrides: Partial<RoleConfig> = {}): RoleConfig {
   return {
@@ -136,5 +137,32 @@ describe("resolveDelegation", () => {
       else process.env["PATH"] = previousPath;
       await rm(emptyPathDir, { recursive: true, force: true });
     }
+  });
+});
+
+/**
+ * `nextDelegationDepth` — voir C4 de la revue finale : `$ORCH_DEPTH` était
+ * bien exporté vers les sous-processus (`taskEnv`, `@orch/protocol`) mais
+ * jamais relu par personne, ce qui rendait `max_depth` inapplicable dès
+ * qu'un agent délégant tournait lui-même comme sous-agent. Testée
+ * directement plutôt que via l'environnement réel du process de test (voir
+ * les tests d'intégration de `run.test.ts`, `@orch/cli`, qui couvrent le
+ * câblage bout en bout) : ici, seule la fonction de calcul.
+ */
+describe("nextDelegationDepth", () => {
+  it("aucune variable héritée : profondeur 1 (premier niveau de délégation)", () => {
+    expect(nextDelegationDepth({})).toBe(1);
+  });
+
+  it("profondeur héritée n : rend n + 1", () => {
+    expect(nextDelegationDepth({ [ENV.depth]: "3" })).toBe(4);
+  });
+
+  it("valeur non numérique héritée : retombe sur 0 avant d'ajouter 1, plutôt que NaN", () => {
+    // Un NaN propagé jusqu'à `isDepthAllowed` (`depth >= max_depth`) serait
+    // toujours faux : le garde-fou anti-récursion se désarmerait en
+    // silence sur la moindre variable malformée. Vérifié explicitement.
+    expect(nextDelegationDepth({ [ENV.depth]: "pas-un-nombre" })).toBe(1);
+    expect(Number.isNaN(nextDelegationDepth({ [ENV.depth]: "pas-un-nombre" }))).toBe(false);
   });
 });

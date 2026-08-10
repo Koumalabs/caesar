@@ -568,5 +568,11 @@ async function prepareIsolation(
   }
 
   const handle = await createWorktree(base, taskId);
-  return { isolation, handle };
+  // `warning` peut être défini ici : voir C3 de la revue finale, le cas où
+  // `mustForceWorktree` contredit une isolation explicitement demandée. Sans
+  // le propager, ce dernier `return` — seul chemin de sortie une fois
+  // `isolation === "worktree"` — le perdrait silencieusement, quand bien
+  // même le rapport doit en porter la trace (`withFinding`, plus haut dans
+  // `runTask`).
+  return { isolation, warning, handle };
 }

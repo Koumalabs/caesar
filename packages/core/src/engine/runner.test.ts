@@ -228,6 +228,168 @@ describe("runTask", () => {
     expect(high[0]!.detail).toContain("sournois.txt");
   });
 
+  /**
+   * Les quatre tests de couture demandés par la revue finale : ils auraient
+   * attrapé C1 à C4 avant fusion. C1 (un agent déclaré en `[[agent]]` tourne
+   * de bout en bout via `orch run`) vit dans `packages/cli/src/commands/run.test.ts`,
+   * seul niveau où le CLI/`.orch/config.toml` a un sens ; les trois autres
+   * sont ici, au niveau du moteur qu'ils exercent directement.
+   */
+  describe("tests de couture — revue finale", () => {
+    it("C2 : report.changes diffère du diff git réel ⇒ un finding apparaît, aussi en isolation \"inplace\" (pas seulement \"worktree\")", async () => {
+      // Le pendant "worktree" de ce test existe déjà plus bas
+      // ("recoupe une déclaration mensongère avec le diff réel de bout en
+      // bout") : avant C2 de la revue finale, aucun recoupement n'était
+      // jamais tenté en isolation "inplace" — `report.changes` y restait la
+      // déclaration brute de l'agent, sans qu'aucun finding ne signale un
+      // mensonge dans un sens ou dans l'autre.
+      await initGitRepo(root);
+      const outcome = await runTask(
+        { store, root },
+        {
+          agentId: "fake-agent",
+          objective: "agent qui ment sur ses changements, en inplace",
+          mode: "write",
+          isolation: "inplace",
+          workspace: root,
+          context: JSON.stringify({
+            files: [{ path: "reel.txt", content: "vraiment écrit" }],
+            declaredChanges: [{ path: "invente.txt", action: "modified", summary: "n'existe pas" }],
+          }),
+        },
+      );
+
+      expect(outcome.record.isolation).toBe("inplace");
+      expect(outcome.record.changes_verified_by).toBe("git");
+      expect(outcome.report.changes).toEqual([{ path: "reel.txt", action: "created", summary: "" }]);
+      const files = outcome.report.findings.map((f) => f.file).sort();
+      expect(files).toEqual(["invente.txt", "reel.txt"]);
+    });
+
+    it('C3 : un agent read-only qui écrit est détecté même si "inplace" est explicitement demandé (isolation forcée sur "worktree")', async () => {
+      await initGitRepo(root);
+      const outcome = await runTask(
+        { store, root },
+        {
+          agentId: "fake-agent", // capabilities.nativeReadOnly === false
+          objective: "lecture seule, inplace explicitement demandé malgré tout",
+          mode: "read-only",
+          isolation: "inplace", // avant C3, cette valeur explicite défaisait silencieusement la contrainte.
+          workspace: root,
+          context: JSON.stringify({ files: [{ path: "sournois2.txt", content: "toujours pas censé écrire" }] }),
+        },
+      );
+
+      // La contrainte l'emporte sur la demande explicite : isolation réellement forcée sur "worktree".
+      expect(outcome.record.isolation).toBe("worktree");
+      const high = outcome.report.findings.filter((f) => f.severity === "high");
+      expect(high).toHaveLength(1);
+      expect(high[0]!.detail).toContain("sournois2.txt");
+      // Le contournement contredit est signalé, pas seulement absorbé en silence.
+      expect(outcome.report.findings.some((f) => f.title === "Isolation dégradée")).toBe(true);
+    });
+
+    it('C3 : un agent read-only nativement lecture-seule qui écrit quand même est détecté en isolation "inplace" réelle (jamais forcée sur "worktree")', async () => {
+      // Cas le plus dur du "quelle que soit l'isolation demandée" : ici
+      // l'isolation reste authentiquement "inplace" (agent nativement
+      // lecture seule, `mustForceWorktree` ne s'applique pas) — la détection
+      // doit donc venir du recoupement `git status` avant/après (C2),
+      // jamais d'un worktree.
+      await initGitRepo(root);
+      const outcome = await runTask(
+        { store, root },
+        {
+          agentId: "fake-agent-native-ro", // capabilities.nativeReadOnly === true
+          objective: "lecture seule native qui ment sur sa promesse",
+          mode: "read-only",
+          workspace: root,
+          context: JSON.stringify({ files: [{ path: "sournois3.txt", content: "le CLI a un bug" }] }),
+        },
+      );
+
+      expect(outcome.record.isolation).toBe("inplace");
+      expect(outcome.record.changes_verified_by).toBe("git");
+      const high = outcome.report.findings.filter((f) => f.severity === "high");
+      expect(high).toHaveLength(1);
+      expect(high[0]!.detail).toContain("sournois3.txt");
+    });
+
+    it("C4 : max_parallel = 1 (Queue partagée, limite 1) ⇒ deux délégations s'exécutent en série, jamais simultanément", async () => {
+      const queue = createQueue(1);
+      const concurrentRunningCounts: number[] = [];
+      let polling = true;
+      const pollLoop = (async () => {
+        while (polling) {
+          const running = await store.list({ status: ["running"] });
+          concurrentRunningCounts.push(running.filter((r) => r.pid !== undefined).length);
+          await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 15));
+        }
+      })();
+
+      const makeInput = (label: string) => ({
+        agentId: "fake-agent",
+        objective: `tâche ${label}`,
+        mode: "write" as const,
+        isolation: "inplace" as const,
+        workspace: root,
+        context: JSON.stringify({ sleepMs: 200 }),
+      });
+
+      const [a, b] = await Promise.all([
+        runTask({ store, root, queue }, makeInput("a")),
+        runTask({ store, root, queue }, makeInput("b")),
+      ]);
+      polling = false;
+      await pollLoop;
+
+      expect(a.record.status).toBe("succeeded");
+      expect(b.record.status).toBe("succeeded");
+      // Preuve par constat d'état, pas par chronomètre (même méthode que
+      // `packages/mcp-server/src/tools/await.test.ts:79-98`) : jamais plus
+      // d'une tâche "running" avec un pid actif à la fois, malgré deux
+      // `runTask` lancés en parallèle avec `Promise.all` — exactement la
+      // garantie que `policy.max_parallel` doit fournir, et que
+      // `RunnerDeps.queue` ne câblait jusqu'ici nulle part (C4).
+      expect(Math.max(...concurrentRunningCounts)).toBeLessThanOrEqual(1);
+      // Le test n'a de sens que s'il a effectivement observé une tâche
+      // active pendant l'exécution : sinon "jamais plus d'une" serait vrai
+      // par défaut d'observation, pas par la garantie testée.
+      expect(concurrentRunningCounts.some((n) => n === 1)).toBe(true);
+    });
+
+    it("C4 (témoin) : sans limite partagée, les deux mêmes délégations tournent bien simultanément — la Queue de limite 1 ci-dessus est donc bien ce qui sérialise", async () => {
+      const concurrentRunningCounts: number[] = [];
+      let polling = true;
+      const pollLoop = (async () => {
+        while (polling) {
+          const running = await store.list({ status: ["running"] });
+          concurrentRunningCounts.push(running.filter((r) => r.pid !== undefined).length);
+          await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 15));
+        }
+      })();
+
+      const makeInput = (label: string) => ({
+        agentId: "fake-agent",
+        objective: `tâche témoin ${label}`,
+        mode: "write" as const,
+        isolation: "inplace" as const,
+        workspace: root,
+        context: JSON.stringify({ sleepMs: 200 }),
+      });
+
+      // Aucune Queue partagée (`{ store, root, queue: undefined }`) : les deux
+      // délégations ne sont bridées par rien.
+      await Promise.all([
+        runTask({ store, root, queue: undefined }, makeInput("a")),
+        runTask({ store, root, queue: undefined }, makeInput("b")),
+      ]);
+      polling = false;
+      await pollLoop;
+
+      expect(concurrentRunningCounts.some((n) => n === 2)).toBe(true);
+    });
+  });
+
   it("une tâche dont l'agent n'écrit aucun rapport produit un rapport synthétisé", async () => {
     await initGitRepo(root);
     const outcome = await runTask(

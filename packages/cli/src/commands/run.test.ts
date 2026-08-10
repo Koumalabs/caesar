@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
+import { ENV } from "@orch/protocol";
+import { FAKE_AGENT_PATH, makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
 import { runPolicyDeny } from "./policy.js";
 import { runRun } from "./run.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE } from "../output.js";
@@ -274,4 +275,65 @@ describe("orch run", () => {
       }),
     );
   }, 20_000);
+
+  /**
+   * Tests de couture (revue finale) pour C1 et C4 — voir aussi
+   * `packages/core/src/engine/runner.test.ts` (`describe("tests de couture — revue finale"`)
+   * pour C2/C3, et `packages/core/src/delegation.test.ts` (`describe("nextDelegationDepth"`)
+   * pour l'unité de calcul de profondeur que le second test ci-dessous câble
+   * bout en bout. `FAKE_AGENT_PATH` (jamais un vrai CLI d'agent) est utilisé
+   * directement comme `bin` d'un `[[agent]]` — pas via `withFakeAgentAsBin`,
+   * qui masquerait un identifiant du catalogue natif plutôt que d'en déclarer
+   * un nouveau.
+   */
+  it("C1 : un agent déclaré en [[agent]] (.orch/config.toml) tourne de bout en bout via \"orch run\"", async () => {
+    await withFakeHome(async () => {
+      // Reproduit littéralement le repro de C1 dans la revue finale :
+      // `orch run --agent mon-agent-bash` répondait jusqu'ici "Agent inconnu"
+      // (exit 2), alors que la configuration était bien lue.
+      await mkdir(join(root, ".orch"), { recursive: true });
+      const toml = [
+        "[[agent]]",
+        'id = "mon-agent-bash"',
+        `bin = ${JSON.stringify(process.execPath)}`,
+        `args = [${JSON.stringify(FAKE_AGENT_PATH)}, "{{prompt}}"]`,
+        "",
+      ].join("\n");
+      await writeFile(join(root, ".orch", "config.toml"), toml, "utf8");
+
+      const code = await runRun(
+        root,
+        "crée hello.txt",
+        { agent: "mon-agent-bash", mode: "write", isolation: "inplace", json: true },
+        io,
+      );
+
+      expect(code).toBe(EXIT_OK);
+      const parsed = JSON.parse(io.stdoutText());
+      expect(parsed.status).toBe("succeeded");
+      expect(parsed.report.status).toBe("success");
+    });
+  }, 20_000);
+
+  it("C4 : une profondeur héritée de $ORCH_DEPTH atteignant max_depth refuse la délégation", async () => {
+    await withFakeHome(async () => {
+      // policy.max_depth vaut 2 par défaut (config.ts, DEFAULT_POLICY).
+      // $ORCH_DEPTH="1" simule un `orch run` tournant lui-même comme
+      // sous-agent d'une délégation de profondeur 1 : la délégation suivante
+      // serait donc de profondeur 2, qui atteint exactement max_depth — et
+      // doit être refusée (isDepthAllowed : depth >= max_depth). Avant C4 de
+      // la revue finale, cette variable n'était relue par personne : le
+      // refus n'existait pas, quelle que soit la profondeur héritée.
+      const previous = process.env[ENV.depth];
+      process.env[ENV.depth] = "1";
+      try {
+        const code = await runRun(root, "objectif à une profondeur excessive", { agent: "codex", mode: "read-only", json: true }, io);
+        expect(code).toBe(EXIT_USAGE);
+        expect(io.stderrText()).toMatch(/max_depth/);
+      } finally {
+        if (previous === undefined) delete process.env[ENV.depth];
+        else process.env[ENV.depth] = previous;
+      }
+    });
+  });
 });
