@@ -87,7 +87,7 @@ Tâche "t_680818a6a92047a2b08bb904e46d8427" appliquée au dépôt principal.
 
 `orch run` accepte `--role <name>` (choisit l'agent via un rôle configuré et sa chaîne de repli — voir `orch role list`) ou `--agent <id>` (fixe l'agent, l'emporte sur `--role`), `--mode read-only|write`, `--isolation inplace|worktree|auto`, `--timeout 10m`, `--model <id>`, `--context <texte ou @fichier>`, et `--channel` (ouvre le canal retour MCP bidirectionnel : le sous-agent peut poser une question à l'agent principal en cours de route plutôt que de deviner — voir `docs/protocol.md`). Au moins l'un de `--agent`/`--role` est requis.
 
-Les autres sous-commandes : `orch ps` (tâches en cours et récentes), `orch logs <id> [--raw] [--follow]`, `orch cancel <id>`, `orch agents list|enable|disable|test` (`test` lance une micro-tâche réelle en lecture seule pour vérifier qu'un agent répond — `--yes` obligatoire, ça consomme son quota), `orch policy show|allow|deny`, `orch role list|show|add|remove`, `orch protocol schema <task|report|event> [--strict]` (publie le standard en JSON Schema).
+Les autres sous-commandes : `orch ps` (tâches en cours et récentes), `orch logs <id> [--raw] [--follow]`, `orch cancel <id>`, `orch agents list|enable|disable|test` (`test` lance une micro-tâche réelle en lecture seule pour vérifier qu'un agent répond — `--yes` obligatoire, ça consomme son quota), `orch policy show|allow|deny`, `orch role list|show|add|remove`, `orch protocol schema <task|report|event> [--strict]` (publie le standard en JSON Schema). Celles qui modifient (`policy allow|deny`, `agents enable|disable`, `role add|remove`) acceptent `--global`/`--local` pour cibler une autre couche que le projet — voir « Configuration en couches » ci-dessous.
 
 ## Usage depuis Claude Code
 
@@ -108,6 +108,39 @@ C'est ce qui rend une délégation aussi naturelle qu'invoquer un sous-agent nat
 
 Dans Claude Code, il suffit de demander : *« délègue à Codex l'implémentation de X »* ou *« lance orch-race sur cette tâche avec codex et antigravity »* — le sous-agent adapté enchaîne lui-même `orch_delegate` → `orch_await` → présentation du rapport et du diff, sans bloquer la conversation principale pendant que le sous-agent externe tourne.
 
+## Configuration en couches : global, projet, local
+
+Trois niveaux, du plus général au plus spécifique — le plus spécifique l'emporte, champ par champ :
+
+| Niveau | Fichier | Versionné |
+|---|---|---|
+| global | `~/.config/orch/config.toml` | non — propre au poste |
+| projet | `<projet>/.orch/config.toml` | oui, partagé avec l'équipe |
+| local | `<projet>/.orch/config.local.toml` | non — propre au poste (voir `.gitignore` plus bas) |
+
+Poser sa politique, ses rôles et ses agents une fois dans le global fait que chaque nouveau projet en hérite sans rien faire :
+
+```bash
+orch init --global                 # crée ~/.config/orch/config.toml à partir des réglages par défaut
+orch policy deny copilot --global  # s'applique désormais à tous les projets de ce poste
+```
+
+Les commandes qui modifient — `orch policy allow|deny`, `orch agents enable|disable`, `orch role add|remove` — acceptent `--global`/`--local` pour cibler une couche autre que le projet (le défaut, sans option). Mutuellement exclusifs : `orch` refuse explicitement `--global` et `--local` ensemble plutôt que de laisser le dernier lu l'emporter en silence. Chaque écriture ne touche **que** la couche visée, et ce fichier ne contient que ce que cette couche déclare en propre — jamais la fusion : un fichier de configuration lu par `orch` (dont `orch policy show`) additionne toujours les trois couches, mais écrire ne réécrit jamais ce résultat fusionné dans une seule d'entre elles. C'est précisément ce qui manquait avant : un seul `orch policy deny copilot` recopiait la configuration effective (défauts compris) dans le fichier du projet, figeant `max_parallel` et tout le reste au passage — modifier ensuite le fichier global n'avait alors plus aucun effet sur ce projet.
+
+**Modifier une liste (`allowed`/`denied`) matérialise cette liste dans la couche visée.** Ces deux listes se fusionnent par remplacement, pas par union : une couche qui les déclare remplace entièrement celles des couches moins spécifiques. `orch policy deny X` écrit donc la liste **effective** (celle qu'`orch policy show` affiche) augmentée de `X`, jamais `X` seul — sans quoi la commande effacerait silencieusement ce que le global y avait déjà placé. Quand la couche visée ne déclarait pas encore ce champ, `orch` le dit : elle en prend désormais la main, et modifier ensuite une couche moins spécifique n'aura plus d'effet dessus.
+
+```
+$ orch policy deny copilot --global
+$ orch init
+$ orch policy deny opencode
+Agent "opencode" ajouté à la liste "denied" (couche projet (.orch/config.toml)).
+Attention : la liste "denied" n'était pas déclarée par la couche projet (.orch/config.toml) ; elle en prend désormais la main avec la valeur effective actuelle (copilot, opencode) — modifier une couche moins spécifique (global ou défaut) n'affectera plus ce champ ici.
+```
+
+À l'issue de ce scénario, `.orch/config.toml` ne contient **que** `denied = ["copilot", "opencode"]` — aucun défaut recopié, aucun réglage global figé ; modifier ensuite `max_parallel` dans le fichier global continue de se répercuter dans ce projet. `orch policy show` indique la provenance de chaque valeur (`global`, `project`, `local`, ou `default`), et `orch role show`/`orch agents list` l'étendent aux rôles et aux agents.
+
+`orch init` crée la couche **projet** : les prompts système par défaut (`.orch/roles/*.md`) et complète le `.gitignore` du projet avec `.orch/config.local.toml`, `.orch/tasks/`, `.orch/wt/` et `.orch/state/` (n'ajoute que les lignes absentes, ne réécrit jamais le fichier depuis rien ; ne fait rien, en le disant, si le répertoire n'est pas un dépôt git). `orch init --global` crée la couche **globale**, intégralement à partir des réglages par défaut. Les deux refusent d'écraser une configuration existante sans `--force`.
+
 ## Interface de configuration
 
 `orch config` lance un TUI (OpenTUI) pour éditer politique, rôles et intégrations MCP interactivement. Il a une exigence propre : **il tourne sous Bun**, pas sous Node — OpenTUI rend via le FFI de Bun, indisponible sur Node 24. Sans `bun` sur le `PATH`, `orch config` explique la situation et renvoie vers les sous-commandes équivalentes plutôt que d'échouer sèchement :
@@ -121,7 +154,7 @@ Installez Bun (https://bun.sh), ou utilisez les sous-commandes équivalentes :
   - orch agents list   Catalogue des agents : présence, capacités, autorisation.
 ```
 
-`@orch/core` reste dans tous les cas la seule source de vérité de la configuration (`<projet>/.orch/config.toml`, fusionnée avec `~/.config/orch/config.toml`) : le TUI, ces sous-commandes et le serveur MCP en sont trois façades différentes, aucune ne la relit ni ne la réécrit pour son propre compte.
+`@orch/core` reste dans tous les cas la seule source de vérité de la configuration — les trois couches ci-dessus, fusionnées : le TUI, ces sous-commandes et le serveur MCP en sont des façades différentes, aucune ne la relit ni ne la réécrit pour son propre compte.
 
 ## Exécutable autonome
 
