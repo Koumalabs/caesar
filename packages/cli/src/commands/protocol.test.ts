@@ -32,13 +32,23 @@ describe("orch protocol schema", () => {
     expect(io.stdoutText()).not.toMatch(/\x1b\[/);
   });
 
-  it("--strict : variante \"report\" avec additionalProperties: false et tout requis", async () => {
+  it("--strict : variante \"report\" avec additionalProperties: false, mais pas tout requis (I2 de la revue finale)", async () => {
+    // Avant I2, `schema.required` valait littéralement `Object.keys(schema.properties)` :
+    // le modèle devait fabriquer une valeur pour tout champ purement
+    // optionnel sans défaut (un `usage.cost_usd` mesuré, une
+    // `findings[].line` inventée). Seuls les champs déjà mandatoires côté
+    // zod (`protocol`/`status`/`summary`) et ceux porteurs d'un défaut
+    // (`changes`, `details`…) restent obligatoires désormais — `usage` reste
+    // une propriété déclarée (`additionalProperties: false` ne l'interdit
+    // pas), simplement plus dans `required`.
     const io: CapturedIo = makeIo();
     const code = await runProtocolSchema("report", { strict: true }, io);
     expect(code).toBe(EXIT_OK);
     const schema = JSON.parse(io.stdoutText());
     expect(schema.additionalProperties).toBe(false);
-    expect(schema.required).toEqual(Object.keys(schema.properties));
+    expect(schema.required).toEqual(expect.arrayContaining(["protocol", "status", "summary", "changes", "details"]));
+    expect(schema.required).not.toContain("usage");
+    expect(Object.keys(schema.properties)).toContain("usage");
   });
 
   it("--strict sur autre chose que \"report\" : erreur d'usage", async () => {

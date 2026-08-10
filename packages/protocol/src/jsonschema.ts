@@ -44,6 +44,11 @@ function tightenObjects(node: unknown): JsonSchema {
   return walk(node) as JsonSchema;
 }
 
+/** Vrai si le schéma d'une propriété porte la clé `default` que `z.toJSONSchema` laisse pour tout champ `.default(...)` du zod d'origine — voir `walk` ci-dessous. */
+function hasDefault(propertySchema: unknown): boolean {
+  return typeof propertySchema === "object" && propertySchema !== null && "default" in propertySchema;
+}
+
 function walk(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(walk);
   if (node === null || typeof node !== "object") return node;
@@ -56,7 +61,26 @@ function walk(node: unknown): unknown {
   const properties = out["properties"];
   if (properties && typeof properties === "object") {
     out["additionalProperties"] = false;
-    out["required"] = Object.keys(properties as Record<string, unknown>);
+    // I2 de la revue finale : `Object.keys(properties)` rendait tout
+    // obligatoire sans distinction, y compris des champs purement
+    // optionnels sans défaut (`usage`, `findings[].file`,
+    // `findings[].line`) — le modèle devait alors fabriquer une valeur (un
+    // coût en dollars mesuré, une ligne inventée), et un `0` de repli pour
+    // `line` échouait ensuite à la revalidation par `ReportSchema`
+    // (`exclusiveMinimum: 0`, vérifié par la revue : `too_small: expected
+    // number to be >0`).
+    //
+    // Restent obligatoires uniquement : les champs déjà mandatoires côté
+    // zod — repris tels quels du `required` que `z.toJSONSchema` (mode
+    // "input") a déjà calculé correctement pour ce noeud, avant qu'il ne
+    // soit écrasé ci-dessous (`protocol`/`status`/`summary` au niveau
+    // racine, `path`/`action` pour un `Change`…) — et les champs porteurs
+    // d'une valeur par défaut (`hasDefault`) : répéter le défaut n'est
+    // jamais une fabrication, contrairement à inventer un champ purement
+    // optionnel qui n'en a pas.
+    const alreadyRequired = new Set(Array.isArray(out["required"]) ? (out["required"] as unknown[]) : []);
+    const props = properties as Record<string, unknown>;
+    out["required"] = Object.keys(props).filter((key) => alreadyRequired.has(key) || hasDefault(props[key]));
   }
   return out;
 }

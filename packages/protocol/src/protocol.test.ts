@@ -165,6 +165,36 @@ describe("publication du standard", () => {
     expect(schema.required).toContain("summary");
     expect(schema.required).toContain("changes");
   });
+
+  it("I2 (revue finale) : ne force pas les champs purement optionnels sans défaut (usage, findings[].file, findings[].line)", () => {
+    // Avant I2, `required` valait `Object.keys(properties)` sans distinction :
+    // le modèle devait fabriquer un `usage.cost_usd` (coût mesuré inventé)
+    // et une `findings[].line` (un `0` de repli y échouait ensuite à la
+    // revalidation par ReportSchema, exclusiveMinimum: 0).
+    const schema = strictReportJsonSchema() as {
+      properties: {
+        findings: { items: { properties: Record<string, unknown>; required: string[] } };
+        usage: { properties: Record<string, unknown> };
+      };
+      required: string[];
+    };
+
+    // `usage` reste une propriété déclarée (le modèle peut toujours la
+    // fournir s'il a une vraie mesure) mais n'est plus dans `required`.
+    expect(schema.properties.usage.properties).toHaveProperty("cost_usd");
+    expect(schema.required).not.toContain("usage");
+
+    const findingRequired = schema.properties.findings.items.required;
+    expect(findingRequired).toContain("severity");
+    expect(findingRequired).toContain("title");
+    expect(findingRequired).not.toContain("file");
+    expect(findingRequired).not.toContain("line");
+
+    // Les champs porteurs d'un défaut (`changes`, `details`…) restent
+    // obligatoires : répéter le défaut n'est jamais une fabrication.
+    expect(schema.required).toContain("changes");
+    expect(schema.required).toContain("details");
+  });
 });
 
 describe("prompt de mission", () => {
