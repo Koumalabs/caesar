@@ -160,3 +160,82 @@ describe("orch role show / add / remove", () => {
     });
   });
 });
+
+describe("orch role add / remove — portée (--global/--local)", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-cli-role-scope-"));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("add --global écrit la couche globale, jamais le projet", async () => {
+    await withFakeHome(async () => {
+      expect(await runRoleAdd(root, "custom", { agents: "codex", mode: "write", global: true }, makeIo())).toBe(EXIT_OK);
+
+      const { sources, layers } = await loadConfig(root);
+      expect(sources.global).toBeDefined();
+      expect(sources.project).toBeUndefined();
+      const globalLayer = layers.find((l) => l.scope === "global")!;
+      expect(globalLayer.override.roles?.map((r) => r.name)).toEqual(["custom"]);
+    });
+  });
+
+  it("remove --local : retire un rôle déclaré localement, laisse le projet et le global intacts", async () => {
+    await withFakeHome(async () => {
+      expect(await runRoleAdd(root, "custom", { agents: "codex", mode: "write", local: true }, makeIo())).toBe(EXIT_OK);
+      let loaded = await loadConfig(root);
+      expect(loaded.config.roles.some((r) => r.name === "custom")).toBe(true);
+      expect(loaded.sources.local).toBeDefined();
+
+      expect(await runRoleRemove(root, "custom", { local: true }, makeIo())).toBe(EXIT_OK);
+      loaded = await loadConfig(root);
+      expect(loaded.config.roles.some((r) => r.name === "custom")).toBe(false);
+    });
+  });
+
+  it("remove d'un rôle par défaut (non déclaré par aucune couche) : erreur explicite, oriente vers la bonne réponse plutôt qu'un EXIT_OK trompeur", async () => {
+    await withFakeHome(async () => {
+      const io = makeIo();
+      const code = await runRoleRemove(root, "reviewer", {}, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toMatch(/n'est pas déclaré/);
+      expect(io.stderrText()).toMatch(/configuration par défaut/);
+
+      // Le rôle par défaut n'a pas bougé : la commande n'a rien écrit.
+      const { config } = await loadConfig(root);
+      expect(config.roles.some((r) => r.name === "reviewer")).toBe(true);
+    });
+  });
+
+  it("remove d'un rôle déclaré par une AUTRE couche que celle visée : erreur qui nomme la bonne couche", async () => {
+    await withFakeHome(async () => {
+      expect(await runRoleAdd(root, "custom", { agents: "codex", mode: "write", global: true }, makeIo())).toBe(EXIT_OK);
+
+      const io = makeIo();
+      // "custom" vient du global : le retirer côté projet (couche par défaut) ne doit rien faire, et le dire.
+      const code = await runRoleRemove(root, "custom", {}, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toMatch(/n'est pas déclaré/);
+      expect(io.stderrText()).toMatch(/--global/);
+
+      const { config } = await loadConfig(root);
+      expect(config.roles.some((r) => r.name === "custom")).toBe(true);
+    });
+  });
+
+  it("--global et --local ensemble (add) : erreur d'usage explicite, rien n'est écrit", async () => {
+    await withFakeHome(async () => {
+      const io = makeIo();
+      const code = await runRoleAdd(root, "custom", { agents: "codex", mode: "write", global: true, local: true }, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toMatch(/mutuellement exclusifs/);
+
+      const { sources } = await loadConfig(root);
+      expect(sources).toEqual({});
+    });
+  });
+});

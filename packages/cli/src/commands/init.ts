@@ -16,7 +16,8 @@
  * intégralement : c'est le point de départ éditable d'un "preset" partagé
  * par tous les projets d'un même poste — voir le plan de la tâche 13.
  */
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { configPathFor, defaultConfig, isEnoent, loadConfig, projectConfigPath, repoRoot, saveLayer } from "@orch/core";
 import type { Io } from "../output.js";
@@ -62,13 +63,20 @@ interface GitignoreResult {
 /**
  * Complète `<root>/.gitignore` avec `GITIGNORE_ENTRIES`. N'ajoute que les
  * lignes absentes, ne réécrit jamais un fichier existant depuis rien — un
- * `.gitignore` édité à la main garde son contenu. `null` si `root` n'est pas
- * un dépôt git : rien n'est écrit, l'appelant le signale dans sa propre
- * sortie plutôt que cette fonction n'écrive un `.gitignore` orphelin hors de
- * tout dépôt.
+ * `.gitignore` édité à la main garde son contenu. `isGitRepo` est calculé par
+ * l'appelant (`repoRoot`, un sous-processus git) et réutilisé ici plutôt que
+ * relancé : `runInitProject` en a de toute façon besoin pour son propre
+ * avertissement, inutile de payer deux fois le sous-processus. `null` si
+ * `root` n'est pas un dépôt git : rien n'est écrit, l'appelant le signale
+ * dans sa propre sortie plutôt que cette fonction n'écrive un `.gitignore`
+ * orphelin hors de tout dépôt.
+ *
+ * Écriture atomique — fichier temporaire dans le même répertoire puis
+ * `rename` — même motif que `saveLayer` (`@orch/core`, `config.ts`) et
+ * `packages/core/src/store.ts`, plutôt que réécrire `.gitignore` en place.
  */
-async function completeGitignore(root: string): Promise<GitignoreResult | null> {
-  if (!(await repoRoot(root))) return null;
+async function completeGitignore(root: string, isGitRepo: boolean): Promise<GitignoreResult | null> {
+  if (!isGitRepo) return null;
 
   const path = join(root, ".gitignore");
   let existing = "";
@@ -83,7 +91,10 @@ async function completeGitignore(root: string): Promise<GitignoreResult | null> 
   if (added.length === 0) return { path, added };
 
   const prefix = existing.length > 0 && !existing.endsWith("\n") ? existing + "\n" : existing;
-  await writeFile(path, prefix + added.join("\n") + "\n", "utf8");
+  const content = prefix + added.join("\n") + "\n";
+  const tmp = join(root, `.gitignore.${randomUUID()}.tmp`);
+  await writeFile(tmp, content, "utf8");
+  await rename(tmp, path);
   return { path, added };
 }
 
@@ -141,7 +152,7 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
       `"${root}" n'est pas un dépôt git : l'isolation "worktree" n'est pas disponible ici, l'orchestrateur repliera sur "inplace" pour les tâches en écriture, et le ".gitignore" n'a pas été complété. Lancez "git init" dans ce répertoire pour activer les deux.`,
     );
   }
-  const gitignore = await completeGitignore(root);
+  const gitignore = await completeGitignore(root, isGitRepo);
 
   const configPath = projectConfigPath(root);
   if (options.json) {
