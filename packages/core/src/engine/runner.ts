@@ -400,6 +400,14 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     exit_code: run.exitCode,
     report_source: resolved.source,
     changes_verified_by: changesVerifiedBy,
+    // I3 de la revue finale : `status` (ci-dessus) ne reflète que l'issue du
+    // processus, jamais ce que l'agent a déclaré dans son rapport — un agent
+    // qui écrit {"status":"failed"} puis sort en code 0 produisait
+    // `status: "succeeded"` sans que rien ne porte trace du rapport "failed"
+    // dans le store. `report_status` porte ce second niveau, pour que
+    // `orch ps`, le code de sortie de `orch run` et `orch_status` puissent
+    // croiser les deux plutôt que d'ignorer le second.
+    report_status: report.status,
     // Le processus n'existe plus : un pid effacé évite à `orch cancel` de
     // signaler un pid réutilisé entre-temps par un tout autre processus.
     pid: undefined,
@@ -453,6 +461,7 @@ async function abortBeforeStart(
     isolation,
     mode: input.mode,
     report_via: "file",
+    report_status: "failed",
     depth,
   };
   await deps.store.create(record);

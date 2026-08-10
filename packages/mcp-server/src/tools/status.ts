@@ -17,10 +17,14 @@ export const ORCH_STATUS = "orch_status";
 export const orchStatusDescription =
   "Get a quick, non-blocking snapshot of a task started by orch_delegate: its current status (pending, " +
   "running, succeeded, failed, cancelled, timed_out), timestamps, and the last normalized event recorded so " +
-  "far (a tool call, a file change, a progress message…). Also reports pending_questions — anything the task's " +
-  "sub-agent has asked via its ask_orchestrator back-channel tool and is still waiting on; answer them with " +
-  "orch_answer. Unlike orch_await, this never waits and never returns the final report — use it to check in on " +
-  "a long-running task without blocking, then orch_await once you actually need the result, or orch_logs for " +
+  "far (a tool call, a file change, a progress message…). Once the task has produced a report, " +
+  "report_status (success, partial, failed, blocked — the sub-agent's own verdict) is also included: status " +
+  "reflects only the process outcome, not what the sub-agent reported, so a sub-agent that writes " +
+  "{\"status\":\"failed\"} and still exits 0 shows status: succeeded here — check report_status too before " +
+  "assuming a task actually succeeded. Also reports pending_questions — anything the task's sub-agent has " +
+  "asked via its ask_orchestrator back-channel tool and is still waiting on; answer them with orch_answer. " +
+  "Unlike orch_await, this never waits and never returns the full report — use it to check in on a " +
+  "long-running task without blocking, then orch_await once you actually need the result, or orch_logs for " +
   "more than just the last event.";
 
 export const orchStatusInputShape = {
@@ -42,6 +46,9 @@ export async function orchStatus(session: McpSession, input: OrchStatusInput): P
   return jsonResult({
     task_id: record.id,
     status: record.status,
+    // I3 de la revue finale : distinct de `status`, qui ne reflète que
+    // l'issue du processus — voir la description du tool.
+    report_status: record.report_status,
     agent: record.agent,
     role: record.role,
     mode: record.mode,

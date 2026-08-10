@@ -57,8 +57,13 @@ export async function runPs(root: string, options: PsOptions, io: Io): Promise<n
     return EXIT_OK;
   }
 
-  const rows = records.map((r) => [r.id, r.agent, r.role ?? "-", r.status, r.mode, r.isolation, r.created_at]);
-  writeLine(io.stdout, renderTable(["id", "agent", "rôle", "statut", "mode", "isolation", "créée"], rows));
+  // "rapport" à côté de "statut" (I3 de la revue finale) : "statut" ne
+  // reflète que l'issue du processus, jamais ce que l'agent a déclaré dans
+  // son rapport — une tâche "succeeded" au niveau processus peut porter un
+  // rapport "failed"/"partial"/"blocked", et l'inverse n'était visible nulle
+  // part avant que `report_status` ne soit persisté dans le store.
+  const rows = records.map((r) => [r.id, r.agent, r.role ?? "-", r.status, r.report_status ?? "-", r.mode, r.isolation, r.created_at]);
+  writeLine(io.stdout, renderTable(["id", "agent", "rôle", "statut", "rapport", "mode", "isolation", "créée"], rows));
   return EXIT_OK;
 }
 

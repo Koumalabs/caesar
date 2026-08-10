@@ -28,6 +28,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Isolation, OrchEvent, TaskMode } from "@orch/protocol";
+import type { TaskOutcome } from "@orch/core";
 import { createQueue, fileTaskStore, generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation, runTask } from "@orch/core";
 import { ISOLATIONS, TASK_MODES } from "../flags.js";
 import type { Io } from "../output.js";
@@ -197,11 +198,15 @@ export async function runRun(root: string, objective: string, options: RunOption
       changes_verified_by: outcome.record.changes_verified_by,
       diff: outcome.diff ? { files: outcome.diff.files, is_empty: outcome.diff.isEmpty } : undefined,
     });
-    return outcome.record.status === "succeeded" ? EXIT_OK : EXIT_RUNTIME;
+    return exitCodeFor(outcome);
   }
 
   writeLine(io.stdout);
-  writeLine(io.stdout, `Tâche ${outcome.record.id} — statut : ${outcome.record.status} (rapport via "${outcome.source}")`);
+  writeLine(
+    io.stdout,
+    `Tâche ${outcome.record.id} — statut : ${outcome.record.status} ` +
+      `(rapport "${outcome.report.status}" via "${outcome.source}")`,
+  );
   writeLine(io.stdout, outcome.report.summary);
 
   if (outcome.diff && !outcome.diff.isEmpty) {
@@ -221,5 +226,18 @@ export async function runRun(root: string, objective: string, options: RunOption
     );
   }
 
-  return outcome.record.status === "succeeded" ? EXIT_OK : EXIT_RUNTIME;
+  return exitCodeFor(outcome);
+}
+
+/**
+ * Croise le statut du processus (`record.status`) et celui déclaré par
+ * l'agent dans son rapport (`report.status`) — voir I3 de la revue finale :
+ * `record.status === "succeeded"` seul ne dit que "le processus est sorti
+ * en code 0", pas "l'agent a réussi sa mission". Un agent qui écrit
+ * `{"status":"failed"}` puis sort en code 0 rendait jusqu'ici un exit code
+ * 0 à une automatisation qui enchaîne sur `orch run` — conclusion de succès
+ * sur une tâche que l'agent lui-même déclare `failed`/`partial`/`blocked`.
+ */
+function exitCodeFor(outcome: TaskOutcome): number {
+  return outcome.record.status === "succeeded" && outcome.report.status === "success" ? EXIT_OK : EXIT_RUNTIME;
 }

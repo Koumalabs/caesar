@@ -14,8 +14,8 @@ import { randomUUID } from "node:crypto";
 import { link, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { IsolationSchema, TaskModeSchema } from "@orch/protocol";
-import type { Isolation, ReportChannel, TaskMode } from "@orch/protocol";
+import { IsolationSchema, ReportStatusSchema, TaskModeSchema } from "@orch/protocol";
+import type { Isolation, ReportChannel, ReportStatus, TaskMode } from "@orch/protocol";
 
 export type TaskStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
 
@@ -50,6 +50,17 @@ export interface TaskRecord {
   report_via: ReportChannel;
   report_source?: ReportSource;
   changes_verified_by?: ChangesVerifiedBy;
+  /**
+   * Le `status` du rapport résolu (`report.ts`), distinct de `status`
+   * ci-dessus — voir I3 de la revue finale : `status` ne reflète que
+   * l'issue du *processus* (code de sortie, timeout, annulation), jamais ce
+   * que l'agent a déclaré dans son rapport. Un agent qui écrit
+   * `{"status":"failed"}` puis sort en code 0 produit `status: "succeeded"`
+   * et `report_status: "failed"` — les deux sont vrais, à des niveaux
+   * différents ; ni `orch ps`, ni le code de sortie de `orch run`, ni
+   * `orch_status` ne doivent en ignorer un des deux.
+   */
+  report_status?: ReportStatus;
   depth: number;
   /**
    * Identifiant du processus du sous-agent, le temps qu'il tourne. Renseigné
@@ -132,6 +143,7 @@ const TaskRecordSchema = z.object({
   report_via: z.enum(["channel", "schema", "file"]),
   report_source: z.enum(["channel", "schema", "file", "extracted", "synthesized"]).optional(),
   changes_verified_by: z.enum(["git", "declaration"]).optional(),
+  report_status: ReportStatusSchema.optional(),
   depth: z.number().int().nonnegative(),
   pid: z.number().int().positive().optional(),
 });

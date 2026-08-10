@@ -53,6 +53,29 @@ describe("orch run", () => {
     );
   }, 20_000);
 
+  it("I3 (revue finale) : un agent qui sort en code 0 mais déclare un rapport \"failed\" ne rend pas un exit code de succès", async () => {
+    await withFakeHome(() =>
+      withFakeAgentAsBin("codex", async () => {
+        await initGitRepo(root);
+        // mode "success" (défaut) : le processus sort en code 0. `status: "failed"`
+        // (surcharge du rapport écrit) : l'agent déclare néanmoins un échec.
+        // Avant I3, exit code et "statut : succeeded" ne regardaient que le
+        // processus — une automatisation qui enchaîne sur "orch run" aurait
+        // conclu au succès sur cette tâche.
+        const code = await runRun(
+          root,
+          "tâche dont le rapport dit échec malgré un exit 0",
+          { agent: "codex", mode: "write", isolation: "inplace", context: JSON.stringify({ status: "failed" }), json: true },
+          io,
+        );
+        const parsed = JSON.parse(io.stdoutText());
+        expect(parsed.status).toBe("succeeded"); // le processus, lui, a bien réussi.
+        expect(parsed.report.status).toBe("failed"); // mais le rapport dit l'inverse.
+        expect(code).toBe(EXIT_RUNTIME); // et c'est ce second niveau qui doit décider du code de sortie.
+      }),
+    );
+  }, 20_000);
+
   it("--channel active le canal retour : le palier de rapport devient \"channel\" (tâche 9)", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
