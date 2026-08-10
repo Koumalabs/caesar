@@ -136,11 +136,12 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
 
   withCommonOptions(program.command("doctor"))
     .description("Diagnostic d'installation : présence, version, capacités et statut de chaque agent du catalogue.")
+    .option("--verbose", "Ajoute le chemin du binaire et les capacités en toutes lettres.")
     .action(async (_options: GlobalOptions, command: Command) => {
-      const opts = command.optsWithGlobals<GlobalOptions>();
+      const opts = command.optsWithGlobals<GlobalOptions & { verbose?: boolean }>();
       await run(async () => {
         const root = await resolveRoot(opts.root);
-        return runDoctor(root, { json: opts.json }, io);
+        return runDoctor(root, { json: opts.json, verbose: opts.verbose }, io);
       });
     });
 

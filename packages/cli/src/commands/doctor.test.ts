@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeIo, withFakeHome, withShimmedPath, writeVersionFailShim, writeVersionOkShim, type CapturedIo } from "../../test/support.js";
 import { runDoctor } from "./doctor.js";
-import { EXIT_OK } from "../output.js";
+import { EXIT_OK, terminalWidth } from "../output.js";
 
 describe("orch doctor", () => {
   let root: string;
@@ -59,13 +59,52 @@ describe("orch doctor", () => {
     });
   });
 
-  it("sortie humaine : tableau puis section \"à corriger\"", async () => {
+  it("sortie humaine : tableau compact, puis ce qui est à installer et ce qui est refusé", async () => {
     await withFakeHome(async () => {
       const code = await withShimmedPath(shimDir, () => runDoctor(root, {}, io));
       expect(code).toBe(EXIT_OK);
-      expect(io.stdoutText()).toContain("codex");
-      expect(io.stdoutText()).toContain("À corriger");
-      expect(io.stdoutText()).not.toMatch(/\x1b\[/);
+      const out = io.stdoutText();
+      expect(out).toContain("codex");
+      expect(out).toContain("À installer");
+      expect(out).not.toMatch(/\x1b\[/);
+
+      // Un binaire absent appelle une action, un agent refusé n'en appelle
+      // aucune : les ranger sous un même « À corriger » revenait à proposer de
+      // défaire un refus voulu — celui de `claude` par `allow_recursion`, qui
+      // est le réglage par défaut.
+      expect(out).not.toContain("À corriger");
+
+      // La colonne « binaire » n'est plus dans la vue par défaut : le chemin,
+      // additionné des capacités en toutes lettres, est ce qui la faisait
+      // déborder.
+      expect(out).not.toMatch(/^agent\s+binaire/m);
+    });
+  });
+
+  it("--verbose rétablit la colonne du binaire", async () => {
+    await withFakeHome(async () => {
+      const code = await withShimmedPath(shimDir, () => runDoctor(root, { verbose: true }, io));
+      expect(code).toBe(EXIT_OK);
+      expect(io.stdoutText()).toMatch(/^agent\s+binaire\s+version/m);
+    });
+  });
+
+  it("aucune ligne ne dépasse la largeur du terminal", async () => {
+    // Le défaut constaté à l'usage : l'énumération des capacités poussait la
+    // dernière colonne au-delà du bord, où le terminal la repliait sur la
+    // ligne suivante — le tableau devenait illisible précisément là où il
+    // devait renseigner. Vérifié sur les deux vues, la compacte et la
+    // détaillée : c'est `renderTable` qui plafonne, pas le choix des colonnes.
+    await withFakeHome(async () => {
+      for (const options of [{}, { verbose: true }]) {
+        const io2 = makeIo();
+        await withShimmedPath(shimDir, () => runDoctor(root, options, io2));
+        const tooWide = io2
+          .stdoutText()
+          .split("\n")
+          .filter((line) => line.length > terminalWidth());
+        expect(tooWide).toEqual([]);
+      }
     });
   });
 });

@@ -6,7 +6,7 @@
  * et la règle appliquée : ces messages remontent tels quels à l'agent
  * principal via MCP (tâche à venir), un refus sans motif y est inexploitable.
  */
-import type { PolicyConfig } from "./config.js";
+import type { PolicyConfig, ProvenanceSource } from "./config.js";
 
 /**
  * Quelle règle a produit un refus — voir CONTRÔLEUR-1 de la revue finale :
@@ -138,13 +138,19 @@ export function describeAgentPolicy(policy: PolicyConfig, agentId: string): Deci
  *   (`orch doctor`), qui n'atteint jamais ce cas (il n'appelle pas
  *   `isDepthAllowed`).
  */
-export function remedyFor(agentId: string, rule: PolicyRule): string {
+export function remedyFor(agentId: string, rule: PolicyRule, scope: ProvenanceSource = "project"): string {
+  // Sans option, les commandes d'écriture visent la couche projet. Suggérer
+  // "orch agents enable X" pour lever un refus déclaré par le global ne lève
+  // rien : cela écrit dans le projet, où la liste n'était pas déclarée, et la
+  // matérialise avec la valeur effective — refus compris. Le remède doit donc
+  // viser la couche qui porte la règle.
+  const layerFlag = scope === "global" ? " --global" : scope === "local" ? " --local" : "";
   switch (rule) {
     case "denied":
-      return `Autorisez-le avec "orch agents enable ${agentId}".`;
+      return `Autorisez-le avec "orch agents enable ${agentId}${layerFlag}".`;
     case "allowlist":
       return (
-        `Ajoutez-le avec "orch policy allow ${agentId}" — attention, si la liste "allowed" est vide aujourd'hui, ` +
+        `Ajoutez-le avec "orch policy allow ${agentId}${layerFlag}" — attention, si la liste "allowed" est vide aujourd'hui, ` +
         `cette commande la fera passer de "tout agent non refusé" à "seulement ${agentId}", refusant du même geste ` +
         `tous les autres agents (voir "orch policy show").`
       );

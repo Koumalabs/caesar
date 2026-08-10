@@ -134,5 +134,27 @@ export function describeAgentCapabilities(def: AgentDefinition): string[] {
   return caps;
 }
 
+/**
+ * Les mêmes capacités, en marqueurs courts.
+ *
+ * L'énumération en toutes lettres dépasse à elle seule la largeur d'un
+ * terminal dès qu'un agent est bien pourvu : dans une vue d'ensemble comme
+ * `orch doctor`, ce qu'on cherche est la présence ou l'absence de chaque
+ * capacité, pas sa formulation. Les deux fonctions décrivent le même objet et
+ * doivent rester alignées : une capacité ajoutée à l'une se traduit dans
+ * l'autre (un test le vérifie).
+ */
+export function describeAgentCapabilitiesShort(def: AgentDefinition): string[] {
+  const caps: string[] = [];
+  if (def.capabilities.nativeReadOnly) caps.push("ro");
+  if (def.capabilities.outputSchema) caps.push("schéma");
+  if (def.capabilities.finalMessageFile) caps.push("msg");
+  if (def.capabilities.resume) caps.push("reprise");
+  if (def.capabilities.addDir) caps.push("dirs");
+  if (def.capabilities.model) caps.push("modèle");
+  if (def.capabilities.mcpInjection !== "none") caps.push("mcp");
+  return caps;
+}
+
 export { createGenericAgent, type GenericAgentSpec } from "./generic.js";
 export * from "./types.js";

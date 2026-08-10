@@ -53,10 +53,13 @@ describe("buildProgram (structurel)", () => {
     const program = buildProgram(io, { value: 0 });
     const config = program.commands.find((c) => c.name() === "config")!;
     const flags = config.options.map((o) => o.long).sort();
-    // Comparé à "doctor", qui passe déjà par `withCommonOptions` : mêmes flags.
-    const doctor = program.commands.find((c) => c.name() === "doctor")!;
-    expect(flags).toEqual(doctor.options.map((o) => o.long).sort());
     expect(flags).toEqual(["--json", "--root"]);
+    // "doctor" passe par le même `withCommonOptions` : on vérifie qu'il porte
+    // ces deux options, sans exiger qu'il n'en porte aucune autre — il déclare
+    // en propre un `--verbose`, et une commande qui gagne une option propre ne
+    // doit pas faire échouer un test qui parle des options *communes*.
+    const doctor = program.commands.find((c) => c.name() === "doctor")!;
+    expect(doctor.options.map((o) => o.long)).toEqual(expect.arrayContaining(["--json", "--root"]));
   });
 });
 
