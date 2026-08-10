@@ -31,10 +31,9 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { isEnoent } from "./config.js";
+import { homeDirectory, isEnoent } from "./config.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -80,7 +79,7 @@ export function buildPlan(client: McpClient, root: string): InstallPlan {
       return {
         client,
         kind: "file",
-        path: join(homedir(), ".copilot", "mcp-config.json"),
+        path: join(homeDirectory(), ".copilot", "mcp-config.json"),
         mergeKey: "mcpServers",
         entry: { type: "stdio", command: "orch", args: serveArgs(root) },
       };
@@ -91,7 +90,7 @@ export function buildPlan(client: McpClient, root: string): InstallPlan {
         // Chemin donné par le brief de la tâche 7 : ce fichier porte déjà des
         // réglages personnels de l'utilisateur (dont `trustedWorkspaces`),
         // préservés par la fusion ci-dessous (`applyPlan`).
-        path: join(homedir(), ".gemini", "antigravity-cli", "settings.json"),
+        path: join(homeDirectory(), ".gemini", "antigravity-cli", "settings.json"),
         mergeKey: "mcpServers",
         entry: { command: "orch", args: serveArgs(root) },
       };
@@ -101,7 +100,7 @@ export function buildPlan(client: McpClient, root: string): InstallPlan {
       return {
         client,
         kind: "file",
-        path: join(homedir(), ".config", "opencode", "opencode.json"),
+        path: join(homeDirectory(), ".config", "opencode", "opencode.json"),
         mergeKey: "mcp",
         entry: { type: "local", command: ["orch", ...serveArgs(root)], enabled: true },
       };

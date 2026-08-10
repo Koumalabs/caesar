@@ -381,7 +381,12 @@ function formatZodError(error: z.ZodError, filePath: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Répertoire personnel de l'utilisateur, pour la couche globale.
+ * Répertoire personnel de l'utilisateur — **le seul point d'accès au
+ * répertoire personnel que ce monorepo doit utiliser** (`mcp-registration.ts`
+ * en dépend aussi, pour les chemins de config MCP sous `$HOME` de `copilot`/
+ * `antigravity`/`opencode` ; tout futur besoin similaire doit passer par ici,
+ * jamais par un nouvel appel direct à `os.homedir()`).
+ *
  * `os.homedir()` (Node) préfère déjà `$HOME` sur POSIX, mais **Bun** — le
  * runtime de `packages/tui`, voir les contraintes globales du projet —
  * ignore silencieusement `$HOME` et retombe toujours sur l'utilisateur
@@ -394,8 +399,17 @@ function formatZodError(error: z.ZodError, filePath: string): string {
  * explicitement avant de retomber sur `homedir()` reproduit le comportement
  * Node existant (aucun changement sous Node, où `$HOME` l'emportait déjà) et
  * le rend fiable sous Bun aussi.
+ *
+ * Ce correctif n'avait d'abord routé que `globalConfigPath()` : trois appels
+ * directs à `homedir()` dans `mcp-registration.ts` (`buildPlan`, chemins
+ * `copilot`/`antigravity`/`opencode`) sont restés non protégés jusqu'à la
+ * revue de la tâche 15, qui l'a signalé — `IntegrationsScreen.render.test.tsx`
+ * neutralise `HOME` puis appelle `checkMcpStatus` pour les cinq clients au
+ * montage, donc lisait les fichiers réels de la machine sous Bun malgré la
+ * neutralisation. `homeDirectory` exportée plutôt que la règle recopiée à
+ * l'identique dans ce second fichier.
  */
-function homeDirectory(): string {
+export function homeDirectory(): string {
   return process.env["HOME"] || homedir();
 }
 

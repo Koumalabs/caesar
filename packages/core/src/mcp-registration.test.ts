@@ -10,6 +10,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { homeDirectory } from "./config.js";
 import { applyPlan, buildPlan, checkMcpStatus, isMcpClient, MCP_CLIENTS } from "./mcp-registration.js";
 
 /** Même motif que `config.test.ts` : `buildPlan`/`checkMcpStatus` lisent `$HOME` (via `node:os#homedir`) pour les clients à fichier. */
@@ -77,6 +78,26 @@ describe("buildPlan", () => {
       const opencode = buildPlan("opencode", root);
       expect(opencode.kind).toBe("file");
       expect(opencode.kind === "file" && opencode.mergeKey).toBe("mcp");
+    });
+  });
+
+  it("les trois chemins \"file\" suivent homeDirectory() (@orch/core), jamais os.homedir() en clair (revue de la tâche 15)", async () => {
+    // Passe trivialement sous Node (vitest, ce fichier) : os.homedir() y respecte déjà $HOME. La valeur de ce
+    // test est de figer l'implémentation pour Bun (packages/tui, qui consomme ce module compilé et neutralise
+    // $HOME dans IntegrationsScreen.render.test.tsx) : un homedir() direct régresserait silencieusement sous
+    // Bun uniquement, sans qu'aucun test Node ne le détecte — exactement le défaut que la revue a signalé
+    // (buildPlan lisait encore os.homedir() en clair pour copilot/antigravity/opencode après le premier
+    // correctif, qui n'avait routé que globalConfigPath()).
+    await withFakeHome(async () => {
+      const expectedHome = homeDirectory();
+      const copilot = buildPlan("copilot", root);
+      expect(copilot.kind === "file" && copilot.path).toBe(join(expectedHome, ".copilot", "mcp-config.json"));
+
+      const antigravity = buildPlan("antigravity", root);
+      expect(antigravity.kind === "file" && antigravity.path).toBe(join(expectedHome, ".gemini", "antigravity-cli", "settings.json"));
+
+      const opencode = buildPlan("opencode", root);
+      expect(opencode.kind === "file" && opencode.path).toBe(join(expectedHome, ".config", "opencode", "opencode.json"));
     });
   });
 });

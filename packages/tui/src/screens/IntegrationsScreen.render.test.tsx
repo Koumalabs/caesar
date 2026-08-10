@@ -6,6 +6,14 @@
  * `claude`/`codex`, `checkMcpStatus` ne lance aucun sous-processus (voir
  * `packages/cli/src/commands/mcp.ts`), donc aucun vrai CLI d'agent n'est
  * invoqué ici.
+ *
+ * Cette garantie dépend de `buildPlan` (`@orch/core`, `mcp-registration.ts`)
+ * résolvant `$HOME` via `homeDirectory()`, pas `os.homedir()` directement :
+ * Bun (le runtime de ce package) ignore silencieusement `$HOME` dans
+ * `os.homedir()`, ce que Node ne fait pas — ce test neutralisait donc `HOME`
+ * sans effet réel sous Bun tant que `buildPlan` appelait `homedir()` en
+ * clair, pour les chemins `copilot`/`antigravity`/`opencode` (constat de
+ * revue de la tâche 15, corrigé dans `mcp-registration.ts`).
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
