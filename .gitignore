@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Exécutable autonome produit par scripts/build-binary.sh (tâche 12)
+/dist-bin/
+
 # État runtime de l'orchestrateur : tâches, worktrees, logs
 .orch/tasks/
 .orch/wt/

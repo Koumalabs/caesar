@@ -14,7 +14,8 @@
     "typecheck": "tsc -b --noEmit false --dry 2>/dev/null || tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "orch": "node packages/cli/dist/bin.js"
+    "orch": "node packages/cli/dist/bin.js",
+    "build:binary": "bash scripts/build-binary.sh"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

@@ -123,6 +123,26 @@ Installez Bun (https://bun.sh), ou utilisez les sous-commandes équivalentes :
 
 `@orch/core` reste dans tous les cas la seule source de vérité de la configuration (`<projet>/.orch/config.toml`, fusionnée avec `~/.config/orch/config.toml`) : le TUI, ces sous-commandes et le serveur MCP en sont trois façades différentes, aucune ne la relit ni ne la réécrit pour son propre compte.
 
+## Exécutable autonome
+
+`orch` se construit aussi en un seul binaire, sans Node, ni Bun, ni `node_modules` requis sur la machine cible : `bun build --compile` embarque le runtime Bun, le CLI et le TUI (OpenTUI et son cœur natif compris) dans un unique fichier.
+
+```bash
+pnpm run build:binary   # équivalent à scripts/build-binary.sh — construit dist-bin/orch
+```
+
+Produit `dist-bin/orch` (répertoire ignoré par git ; ~70 Mo, Bun et OpenTUI embarqués). Utilisable directement, sans installation :
+
+```bash
+dist-bin/orch doctor
+dist-bin/orch mcp serve --root <projet>
+dist-bin/orch config --root <projet>
+```
+
+Ce binaire embarque Bun : l'arbitrage initial du projet (« Node partout, Bun pour le seul TUI », justifié par le serveur MCP qui doit pouvoir tourner sans Bun) ne s'applique plus à lui — `orch config` y monte directement le TUI dans le processus courant plutôt que de chercher un `bun` externe, et `orch run --channel` s'auto-invoque (`orch channel serve --task-dir <dir>`, une sous-commande interne masquée de l'aide) plutôt que de résoudre `@orch/mcp-channel` par `node_modules`, absent d'un binaire compilé. Le chemin Node décrit dans le reste de ce document (`pnpm run orch`, `pnpm exec tsc -b`) reste celui du développement quotidien dans ce monorepo, et continue de fonctionner à l'identique — ces deux comportements ne s'activent que dans le binaire, jamais sous Node.
+
+**Compilation croisée** (`--target=bun-linux-x64` et consorts, via `scripts/build-binary.sh --target=bun-linux-x64`) : échoue aujourd'hui — OpenTUI dépend d'un paquet de binaires natifs par plateforme (`@opentui/core-<plateforme>`), dont pnpm n'installe que celui de la machine courante. Produire un binaire pour une autre plateforme suppose de relancer l'installation pnpm sur cette plateforme (ou dans un environnement qui la cible) avant de compiler.
+
 ## Brancher un agent hors catalogue
 
 Un CLI qui n'est pas dans le catalogue des cinq se déclare dans `.orch/config.toml`, sans écrire de code — c'est l'adaptateur générique (`packages/core/src/registry/generic.ts`) qui construit sa ligne de commande à partir d'un gabarit :
