@@ -46,6 +46,16 @@ export function renderTaskPrompt(task: Task, options: PromptOptions): string {
   if (task.mode === "read-only") {
     constraints.unshift("Do NOT modify, create or delete any file. This is a read-only investigation.");
   }
+  // Un agent qui l'ignore dépense plusieurs tours sur un `npm install` que son
+  // bac à sable ne laissera jamais aboutir. `task.network` ne vaut faux que
+  // lorsque l'orchestrateur *sait* le réseau coupé : là où il l'ignore
+  // (`claude`, `agy`, un agent déclaré sans arguments réseau), le champ reste
+  // vrai et rien n'est affirmé ici.
+  if (!task.network) {
+    constraints.push(
+      "No network access: this sandbox has networking disabled. Do not attempt to install packages, clone repositories or fetch URLs — prefer what is already vendored, and report the need instead of retrying.",
+    );
+  }
   constraints.push(`Stay inside the workspace: ${task.workspace}`);
   sections.push(`## Constraints\n${bullets(constraints)}`);
 

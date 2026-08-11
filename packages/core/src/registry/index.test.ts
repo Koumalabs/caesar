@@ -77,11 +77,6 @@ describe("détection d'installation", () => {
  * continuent de passer sans modification.
  */
 describe("describeAgentCapabilities", () => {
-  it("aucune capacité notable : liste vide", () => {
-    const agent = createGenericAgent({ id: "minimal", bin: "minimal-cli", args: [] });
-    expect(describeAgentCapabilities(agent)).toEqual([]);
-  });
-
   it("chaque capacité notable produit son propre libellé", () => {
     const agent = createGenericAgent({
       id: "complet",
@@ -98,6 +93,8 @@ describe("describeAgentCapabilities", () => {
       },
     });
     expect(describeAgentCapabilities(agent)).toEqual([
+      // En tête : toujours présent, et le plus déterminant.
+      "réseau inconnu",
       "lecture-seule native",
       "schéma de sortie",
       "message final fichier",
@@ -106,6 +103,22 @@ describe("describeAgentCapabilities", () => {
       "choix du modèle",
       "mcp:flag",
     ]);
+  });
+
+  it("nomme toujours le réseau, y compris pour un agent sans aucune autre capacité", () => {
+    const nu = createGenericAgent({ id: "nu", bin: "nu", args: [] });
+    expect(describeAgentCapabilities(nu)).toEqual(["réseau inconnu"]);
+  });
+
+  it("distingue les agents du catalogue par leur réseau — le diagnostic qui manquait", () => {
+    const parAgent = new Map(
+      listAgentDefinitions().map((def) => [def.id, def.capabilities.network] as const),
+    );
+    expect(parAgent.get("codex")).toBe("write-only");
+    expect(parAgent.get("copilot")).toBe("toggle");
+    expect(parAgent.get("claude")).toBe("open");
+    expect(parAgent.get("antigravity")).toBe("open");
+    expect(parAgent.get("opencode")).toBe("open");
   });
 
   it("chaque agent du catalogue natif a au moins une capacité notable", () => {

@@ -41,6 +41,22 @@ export const TaskSchema = z.object({
 
   mode: TaskModeSchema,
   isolation: IsolationSchema,
+  /**
+   * Le réseau est-il disponible pour cette tâche, aussi loin que
+   * l'orchestrateur puisse l'affirmer ?
+   *
+   * Ce n'est pas une demande — la demande est tri-état (`auto`/`on`/`off`) et
+   * vit dans la configuration ; c'est le résultat de sa confrontation à ce que
+   * l'agent retenu permet réellement (voir `decideNetwork`, packages/core).
+   * Le brief s'en sert pour prévenir l'agent quand le réseau est coupé, plutôt
+   * que de le laisser brûler plusieurs tours sur une installation vouée à
+   * l'échec.
+   *
+   * Le défaut vaut `true` et n'est pas là par commodité : les `task.json`
+   * écrits dans `.orch/tasks/` avant l'existence de ce champ doivent continuer
+   * de se relire — `orch ps`, `orch logs` et `orch diff` les rouvrent tous.
+   */
+  network: z.boolean().default(true),
   /** Racine de travail de l'agent, en chemin absolu. */
   workspace: z.string(),
   /** Référence git de départ, renseignée en isolation worktree. */

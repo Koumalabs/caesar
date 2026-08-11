@@ -21,6 +21,10 @@ const CAPABILITIES: AgentCapabilities = {
   addDir: true,
   mcpInjection: "flag",
   model: true,
+  // Le bac à sable de codex n'expose son réglage réseau que sous
+  // `sandbox_workspace_write` : il n'existe aucun `sandbox_read_only`, donc
+  // `-s read-only` coupe le réseau sans recours. Vérifié sur codex 0.147.0.
+  network: "write-only",
 };
 
 function build(ctx: BuildContext): SpawnPlan {
@@ -38,6 +42,11 @@ function build(ctx: BuildContext): SpawnPlan {
   // rester accessible en écriture même quand le workspace, lui, est en lecture
   // seule.
   args.push("--add-dir", ctx.paths.dir);
+
+  // `decideNetwork` ne laisse jamais `network` à vrai en lecture seule pour
+  // cet agent : la clé n'existe que sous `sandbox_workspace_write`, et la
+  // poser en `-s read-only` serait sans effet.
+  if (ctx.task.network) args.push("-c", "sandbox_workspace_write.network_access=true");
 
   if (ctx.model) args.push("-m", ctx.model);
   if (ctx.reportVia === "schema" && ctx.schemaFile) {

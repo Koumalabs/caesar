@@ -23,6 +23,9 @@ const CAPABILITIES: AgentCapabilities = {
   addDir: false,
   mcpInjection: "project-config",
   model: true,
+  // Aucun confinement dans la ligne de commande d'`opencode run` : le réseau
+  // est ouvert et nous ne savons pas le refermer.
+  network: "open",
 };
 
 /**

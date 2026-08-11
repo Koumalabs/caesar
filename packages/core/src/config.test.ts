@@ -100,6 +100,7 @@ describe("defaultConfig", () => {
       max_parallel: 4,
       default_isolation: "auto",
       default_mode: "write",
+      default_network: "auto",
       default_timeout_ms: 600_000,
       allow_recursion: false,
       max_depth: 2,
@@ -343,6 +344,10 @@ describe("loadConfig", () => {
         agents: ["opencode"],
         mode: "write",
         isolation: "worktree",
+        // Non déclaré par la couche projet : c'est le défaut *de l'entrée*
+        // (RawRoleSchema) qui s'applique, pas la valeur du rôle global —
+        // c'est précisément ce que « remplace entièrement » veut dire.
+        network: "auto",
         timeout_ms: 1_200_000,
       });
       // Les autres rôles par défaut (implementer, investigator) survivent.
@@ -429,6 +434,7 @@ describe("saveLayer / loadConfig — aller-retour", () => {
           max_parallel: 6,
           default_isolation: "worktree",
           default_mode: "read-only",
+          default_network: "off",
           default_timeout_ms: 45_000,
           allow_recursion: true,
           max_depth: 3,
@@ -440,11 +446,21 @@ describe("saveLayer / loadConfig — aller-retour", () => {
             agents: ["codex"],
             mode: "write",
             isolation: "auto",
+            network: "on",
             timeout_ms: 120_000,
             system_prompt_file: "roles/custom.md",
           },
         ],
-        agents: [{ id: "monagent", displayName: "Mon agent", bin: "mon-cli", args: ["--prompt", "{{prompt}}"], cwdMode: "process" }],
+        agents: [
+          {
+            id: "monagent",
+            displayName: "Mon agent",
+            bin: "mon-cli",
+            args: ["--prompt", "{{prompt}}"],
+            cwdMode: "process",
+            networkArgs: ["--online"],
+          },
+        ],
       });
 
       await saveLayer("project", projectRoot, config);

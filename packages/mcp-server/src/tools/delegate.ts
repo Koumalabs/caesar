@@ -78,6 +78,17 @@ export const orchDelegateInputShape = {
         "landed with orch_apply instead of touching the workspace directly; \"inplace\" runs directly in the " +
         "workspace; \"auto\" (default) picks based on mode and git availability.",
     ),
+  network: z
+    .enum(["auto", "on", "off"])
+    .optional()
+    .describe(
+      "Whether the sub-agent needs network access — installing packages, cloning a repository, fetching a URL. " +
+        "\"auto\" (default) opens it wherever the chosen agent allows it and reports a warning where it cannot; " +
+        "\"on\" demands it, and **fails the delegation outright** when the agent cannot provide it, with the reason " +
+        "and the remedy — notably codex, whose sandbox cuts the network in read-only mode and can only open it " +
+        "under `--mode write`; \"off\" closes it where orch knows how. Prefer \"on\" when the objective is " +
+        "impossible without network: a clear refusal beats a sub-agent burning its whole budget on a failing install.",
+    ),
   context: z
     .string()
     .optional()
@@ -119,6 +130,7 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
     agent: input.agent,
     mode: input.mode,
     isolation: input.isolation,
+    network: input.network,
     context: input.context,
     timeout: input.timeout,
     depth,
@@ -139,6 +151,8 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
     ...(input.acceptance_criteria ? { acceptance_criteria: input.acceptance_criteria } : {}),
     mode: resolved.mode,
     isolation: resolved.isolation,
+    network: resolved.network,
+    ...(resolved.networkWarning !== undefined ? { networkWarning: resolved.networkWarning } : {}),
     workspace: session.root,
     ...(resolved.role ? { role: resolved.role } : {}),
     ...(input.model ? { model: input.model } : {}),
@@ -151,7 +165,18 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
   };
   launchTask(session, runInput, controller);
 
-  return jsonResult({ task_id: taskId, agent: resolved.agentId, mode: resolved.mode, isolation: resolved.isolation, status: "running" });
+  return jsonResult({
+    task_id: taskId,
+    agent: resolved.agentId,
+    mode: resolved.mode,
+    isolation: resolved.isolation,
+    // Rendu dès le lancement, et non seulement dans le rapport final :
+    // l'orchestrateur peut ainsi reformuler l'objectif ou changer d'agent
+    // avant que le sous-agent n'ait dépensé son budget.
+    network: resolved.network,
+    ...(resolved.networkWarning !== undefined ? { network_warning: resolved.networkWarning } : {}),
+    status: "running",
+  });
 }
 
 export function registerOrchDelegate(server: McpServer, session: McpSession): void {

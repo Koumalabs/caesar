@@ -44,6 +44,15 @@ describe("mission", () => {
     const result = TaskSchema.safeParse({ ...sampleTask(), protocol: "orch.task/v2" });
     expect(result.success).toBe(false);
   });
+
+  it("relit une mission écrite avant l'existence du champ « network »", () => {
+    // Les task.json déjà présents dans .orch/tasks/ sont rouverts par
+    // `orch ps`, `orch logs` et `orch diff` : sans défaut, ce champ les aurait
+    // tous rendus illisibles d'un coup.
+    const { network, ...ancienne } = sampleTask();
+    expect(network).toBe(true);
+    expect(TaskSchema.parse(ancienne).network).toBe(true);
+  });
 });
 
 describe("rapport", () => {
@@ -267,5 +276,18 @@ describe("prompt de mission", () => {
     const prompt = renderTaskPrompt(sampleTask(), { reportVia: "channel", channelServerName: "orch" });
     expect(prompt).toContain("submit_report");
     expect(prompt).toContain("ask_orchestrator");
+  });
+
+  it("prévient l'agent quand le réseau est coupé, plutôt que de le laisser s'y user", () => {
+    const prompt = renderTaskPrompt(sampleTask({ network: false }), { reportVia: "file" });
+    expect(prompt).toContain("No network access");
+    expect(prompt).toContain("install packages");
+  });
+
+  it("n'affirme rien sur le réseau quand il est disponible", () => {
+    // L'orchestrateur ne dit du réseau que ce qu'il garantit : pour un agent
+    // dont il ne pilote pas le confinement, le champ reste vrai et le brief
+    // reste muet.
+    expect(renderTaskPrompt(sampleTask(), { reportVia: "file" })).not.toContain("network");
   });
 });

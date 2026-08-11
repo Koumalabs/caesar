@@ -1,6 +1,7 @@
 import type { ReportChannel, Task } from "@orch/protocol";
 import type { TaskPaths } from "@orch/protocol";
 import type { OrchEventInput } from "@orch/protocol";
+import type { NetworkControl } from "../network.js";
 
 /**
  * Comment le canal MCP retour est branché côté agent, quand il l'est.
@@ -27,6 +28,16 @@ export interface AgentCapabilities {
   addDir: boolean;
   mcpInjection: McpInjection;
   model: boolean;
+  /**
+   * Ce que l'orchestrateur sait piloter de l'accès réseau de cet agent — et
+   * non ce dont l'agent est capable. Voir `network.ts` : `"open"` signifie
+   * « nous ne savons pas le refermer », pas « il a le réseau ».
+   *
+   * C'est la capacité dont l'absence a coûté le plus cher : `codex` tournait
+   * dans un bac à sable sans réseau pendant que trois autres agents l'avaient
+   * ouvert, et aucun diagnostic ne le disait.
+   */
+  network: NetworkControl;
 }
 
 export interface BuildContext {

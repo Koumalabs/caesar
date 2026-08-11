@@ -67,6 +67,7 @@ Le contrat minimal tient dans deux d'entre elles : `ORCH_TASK_FILE` pour lire, `
   "acceptance_criteria": ["pnpm test passe"],
   "mode": "write",                 // "read-only" | "write"
   "isolation": "worktree",         // "inplace" | "worktree"
+  "network": true,                 // le réseau est-il disponible ? (défaut : true)
   "workspace": "/abs/path",        // racine de travail
   "base_ref": "main",              // en isolation worktree
   "deadline_ms": 600000,
@@ -76,6 +77,8 @@ Le contrat minimal tient dans deux d'entre elles : `ORCH_TASK_FILE` pour lire, `
   "channel": null                  // coordonnées du canal retour, si disponible
 }
 ```
+
+`network` est un résultat, pas une demande : l'orchestrateur y a déjà confronté ce que l'appelant souhaitait à ce que l'agent retenu permet. À `false`, il affirme que le réseau est coupé, et le brief le dit à l'agent — ce qui n'arrive que lorsque l'orchestrateur le sait. Un agent dont il ne pilote pas le confinement reçoit `true`, faute de pouvoir affirmer le contraire. Le champ est facultatif à la lecture et vaut `true` par défaut, de sorte qu'un `task.json` écrit avant son introduction se relit inchangé.
 
 ## `report.json` — le compte rendu
 

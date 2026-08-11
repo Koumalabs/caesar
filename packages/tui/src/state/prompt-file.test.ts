@@ -56,6 +56,7 @@ describe("écriture", () => {
           agents: ["codex"],
           mode: "read-only",
           isolation: "auto",
+          network: "auto",
           timeout_ms: 600_000,
           system_prompt_file: "roles/reviewer.md",
         },

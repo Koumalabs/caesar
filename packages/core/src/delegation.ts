@@ -1,7 +1,7 @@
 /**
  * Résout une demande de délégation — rôle et/ou agent explicite, mode,
- * isolation, timeout, contexte — en ce qu'il faut pour appeler `runTask`, ou
- * en un refus portant un motif prêt à afficher.
+ * isolation, réseau, timeout, contexte — en ce qu'il faut pour appeler
+ * `runTask`, ou en un refus portant un motif prêt à afficher.
  *
  * Point d'assemblage partagé par `orch run` (`packages/cli/src/commands/run.ts`)
  * et `orch_delegate` (`packages/mcp-server/src/tools/delegate.ts`), qui
@@ -10,7 +10,9 @@
  * modification — voir le rapport de correction de la tâche 7. Ordre de
  * résolution : rôle (s'il y en a un) → agent (l'entrée explicite l'emporte
  * sur le choix issu du rôle, mais pas sur ses valeurs par défaut de
- * mode/isolation/timeout/prompt système) → catalogue → politique.
+ * mode/isolation/réseau/timeout/prompt système) → catalogue → politique →
+ * réseau (qui vient en dernier parce qu'il dépend du mode et de l'agent
+ * retenus).
  *
  * Ne dépend d'aucun contexte propre à une façade (pas d'`Io` du CLI, pas de
  * session MCP) : uniquement des types de `@orch/core`/`@orch/protocol`, pour
@@ -29,6 +31,8 @@ import type { Isolation, TaskMode } from "@orch/protocol";
 import type { OrchConfig } from "./config.js";
 import { parseDuration } from "./config.js";
 import { checkDelegation } from "./policy.js";
+import { decideNetwork } from "./network.js";
+import type { NetworkRequest } from "./network.js";
 import { pickAgentForRole, resolveInstalledMap, resolveRole } from "./roles.js";
 import { findAgentDefinition } from "./registry/index.js";
 
@@ -37,6 +41,7 @@ export interface DelegationParams {
   agent?: string;
   mode?: TaskMode;
   isolation?: Isolation | "auto";
+  network?: NetworkRequest;
   /** Contexte déjà résolu (un éventuel `@fichier` côté CLI est lu avant l'appel) ; fusionné ici avec le prompt système du rôle, s'il y en a un. */
   context?: string;
   /** Durée brute ("10m", "90s"…) ; le motif de `parseDuration` est rendu tel quel en cas d'échec. */
@@ -74,6 +79,18 @@ export interface ResolvedDelegation {
   role?: string;
   mode: TaskMode;
   isolation: Isolation | "auto";
+  /**
+   * Le réseau sera-t-il disponible ? Déjà confronté à ce que l'agent retenu
+   * permet — la demande tri-état, elle, s'arrête ici.
+   */
+  network: boolean;
+  /**
+   * Ce qu'il faut dire quand la demande et le possible n'ont pas coïncidé
+   * sans pour autant justifier un refus : réseau coupé faute de mieux, ou
+   * fermeture demandée que nous ne savons pas obtenir. Versé au rapport par
+   * le moteur, à côté de l'avertissement d'isolation dégradée.
+   */
+  networkWarning?: string;
   timeoutMs: number;
   context?: string;
 }
@@ -110,7 +127,8 @@ export async function resolveDelegation(config: OrchConfig, root: string, params
     return { error: "Un agent ou un rôle est requis." };
   }
 
-  if (!findAgentDefinition(agentId, config.agents)) {
+  const agentDef = findAgentDefinition(agentId, config.agents);
+  if (!agentDef) {
     return { error: `Agent inconnu : "${agentId}".` };
   }
 
@@ -121,6 +139,20 @@ export async function resolveDelegation(config: OrchConfig, root: string, params
 
   const mode: TaskMode = params.mode ?? role?.mode ?? config.policy.default_mode;
   const isolation: Isolation | "auto" = params.isolation ?? role?.isolation ?? config.policy.default_isolation;
+
+  // Après le mode, dont la décision dépend : un agent qui ne sait ouvrir le
+  // réseau qu'en écriture ne peut être jugé qu'une fois le mode connu. Et
+  // avant que quoi que ce soit ne soit écrit sur le disque — un refus ne
+  // laisse aucun répertoire de tâche derrière lui.
+  const netDecision = decideNetwork({
+    agentId,
+    requested: params.network ?? role?.network ?? config.policy.default_network,
+    mode,
+    control: agentDef.capabilities.network,
+  });
+  if (netDecision.refused) {
+    return { error: `${netDecision.reason} ${netDecision.remedy}` };
+  }
 
   let timeoutMs: number;
   try {
@@ -134,7 +166,8 @@ export async function resolveDelegation(config: OrchConfig, root: string, params
     context = [role.systemPrompt, context].filter((part) => part && part.trim() !== "").join("\n\n---\n\n");
   }
 
-  const result: ResolvedDelegation = { agentId, mode, isolation, timeoutMs };
+  const result: ResolvedDelegation = { agentId, mode, isolation, network: netDecision.available, timeoutMs };
+  if (netDecision.warning !== undefined) result.networkWarning = netDecision.warning;
   if (params.role) result.role = params.role;
   if (context !== undefined) result.context = context;
   return result;

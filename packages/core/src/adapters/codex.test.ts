@@ -57,10 +57,23 @@ describe("codexAgent.build", () => {
     expect(plan.args).toContain('mcp_servers.orch.args=["server.js"]');
   });
 
-  it("n'ajoute aucun -c quand le palier n'est pas channel, même si un canal existe", () => {
+  it("ne déclare aucun serveur MCP quand le palier n'est pas channel, même si un canal existe", () => {
     const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: [], server_name: "orch" } });
     const plan = codexAgent.build(sampleContext({ task, reportVia: "file" }));
-    expect(plan.args).not.toContain("-c");
+    // L'assertion portait sur l'absence de tout "-c" — un raccourci qui n'est
+    // plus valable depuis que le réseau emprunte le même drapeau. C'est le
+    // contenu qui compte : aucune déclaration de serveur.
+    expect(plan.args.filter((arg) => arg.startsWith("mcp_servers."))).toEqual([]);
+  });
+
+  it("ouvre le réseau du bac à sable quand la tâche y a droit", () => {
+    const plan = codexAgent.build(sampleContext({ task: sampleTask({ network: true }) }));
+    expect(plan.args).toContain("sandbox_workspace_write.network_access=true");
+  });
+
+  it("ne touche pas au réseau quand la tâche ne l'a pas", () => {
+    const plan = codexAgent.build(sampleContext({ task: sampleTask({ network: false }) }));
+    expect(plan.args.some((arg) => arg.includes("network_access"))).toBe(false);
   });
 
   it("garde le répertoire de tâche accessible via --add-dir", () => {

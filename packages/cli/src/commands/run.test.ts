@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -8,6 +8,7 @@ import { ENV } from "@orch/protocol";
 import { FAKE_AGENT_PATH, makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
 import { runPolicyDeny } from "./policy.js";
 import { runRun } from "./run.js";
+import { runCli } from "../program.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE } from "../output.js";
 
 const execFileAsync = promisify(execFile);
@@ -358,5 +359,77 @@ describe("orch run", () => {
         else process.env[ENV.depth] = previous;
       }
     });
+  });
+
+  it("refuse une délégation qui exige le réseau quand l'agent ne peut pas le fournir", async () => {
+    await withFakeHome(async () => {
+      const code = await runRun(root, "installe une dépendance", { agent: "codex", mode: "read-only", network: "on", json: true }, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toContain("--mode write");
+    });
+  });
+
+  it("refuse une valeur de --network hors des trois attendues, avant toute résolution", async () => {
+    const code = await runRun(root, "objectif", { agent: "codex", network: "peut-être", json: true }, io);
+    expect(code).toBe(EXIT_USAGE);
+    expect(io.stderrText()).toMatch(/--network invalide/);
+  });
+
+  it("transmet les arguments bruts au CLI de l'agent, en fin de ligne de commande", async () => {
+    await withFakeHome(() =>
+      withFakeAgentAsBin("codex", async () => {
+        await initGitRepo(root);
+        const code = await runRun(
+          root,
+          "objectif",
+          { agent: "codex", mode: "write", isolation: "inplace", extraArgs: ["--enable", "feature_x"], json: true },
+          io,
+        );
+        expect(code).toBe(EXIT_OK);
+        // L'événement `started` publie la ligne de commande complète : c'est
+        // la preuve que l'argument est réellement parvenu au sous-processus,
+        // et non seulement au `RunTaskInput`.
+        const taskId = JSON.parse(io.stdoutText()).task_id as string;
+        const events = await readFile(join(root, ".orch", "tasks", taskId, "events.jsonl"), "utf8");
+        const started = events
+          .split("\n")
+          .filter((line) => line.trim() !== "")
+          .map((line) => JSON.parse(line) as { type: string; command?: string })
+          .find((event) => event.type === "started");
+        expect(started?.command).toContain("--enable feature_x");
+      }),
+    );
+  }, 20_000);
+});
+
+describe("orch run — arguments bruts et le séparateur « -- »", () => {
+  let root: string;
+  let io: CapturedIo;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-cli-dashdash-"));
+    io = makeIo();
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("refuse des opérandes en trop sans séparateur — une coquille reste une coquille", async () => {
+    // Commander refusait déjà `orch run "obj" coquille` (« too many
+    // arguments ») ; l'argument variadique qui recueille ce qui suit « -- »
+    // aurait supprimé ce refus sans cette garde.
+    const code = await runCli(["node", "orch", "run", "--root", root, "objectif", "coquille"], io);
+    expect(code).toBe(EXIT_USAGE);
+    expect(io.stderrText()).toContain("« -- »");
+    expect(io.stderrText()).toContain("coquille");
+  });
+
+  it("laisse passer les mêmes arguments dès qu'ils suivent le séparateur", async () => {
+    // Sans agent installé, la délégation échoue plus loin — mais plus sur la
+    // garde de forme : le message ne parle plus du séparateur.
+    const code = await runCli(["node", "orch", "run", "--root", root, "--agent", "agent-absent", "objectif", "--", "coquille"], io);
+    expect(code).toBe(EXIT_USAGE);
+    expect(io.stderrText()).not.toContain("« -- »");
   });
 });

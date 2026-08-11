@@ -34,7 +34,7 @@ import { useEffect, useState } from "react";
 import type { RoleConfig } from "@orch/core";
 import { parseDuration } from "@orch/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { catalogIds, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
+import { catalogIds, ISOLATION_OPTIONS, MODE_OPTIONS, NETWORK_OPTIONS, cycle, formatMs } from "./shared";
 import { PromptEditor } from "./PromptEditor";
 import { defaultPromptFileFor, readPromptFile, validatePromptFile } from "../state/prompt-file";
 import {
@@ -69,14 +69,15 @@ export interface RolesScreenProps {
   notify: (message: string, isError?: boolean) => void;
 }
 
-type Field_ = "name" | "purpose" | "agents" | "mode" | "isolation" | "timeout" | "prompt";
-const FIELDS: Field_[] = ["name", "purpose", "agents", "mode", "isolation", "timeout", "prompt"];
+type Field_ = "name" | "purpose" | "agents" | "mode" | "isolation" | "network" | "timeout" | "prompt";
+const FIELDS: Field_[] = ["name", "purpose", "agents", "mode", "isolation", "network", "timeout", "prompt"];
 const FIELD_LABELS: Record<Field_, string> = {
   name: "Nom",
   purpose: "Intention",
   agents: "Agents",
   mode: "Mode",
   isolation: "Isolation",
+  network: "Réseau",
   timeout: "Délai",
   prompt: "Prompt système",
 };
@@ -88,6 +89,8 @@ const FIELD_HINTS: Record<Field_, string> = {
   agents: "Ordre de repli : le premier agent installé et autorisé est retenu.",
   mode: 'read-only : l\'agent ne doit rien modifier. write : il peut écrire.',
   isolation: "worktree : copie de travail jetable. inplace : le dépôt lui-même. auto : worktree en écriture, et pour toute lecture seule sans mode natif.",
+  network:
+    "auto : ouvert partout où l'agent le permet. on : refuse la délégation si l'agent ne sait pas l'ouvrir — codex ne le sait qu'en écriture. off : fermé là où c'est possible.",
   timeout: 'Au-delà, la tâche est interrompue. Formes acceptées : "10m", "90s", "1h".',
   prompt: "Le texte placé en tête du contexte de l'agent, avant l'objectif. Entrée : l'éditer.",
 };
@@ -168,6 +171,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
         agents: [],
         mode: "write",
         isolation: "auto",
+        network: "auto",
         timeout_ms: parseDuration("10m"),
       };
       onChange(upsertRole(state, newRole));
@@ -268,6 +272,8 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
           onChange(updateRole(state, role.name, { mode: cycle(MODE_OPTIONS, role.mode) }));
         } else if (field === "isolation") {
           onChange(updateRole(state, role.name, { isolation: cycle(ISOLATION_OPTIONS, role.isolation) }));
+        } else if (field === "network") {
+          onChange(updateRole(state, role.name, { network: cycle(NETWORK_OPTIONS, role.network) }));
         } else if (field === "name") {
           setEditingAndNotifyApp({ kind: "name", buffer: role.name });
         } else if (field === "purpose") {
@@ -450,6 +456,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
 
                 if (field === "mode") return <Field key={field} {...common} value={role.mode} />;
                 if (field === "isolation") return <Field key={field} {...common} value={role.isolation} />;
+                if (field === "network") return <Field key={field} {...common} value={role.network} />;
 
                 if (field === "timeout") {
                   return editing?.kind === "timeout" ? (

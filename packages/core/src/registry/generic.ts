@@ -10,6 +10,13 @@ export interface GenericAgentSpec {
   args: string[];
   /** "process" : le cwd porte le workspace. "flag" : il est déjà dans args. */
   cwdMode?: "process" | "flag";
+  /**
+   * Arguments ajoutés à la ligne de commande quand la tâche a droit au
+   * réseau — p. ex. `--allow-all-urls`. Les déclarer, c'est promettre que
+   * *sans* eux le CLI est confiné : c'est ce qui fait passer la capacité
+   * réseau de `"unknown"` à `"toggle"`. Mêmes jetons que `args`.
+   */
+  networkArgs?: string[];
   capabilities?: Partial<AgentCapabilities>;
 }
 
@@ -22,6 +29,10 @@ const NEUTRAL_CAPABILITIES: AgentCapabilities = {
   addDir: false,
   mcpInjection: "none",
   model: false,
+  // Par défaut, on ne sait rien du réseau d'un CLI arbitraire — et « ne rien
+  // savoir » n'est ni « ouvert » ni « fermé ». `createGenericAgent` remonte à
+  // "toggle" dès que la déclaration porte des `networkArgs`.
+  network: "unknown",
 };
 
 /**
@@ -86,7 +97,8 @@ function buildGeneric(spec: GenericAgentSpec, cwdMode: "process" | "flag", ctx: 
   };
 
   const args: string[] = [];
-  for (const template of spec.args) {
+  const templates = ctx.task.network ? [...spec.args, ...(spec.networkArgs ?? [])] : spec.args;
+  for (const template of templates) {
     const rendered = substitute(template, tokens);
     if (rendered !== undefined) args.push(rendered);
   }
@@ -198,7 +210,12 @@ export function validateGenericAgentSpec(spec: GenericAgentSpec): string | null 
     return `L'agent "${spec.id}" n'a pas de binaire : précisez la commande à lancer.`;
   }
 
-  const unknown = [...new Set(spec.args.flatMap(tokensIn).filter((name) => !isGenericArgToken(name)))];
+  // Les arguments réseau passent par la même substitution que les autres :
+  // ils méritent donc le même contrôle, sans quoi une coquille les ferait
+  // disparaître en silence — et l'agent partirait sans réseau tout en
+  // annonçant « réseau pilotable ».
+  const allArgs = [...spec.args, ...(spec.networkArgs ?? [])];
+  const unknown = [...new Set(allArgs.flatMap(tokensIn).filter((name) => !isGenericArgToken(name)))];
   if (unknown.length > 0) {
     return (
       `Jeton inconnu dans les arguments de "${spec.id}" : ${unknown.map(tokenLiteral).join(", ")}. ` +
@@ -233,6 +250,12 @@ export function createGenericAgent(spec: GenericAgentSpec): AgentDefinition {
     // contredire les arguments et annoncer, dans `orch agents list`, un choix
     // de modèle que la ligne de commande ne transmet nulle part.
     model: spec.args.some((arg) => arg.includes(tokenLiteral("model"))),
+    // Même raisonnement que pour `model` : ce sont les `networkArgs` qui
+    // *constituent* la capacité d'ouvrir le réseau, rien d'autre ne la porte.
+    // La déduire ici plutôt que de la laisser déclarer séparément évite qu'un
+    // agent annonce « réseau pilotable » dans `orch doctor` alors qu'aucun
+    // argument ne l'ouvrirait.
+    network: (spec.networkArgs?.length ?? 0) > 0 ? "toggle" : "unknown",
     ...spec.capabilities,
   };
   const cwdMode = spec.cwdMode ?? "process";

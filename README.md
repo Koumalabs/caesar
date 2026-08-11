@@ -8,15 +8,31 @@ Ce dépôt livre un CLI (`orch`), un serveur MCP à dix tools pour piloter tout 
 
 ## Agents pris en charge
 
-| Agent | Identifiant | Binaire attendu | Mode headless |
-|---|---|---|---|
-| Codex | `codex` | `codex` | `codex exec --json -s <read-only\|workspace-write> …` |
-| Antigravity CLI | `antigravity` | `agy` | `agy --print <prompt> --output-format stream-json --mode <plan\|accept-edits> …` |
-| OpenCode | `opencode` | `opencode` | `opencode run --format json --dir <workspace> …` |
-| GitHub Copilot CLI | `copilot` | `copilot` | `copilot --prompt <prompt> --output-format json --no-color --log-level none …` |
-| Claude Code | `claude` | `claude` | `claude --print <prompt> --output-format json --permission-mode <plan\|acceptEdits> …` |
+| Agent | Identifiant | Binaire attendu | Mode headless | Réseau |
+|---|---|---|---|---|
+| Codex | `codex` | `codex` | `codex exec --json -s <read-only\|workspace-write> …` | en écriture seule |
+| Antigravity CLI | `antigravity` | `agy` | `agy --print <prompt> --output-format stream-json --mode <plan\|accept-edits> …` | ouvert |
+| OpenCode | `opencode` | `opencode` | `opencode run --format json --dir <workspace> …` | ouvert |
+| GitHub Copilot CLI | `copilot` | `copilot` | `copilot --prompt <prompt> --output-format json --no-color --log-level none …` | pilotable |
+| Claude Code | `claude` | `claude` | `claude --print <prompt> --output-format json --permission-mode <plan\|acceptEdits> …` | ouvert |
 
 Le détail complet des flags (schéma de sortie natif, canal MCP, modèle, répertoires additionnels…) est dans `packages/core/src/adapters/*.ts`, un fichier par agent — chaque flag y a été vérifié par `--help` sur une machine réelle, aucun n'est inventé.
+
+La colonne **Réseau** dit ce qu'`orch` sait *piloter*, et non ce dont l'agent est capable — la distinction compte. « Ouvert » signifie que nos arguments ne passent aucun confinement, donc que nous ne saurions pas le refermer. « Pilotable » : nous savons l'ouvrir dans les deux modes (`copilot --allow-all-urls`, distinct de `--allow-all-tools`, qui ne couvre pas les URL). « En écriture seule » : le bac à sable de `codex` n'expose son réglage réseau que sous `sandbox_workspace_write` — en `-s read-only`, le réseau est coupé sans recours.
+
+C'est la raison d'être du réglage `network`, disponible à trois niveaux (politique, rôle, tâche) et tri-état :
+
+```bash
+orch run --agent codex --mode write "installe la dépendance manquante"   # auto : ouvert, ici c'est possible
+orch run --agent codex --mode read-only --network on "…"                 # refusé, avec le motif et le remède
+orch run --agent codex --mode write --network off "…"                    # réseau coupé explicitement
+```
+
+- `auto` (défaut) — ouvre le réseau partout où l'agent choisi le permet ; ailleurs, la tâche part quand même et le rapport porte un constat `info`. C'est ce qui permet aux rôles `reviewer` et `investigator`, en lecture seule sur codex, de continuer à tourner.
+- `on` — **fait échouer la délégation** si l'agent ne peut pas fournir le réseau, avant tout lancement et sans laisser de répertoire de tâche. À préférer dès que l'objectif est impossible sans réseau : un refus net vaut mieux qu'un sous-agent qui épuise son budget sur une installation vouée à l'échec.
+- `off` — ferme là où c'est possible. Là où ça ne l'est pas, `orch` le dit plutôt que d'annoncer une garantie qu'il n'a pas.
+
+Quand — et seulement quand — `orch` sait le réseau coupé, il l'écrit dans le brief de l'agent, pour lui éviter d'y user ses tours.
 
 Un mot sur `claude` : il figure au catalogue (déléguer d'une instance de Claude Code à une autre a du sens — relecture croisée, par exemple), mais la politique par défaut le refuse (`allow_recursion: false`) précisément parce que c'est le cas le plus susceptible de tourner en boucle. `orch agents enable claude` ou `orch policy allow claude` lève ce refus explicitement, si besoin.
 
@@ -85,7 +101,15 @@ $ orch apply t_680818a6a92047a2b08bb904e46d8427
 Tâche "t_680818a6a92047a2b08bb904e46d8427" appliquée au dépôt principal.
 ```
 
-`orch run` accepte `--role <name>` (choisit l'agent via un rôle configuré et sa chaîne de repli — voir `orch role list`) ou `--agent <id>` (fixe l'agent, l'emporte sur `--role`), `--mode read-only|write`, `--isolation inplace|worktree|auto`, `--timeout 10m`, `--model <id>`, `--context <texte ou @fichier>`, et `--channel` (ouvre le canal retour MCP bidirectionnel : le sous-agent peut poser une question à l'agent principal en cours de route plutôt que de deviner — voir `docs/protocol.md`). Au moins l'un de `--agent`/`--role` est requis.
+`orch run` accepte `--role <name>` (choisit l'agent via un rôle configuré et sa chaîne de repli — voir `orch role list`) ou `--agent <id>` (fixe l'agent, l'emporte sur `--role`), `--mode read-only|write`, `--isolation inplace|worktree|auto`, `--timeout 10m`, `--model <id>`, `--context <texte ou @fichier>`, `--network auto|on|off` (voir « Agents pris en charge » ci-dessus), et `--channel` (ouvre le canal retour MCP bidirectionnel : le sous-agent peut poser une question à l'agent principal en cours de route plutôt que de deviner — voir `docs/protocol.md`). Au moins l'un de `--agent`/`--role` est requis.
+
+Ce qu'`orch` n'expose pas se passe après `--`, tel quel, en fin de ligne de commande de l'agent :
+
+```bash
+orch run --agent codex "…" -- --enable feature_x
+```
+
+Le séparateur est obligatoire : sans lui, un opérande en trop reste une coquille et `orch` le refuse plutôt que de l'envoyer à l'agent. Volontairement absent du tool MCP `orch_delegate` — c'est un geste que vous tapez, pas une latitude laissée à l'orchestrateur, qui pourrait sinon élever seul les privilèges d'un sous-agent.
 
 Les autres sous-commandes : `orch ps` (tâches en cours et récentes), `orch logs <id> [--raw] [--follow]`, `orch cancel <id>`, `orch agents list|enable|disable|test` (`test` lance une micro-tâche réelle en lecture seule pour vérifier qu'un agent répond — `--yes` obligatoire, ça consomme son quota), `orch policy show|allow|deny`, `orch role list|show|add|remove`, `orch protocol schema <task|report|event> [--strict]` (publie le standard en JSON Schema). Celles qui modifient (`policy allow|deny`, `agents enable|disable`, `role add|remove`) acceptent `--global`/`--local` pour cibler une autre couche que le projet — voir « Configuration en couches » ci-dessous.
 
@@ -185,8 +209,11 @@ Un CLI qui n'est pas dans le catalogue des cinq se déclare dans `.orch/config.t
 id = "mon-agent"
 bin = "mon-agent-cli"
 args = ["--task-file", "{{taskDir}}/task.json", "--out", "{{reportPath}}", "--cwd", "{{workspace}}", "{{prompt}}"]
-cwd_mode = "process"   # "process" : le workspace est le cwd du processus. "flag" : déjà porté par un jeton dans args.
+cwd_mode = "process"      # "process" : le workspace est le cwd du processus. "flag" : déjà porté par un jeton dans args.
+network_args = ["--online"]  # facultatif : ce qu'il faut ajouter pour ouvrir le réseau.
 ```
+
+Déclarer `network_args`, c'est affirmer que **sans** ces arguments le CLI est confiné : `orch` fait alors passer sa capacité réseau de « inconnu » à « pilotable », et les honore selon le réglage `network` de la tâche. Sans eux, `orch doctor` annonce « réseau inconnu » et ne promet rien — ni ouverture, ni fermeture.
 
 Les jetons `{{prompt}}`, `{{workspace}}`, `{{taskDir}}`, `{{reportPath}}` et `{{model}}` sont substitués ; un jeton sans valeur (`{{model}}` si aucun `--model` n'a été demandé, par exemple) fait disparaître l'argument entier plutôt que de laisser un `undefined` résiduel. Un agent générique n'a par défaut aucune capacité déclarée (`mcpInjection: "none"`, pas de schéma de sortie natif ni de canal MCP) : il se contente du palier de rapport le plus tolérant, celui qui n'exige que de savoir lire `$ORCH_TASK_FILE` et écrire `$ORCH_REPORT_PATH` — voir `docs/protocol.md`. C'est délibéré : le contrat minimal du standard est conçu pour être atteignable par un script de quelques lignes, pas seulement par les cinq agents nommément supportés.
 

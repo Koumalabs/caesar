@@ -79,12 +79,13 @@ export interface AgentsScreenProps {
   notify: (message: string, isError?: boolean) => void;
 }
 
-type Field_ = "displayName" | "bin" | "args" | "cwdMode" | "nativeReadOnly";
-const FIELDS: Field_[] = ["displayName", "bin", "args", "cwdMode", "nativeReadOnly"];
+type Field_ = "displayName" | "bin" | "args" | "networkArgs" | "cwdMode" | "nativeReadOnly";
+const FIELDS: Field_[] = ["displayName", "bin", "args", "networkArgs", "cwdMode", "nativeReadOnly"];
 const FIELD_LABELS: Record<Field_, string> = {
   displayName: "Nom affiché",
   bin: "Binaire",
   args: "Arguments",
+  networkArgs: "Arguments réseau",
   cwdMode: "Répertoire",
   nativeReadOnly: "Lecture seule",
 };
@@ -92,6 +93,8 @@ const FIELD_HINTS: Record<Field_, string> = {
   displayName: "Comment cet agent s'annonce dans les listes. À défaut, son identifiant.",
   bin: "La commande à lancer. Un chemin (avec un « / ») désigne un fichier ; un nom seul est cherché dans le PATH.",
   args: `Gabarit de ligne de commande. Jetons : ${GENERIC_ARG_TOKENS.map((name) => `{{${name}}}`).join(" ")}. Un argument dont un jeton n'a pas de valeur disparaît entièrement.`,
+  networkArgs:
+    "Ce qu'il faut ajouter pour ouvrir le réseau, p. ex. --allow-all-urls. Les déclarer, c'est affirmer que sans eux ce CLI est confiné — sinon orch annonce « réseau inconnu » et ne promet rien.",
   cwdMode: "process : le répertoire courant porte le workspace. flag : il est déjà passé en argument.",
   nativeReadOnly: "Le CLI garantit-il lui-même de ne rien écrire ? Sinon, une tâche en lecture seule est isolée dans un worktree.",
 };
@@ -102,6 +105,10 @@ const LABEL_WIDTH = 14;
 /** Le gabarit d'arguments tel qu'on l'édite : une ligne de commande, pas une liste. */
 function argsLine(spec: GenericAgentSpec): string {
   return formatArgTemplate(spec.args);
+}
+
+function networkArgsLine(spec: GenericAgentSpec): string {
+  return formatArgTemplate(spec.networkArgs ?? []);
 }
 
 export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEditingChange, notify }: AgentsScreenProps) {
@@ -116,7 +123,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
   const [selected, setSelected] = useState(0);
   const [focus, setFocus] = useState<"list" | "fields">("list");
   const [fieldIndex, setFieldIndex] = useState(0);
-  const [editing, setEditing] = useState<{ kind: "new-agent" | "displayName" | "bin" | "args"; buffer: string } | null>(null);
+  const [editing, setEditing] = useState<{ kind: "new-agent" | "displayName" | "bin" | "args" | "networkArgs"; buffer: string } | null>(null);
 
   const deniedMark = formatInheritedMark(policyFieldMark(state, "denied"));
   const allowedMark = formatInheritedMark(policyFieldMark(state, "allowed"));
@@ -194,6 +201,21 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
         return;
       }
       if (!applySpec({ ...spec, args })) return;
+    } else if (editing.kind === "networkArgs") {
+      let networkArgs: string[];
+      try {
+        networkArgs = splitArgTemplate(editing.buffer);
+      } catch (error) {
+        notify(error instanceof Error ? error.message : String(error), true);
+        return;
+      }
+      const next: GenericAgentSpec = { ...spec };
+      // Une liste vide n'est pas « aucun argument réseau déclaré » : elle
+      // ferait passer la capacité à "toggle" sans rien ouvrir. Absente, elle
+      // laisse honnêtement « réseau inconnu ».
+      if (networkArgs.length === 0) delete next.networkArgs;
+      else next.networkArgs = networkArgs;
+      if (!applySpec(next)) return;
     }
     setEditingAndNotifyApp(null);
   }
@@ -228,6 +250,8 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
           setEditingAndNotifyApp({ kind: "bin", buffer: spec.bin });
         } else if (field === "args") {
           setEditingAndNotifyApp({ kind: "args", buffer: argsLine(spec) });
+        } else if (field === "networkArgs") {
+          setEditingAndNotifyApp({ kind: "networkArgs", buffer: networkArgsLine(spec) });
         }
       }
       return;
@@ -441,6 +465,24 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
                     </Field>
                   ) : (
                     <Field key={field} {...common} value={argsLine(spec)} />
+                  );
+                }
+
+                if (field === "networkArgs") {
+                  return editing?.kind === "networkArgs" ? (
+                    <Field key={field} {...common}>
+                      <input
+                        focused
+                        value={editing.buffer}
+                        onInput={(value) => setEditing({ kind: "networkArgs", buffer: value })}
+                        onSubmit={commitEdit}
+                        onKeyDown={(key) => {
+                          if (key.name === "escape") setEditingAndNotifyApp(null);
+                        }}
+                      />
+                    </Field>
+                  ) : (
+                    <Field key={field} {...common} value={networkArgsLine(spec) || "(aucun — réseau inconnu)"} />
                   );
                 }
 

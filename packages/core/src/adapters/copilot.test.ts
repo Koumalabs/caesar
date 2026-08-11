@@ -23,6 +23,26 @@ describe("copilotAgent.build", () => {
     expect(plan.args.some((a) => a.startsWith("--deny-tool"))).toBe(false);
   });
 
+  it("ouvre les URL séparément des outils — --allow-all-tools ne les couvre pas", () => {
+    // Le défaut d'origine : en écriture, copilot recevait --allow-all-tools et
+    // demandait quand même confirmation pour chaque accès réseau — donc, en
+    // exécution non interactive, ne l'obtenait jamais.
+    const plan = copilotAgent.build(sampleContext({ task: sampleTask({ mode: "write", network: true }) }));
+    expect(plan.args).toContain("--allow-all-urls");
+  });
+
+  it("ouvre aussi les URL en lecture seule, sans lever les refus d'écriture", () => {
+    const plan = copilotAgent.build(sampleContext({ task: sampleTask({ mode: "read-only", network: true }) }));
+    expect(plan.args).toContain("--allow-all-urls");
+    expect(plan.args).toContain("--deny-tool=write");
+    expect(plan.args).toContain("--deny-tool=shell");
+  });
+
+  it("laisse les URL fermées quand la tâche n'a pas le réseau", () => {
+    const plan = copilotAgent.build(sampleContext({ task: sampleTask({ network: false }) }));
+    expect(plan.args).not.toContain("--allow-all-urls");
+  });
+
   it("utilise le workspace comme cwd, sans flag de répertoire explicite", () => {
     const plan = copilotAgent.build(sampleContext({ task: sampleTask({ workspace: "/tmp/wt" }) }));
     expect(plan.cwd).toBe("/tmp/wt");

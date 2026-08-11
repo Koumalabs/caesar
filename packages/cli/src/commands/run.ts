@@ -28,9 +28,9 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Isolation, OrchEvent, TaskMode } from "@orch/protocol";
-import type { TaskOutcome } from "@orch/core";
+import type { NetworkRequest, TaskOutcome } from "@orch/core";
 import { createQueue, fileTaskStore, generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation, runTask } from "@orch/core";
-import { ISOLATIONS, TASK_MODES } from "../flags.js";
+import { ISOLATIONS, NETWORK_REQUEST_VALUES, TASK_MODES } from "../flags.js";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, writeLine } from "../output.js";
 
@@ -39,11 +39,22 @@ export interface RunOptions {
   agent?: string;
   mode?: string;
   isolation?: string;
+  network?: string;
   timeout?: string;
   model?: string;
   context?: string;
   json?: boolean;
   channel?: boolean;
+  /**
+   * Arguments bruts transmis tels quels au CLI de l'agent, saisis après
+   * « -- ». Échappatoire assumée pour ce qu'orch n'expose pas encore : le
+   * moteur les portait déjà de bout en bout, aucune façade ne les ouvrait.
+   *
+   * Volontairement absent du tool MCP `orch_delegate` : c'est un geste que
+   * l'utilisateur tape, pas une latitude qu'on laisse à l'orchestrateur, qui
+   * pourrait sinon élever seul les privilèges d'un sous-agent.
+   */
+  extraArgs?: string[];
 }
 
 async function resolveContext(raw: string | undefined): Promise<string | undefined> {
@@ -93,6 +104,10 @@ export async function runRun(root: string, objective: string, options: RunOption
     printError(io, `--isolation invalide (attendu l'une de : ${ISOLATIONS.join(", ")}).`);
     return EXIT_USAGE;
   }
+  if (options.network && !NETWORK_REQUEST_VALUES.includes(options.network as NetworkRequest)) {
+    printError(io, `--network invalide (attendu l'une de : ${NETWORK_REQUEST_VALUES.join(", ")}).`);
+    return EXIT_USAGE;
+  }
   // Même logique : la présence d'un agent ou d'un rôle est une condition de
   // forme, vérifiable sans résoudre quoi que ce soit. `resolveDelegation`
   // porte sa propre garde pour ses autres appelants (le serveur MCP,
@@ -124,6 +139,7 @@ export async function runRun(root: string, objective: string, options: RunOption
     agent: options.agent,
     mode: options.mode as TaskMode | undefined,
     isolation: options.isolation as Isolation | "auto" | undefined,
+    network: options.network as NetworkRequest | undefined,
     context,
     timeout: options.timeout,
     depth,
@@ -132,7 +148,7 @@ export async function runRun(root: string, objective: string, options: RunOption
     printError(io, resolved.error);
     return EXIT_USAGE;
   }
-  const { agentId, mode, isolation, timeoutMs, context: resolvedContext } = resolved;
+  const { agentId, mode, isolation, network, networkWarning, timeoutMs, context: resolvedContext } = resolved;
 
   const store = fileTaskStore(root);
   // Une `Queue` par appel : `orch run` ne lance qu'une seule tâche à la fois,
@@ -170,12 +186,15 @@ export async function runRun(root: string, objective: string, options: RunOption
         ...(resolvedContext !== undefined ? { context: resolvedContext } : {}),
         mode,
         isolation,
+        network,
+        ...(networkWarning !== undefined ? { networkWarning } : {}),
         workspace: root,
         ...(options.role ? { role: options.role } : {}),
         ...(options.model ? { model: options.model } : {}),
         timeoutMs,
         depth,
         extraAgents: config.agents,
+        ...(options.extraArgs && options.extraArgs.length > 0 ? { extraArgs: options.extraArgs } : {}),
         taskId,
         signal: controller.signal,
         ...(onEvent ? { onEvent } : {}),

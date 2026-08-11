@@ -23,6 +23,11 @@ const CAPABILITIES: AgentCapabilities = {
   addDir: true,
   mcpInjection: "flag",
   model: true,
+  // Nos arguments ne passent aucun bac à sable : le réseau est ouvert, et
+  // nous n'avons pas de quoi le refermer. `claude` sait se confiner, mais par
+  // des réglages de la machine que l'orchestrateur ne pilote pas — annoncer
+  // "toggle" reviendrait à promettre une fermeture que nous n'obtiendrions pas.
+  network: "open",
 };
 
 /** Config MCP, au format `mcpServers` documenté par Claude Code (`--mcp-config`). */

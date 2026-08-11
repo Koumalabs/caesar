@@ -93,8 +93,14 @@ function withScopeOptions(command: Command): Command {
  * Construit le programme commander. Ne parse rien : `exitCodeRef` reçoit le
  * code de sortie de la commande exécutée, lu par l'appelant après
  * `parseAsync`.
+ *
+ * `argv` sert uniquement à savoir si un « -- » figurait dans la ligne de
+ * commande (voir la commande `run`). Commander ne le conserve pas dans son
+ * API publique — il porte bien un `rawArgs`, mais hors typages, donc hors
+ * contrat. Le passer explicitement coûte un paramètre et ne dépend de rien
+ * d'interne.
  */
-export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
+export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: readonly string[] = []): Command {
   const program = new Command();
   program
     .name("orch")
@@ -348,6 +354,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
     .option("--agents <ids>", "Agents candidats, dans l'ordre de repli, séparés par des virgules (a,b,c).")
     .option("--mode <mode>", "\"read-only\" ou \"write\".")
     .option("--isolation <isolation>", "\"inplace\", \"worktree\" ou \"auto\" (défaut : auto).")
+    .option("--network <network>", "\"auto\" (défaut), \"on\" (refuse la délégation si l'agent ne sait pas ouvrir le réseau) ou \"off\".")
     .option("--timeout <durée>", "Délai maximal, p. ex. \"10m\" (défaut : 10m).")
     .action(
       async (
@@ -357,6 +364,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
           agents?: string;
           mode?: string;
           isolation?: string;
+          network?: string;
           timeout?: string;
           global?: boolean;
           local?: boolean;
@@ -373,6 +381,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
               agents: opts.agents,
               mode: opts.mode,
               isolation: opts.isolation,
+              network: opts.network,
               timeout: opts.timeout,
               json: opts.json,
               global: opts.global,
@@ -391,10 +400,15 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
   withCommonOptions(program.command("run"))
     .description("Délègue un objectif à un sous-agent, un aller-retour complet.")
     .argument("<objective>", "L'objectif confié à l'agent, en une phrase.")
+    .argument(
+      "[extra_args...]",
+      "Arguments bruts transmis tels quels au CLI de l'agent, après « -- ». Échappatoire pour ce qu'orch n'expose pas : orch run --agent codex \"…\" -- --enable feature_x",
+    )
     .option("--role <name>", "Rôle à travers lequel choisir l'agent.")
     .option("--agent <id>", "Agent à utiliser directement (l'emporte sur --role).")
     .option("--mode <mode>", "\"read-only\" ou \"write\".")
     .option("--isolation <isolation>", "\"inplace\", \"worktree\" ou \"auto\".")
+    .option("--network <network>", "\"auto\" (défaut), \"on\" (refuse la délégation si l'agent ne sait pas ouvrir le réseau) ou \"off\".")
     .option("--timeout <durée>", "Délai maximal, p. ex. \"10m\".")
     .option("--model <model>", "Modèle à demander à l'agent, s'il le supporte.")
     .option("--context <texte>", "Contexte additionnel. Préfixer par @ pour lire un fichier (@chemin).")
@@ -405,11 +419,13 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
     .action(
       async (
         objective: string,
+        extraArgs: string[],
         options: GlobalOptions & {
           role?: string;
           agent?: string;
           mode?: string;
           isolation?: string;
+          network?: string;
           timeout?: string;
           model?: string;
           context?: string;
@@ -418,15 +434,29 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
         command: Command,
       ) => {
         const opts = command.optsWithGlobals<typeof options>();
-        await run(async () =>
-          runRun(
+        await run(async () => {
+          // Commander ne distingue pas les opérandes en trop de ce qui suit
+          // « -- » : les deux atterrissent dans le même variadique. Sans cette
+          // vérification, `orch run "obj" coquille` partirait silencieusement
+          // vers l'agent, alors que commander le refusait jusqu'ici (« too many
+          // arguments »). C'est ce refus qu'on préserve, sauf intention écrite.
+          if (extraArgs.length > 0 && !argv.includes("--")) {
+            printError(
+              io,
+              `Arguments inattendus : ${extraArgs.join(" ")}. Pour les transmettre au CLI de l'agent, séparez-les par « -- ».`,
+            );
+            return EXIT_USAGE;
+          }
+          return runRun(
             await resolveRoot(opts.root),
             objective,
             {
+              extraArgs,
               role: opts.role,
               agent: opts.agent,
               mode: opts.mode,
               isolation: opts.isolation,
+              network: opts.network,
               timeout: opts.timeout,
               model: opts.model,
               context: opts.context,
@@ -434,8 +464,8 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
               channel: opts.channel,
             },
             io,
-          ),
-        );
+          );
+        });
       },
     );
 
@@ -562,7 +592,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
 /** Fait tourner le CLI sur `argv` et renvoie le code de sortie. N'appelle jamais `process.exit`. */
 export async function runCli(argv: string[], io: Io = processIo): Promise<number> {
   const exitCodeRef = { value: EXIT_OK };
-  const program = buildProgram(io, exitCodeRef);
+  const program = buildProgram(io, exitCodeRef, argv);
 
   try {
     await program.parseAsync(argv);

@@ -23,6 +23,9 @@ const CAPABILITIES: AgentCapabilities = {
   addDir: true,
   mcpInjection: "flag",
   model: true,
+  // `--allow-all-urls` est un drapeau distinct de `--allow-all-tools` et vaut
+  // dans les deux modes : ouvrir les URL n'ouvre ni l'écriture ni le shell.
+  network: "toggle",
 };
 
 /** Config MCP additionnelle, au format `mcpServers` documenté par `copilot mcp`. */
@@ -62,6 +65,12 @@ function build(ctx: BuildContext): SpawnPlan {
   } else {
     args.push("--deny-tool=write", "--deny-tool=shell");
   }
+
+  // Distinct de `--allow-all-tools`, qui ne couvre pas les URL : sans ce
+  // drapeau, copilot demandait confirmation pour chaque accès réseau — donc,
+  // en exécution non interactive, ne l'obtenait jamais. En lecture seule, les
+  // refus d'écriture et de shell ci-dessus restent en place.
+  if (ctx.task.network) args.push("--allow-all-urls");
 
   // Le répertoire de tâche héberge le rapport et le message final ; il doit
   // rester accessible même quand le workspace, lui, est en lecture seule.

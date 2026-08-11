@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -14,6 +14,7 @@ function role(overrides: Partial<RoleConfig> = {}): RoleConfig {
     agents: ["codex", "antigravity"],
     mode: "read-only",
     isolation: "inplace",
+    network: "auto",
     timeout_ms: 600_000,
     ...overrides,
   };
@@ -137,6 +138,99 @@ describe("resolveDelegation", () => {
       else process.env["PATH"] = previousPath;
       await rm(emptyPathDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("resolveDelegation — réseau", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-network-"));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("refuse — sans rien écrire sur le disque — un « on » que codex ne peut pas honorer en lecture seule", async () => {
+    // Le cas qui a motivé le chantier. Le refus tombe avant toute création de
+    // répertoire de tâche : c'est ce que la position de `decideNetwork` dans
+    // `resolveDelegation`, juste après `checkDelegation`, garantit.
+    const result = await resolveDelegation(defaultConfig(), root, {
+      agent: "codex",
+      mode: "read-only",
+      network: "on",
+      depth: 0,
+    });
+    expect("error" in result).toBe(true);
+    if (!("error" in result)) throw new Error("attendu un refus");
+    expect(result.error).toContain("codex");
+    expect(result.error).toContain("--mode write");
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  it("accorde le même « on » dès que le mode passe en écriture", async () => {
+    const result = await resolveDelegation(defaultConfig(), root, {
+      agent: "codex",
+      mode: "write",
+      network: "on",
+      depth: 0,
+    });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.network).toBe(true);
+    expect(result.networkWarning).toBeUndefined();
+  });
+
+  it("sous « auto », une tâche codex en lecture seule part quand même — mais avec un avertissement", async () => {
+    // Sans cette nuance entre `auto` et `on`, les rôles `reviewer` et
+    // `investigator` livrés par défaut seraient tous deux hors service.
+    const result = await resolveDelegation(defaultConfig(), root, {
+      agent: "codex",
+      mode: "read-only",
+      depth: 0,
+    });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.network).toBe(false);
+    expect(result.networkWarning).toContain("Réseau indisponible");
+  });
+
+  it("hérite du rôle, puis de la politique", async () => {
+    const config: OrchConfig = { ...defaultConfig(), roles: [role({ agents: ["codex"], network: "on" })] };
+    const parRole = await resolveDelegation(config, root, { role: "reviewer", mode: "write", depth: 0 });
+    if ("error" in parRole) throw new Error(parRole.error);
+    expect(parRole.network).toBe(true);
+
+    const parPolitique: OrchConfig = {
+      ...defaultConfig(),
+      policy: { ...defaultConfig().policy, default_network: "off" },
+    };
+    const result = await resolveDelegation(parPolitique, root, { agent: "codex", mode: "write", depth: 0 });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.network).toBe(false);
+  });
+
+  it("la demande explicite l'emporte sur le rôle", async () => {
+    const config: OrchConfig = { ...defaultConfig(), roles: [role({ agents: ["codex"], network: "on" })] };
+    const result = await resolveDelegation(config, root, {
+      role: "reviewer",
+      mode: "write",
+      network: "off",
+      depth: 0,
+    });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.network).toBe(false);
+  });
+
+  it("avoue ne pas savoir refermer le réseau d'un agent qu'il ne confine pas", async () => {
+    const result = await resolveDelegation(defaultConfig(), root, {
+      agent: "opencode",
+      mode: "write",
+      network: "off",
+      depth: 0,
+    });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.network).toBe(true);
+    expect(result.networkWarning).toContain("ne sait pas le refermer");
   });
 });
 

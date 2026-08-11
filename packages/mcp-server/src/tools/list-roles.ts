@@ -11,7 +11,7 @@ import { jsonResult } from "./result.js";
 export const ORCH_LIST_ROLES = "orch_list_roles";
 
 export const orchListRolesDescription =
-  "List the roles configured for this project: their purpose, default mode (read-only or write) and isolation, " +
+  "List the roles configured for this project: their purpose, default mode (read-only or write), isolation and network policy, " +
   "and — resolved right now against installed binaries and the current policy — which agent orch_delegate would " +
   "actually pick if you passed this role, including the fallback chain and why any earlier candidate was " +
   "skipped. Use this to decide whether to delegate through a role (role=\"...\") or to name an agent directly " +
@@ -39,6 +39,7 @@ export async function orchListRoles(session: McpSession): Promise<CallToolResult
         purpose: role.purpose,
         mode: role.mode,
         isolation: role.isolation,
+        network: role.network,
         timeout_ms: role.timeout_ms,
         agents: role.agents,
         would_pick: "error" in pick ? null : pick.agentId,

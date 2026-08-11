@@ -14,10 +14,10 @@
  * `mergeConfig`) —, le dire clairement plutôt que de rendre EXIT_OK sans
  * rien avoir changé.
  */
-import type { RoleConfig } from "@orch/core";
+import type { NetworkRequest, RoleConfig } from "@orch/core";
 import { loadConfig, loadLayer, parseDuration, pickAgentForRole, resolveInstalledMap, resolveRole, roleProvenance, saveLayer } from "@orch/core";
 import type { Isolation, TaskMode } from "@orch/protocol";
-import { ISOLATIONS, TASK_MODES } from "../flags.js";
+import { ISOLATIONS, NETWORK_REQUEST_VALUES, TASK_MODES } from "../flags.js";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
 import type { ScopeOptions } from "../scope.js";
@@ -83,6 +83,7 @@ export async function runRoleShow(root: string, name: string, options: RoleShowO
   writeLine(io.stdout, `Agents (ordre de repli) : ${resolved.agents.join(", ") || "(aucun)"}`);
   writeLine(io.stdout, `Mode : ${resolved.mode}`);
   writeLine(io.stdout, `Isolation : ${resolved.isolation}`);
+  writeLine(io.stdout, `Réseau : ${resolved.network}`);
   writeLine(io.stdout, `Délai : ${resolved.timeout_ms} ms`);
   writeLine(io.stdout, "Prompt système :");
   writeLine(io.stdout, resolved.systemPrompt || "(aucun)");
@@ -133,6 +134,7 @@ export interface RoleAddOptions extends ScopeOptions {
   agents?: string;
   mode?: string;
   isolation?: string;
+  network?: string;
   timeout?: string;
   json?: boolean;
 }
@@ -165,6 +167,12 @@ export async function runRoleAdd(root: string, name: string, options: RoleAddOpt
     return EXIT_USAGE;
   }
 
+  const network = (options.network ?? "auto") as NetworkRequest;
+  if (!NETWORK_REQUEST_VALUES.includes(network)) {
+    printError(io, `--network invalide (attendu l'une de : ${NETWORK_REQUEST_VALUES.join(", ")}).`);
+    return EXIT_USAGE;
+  }
+
   let timeoutMs: number;
   try {
     timeoutMs = parseDuration(options.timeout ?? "10m");
@@ -179,6 +187,7 @@ export async function runRoleAdd(root: string, name: string, options: RoleAddOpt
     agents,
     mode,
     isolation,
+    network,
     timeout_ms: timeoutMs,
   };
 

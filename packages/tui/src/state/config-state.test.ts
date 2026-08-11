@@ -46,6 +46,7 @@ import {
   upsertRole,
   type ConfigState,
 } from "./config-state";
+import { NETWORK_OPTIONS, cycle } from "../screens/shared";
 import { emptyConfigState as emptyState } from "./test-helpers";
 
 /** Exécute `fn` avec `HOME` pointé vers un répertoire temporaire : aucun `~/.config/orch/config.toml` réel n'est lu. */
@@ -68,6 +69,7 @@ const ROLE: RoleConfig = {
   agents: ["codex", "antigravity", "opencode"],
   mode: "read-only",
   isolation: "inplace",
+  network: "auto",
   timeout_ms: 600_000,
 };
 
@@ -330,6 +332,17 @@ describe("modifier la politique", () => {
     expect(effectiveConfig(updated).policy.max_parallel).toBe(8);
     expect(effectiveConfig(updated).policy.allow_recursion).toBe(true);
     expect(effectiveConfig(updated).policy.default_mode).toBe(effectiveConfig(state).policy.default_mode);
+  });
+
+  it("le réseau par défaut se règle comme les autres champs, et cycle sur ses trois valeurs", () => {
+    // Le pendant du geste de l'écran Politique (Entrée sur « Réseau par
+    // défaut »), que le harnais de rendu ne peut pas prouver : il monte
+    // l'écran avec un `onChange` no-op.
+    const state = emptyState();
+    expect(effectiveConfig(state).policy.default_network).toBe("auto");
+    const updated = updatePolicy(state, { default_network: cycle(NETWORK_OPTIONS, "auto") });
+    expect(effectiveConfig(updated).policy.default_network).toBe("on");
+    expect(cycle(NETWORK_OPTIONS, "off")).toBe("auto");
   });
 
   it("setPolicyListEntry : \"denied\" l'emporte, mais ce module ne fait qu'ajouter/retirer — la règle reste dans @orch/core", () => {

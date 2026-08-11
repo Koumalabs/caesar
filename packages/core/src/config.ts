@@ -38,6 +38,8 @@ import { parse as parseToml, stringify as stringifyToml, TomlError } from "smol-
 import type { Isolation, TaskMode } from "@orch/protocol";
 import { TaskModeSchema } from "@orch/protocol";
 import type { GenericAgentSpec } from "./registry/generic.js";
+import { NETWORK_REQUESTS } from "./network.js";
+import type { NetworkRequest } from "./network.js";
 
 export interface PolicyConfig {
   allowed: string[];
@@ -45,6 +47,7 @@ export interface PolicyConfig {
   max_parallel: number;
   default_isolation: Isolation | "auto";
   default_mode: TaskMode;
+  default_network: NetworkRequest;
   default_timeout_ms: number;
   allow_recursion: boolean;
   max_depth: number;
@@ -56,6 +59,7 @@ export interface RoleConfig {
   agents: string[];
   mode: TaskMode;
   isolation: Isolation | "auto";
+  network: NetworkRequest;
   timeout_ms: number;
   system_prompt_file?: string;
 }
@@ -171,6 +175,7 @@ function optionalDurationMsSchema() {
 }
 
 const IsolationOrAutoSchema = z.enum(["inplace", "worktree", "auto"]);
+const NetworkRequestSchema = z.enum(NETWORK_REQUESTS);
 
 /**
  * `[policy]` : chaque champ reste facultatif ici. Un fichier qui ne
@@ -187,6 +192,7 @@ const RawPolicySchema = z
     max_parallel: z.number().int().positive().optional(),
     default_isolation: IsolationOrAutoSchema.optional(),
     default_mode: TaskModeSchema.optional(),
+    default_network: NetworkRequestSchema.optional(),
     default_timeout: optionalDurationMsSchema(),
     allow_recursion: z.boolean().optional(),
     max_depth: z.number().int().nonnegative().optional(),
@@ -208,6 +214,7 @@ const RawRoleSchema = z
     agents: z.array(z.string()),
     mode: TaskModeSchema,
     isolation: IsolationOrAutoSchema.default("auto"),
+    network: NetworkRequestSchema.default("auto"),
     timeout: requiredDurationMsSchema("10m"),
     system_prompt_file: z.string().optional(),
   })
@@ -238,6 +245,7 @@ const RawAgentSchema = z
     args: z.array(z.string()).default([]),
     cwd_mode: z.enum(["process", "flag"]).optional(),
     native_read_only: z.boolean().optional(),
+    network_args: z.array(z.string()).optional(),
   })
   .strict();
 type RawAgent = z.infer<typeof RawAgentSchema>;
@@ -262,6 +270,7 @@ function toPolicyOverride(raw: RawPolicy): Partial<PolicyConfig> {
   if (raw.max_parallel !== undefined) override.max_parallel = raw.max_parallel;
   if (raw.default_isolation !== undefined) override.default_isolation = raw.default_isolation;
   if (raw.default_mode !== undefined) override.default_mode = raw.default_mode;
+  if (raw.default_network !== undefined) override.default_network = raw.default_network;
   if (raw.default_timeout !== undefined) override.default_timeout_ms = raw.default_timeout;
   if (raw.allow_recursion !== undefined) override.allow_recursion = raw.allow_recursion;
   if (raw.max_depth !== undefined) override.max_depth = raw.max_depth;
@@ -275,6 +284,7 @@ function toRoleConfig(raw: RawRole): RoleConfig {
     agents: raw.agents,
     mode: raw.mode,
     isolation: raw.isolation,
+    network: raw.network,
     timeout_ms: raw.timeout,
   };
   if (raw.system_prompt_file !== undefined) role.system_prompt_file = raw.system_prompt_file;
@@ -286,6 +296,7 @@ function toAgentSpec(raw: RawAgent): GenericAgentSpec {
   if (raw.display_name !== undefined) spec.displayName = raw.display_name;
   if (raw.cwd_mode !== undefined) spec.cwdMode = raw.cwd_mode;
   if (raw.native_read_only !== undefined) spec.capabilities = { nativeReadOnly: raw.native_read_only };
+  if (raw.network_args !== undefined) spec.networkArgs = raw.network_args;
   return spec;
 }
 
@@ -305,6 +316,7 @@ function fromPolicyOverride(policy: Partial<PolicyConfig>): Record<string, unkno
   if (policy.max_parallel !== undefined) raw.max_parallel = policy.max_parallel;
   if (policy.default_isolation !== undefined) raw.default_isolation = policy.default_isolation;
   if (policy.default_mode !== undefined) raw.default_mode = policy.default_mode;
+  if (policy.default_network !== undefined) raw.default_network = policy.default_network;
   // Stockée en millisecondes brutes plutôt que reformatée en "10m" : une
   // forme, `parseDuration` l'accepte aussi bien, et l'aller-retour
   // save/load reste ainsi exact au lieu de dépendre d'un formatage inverse.
@@ -321,6 +333,7 @@ function fromRoleConfig(role: RoleConfig): Record<string, unknown> {
     agents: role.agents,
     mode: role.mode,
     isolation: role.isolation,
+    network: role.network,
     timeout: role.timeout_ms,
   };
   if (role.system_prompt_file !== undefined) out.system_prompt_file = role.system_prompt_file;
@@ -337,6 +350,7 @@ function fromAgentSpec(agent: GenericAgentSpec): Record<string, unknown> {
   // produit, et `RawAgentSchema` est `.strict()` : elles seraient de toute
   // façon refusées à la relecture.
   if (agent.capabilities?.nativeReadOnly !== undefined) out.native_read_only = agent.capabilities.nativeReadOnly;
+  if (agent.networkArgs !== undefined) out.network_args = agent.networkArgs;
   return out;
 }
 
@@ -631,6 +645,11 @@ const DEFAULT_POLICY: PolicyConfig = {
   max_parallel: 4,
   default_isolation: "auto",
   default_mode: "write",
+  // "auto" : le réseau s'ouvre partout où l'agent retenu le permet, et le
+  // rapport le dit là où il ne le permet pas. "on" en défaut ferait échouer
+  // toute tâche en lecture seule sur codex — donc les rôles `reviewer` et
+  // `investigator` livrés ci-dessous.
+  default_network: "auto",
   default_timeout_ms: parseDuration("10m"),
   allow_recursion: false,
   max_depth: 2,
@@ -659,6 +678,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
     agents: ["codex", "antigravity"],
     mode: "read-only",
     isolation: "inplace",
+    network: "auto",
     timeout_ms: parseDuration("10m"),
     system_prompt_file: "roles/reviewer.md",
   },
@@ -668,6 +688,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
     agents: ["codex", "antigravity", "opencode"],
     mode: "write",
     isolation: "worktree",
+    network: "auto",
     timeout_ms: parseDuration("10m"),
     system_prompt_file: "roles/implementer.md",
   },
@@ -677,6 +698,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
     agents: ["antigravity", "codex", "opencode"],
     mode: "read-only",
     isolation: "auto",
+    network: "auto",
     timeout_ms: parseDuration("10m"),
     system_prompt_file: "roles/investigator.md",
   },

@@ -21,6 +21,11 @@ const CAPABILITIES: AgentCapabilities = {
   addDir: true,
   mcpInjection: "global-config",
   model: true,
+  // `agy` a bien un `--sandbox`, mais il restreint le terminal, pas le
+  // réseau — sa capture réelle (test/fixtures/antigravity.jsonl) montre au
+  // contraire des outils `open_browser_url`, `read_url_content` et
+  // `search_web`. Nous ne le passons pas, et nous ne saurions pas refermer.
+  network: "open",
 };
 
 /** Convertit une durée en millisecondes vers la syntaxe Go attendue par `--print-timeout`. */

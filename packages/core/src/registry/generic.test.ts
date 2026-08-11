@@ -78,7 +78,44 @@ describe("createGenericAgent", () => {
       addDir: false,
       mcpInjection: "none",
       model: false,
+      // « inconnu », et non « fermé » : sans `networkArgs`, l'orchestrateur
+      // n'a aucune idée de ce que ce CLI fait du réseau.
+      network: "unknown",
     });
+  });
+
+  it("des arguments réseau déclarés font passer la capacité à « pilotable »", () => {
+    const agent = createGenericAgent({
+      id: "mon-cli",
+      bin: "mon-cli",
+      args: ["{{prompt}}"],
+      networkArgs: ["--online"],
+    });
+    expect(agent.capabilities.network).toBe("toggle");
+  });
+
+  it("n'ajoute les arguments réseau que lorsque la tâche a droit au réseau", () => {
+    const agent = createGenericAgent({
+      id: "mon-cli",
+      bin: "mon-cli",
+      args: ["{{prompt}}"],
+      networkArgs: ["--online"],
+    });
+    expect(agent.build(sampleContext({ task: sampleTask({ network: true }) })).args).toContain("--online");
+    expect(agent.build(sampleContext({ task: sampleTask({ network: false }) })).args).not.toContain("--online");
+  });
+
+  it("refuse un jeton inconnu jusque dans les arguments réseau", () => {
+    // Sans ce contrôle, la coquille ferait disparaître l'argument entier
+    // (voir `substitute`) : l'agent partirait sans réseau tout en annonçant
+    // « réseau pilotable ».
+    const error = validateGenericAgentSpec({
+      id: "mon-cli",
+      bin: "mon-cli",
+      args: ["{{prompt}}"],
+      networkArgs: ["--proxy={{prxy}}"],
+    });
+    expect(error).toContain("{{prxy}}");
   });
 
   it("se contente du palier fichier même si un canal est disponible (mcpInjection none)", () => {

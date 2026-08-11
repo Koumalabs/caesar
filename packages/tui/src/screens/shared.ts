@@ -7,11 +7,12 @@
  * pas reportée dans l'autre.
  */
 import type { GenericAgentSpec } from "@orch/core";
-import { listAgentDefinitions } from "@orch/core";
+import { listAgentDefinitions, NETWORK_REQUESTS } from "@orch/core";
 import { IsolationSchema, TaskModeSchema } from "@orch/protocol";
 
 export const MODE_OPTIONS = TaskModeSchema.options;
 export const ISOLATION_OPTIONS = [...IsolationSchema.options, "auto"] as const;
+export const NETWORK_OPTIONS = NETWORK_REQUESTS;
 
 /**
  * Identifiants du catalogue, natif étendu des agents de configuration

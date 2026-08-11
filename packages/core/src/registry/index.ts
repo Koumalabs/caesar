@@ -10,6 +10,8 @@ import { copilotAgent } from "../adapters/copilot.js";
 import { opencodeAgent } from "../adapters/opencode.js";
 import { createGenericAgent } from "./generic.js";
 import type { GenericAgentSpec } from "./generic.js";
+import { describeNetworkControl } from "../network.js";
+import type { NetworkControl } from "../network.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -139,7 +141,12 @@ export async function detectAgentInstallation(def: AgentDefinition): Promise<Age
  * l'importe désormais d'ici.
  */
 export function describeAgentCapabilities(def: AgentDefinition): string[] {
-  const caps: string[] = [];
+  // Le réseau en tête, et non en queue : c'est la seule capacité toujours
+  // présente, et la plus déterminante pour savoir si une tâche a une chance
+  // d'aboutir. En dernier, c'était aussi la première rognée par le plafond de
+  // la colonne « capacités » pour les agents les mieux pourvus — codex, celui
+  // dont le réseau surprend le plus, la perdait exactement.
+  const caps: string[] = [describeNetworkControl(def.capabilities.network)];
   if (def.capabilities.nativeReadOnly) caps.push("lecture-seule native");
   if (def.capabilities.outputSchema) caps.push("schéma de sortie");
   if (def.capabilities.finalMessageFile) caps.push("message final fichier");
@@ -161,7 +168,7 @@ export function describeAgentCapabilities(def: AgentDefinition): string[] {
  * l'autre (un test le vérifie).
  */
 export function describeAgentCapabilitiesShort(def: AgentDefinition): string[] {
-  const caps: string[] = [];
+  const caps: string[] = [SHORT_NETWORK[def.capabilities.network]];
   if (def.capabilities.nativeReadOnly) caps.push("ro");
   if (def.capabilities.outputSchema) caps.push("schéma");
   if (def.capabilities.finalMessageFile) caps.push("msg");
@@ -171,6 +178,18 @@ export function describeAgentCapabilitiesShort(def: AgentDefinition): string[] {
   if (def.capabilities.mcpInjection !== "none") caps.push("mcp");
   return caps;
 }
+
+/**
+ * Marqueurs réseau, choisis pour se distinguer d'un coup d'œil dans une
+ * colonne : `net` seul dit « ouvert », les trois autres portent un signe qui
+ * appelle la lecture du détail.
+ */
+const SHORT_NETWORK: Record<NetworkControl, string> = {
+  open: "net",
+  toggle: "net±",
+  "write-only": "net(w)",
+  unknown: "net?",
+};
 
 export {
   GENERIC_ARG_TOKENS,

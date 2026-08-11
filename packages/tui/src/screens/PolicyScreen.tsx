@@ -24,7 +24,7 @@ import { useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import type { PolicyConfig } from "@orch/core";
 import { parseDuration } from "@orch/core";
-import { catalogIds, ISOLATION_OPTIONS, MODE_OPTIONS, cycle, formatMs } from "./shared";
+import { catalogIds, ISOLATION_OPTIONS, MODE_OPTIONS, NETWORK_OPTIONS, cycle, formatMs } from "./shared";
 import {
   effectiveConfig,
   formatInheritedMark,
@@ -53,6 +53,7 @@ type Field_ = keyof PolicyConfig;
 const FIELDS: Field_[] = [
   "default_mode",
   "default_isolation",
+  "default_network",
   "default_timeout_ms",
   "max_parallel",
   "max_depth",
@@ -64,6 +65,7 @@ const FIELDS: Field_[] = [
 const FIELD_LABELS: Record<Field_, string> = {
   default_mode: "Mode par défaut",
   default_isolation: "Isolation par défaut",
+  default_network: "Réseau par défaut",
   default_timeout_ms: "Délai par défaut",
   max_parallel: "Tâches en parallèle",
   max_depth: "Profondeur maximale",
@@ -76,6 +78,7 @@ const FIELD_LABELS: Record<Field_, string> = {
 const TOML_KEYS: Record<Field_, string> = {
   default_mode: "default_mode",
   default_isolation: "default_isolation",
+  default_network: "default_network",
   default_timeout_ms: "default_timeout",
   max_parallel: "max_parallel",
   max_depth: "max_depth",
@@ -88,6 +91,8 @@ const FIELD_HINTS: Record<Field_, string> = {
   default_mode: "Ce qu'une tâche fait à défaut de précision. read-only : l'agent ne doit rien modifier.",
   default_isolation:
     "auto : worktree en écriture, et pour toute lecture seule confiée à un agent sans mode natif. inplace : le dépôt lui-même.",
+  default_network:
+    "auto : le réseau s'ouvre partout où l'agent le permet, et le rapport le dit ailleurs. on : refuse la délégation si l'agent ne sait pas l'ouvrir. off : ferme là où c'est possible.",
   default_timeout_ms: 'Au-delà, la tâche est interrompue. Formes acceptées : "10m", "90s", "1h".',
   max_parallel: "Nombre de tâches menées de front.",
   max_depth: "Un agent délégataire ne peut plus déléguer une fois cette profondeur atteinte.",
@@ -142,6 +147,7 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
       else if (key.name === "return") {
         if (field === "default_isolation") onChange(updatePolicy(state, { default_isolation: cycle(ISOLATION_OPTIONS, policy.default_isolation) }));
         else if (field === "default_mode") onChange(updatePolicy(state, { default_mode: cycle(MODE_OPTIONS, policy.default_mode) }));
+        else if (field === "default_network") onChange(updatePolicy(state, { default_network: cycle(NETWORK_OPTIONS, policy.default_network) }));
         else if (field === "allow_recursion") onChange(updatePolicy(state, { allow_recursion: !policy.allow_recursion }));
         else if (field === "max_parallel") setEditingAndNotifyApp({ field: "max_parallel", buffer: String(policy.max_parallel) });
         else if (field === "max_depth") setEditingAndNotifyApp({ field: "max_depth", buffer: String(policy.max_depth) });
@@ -192,6 +198,8 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
         return { text: policy.default_mode };
       case "default_isolation":
         return { text: policy.default_isolation };
+      case "default_network":
+        return { text: policy.default_network };
       case "default_timeout_ms":
         return { text: formatMs(policy.default_timeout_ms) };
       case "max_parallel":

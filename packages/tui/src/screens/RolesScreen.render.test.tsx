@@ -55,7 +55,7 @@ describe("RolesScreen", () => {
       ...state.layers[0]!,
       override: {
         roles: [
-          { name: "reviewer", purpose: "Redéfini globalement.", agents: ["codex"], mode: "read-only", isolation: "inplace", timeout_ms: 600_000 },
+          { name: "reviewer", purpose: "Redéfini globalement.", agents: ["codex"], mode: "read-only", isolation: "inplace", network: "auto", timeout_ms: 600_000 },
         ],
       },
     };
@@ -106,8 +106,8 @@ describe("RolesScreen", () => {
   it("propose d'ouvrir l'éditeur quand on atteint le champ du prompt", async () => {
     const setup = await mount();
     await act(async () => setup.mockInput.pressEnter());
-    // name, purpose, agents, mode, isolation, timeout, prompt : six crans.
-    for (let i = 0; i < 6; i++) await act(async () => setup.mockInput.pressKey("j"));
+    // name, purpose, agents, mode, isolation, network, timeout, prompt : sept crans.
+    for (let i = 0; i < 7; i++) await act(async () => setup.mockInput.pressKey("j"));
     await act(async () => setup.renderOnce());
     const frame = setup.captureCharFrame();
     expect(frame).toContain("éditer le prompt");

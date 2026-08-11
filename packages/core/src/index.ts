@@ -7,6 +7,7 @@ export { claudeAgent } from "./adapters/claude.js";
 export * from "./store.js";
 export * from "./config.js";
 export * from "./policy.js";
+export * from "./network.js";
 export * from "./roles.js";
 export * from "./delegation.js";
 export * from "./mcp-registration.js";

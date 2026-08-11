@@ -156,6 +156,16 @@ describe("AgentsScreen — déclarer un agent hors catalogue", () => {
     setup.renderer.destroy();
   });
 
+  it("nomme le réseau de chaque agent du catalogue — l'information qui manquait", async () => {
+    const setup = await mount();
+    const frame = setup.captureCharFrame();
+    // codex n'ouvre le réseau qu'en écriture, opencode l'a ouvert : les deux
+    // se présentaient à l'identique avant ce chantier.
+    expect(frame).toContain("net(w)");
+    expect(frame).toContain("net");
+    setup.renderer.destroy();
+  });
+
   it('signale que "denied" est hérité de la couche globale tant que la couche active ne le déclare pas', async () => {
     const state = makeState();
     state.layers[0] = { ...state.layers[0]!, override: { policy: { denied: ["copilot"] } } };

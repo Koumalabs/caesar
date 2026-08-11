@@ -33,7 +33,10 @@ describe("PolicyScreen", () => {
     expect(setup.captureCharFrame()).toContain("default_mode");
 
     // Descendre change l'explication — elle suit la sélection.
-    for (let i = 0; i < 5; i++) await act(async () => setup.mockInput.pressKey("j"));
+    // default_mode, default_isolation, default_network, default_timeout_ms,
+    // max_parallel, max_depth, allow_recursion : six crans jusqu'à la
+    // récursion (FIELDS, PolicyScreen.tsx).
+    for (let i = 0; i < 6; i++) await act(async () => setup.mockInput.pressKey("j"));
     await act(async () => setup.renderOnce());
     const frame = setup.captureCharFrame();
     expect(frame).toContain("allow_recursion");
@@ -75,6 +78,22 @@ describe("PolicyScreen", () => {
     state.draft = { policy: { max_parallel: 3 } };
     const setup = await mount(state);
     expect(setup.captureCharFrame()).not.toContain("← global");
+    setup.renderer.destroy();
+  });
+
+  it("expose le réseau par défaut, avec sa clé TOML et ce qu'il fait", async () => {
+    // L'écran est contrôlé : `onChange` est un no-op dans ce harnais, donc
+    // la valeur ne peut pas changer ici. Ce qui se vérifie à ce niveau, c'est
+    // que le réglage existe, se sélectionne, et s'explique — le cycle
+    // lui-même relève de `updatePolicy` (state/config-state.test.ts).
+    const setup = await mount();
+    expect(setup.captureCharFrame()).toContain("Réseau par défaut");
+    // default_mode, default_isolation, default_network : deux crans.
+    for (let i = 0; i < 2; i++) await act(async () => setup.mockInput.pressKey("j"));
+    await act(async () => setup.renderOnce());
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("default_network");
+    expect(frame).toContain("refuse la délégation si l'agent ne sait pas l'ouvrir");
     setup.renderer.destroy();
   });
 

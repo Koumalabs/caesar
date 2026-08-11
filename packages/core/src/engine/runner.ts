@@ -171,6 +171,15 @@ export interface RunTaskInput {
   acceptance_criteria?: string[];
   mode: TaskMode;
   isolation?: Isolation | "auto";
+  /**
+   * Le réseau est-il disponible pour cette tâche ? Déjà résolu — la demande
+   * tri-état s'arrête chez `resolveDelegation`, qui l'a confrontée à ce que
+   * l'agent permet. Absent : vrai, comme le défaut du protocole, pour que les
+   * appelants qui n'en savent rien (`orch agents test`) restent inchangés.
+   */
+  network?: boolean;
+  /** Avertissement issu de cette résolution, à verser au rapport (voir `ResolvedDelegation.networkWarning`). */
+  networkWarning?: string;
   workspace: string;
   role?: string;
   model?: string;
@@ -278,6 +287,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     acceptance_criteria: input.acceptance_criteria ?? [],
     mode: input.mode,
     isolation,
+    network: input.network,
     workspace,
     base_ref: handle?.baseRef,
     deadline_ms: timeoutMs,
@@ -436,6 +446,13 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
 
   if (warning) {
     report = withFinding(report, { severity: "low", title: "Isolation dégradée", detail: warning });
+  }
+
+  // `info` plutôt que `low` : rien n'a échoué, et ce cas est le quotidien des
+  // rôles en lecture seule sur codex. Déclarer `network = "off"` sur le rôle
+  // rend l'intention explicite et fait taire l'avertissement.
+  if (input.networkWarning) {
+    report = withFinding(report, { severity: "info", title: "Réseau non garanti", detail: input.networkWarning });
   }
 
   // Persisté avant la mise à jour finale du store (voir C2 de la revue
