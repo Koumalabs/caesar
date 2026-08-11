@@ -13,13 +13,19 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RoleConfig } from "@orch/core";
-import { configPathFor, saveLayer } from "@orch/core";
+import type { GenericAgentSpec, RoleConfig } from "@orch/core";
+import { configPathFor, listAgentDefinitions, saveLayer } from "@orch/core";
 import {
   activeScopePath,
   addRoleAgent,
+  agentDeclaredByActiveLayer,
+  agentMark,
   effectiveConfig,
+  findAgentSpec,
   findRole,
+  removeAgentSpec,
+  updateAgentSpec,
+  upsertAgentSpec,
   isDirty,
   loadConfigState,
   moveRoleAgent,
@@ -191,6 +197,100 @@ describe("créer et supprimer un rôle", () => {
     expect(role.timeout_ms).toBe(120_000);
     expect(role.agents).toEqual(ROLE.agents);
     expect(role.purpose).toBe(ROLE.purpose);
+  });
+});
+
+describe("déclarer et retirer un agent", () => {
+  const SPEC: GenericAgentSpec = { id: "aider", bin: "aider", args: ["--message", "{{prompt}}"], cwdMode: "process" };
+
+  it("upsertAgentSpec ajoute l'agent au catalogue effectif, sans toucher au catalogue natif", () => {
+    const state = emptyState();
+    const declared = upsertAgentSpec(state, SPEC);
+
+    expect(findAgentSpec(declared, "aider")).toEqual(SPEC);
+    const ids = listAgentDefinitions(effectiveConfig(declared).agents).map((def) => def.id);
+    expect(ids).toContain("aider");
+    expect(ids).toContain("codex"); // les natifs restent
+    expect(agentDeclaredByActiveLayer(declared, "aider")).toBe(true);
+  });
+
+  it("upsertAgentSpec remplace l'entrée existante plutôt que de la doubler", () => {
+    const state = upsertAgentSpec(emptyState(), SPEC);
+    const replaced = upsertAgentSpec(state, { ...SPEC, bin: "/opt/aider" });
+    expect(effectiveConfig(replaced).agents).toHaveLength(1);
+    expect(findAgentSpec(replaced, "aider")?.bin).toBe("/opt/aider");
+  });
+
+  it("updateAgentSpec modifie un champ sans toucher aux autres, et ignore un agent natif", () => {
+    const state = upsertAgentSpec(emptyState(), SPEC);
+    const updated = updateAgentSpec(state, "aider", { cwdMode: "flag" });
+    expect(findAgentSpec(updated, "aider")).toEqual({ ...SPEC, cwdMode: "flag" });
+
+    // "codex" est câblé dans le registre : aucune entrée `[[agent]]` à modifier.
+    expect(updateAgentSpec(state, "codex", { bin: "autre" })).toBe(state);
+  });
+
+  it("removeAgentSpec retire la déclaration quand la couche active la porte", () => {
+    const state = upsertAgentSpec(emptyState(), SPEC);
+    const removed = removeAgentSpec(state, "aider");
+    expect(findAgentSpec(removed, "aider")).toBeUndefined();
+    expect(listAgentDefinitions(effectiveConfig(removed).agents).map((d) => d.id)).not.toContain("aider");
+  });
+
+  it("removeAgentSpec n'a aucun effet sur une déclaration héritée, et la marque le dit", async () => {
+    await withFakeHome(async () => {
+      const root = await mkdtemp(join(tmpdir(), "orch-tui-agent-inherited-"));
+      try {
+        await saveLayer("global", root, { agents: [SPEC] });
+        const state = await loadConfigState(root); // activeScope "project" par défaut
+
+        expect(agentDeclaredByActiveLayer(state, "aider")).toBe(false);
+        expect(findAgentSpec(state, "aider")).toEqual(SPEC); // hérité, visible dans la fusion
+        expect(agentMark(state, "aider")).toBe("global");
+
+        // Même limite que `removeRole` et `orch agents remove` : la fusion par
+        // clé ne sait pas exprimer la suppression d'une entrée héritée.
+        const attempted = removeAgentSpec(state, "aider");
+        expect(findAgentSpec(attempted, "aider")).toEqual(SPEC);
+        expect(isDirty(attempted)).toBe(false);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("une déclaration héritée modifiée bascule en entier sur la couche active", async () => {
+    await withFakeHome(async () => {
+      const root = await mkdtemp(join(tmpdir(), "orch-tui-agent-override-"));
+      try {
+        await saveLayer("global", root, { agents: [SPEC] });
+        const state = await loadConfigState(root);
+
+        const updated = updateAgentSpec(state, "aider", { bin: "/opt/aider" });
+        expect(agentDeclaredByActiveLayer(updated, "aider")).toBe(true);
+        expect(agentMark(updated, "aider")).toBeNull(); // plus rien à surcharger
+        // L'entrée bascule entière, arguments compris : c'est la fusion par clé.
+        expect(findAgentSpec(updated, "aider")).toEqual({ ...SPEC, bin: "/opt/aider" });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("survit à l'aller-retour disque, capacité comprise", async () => {
+    await withFakeHome(async () => {
+      const root = await mkdtemp(join(tmpdir(), "orch-tui-agent-save-"));
+      try {
+        const state = upsertAgentSpec(await loadConfigState(root), { ...SPEC, capabilities: { nativeReadOnly: true } });
+        await saveConfigState(root, state);
+
+        const reloaded = await loadConfigState(root);
+        expect(findAgentSpec(reloaded, "aider")).toEqual({ ...SPEC, capabilities: { nativeReadOnly: true } });
+        expect(isDirty(reloaded)).toBe(false);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
   });
 });
 

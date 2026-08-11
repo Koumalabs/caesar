@@ -57,6 +57,22 @@ export function resolveAgentDefinition(id: string, extraAgents: readonly Generic
 
 /** Cherche un binaire exécutable dans le PATH, sans lancer de processus. */
 export async function findBinaryInPath(bin: string): Promise<string | null> {
+  // Un `bin` qui contient un séparateur désigne un fichier, pas un nom à
+  // chercher : c'est la règle d'`execvp` et de tous les shells, et c'est
+  // celle que `spawn` applique déjà au lancement. Sans ce cas, `join(dir,
+  // "/opt/mon-cli")` produisait "/usr/bin/opt/mon-cli" pour chaque répertoire
+  // du PATH, donc toujours `null` — un agent déclaré par chemin absolu
+  // tournait parfaitement mais était rapporté "absent" par `orch doctor`,
+  // `orch agents list` et l'écran Agents du TUI.
+  if (bin.includes("/")) {
+    try {
+      await access(bin, constants.X_OK);
+      return bin;
+    } catch {
+      return null;
+    }
+  }
+
   const pathVar = process.env["PATH"] ?? "";
   for (const dir of pathVar.split(delimiter)) {
     if (!dir) continue;
@@ -156,5 +172,13 @@ export function describeAgentCapabilitiesShort(def: AgentDefinition): string[] {
   return caps;
 }
 
-export { createGenericAgent, type GenericAgentSpec } from "./generic.js";
+export {
+  GENERIC_ARG_TOKENS,
+  createGenericAgent,
+  formatArgTemplate,
+  splitArgTemplate,
+  validateGenericAgentSpec,
+  type GenericAgentSpec,
+  type GenericArgToken,
+} from "./generic.js";
 export * from "./types.js";

@@ -13,8 +13,10 @@
  * `orch policy allow|deny` — "denied" est le même champ) : jamais la fusion,
  * voir le brief de la tâche 13.
  */
-import type { ConfigScope } from "@orch/core";
+import type { ConfigScope, GenericAgentSpec } from "@orch/core";
 import {
+  AGENT_DEFINITIONS,
+  GENERIC_ARG_TOKENS,
   agentProvenance,
   checkDelegation,
   createQueue,
@@ -25,13 +27,17 @@ import {
   findBinaryInPath,
   listAgentDefinitions,
   loadConfig,
+  loadLayer,
   materializePolicyList,
   runTask,
+  saveLayer,
+  splitArgTemplate,
+  validateGenericAgentSpec,
 } from "@orch/core";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
 import type { ScopeOptions } from "../scope.js";
-import { materializationNotice, resolveScope, scopeLabel } from "../scope.js";
+import { materializationNotice, resolveScope, scopeFlagHint, scopeLabel } from "../scope.js";
 
 export interface AgentsListOptions {
   json?: boolean;
@@ -132,6 +138,150 @@ export async function runAgentsDisable(root: string, id: string, options: Agents
     return EXIT_USAGE;
   }
   return reportToggle(io, options, id, false, result.scope, result.effective, result.materialized);
+}
+
+// ---------------------------------------------------------------------------
+// Déclaration d'un agent (`[[agent]]`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Les cinq agents câblés dans le registre. Déclarer une entrée `[[agent]]`
+ * portant l'un de ces identifiants est légitime — `listAgentDefinitions` fait
+ * gagner la configuration sur le natif, délibérément — mais assez lourd de
+ * conséquences (l'adaptateur natif, ses capacités et sa traduction
+ * d'événements disparaissent au profit d'un lancement générique) pour être
+ * signalé plutôt que subi.
+ */
+const NATIVE_IDS = new Set(AGENT_DEFINITIONS.map((def) => def.id));
+
+/** Rappel des jetons substituables — l'aide de `--args` le cite (voir `program.ts`), plutôt qu'une seconde liste écrite à la main. */
+export const ARG_TOKENS_HINT = GENERIC_ARG_TOKENS.map((name) => `{{${name}}}`).join(", ");
+
+export interface AgentsAddOptions extends ScopeOptions {
+  bin?: string;
+  args?: string;
+  displayName?: string;
+  cwdMode?: string;
+  readOnlyNative?: boolean;
+  json?: boolean;
+}
+
+export async function runAgentsAdd(root: string, id: string, options: AgentsAddOptions, io: Io): Promise<number> {
+  const scope = resolveScope(options);
+  if (typeof scope !== "string") {
+    printError(io, scope.error);
+    return EXIT_USAGE;
+  }
+
+  const bin = options.bin?.trim();
+  if (!bin) {
+    printError(io, 'Précisez --bin <commande> : le binaire à lancer pour cet agent (par exemple --bin aider).');
+    return EXIT_USAGE;
+  }
+
+  const cwdMode = options.cwdMode ?? "process";
+  if (cwdMode !== "process" && cwdMode !== "flag") {
+    printError(io, '--cwd-mode invalide (attendu "process" — le répertoire courant porte le workspace — ou "flag" — le workspace est déjà passé en argument).');
+    return EXIT_USAGE;
+  }
+
+  let args: string[];
+  try {
+    args = splitArgTemplate(options.args ?? "{{prompt}}");
+  } catch (error) {
+    printError(io, error instanceof Error ? error.message : String(error));
+    return EXIT_USAGE;
+  }
+
+  const spec: GenericAgentSpec = { id, bin, args, cwdMode };
+  if (options.displayName !== undefined) spec.displayName = options.displayName;
+  if (options.readOnlyNative) spec.capabilities = { nativeReadOnly: true };
+
+  const invalid = validateGenericAgentSpec(spec);
+  if (invalid) {
+    printError(io, invalid);
+    return EXIT_USAGE;
+  }
+
+  const layer = await loadLayer(scope, root);
+  const replaced = layer.agents?.some((agent) => agent.id === id) ?? false;
+  const agents = [...(layer.agents ?? []).filter((agent) => agent.id !== id), spec];
+  await saveLayer(scope, root, { ...layer, agents });
+
+  // Vérification d'installation *après* l'écriture, et jamais bloquante :
+  // déclarer un agent pas encore installé est légitime (une machine, un
+  // fichier de configuration partagé), mais l'apprendre au premier `orch run`
+  // ne l'est pas.
+  const binPath = await findBinaryInPath(bin);
+
+  if (options.json) {
+    printJson(io, { agent: spec, replaced, scope, bin_path: binPath, overrides_native: NATIVE_IDS.has(id) });
+    return EXIT_OK;
+  }
+
+  writeLine(io.stdout, `Agent "${id}" ${replaced ? "remplacé" : "déclaré"} (couche ${scopeLabel(scope)}).`);
+  writeLine(io.stdout, `Ligne de commande : ${bin} ${args.join(" ")}`);
+  if (NATIVE_IDS.has(id)) {
+    writeLine(
+      io.stdout,
+      `Attention : "${id}" est un agent du catalogue natif. Cette déclaration le remplace — son adaptateur, ses capacités et sa traduction d'événements ne s'appliquent plus. Pour seulement l'autoriser ou le refuser, "orch agents disable ${id}".`,
+    );
+  }
+  if (binPath === null) {
+    // Le PATH n'est consulté que pour un nom simple : un chemin explicite
+    // désigne un fichier (voir `findBinaryInPath`), et dire "introuvable dans
+    // le PATH" enverrait alors chercher au mauvais endroit.
+    const why = bin.includes("/")
+      ? `n'existe pas ou n'est pas exécutable`
+      : `est introuvable dans le PATH`;
+    writeLine(io.stdout, `Le binaire "${bin}" ${why} : la déclaration est enregistrée, mais l'agent ne sera pas retenu tant qu'il ne le sera pas.`);
+  }
+  return EXIT_OK;
+}
+
+export interface AgentsRemoveOptions extends ScopeOptions {
+  json?: boolean;
+}
+
+export async function runAgentsRemove(root: string, id: string, options: AgentsRemoveOptions, io: Io): Promise<number> {
+  const scope = resolveScope(options);
+  if (typeof scope !== "string") {
+    printError(io, scope.error);
+    return EXIT_USAGE;
+  }
+
+  const layer = await loadLayer(scope, root);
+  if (!layer.agents?.some((agent) => agent.id === id)) {
+    // Même limite que `orch role remove` : la fusion par clé (`mergeConfig`)
+    // remplace, elle ne supprime jamais par absence. Retirer une entrée d'une
+    // couche qui ne la déclare pas ne la ferait pas disparaître de la fusion —
+    // un EXIT_OK mentirait sur ce qui vient de se passer.
+    const { layers } = await loadConfig(root);
+    const actual = agentProvenance(layers, id);
+    if (actual === "default") {
+      const hint = NATIVE_IDS.has(id)
+        ? `il fait partie du catalogue natif : aucune couche ne le déclare, et rien ne le supprime. Pour l'écarter des délégations, "orch agents disable ${id}".`
+        : `aucune couche ne le déclare : vérifiez l'identifiant avec "orch agents list".`;
+      printError(io, `Rien à supprimer pour l'agent "${id}" : ${hint}`);
+    } else {
+      printError(
+        io,
+        `L'agent "${id}" n'est pas déclaré par la couche ${scopeLabel(scope)} : rien à supprimer ici, il vient de la couche ${scopeLabel(actual)} — réessayez avec ${scopeFlagHint(actual)}.`,
+      );
+    }
+    return EXIT_USAGE;
+  }
+
+  const agents = layer.agents.filter((agent) => agent.id !== id);
+  await saveLayer(scope, root, { ...layer, agents });
+
+  if (options.json) {
+    printJson(io, { id, removed: true, scope, restores_native: NATIVE_IDS.has(id) });
+    return EXIT_OK;
+  }
+  writeLine(io.stdout, `Agent "${id}" retiré (couche ${scopeLabel(scope)}).`);
+  if (NATIVE_IDS.has(id)) writeLine(io.stdout, `L'adaptateur natif "${id}" reprend la main.`);
+  return EXIT_OK;
 }
 
 export interface AgentsTestOptions {

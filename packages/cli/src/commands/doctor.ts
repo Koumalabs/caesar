@@ -105,7 +105,17 @@ export async function runDoctor(root: string, options: DoctorOptions, io: Io): P
   if (missing.length > 0) {
     writeLine(io.stdout, "À installer :");
     for (const r of missing) {
-      bullet(`"${r.id}" (${r.display_name}) : binaire "${r.bin}" introuvable dans le PATH. Installez-le, puis relancez "orch doctor".`);
+      // Un agent déclaré en configuration porte souvent un chemin explicite
+      // plutôt qu'un nom : le PATH n'entre alors pas en jeu (voir
+      // `findBinaryInPath`), et parler de lui enverrait chercher au mauvais
+      // endroit. Le conseil change avec la cause : on installe un binaire
+      // absent du PATH, on corrige un chemin qui ne désigne rien.
+      const explicitPath = r.bin.includes("/");
+      bullet(
+        explicitPath
+          ? `"${r.id}" (${r.display_name}) : "${r.bin}" n'existe pas ou n'est pas exécutable. Corrigez le chemin ("orch agents add ${r.id} --bin <chemin>"), puis relancez "orch doctor".`
+          : `"${r.id}" (${r.display_name}) : binaire "${r.bin}" introuvable dans le PATH. Installez-le, puis relancez "orch doctor".`,
+      );
     }
     if (denied.length > 0) writeLine(io.stdout);
   }

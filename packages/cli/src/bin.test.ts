@@ -30,7 +30,7 @@ describe("buildProgram (structurel)", () => {
     expect(names).toEqual(["agents", "apply", "cancel", "channel", "config", "diff", "doctor", "gc", "init", "logs", "mcp", "policy", "protocol", "ps", "role", "run"]);
 
     const agents = program.commands.find((c) => c.name() === "agents")!;
-    expect(agents.commands.map((c) => c.name()).sort()).toEqual(["disable", "enable", "list", "test"]);
+    expect(agents.commands.map((c) => c.name()).sort()).toEqual(["add", "disable", "enable", "list", "remove", "test"]);
 
     const role = program.commands.find((c) => c.name() === "role")!;
     expect(role.commands.map((c) => c.name()).sort()).toEqual(["add", "list", "remove", "show"]);

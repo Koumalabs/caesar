@@ -32,8 +32,18 @@
  * appelée sans une action explicite de l'utilisateur (`s` pour enregistrer,
  * jamais une frappe de modification).
  */
-import type { ConfigLayer, ConfigOverride, ConfigScope, OrchConfig, PolicyConfig, ProvenanceSource, RoleConfig } from "@orch/core";
+import type {
+  ConfigLayer,
+  ConfigOverride,
+  ConfigScope,
+  GenericAgentSpec,
+  OrchConfig,
+  PolicyConfig,
+  ProvenanceSource,
+  RoleConfig,
+} from "@orch/core";
 import {
+  agentProvenance,
   configPathFor,
   loadConfig,
   materializeListEdit,
@@ -203,6 +213,68 @@ export function setPolicyListEntry(state: ConfigState, field: PolicyListField, a
 export function toggleAgentDenied(state: ConfigState, agentId: string): ConfigState {
   const currentlyDenied = effectiveConfig(state).policy.denied.includes(agentId);
   return setPolicyListEntry(state, "denied", agentId, !currentlyDenied);
+}
+
+// ---------------------------------------------------------------------------
+// Agents : déclaration (`[[agent]]`)
+//
+// Autoriser un agent et *déclarer* un agent sont deux choses différentes, et
+// c'est la distinction que cette section porte : la première n'écrit qu'une
+// liste de la politique (juste au-dessus), la seconde ajoute une entrée
+// `[[agent]]` qui étend le catalogue. Tout ici décalque la section Rôles plus
+// bas — même fusion par clé, même limite sur la suppression d'une entrée
+// héritée, mêmes noms — parce que c'est exactement la même mécanique de
+// configuration, appliquée à `agents` au lieu de `roles`.
+// ---------------------------------------------------------------------------
+
+/** L'agent déclaré tel qu'il s'afficherait après enregistrement (fusion effective). `undefined` pour un agent du catalogue natif, qu'aucune couche ne déclare. */
+export function findAgentSpec(state: ConfigState, id: string): GenericAgentSpec | undefined {
+  return effectiveConfig(state).agents.find((agent) => agent.id === id);
+}
+
+/** Provenance d'une déclaration d'agent, calculée sur `layers` avec `draft` substitué. "default" pour les agents natifs. */
+export function agentProvenanceOf(state: ConfigState, id: string): ProvenanceSource {
+  return agentProvenance(layersWithDraft(state), id);
+}
+
+/** Marque d'héritage d'une déclaration d'agent, `null` si la couche active la déclare déjà (ou plus spécifique). */
+export function agentMark(state: ConfigState, id: string): ProvenanceSource | null {
+  return inheritedMark(state, agentProvenanceOf(state, id));
+}
+
+/** Vrai si la couche active déclare cet agent en propre — condition pour pouvoir le retirer (voir `removeAgentSpec`, et `orch agents remove`). */
+export function agentDeclaredByActiveLayer(state: ConfigState, id: string): boolean {
+  return (state.draft.agents ?? []).some((agent) => agent.id === id);
+}
+
+/** Écrit `spec` en entier dans la couche active, en remplaçant l'entrée de même `id` s'il y en a une — la fusion par clé de `mergeConfig`, comme pour les rôles. */
+export function upsertAgentSpec(state: ConfigState, spec: GenericAgentSpec): ConfigState {
+  const agents = [...(state.draft.agents ?? []).filter((agent) => agent.id !== spec.id), spec];
+  return withDraft(state, { ...state.draft, agents });
+}
+
+/**
+ * Modifie une déclaration existante. Sans effet sur un agent du catalogue
+ * natif : il n'y a pas de `GenericAgentSpec` à modifier — le remplacer se
+ * fait en le déclarant (`upsertAgentSpec`), un geste bien plus lourd de
+ * conséquences, que l'appelant doit demander explicitement.
+ */
+export function updateAgentSpec(state: ConfigState, id: string, patch: Partial<GenericAgentSpec>): ConfigState {
+  const current = findAgentSpec(state, id);
+  if (!current) return state;
+  return upsertAgentSpec(state, { ...current, ...patch });
+}
+
+/**
+ * Retire une déclaration — seulement si la couche active la porte
+ * elle-même. Même limite que `removeRole` et `orch agents remove` : la fusion
+ * par clé ne sait pas exprimer la suppression d'une entrée héritée. Sans
+ * effet sinon : à l'appelant de vérifier `agentDeclaredByActiveLayer` au
+ * préalable pour l'expliquer plutôt que de laisser la touche ne rien faire.
+ */
+export function removeAgentSpec(state: ConfigState, id: string): ConfigState {
+  if (!agentDeclaredByActiveLayer(state, id)) return state;
+  return withDraft(state, { ...state.draft, agents: (state.draft.agents ?? []).filter((agent) => agent.id !== id) });
 }
 
 // ---------------------------------------------------------------------------

@@ -214,7 +214,22 @@ const RawRoleSchema = z
   .strict();
 type RawRole = z.infer<typeof RawRoleSchema>;
 
-/** `[[agent]]` : agent personnalisé, cf. `GenericAgentSpec`. Fusion par clé (`id`), même logique que les rôles. */
+/**
+ * `[[agent]]` : agent personnalisé, cf. `GenericAgentSpec`. Fusion par clé
+ * (`id`), même logique que les rôles.
+ *
+ * `native_read_only` est la seule capacité déclarable ici, et c'est
+ * délibéré : c'est la seule que le moteur honore sans que la construction de
+ * la ligne de commande ait à coopérer (`runner.ts` s'en sert pour décider si
+ * une tâche en lecture seule doit être isolée dans un worktree). Les autres —
+ * schéma de sortie, injection MCP, message final en fichier, flux
+ * d'événements — supposent que l'adaptateur passe quelque chose au CLI cible,
+ * ce que `buildGeneric` ne fait pas : les rendre déclarables reviendrait à
+ * laisser promettre un canal de rapport que rien ne branche, et à faire
+ * échouer la tâche plus loin, sans rapport avec la case cochée. Le choix du
+ * modèle, lui, se déduit de la présence de `{{model}}` dans les arguments
+ * (voir `createGenericAgent`) plutôt que de se déclarer.
+ */
 const RawAgentSchema = z
   .object({
     id: z.string().min(1),
@@ -222,6 +237,7 @@ const RawAgentSchema = z
     bin: z.string().min(1),
     args: z.array(z.string()).default([]),
     cwd_mode: z.enum(["process", "flag"]).optional(),
+    native_read_only: z.boolean().optional(),
   })
   .strict();
 type RawAgent = z.infer<typeof RawAgentSchema>;
@@ -269,6 +285,7 @@ function toAgentSpec(raw: RawAgent): GenericAgentSpec {
   const spec: GenericAgentSpec = { id: raw.id, bin: raw.bin, args: raw.args };
   if (raw.display_name !== undefined) spec.displayName = raw.display_name;
   if (raw.cwd_mode !== undefined) spec.cwdMode = raw.cwd_mode;
+  if (raw.native_read_only !== undefined) spec.capabilities = { nativeReadOnly: raw.native_read_only };
   return spec;
 }
 
@@ -314,6 +331,12 @@ function fromAgentSpec(agent: GenericAgentSpec): Record<string, unknown> {
   const out: Record<string, unknown> = { id: agent.id, bin: agent.bin, args: agent.args };
   if (agent.displayName !== undefined) out.display_name = agent.displayName;
   if (agent.cwdMode !== undefined) out.cwd_mode = agent.cwdMode;
+  // Seule capacité que le TOML sait porter (voir `RawAgentSchema`) : les
+  // autres, si un appelant en glissait dans le `GenericAgentSpec` qu'il
+  // enregistre, ne survivraient pas à l'aller-retour. Aucune interface n'en
+  // produit, et `RawAgentSchema` est `.strict()` : elles seraient de toute
+  // façon refusées à la relecture.
+  if (agent.capabilities?.nativeReadOnly !== undefined) out.native_read_only = agent.capabilities.nativeReadOnly;
   return out;
 }
 

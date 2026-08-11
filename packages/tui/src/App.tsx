@@ -187,7 +187,14 @@ export function App({ root, renderer }: AppProps) {
             onCancel={() => setShowScopeConfirm(false)}
           />
         ) : tab === 0 ? (
-          <AgentsScreen state={state} installed={installedStatus} onToggleDenied={(id) => setState(toggleAgentDenied(state, id))} />
+          <AgentsScreen
+            state={state}
+            installed={installedStatus}
+            onToggleDenied={(id) => setState(toggleAgentDenied(state, id))}
+            onChange={setState}
+            onEditingChange={setEditingText}
+            notify={notify}
+          />
         ) : tab === 1 ? (
           <RolesScreen state={state} installed={installedBool} onChange={setState} onEditingChange={setEditingText} notify={notify} />
         ) : tab === 2 ? (
@@ -226,6 +233,8 @@ function HelpOverlay({ onClose }: { onClose: () => void }) {
       <text> </text>
       <text attributes={TextAttributes.BOLD}>Agents</text>
       <text>  Haut/Bas : ligne · Espace : autorisation · Entrée : détail des capacités</text>
+      <text>  n : déclarer un agent hors catalogue (un CLI décrit par sa commande)</text>
+      <text>  x : retirer une déclaration · Entrée sur un agent déclaré (*) : éditer ses champs</text>
       <text attributes={TextAttributes.BOLD}>Rôles</text>
       <text>  Haut/Bas : rôle · n : nouveau rôle · x : supprimer le rôle sélectionné</text>
       <text>  Entrée sur un rôle : éditer ses champs (Haut/Bas, Entrée, Échap pour sortir)</text>

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createGenericAgent } from "./generic.js";
+import {
+  createGenericAgent,
+  formatArgTemplate,
+  splitArgTemplate,
+  validateGenericAgentSpec,
+} from "./generic.js";
 import { makeSampleFactory, paths } from "../../test/sample-task.js";
 
 const { sampleTask, sampleContext } = makeSampleFactory("mon-cli");
@@ -101,5 +106,105 @@ describe("createGenericAgent", () => {
     const agent = createGenericAgent({ id: "mon-cli", bin: "/usr/local/bin/mon-cli", args: [] });
     const plan = agent.build(sampleContext());
     expect(plan.command).toBe("/usr/local/bin/mon-cli");
+  });
+
+  it("déduit la capacité \"modèle\" de la présence de {{model}} dans les arguments", () => {
+    // Rien d'autre ne porte le choix du modèle pour un agent générique : la
+    // capacité annoncée par `orch agents list` doit suivre les arguments, pas
+    // une case cochée à côté d'eux.
+    expect(createGenericAgent({ id: "a", bin: "a", args: ["{{prompt}}"] }).capabilities.model).toBe(false);
+    expect(createGenericAgent({ id: "a", bin: "a", args: ["--model", "{{model}}", "{{prompt}}"] }).capabilities.model).toBe(true);
+  });
+
+  it("une capacité explicitement fournie l'emporte sur la déduction", () => {
+    const agent = createGenericAgent({ id: "a", bin: "a", args: ["--model={{model}}"], capabilities: { model: false } });
+    expect(agent.capabilities.model).toBe(false);
+  });
+
+  it("un jeton inconnu fait disparaître son argument, comme un jeton connu sans valeur", () => {
+    // Le comportement que `validateGenericAgentSpec` existe pour prévenir :
+    // sans elle, une faute de frappe retire silencieusement l'argument.
+    const agent = createGenericAgent({ id: "a", bin: "a", args: ["--message", "{{promt}}"] });
+    expect(agent.build(sampleContext()).args).toEqual(["--message"]);
+  });
+});
+
+describe("splitArgTemplate", () => {
+  it("découpe sur les espaces", () => {
+    expect(splitArgTemplate("exec --json {{prompt}}")).toEqual(["exec", "--json", "{{prompt}}"]);
+  });
+
+  it("respecte les guillemets doubles et simples", () => {
+    expect(splitArgTemplate('--system "tu es {{prompt}}"')).toEqual(["--system", "tu es {{prompt}}"]);
+    expect(splitArgTemplate("--system 'deux mots'")).toEqual(["--system", "deux mots"]);
+  });
+
+  it("garde un argument vide explicitement écrit", () => {
+    expect(splitArgTemplate('--flag "" {{prompt}}')).toEqual(["--flag", "", "{{prompt}}"]);
+  });
+
+  it("ignore les espaces multiples et les bords", () => {
+    expect(splitArgTemplate("   exec    {{prompt}}  ")).toEqual(["exec", "{{prompt}}"]);
+    expect(splitArgTemplate("")).toEqual([]);
+    expect(splitArgTemplate("   ")).toEqual([]);
+  });
+
+  it("colle les segments accolés à un groupe entre guillemets", () => {
+    expect(splitArgTemplate('--msg="{{prompt}} !"')).toEqual(["--msg={{prompt}} !"]);
+  });
+
+  it("lève sur guillemet non refermé plutôt que de rendre un argument amputé", () => {
+    expect(() => splitArgTemplate('--system "tu es')).toThrow(/non refermé/);
+  });
+});
+
+describe("formatArgTemplate", () => {
+  it("ne met entre guillemets que ce qui en a besoin", () => {
+    expect(formatArgTemplate(["exec", "--json", "{{prompt}}"])).toBe("exec --json {{prompt}}");
+    expect(formatArgTemplate(["--system", "tu es {{prompt}}"])).toBe('--system "tu es {{prompt}}"');
+    expect(formatArgTemplate([""])).toBe('""');
+  });
+
+  it("choisit le guillemet simple quand l'argument contient un guillemet double", () => {
+    expect(formatArgTemplate(['dis "salut"'])).toBe(`'dis "salut"'`);
+  });
+
+  it("fait l'aller-retour avec splitArgTemplate", () => {
+    for (const args of [["exec", "--json", "{{prompt}}"], ["--system", "tu es {{prompt}}"], ["--flag", "", "x"], ['dis "salut"']]) {
+      expect(splitArgTemplate(formatArgTemplate(args))).toEqual(args);
+    }
+  });
+});
+
+describe("validateGenericAgentSpec", () => {
+  const ok = { id: "aider", bin: "aider", args: ["--message", "{{prompt}}"] };
+
+  it("accepte une déclaration utilisable", () => {
+    expect(validateGenericAgentSpec(ok)).toBeNull();
+  });
+
+  it("refuse un identifiant vide ou exotique", () => {
+    expect(validateGenericAgentSpec({ ...ok, id: "" })).toMatch(/ne peut pas être vide/);
+    expect(validateGenericAgentSpec({ ...ok, id: "mon agent" })).toMatch(/invalide/);
+    expect(validateGenericAgentSpec({ ...ok, id: "-agent" })).toMatch(/invalide/);
+  });
+
+  it("refuse un binaire vide", () => {
+    expect(validateGenericAgentSpec({ ...ok, bin: "  " })).toMatch(/n'a pas de binaire/);
+  });
+
+  it("nomme le jeton inconnu et rappelle les jetons connus", () => {
+    const error = validateGenericAgentSpec({ ...ok, args: ["--message", "{{promt}}"] });
+    expect(error).toMatch(/\{\{promt\}\}/);
+    expect(error).toMatch(/\{\{prompt\}\}/);
+    expect(error).toMatch(/disparaît entièrement/);
+  });
+
+  it("refuse un gabarit qui ne transmet jamais l'objectif", () => {
+    expect(validateGenericAgentSpec({ ...ok, args: ["exec", "--json"] })).toMatch(/objectif de la tâche/);
+  });
+
+  it("accepte {{prompt}} collé à d'autres jetons ou à du texte", () => {
+    expect(validateGenericAgentSpec({ ...ok, args: ["--msg={{prompt}}"] })).toBeNull();
   });
 });

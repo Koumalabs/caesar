@@ -26,11 +26,14 @@ import type { AgentInstallStatus } from "@orch/core";
 import { emptyConfigState as makeState } from "../state/test-helpers";
 import { AgentsScreen } from "./AgentsScreen";
 
+/** Les rappels que l'écran ne déclenche que sur frappe : inertes dans un test de rendu. */
+const callbacks = { onToggleDenied: () => {}, onChange: () => {}, onEditingChange: () => {}, notify: () => {} };
+
 describe("AgentsScreen", () => {
   it("se monte sans lever et affiche le catalogue d'agents", async () => {
     const state = makeState();
     const setup = await act(async () =>
-      testRender(<AgentsScreen state={state} installed={null} onToggleDenied={() => {}} />, { width: 100, height: 30 }),
+      testRender(<AgentsScreen state={state} installed={null} {...callbacks} />, { width: 100, height: 30 }),
     );
     await act(async () => setup.renderOnce());
     const frame = setup.captureCharFrame();
@@ -45,7 +48,7 @@ describe("AgentsScreen", () => {
     const state = makeState(); // portée "project" active, "global" déclare seule policy.denied
     state.layers[0] = { ...state.layers[0]!, override: { policy: { denied: ["copilot"] } } };
     const setup = await act(async () =>
-      testRender(<AgentsScreen state={state} installed={null} onToggleDenied={() => {}} />, { width: 100, height: 30 }),
+      testRender(<AgentsScreen state={state} installed={null} {...callbacks} />, { width: 100, height: 30 }),
     );
     await act(async () => setup.renderOnce());
     const frame = setup.captureCharFrame();
@@ -62,7 +65,7 @@ describe("AgentsScreen", () => {
       ["codex", { id: "codex", bin: "codex", installed: true, path: longPath, version: "1.2.3" }],
     ]);
     const setup = await act(async () =>
-      testRender(<AgentsScreen state={state} installed={installed} onToggleDenied={() => {}} />, { width: 100, height: 30 }),
+      testRender(<AgentsScreen state={state} installed={installed} {...callbacks} />, { width: 100, height: 30 }),
     );
     await act(async () => setup.renderOnce());
     const frame = setup.captureCharFrame();
@@ -71,6 +74,62 @@ describe("AgentsScreen", () => {
     expect(frame).toContain("…");
     // La colonne "version", juste après, reste lisible et intacte malgré le chemin long qui la précède.
     expect(frame).toContain("1.2.3");
+    setup.renderer.destroy();
+  });
+
+  it("liste un agent déclaré en configuration à la suite du catalogue natif, et le marque", async () => {
+    const state = makeState();
+    state.draft = { agents: [{ id: "aider", bin: "aider", args: ["--message", "{{prompt}}"], cwdMode: "process" }] };
+    const setup = await act(async () =>
+      testRender(<AgentsScreen state={state} installed={new Map()} {...callbacks} />, { width: 100, height: 40 }),
+    );
+    await act(async () => setup.renderOnce());
+    const frame = setup.captureCharFrame();
+
+    expect(frame).toContain("codex"); // le natif reste
+    expect(frame).toContain("aider *"); // l'astérisque distingue une déclaration d'un agent câblé
+    expect(frame).toContain("* déclaré en configuration");
+    setup.renderer.destroy();
+  });
+
+  it("montre la ligne de commande et les champs éditables de l'agent déclaré sélectionné", async () => {
+    const state = makeState();
+    state.draft = { agents: [{ id: "aider", bin: "aider", args: ["--message", "{{prompt}}"], cwdMode: "process" }] };
+    const setup = await act(async () =>
+      testRender(<AgentsScreen state={state} installed={new Map()} {...callbacks} />, { width: 100, height: 40 }),
+    );
+    await act(async () => setup.renderOnce());
+
+    // Le panneau ne concerne que la ligne sélectionnée : il n'apparaît pas
+    // sur "codex" (sélection initiale, agent natif sans déclaration).
+    expect(setup.captureCharFrame()).not.toContain("Ligne de commande");
+
+    // Cinq agents natifs à descendre avant d'atteindre la déclaration.
+    for (let i = 0; i < 5; i++) await act(async () => setup.mockInput.pressKey("j"));
+    await act(async () => setup.renderOnce());
+
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("aider --message {{prompt}}");
+    expect(frame).toContain("Déclaré par la couche active");
+    expect(frame).toContain("Binaire");
+    expect(frame).toContain("Arguments");
+    setup.renderer.destroy();
+  });
+
+  it("signale qu'une déclaration héritée sera redéfinie sur la couche active si on l'édite", async () => {
+    const state = makeState(); // portée "project" active, "global" seule déclare l'agent
+    state.layers[0] = {
+      ...state.layers[0]!,
+      override: { agents: [{ id: "aider", bin: "aider", args: ["{{prompt}}"] }] },
+    };
+    const setup = await act(async () =>
+      testRender(<AgentsScreen state={state} installed={new Map()} {...callbacks} />, { width: 100, height: 40 }),
+    );
+    await act(async () => setup.renderOnce());
+    for (let i = 0; i < 5; i++) await act(async () => setup.mockInput.pressKey("j"));
+    await act(async () => setup.renderOnce());
+
+    expect(setup.captureCharFrame()).toContain("Hérité ← global");
     setup.renderer.destroy();
   });
 });

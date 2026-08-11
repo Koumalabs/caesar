@@ -34,7 +34,16 @@
  */
 import { Command, CommanderError } from "commander";
 import packageJson from "../package.json" with { type: "json" };
-import { runAgentsDisable, runAgentsEnable, runAgentsList, runAgentsTest } from "./commands/agents.js";
+import {
+  ARG_TOKENS_HINT,
+  runAgentsAdd,
+  runAgentsDisable,
+  runAgentsEnable,
+  runAgentsList,
+  runAgentsRemove,
+  runAgentsTest,
+} from "./commands/agents.js";
+import type { AgentsAddOptions } from "./commands/agents.js";
 import { runChannelServe } from "./commands/channel.js";
 import { runConfig } from "./commands/config.js";
 import { runDoctor } from "./commands/doctor.js";
@@ -147,7 +156,13 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
     });
 
   withCommonOptions(program.command("config"))
-    .description("Lance le TUI de configuration (OpenTUI, sous Bun). Sans Bun : renvoie vers les sous-commandes équivalentes.")
+    // La description parlait de Bun et d'un repli « sans Bun » : vrai du seul
+    // chemin Node du monorepo, faux du binaire compilé — qui embarque Bun et
+    // monte le TUI dans son propre processus (voir `commands/config.ts`).
+    // Elle décrit maintenant ce que la commande fait, non par quoi elle est
+    // rendue : la contrainte Bun, quand elle s'applique, est déjà expliquée
+    // au moment où elle bloque.
+    .description("Configure agents, rôles, politique et intégrations dans un écran interactif.")
     .action(async (_options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => {
@@ -194,6 +209,62 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }): Command {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () =>
         runAgentsDisable(await resolveRoot(opts.root), id, { json: opts.json, global: opts.global, local: opts.local }, io),
+      );
+    });
+
+  withScopeOptions(withCommonOptions(agents.command("add")))
+    .description("Déclare un agent : un CLI hors catalogue, décrit par sa commande et son gabarit d'arguments.")
+    .argument("<id>", "Identifiant de l'agent, tel qu'on l'écrira dans --agent et dans les rôles")
+    .requiredOption("--bin <commande>", "Binaire à lancer (cherché dans le PATH, ou chemin absolu).")
+    .option(
+      "--args <gabarit>",
+      `Ligne d'arguments, guillemets respectés. Jetons substitués : ${ARG_TOKENS_HINT}. Le premier est obligatoire — sans lui, l'agent ne reçoit jamais l'objectif.`,
+      "{{prompt}}",
+    )
+    .option("--display-name <nom>", "Nom lisible affiché à la place de l'identifiant.")
+    .option(
+      "--cwd-mode <mode>",
+      '"process" (défaut) : le répertoire courant porte le workspace. "flag" : le workspace est déjà passé en argument.',
+      "process",
+    )
+    .option(
+      "--read-only-native",
+      "Déclare que ce CLI applique lui-même un mode lecture seule : une tâche en lecture seule n'aura pas besoin d'être isolée dans un worktree.",
+    )
+    .action(
+      async (
+        id: string,
+        options: GlobalOptions & AgentsAddOptions,
+        command: Command,
+      ) => {
+        const opts = command.optsWithGlobals<typeof options>();
+        await run(async () =>
+          runAgentsAdd(
+            await resolveRoot(opts.root),
+            id,
+            {
+              bin: opts.bin,
+              args: opts.args,
+              displayName: opts.displayName,
+              cwdMode: opts.cwdMode,
+              readOnlyNative: opts.readOnlyNative,
+              json: opts.json,
+              global: opts.global,
+              local: opts.local,
+            },
+            io,
+          ),
+        );
+      },
+    );
+
+  withScopeOptions(withCommonOptions(agents.command("remove")))
+    .description("Retire une déclaration d'agent de la couche visée (couche projet par défaut ; --global/--local).")
+    .argument("<id>", "Identifiant de l'agent déclaré")
+    .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<typeof options>();
+      await run(async () =>
+        runAgentsRemove(await resolveRoot(opts.root), id, { json: opts.json, global: opts.global, local: opts.local }, io),
       );
     });
 

@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { saveLayer } from "@orch/core";
 import { makeIo, withFakeHome, withShimmedPath, writeVersionFailShim, writeVersionOkShim, type CapturedIo } from "../../test/support.js";
 import { runDoctor } from "./doctor.js";
 import { EXIT_OK, terminalWidth } from "../output.js";
@@ -42,6 +43,23 @@ describe("orch doctor", () => {
       expect(antigravity.installed).toBe(false);
       expect(antigravity.version).toBeUndefined();
       expect(parsed.missing).toContain("antigravity");
+    });
+  });
+
+  it("un agent déclaré par chemin explicite n'envoie pas chercher dans le PATH quand le chemin ne désigne rien", async () => {
+    await withFakeHome(async () => {
+      await saveLayer("project", root, { agents: [{ id: "mon-cli", bin: "/opt/rien/du/tout", args: ["{{prompt}}"] }] });
+
+      await withShimmedPath(shimDir, () => runDoctor(root, {}, io));
+      const out = io.stdoutText();
+
+      // Fragment court : les puces sont repliées à la largeur du terminal
+      // (`wrapText`), une phrase entière tomberait sur deux lignes.
+      expect(out).toMatch(/"\/opt\/rien\/du\/tout" n'existe pas/);
+      // Le conseil doit porter sur le chemin, pas sur une installation.
+      expect(out).toMatch(/Corrigez le chemin/);
+      // Les agents natifs, eux, restent bien décrits par leur absence du PATH.
+      expect(out).toMatch(/binaire "codex" introuvable dans le PATH/);
     });
   });
 

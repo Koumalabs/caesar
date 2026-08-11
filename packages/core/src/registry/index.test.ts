@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createGenericAgent } from "./generic.js";
 import {
@@ -51,6 +52,21 @@ describe("détection d'installation", () => {
 
   it("findBinaryInPath renvoie un chemin pour un binaire présent", async () => {
     expect(await findBinaryInPath("node")).toBeTruthy();
+  });
+
+  it("findBinaryInPath accepte un chemin explicite sans le chercher dans le PATH", async () => {
+    // La règle d'`execvp` : un nom contenant un séparateur désigne un fichier.
+    // Sans elle, un agent déclaré par chemin absolu (`orch agents add --bin
+    // /opt/mon-cli`) tournait mais était rapporté "absent" partout.
+    const nodePath = process.execPath;
+    expect(await findBinaryInPath(nodePath)).toBe(nodePath);
+    expect(await findBinaryInPath("/opt/ce-chemin-n-existe-pas-xyz/bin")).toBeNull();
+  });
+
+  it("findBinaryInPath refuse un chemin explicite non exécutable", async () => {
+    // Un fichier existant mais sans bit d'exécution n'est pas un binaire
+    // lançable : le distinguer évite un "installé" trompeur.
+    expect(await findBinaryInPath(fileURLToPath(import.meta.url))).toBeNull();
   });
 });
 

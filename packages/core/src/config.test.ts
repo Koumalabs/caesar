@@ -455,6 +455,26 @@ describe("saveLayer / loadConfig — aller-retour", () => {
     });
   });
 
+  it("un agent déclaré garde sa capacité \"lecture seule native\" à l'aller-retour", async () => {
+    // La seule capacité que `[[agent]]` sait porter (voir `RawAgentSchema`) —
+    // et la seule que le moteur honore sans que la ligne de commande ait à
+    // coopérer : `runner.ts` s'en sert pour décider si une tâche en lecture
+    // seule doit être isolée dans un worktree. Perdue à la relecture, la
+    // déclaration serait sans effet, en silence.
+    const override = {
+      agents: [{ id: "monagent", bin: "mon-cli", args: ["{{prompt}}"], capabilities: { nativeReadOnly: true } }],
+    };
+    await saveLayer("project", projectRoot, override);
+    const layer = await loadLayer("project", projectRoot);
+    expect(layer.agents).toEqual(override.agents);
+  });
+
+  it("un agent sans capacité déclarée ne se voit pas en inventer une", async () => {
+    await saveLayer("project", projectRoot, { agents: [{ id: "monagent", bin: "mon-cli", args: ["{{prompt}}"] }] });
+    const layer = await loadLayer("project", projectRoot);
+    expect(layer.agents?.[0]).not.toHaveProperty("capabilities");
+  });
+
   it("écrit un en-tête avertissant que les commentaires manuels ne survivent pas", async () => {
     await saveLayer("project", projectRoot, defaultConfig());
     const raw = await readFile(projectConfigPath(projectRoot), "utf8");
