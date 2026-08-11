@@ -480,6 +480,44 @@ describe("runTask", () => {
       expect(concurrentRunningCounts.some((n) => n === 1)).toBe(true);
     });
 
+    it("quatre tâches simultanées obtiennent chacune leur worktree, sans se marcher dessus", async () => {
+      // Le test C4 ci-dessus ne couvre que l'isolation `inplace` : la
+      // création concurrente de worktrees — `git worktree add` lancé quatre
+      // fois de front sur le même dépôt — n'était vérifiée nulle part, alors
+      // que c'est le cas d'usage normal du serveur MCP (max_parallel = 4 par
+      // défaut, toutes les délégations partageant une seule file).
+      await initGitRepo(root);
+      const queue = createQueue(4);
+
+      const outcomes = await Promise.all(
+        ["a", "b", "c", "d"].map((label) =>
+          runTask(
+            { store, root, queue },
+            {
+              agentId: "fake-agent",
+              objective: `tâche ${label}`,
+              mode: "write" as const,
+              isolation: "worktree" as const,
+              workspace: root,
+              context: JSON.stringify({ sleepMs: 120 }),
+            },
+          ),
+        ),
+      );
+
+      for (const outcome of outcomes) expect(outcome.record.status).toBe("succeeded");
+
+      // Chaque tâche a son propre répertoire et sa propre branche : l'identifiant
+      // vient d'un UUID (`generateTaskId`), donc aucune collision possible —
+      // mais c'est la commande git concurrente qui devait être éprouvée.
+      const workspaces = outcomes.map((o) => o.record.workspace);
+      expect(new Set(workspaces).size).toBe(4);
+      for (const workspace of workspaces) expect(workspace).toContain(join(".orch", "wt"));
+
+      const { stdout } = await execFileAsync("git", ["branch", "--list", "orch/*"], { cwd: root });
+      expect(stdout.split("\n").filter((line) => line.trim() !== "")).toHaveLength(4);
+    }, 30_000);
+
     it("C4 (témoin) : sans limite partagée, les deux mêmes délégations tournent bien simultanément — la Queue de limite 1 ci-dessus est donc bien ce qui sérialise", async () => {
       const concurrentRunningCounts: number[] = [];
       let polling = true;
