@@ -239,12 +239,16 @@ describe("portée d'édition", () => {
         await setup.renderOnce();
       });
       frame = setup.captureCharFrame();
-      if (frame.includes("Enregistré dans") || !frame.includes("Enregistrement…")) break;
+      // Sonder la seule apparition du message de confirmation. Une condition
+      // de sortie du type « l'indicateur "enregistrement…" a disparu »
+      // dépendrait du libellé exact de la barre d'état, et sortait de la
+      // boucle dès le premier tour quand ce libellé changeait de casse.
+      if (frame.includes("Enregistré dans")) break;
     }
-    // Le message de confirmation nomme le fichier écrit et la couche — sur cette largeur de terminal (100
-    // colonnes), la ligne de statut au complet (portée + indicateur + message) déborde sur deux lignes de la
-    // grille capturée : chercher "Enregistré dans"/"couche globale" séparément évite de dépendre de cet
-    // enchaînement visuel, non garanti par `captureCharFrame` (un simple artefact de largeur, pas un défaut).
+    // Le message de confirmation nomme le fichier écrit et la couche — il est
+    // replié sur deux lignes quand il dépasse la largeur du terminal :
+    // chercher "Enregistré dans"/"couche globale" séparément évite de dépendre
+    // de cet enchaînement visuel.
     expect(frame).toContain("Enregistré dans");
     expect(frame).toContain("couche globale");
 

@@ -339,6 +339,22 @@ export function updateRole(state: ConfigState, name: string, patch: Partial<Role
   return putRoleInDraft(state, { ...current, ...patch });
 }
 
+/**
+ * Renomme un rôle sur la couche active — la seule mutation qui *retire* une
+ * clé en plus d'en écrire une, d'où la même réserve que `removeRole` : sans
+ * déclaration par la couche active, l'ancien nom continuerait d'exister,
+ * hérité de la couche du dessous, et on se retrouverait avec deux rôles là
+ * où on croyait en renommer un. Sans effet dans ce cas — à l'appelant de
+ * vérifier `roleDeclaredByActiveLayer` pour l'expliquer.
+ */
+export function renameRole(state: ConfigState, from: string, to: string): ConfigState {
+  if (!roleDeclaredByActiveLayer(state, from)) return state;
+  const current = findRole(state, from);
+  if (!current) return state;
+  const roles = (state.draft.roles ?? []).filter((role) => role.name !== from && role.name !== to);
+  return withDraft(state, { ...state.draft, roles: [...roles, { ...current, name: to }] });
+}
+
 /** Déplace l'agent à `index` d'un cran dans l'ordre de repli du rôle. Sans effet si le mouvement sortirait de la liste. */
 export function moveRoleAgent(state: ConfigState, roleName: string, index: number, direction: "up" | "down"): ConfigState {
   const role = findRole(state, roleName);

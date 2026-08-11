@@ -1,40 +1,45 @@
 /**
- * Onglets et navigation générale du TUI de configuration.
+ * Chrome général du TUI de configuration : onglets, portée d'édition,
+ * enregistrement, aide.
  *
- * `Tab`/`Shift-Tab` change d'écran, `s` enregistre les modifications en
- * attente sur la couche active (`config-state.ts`, jamais implicite — voir
- * le brief), `p` fait cycler la **portée d'édition** (global → projet →
- * local → global), `q` quitte (avec confirmation si des modifications sont
- * en attente), `?` affiche l'aide. Un indicateur permanent (barre d'état)
- * signale les modifications non enregistrées.
+ * Trois zones, toujours aux mêmes places — c'est ce qui rend l'écran
+ * lisible : un bandeau (où je suis), le corps (ce que je règle), un pied
+ * (ce que "s" écrira, et ce que je peux taper maintenant).
  *
- * La portée est l'information la plus importante de cet écran dès lors
- * qu'on peut écrire à trois endroits (tâche 15) : elle reste visible en
- * permanence dans la barre d'état, mise en évidence par une couleur propre à
- * chaque couche — "global" en rouge, en particulier, puisque c'est l'erreur
- * la plus difficile à défaire (modifier par mégarde un réglage qui vaut pour
- * tous les projets en croyant régler celui-ci). Changer de portée avec des
- * modifications en attente demande confirmation avant de les abandonner —
- * même principe que la confirmation de sortie ci-dessous, rien ne se perd en
- * silence.
+ * `Tab`/`Maj-Tab` change d'écran, `1`-`4` y va directement, `s` enregistre
+ * les modifications en attente sur la couche active (jamais implicitement),
+ * `p` fait cycler la **portée d'édition** (global → projet → local), `q`
+ * quitte (avec confirmation si des modifications sont en attente), `?`
+ * affiche l'aide.
  *
- * Cet écran (le premier affiché, l'onglet Agents) doit être utile
- * immédiatement : `state` (la configuration) charge vite — trois fichiers
- * TOML locaux — et s'affiche dès qu'il est prêt, sans attendre la détection
- * d'installation des agents, réellement lente (elle sonde chaque binaire).
- * Celle-ci se charge une seule fois ici, jamais à chaque frappe, et chaque
- * écran affiche son propre état de chargement tant qu'elle n'a pas répondu.
+ * La portée est l'information la plus importante de cet écran dès lors qu'on
+ * peut écrire à trois endroits : elle reste visible en permanence, avec le
+ * **chemin du fichier** que "s" écrira — savoir « couche projet » ne dit pas
+ * où c'est, et c'est justement ce qu'on veut vérifier avant d'enregistrer.
+ * Sa couleur est propre à chaque couche, « global » en rouge : c'est
+ * l'erreur la plus difficile à défaire (modifier par mégarde un réglage qui
+ * vaut pour tous les projets en croyant régler celui-ci). Changer de portée
+ * avec des modifications en attente demande confirmation avant de les
+ * abandonner — même principe que la confirmation de sortie.
+ *
+ * Cet écran doit être utile immédiatement : `state` charge vite (trois
+ * fichiers TOML locaux) et s'affiche dès qu'il est prêt, sans attendre la
+ * détection d'installation des agents, réellement lente (elle sonde chaque
+ * binaire). Celle-ci se charge une seule fois ici, jamais à chaque frappe.
  */
 import { useEffect, useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import type { CliRenderer } from "@opentui/core";
-import { useKeyboard } from "@opentui/react";
+import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import type { AgentInstallStatus, ConfigScope } from "@orch/core";
 import { detectAgentInstallation, listAgentDefinitions } from "@orch/core";
 import { AgentsScreen } from "./screens/AgentsScreen";
 import { IntegrationsScreen } from "./screens/IntegrationsScreen";
 import { PolicyScreen } from "./screens/PolicyScreen";
 import { RolesScreen } from "./screens/RolesScreen";
+import { KeyHints } from "./ui/KeyHints";
+import { elideLeft, wrap } from "./ui/layout";
+import { ACCENT, ACCENT_INK, BAD, DIM, FAINT, OK, WARN } from "./ui/theme";
 import {
   activeScopePath,
   isDirty,
@@ -47,8 +52,8 @@ import {
   type ConfigState,
 } from "./state/config-state";
 
-/** Couleur de la marque de portée dans la barre d'état — "global" en rouge : c'est l'erreur la plus difficile à défaire. */
-const SCOPE_COLOR: Record<ConfigScope, string> = { global: "red", project: "cyan", local: "magenta" };
+/** Couleur de la marque de portée — « global » en rouge : c'est l'erreur la plus difficile à défaire. */
+const SCOPE_COLOR: Record<ConfigScope, string> = { global: BAD, project: ACCENT, local: "#C792EA" };
 
 export interface AppProps {
   root: string;
@@ -58,6 +63,7 @@ export interface AppProps {
 const TABS = ["Agents", "Rôles", "Politique", "Intégrations"] as const;
 
 export function App({ root, renderer }: AppProps) {
+  const { width } = useTerminalDimensions();
   const [state, setState] = useState<ConfigState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [installedStatus, setInstalledStatus] = useState<Map<string, AgentInstallStatus> | null>(null);
@@ -76,20 +82,18 @@ export function App({ root, renderer }: AppProps) {
   }, [root]);
 
   useEffect(() => {
-    // Une seule détection, au montage — jamais relancée à chaque frappe
-    // (voir le brief). `detectAgentInstallation` (`@orch/core`) est la même
-    // détection qu'`orch doctor`/`orch agents list` font, pas une réécriture.
+    // Une seule détection, au montage — jamais relancée à chaque frappe.
+    // `detectAgentInstallation` (`@orch/core`) est la même détection
+    // qu'`orch doctor`/`orch agents list` font, pas une réécriture.
     void Promise.all(listAgentDefinitions().map(async (def) => [def.id, await detectAgentInstallation(def)] as const))
       .then((entries) => setInstalledStatus(new Map(entries)))
       .catch(() => {
         // Dormant aujourd'hui : `detectAgentInstallation` avale déjà ses
-        // propres erreurs (sonde chaque binaire sans jamais lever). Ce filet
-        // reste nécessaire pour que ce comportement ne devienne pas un
-        // détail d'implémentation dont dépendrait silencieusement l'écran —
-        // sans lui, tous les écrans resteraient bloqués sur « détection en
-        // cours » si un appel se mettait un jour à lever. Un statut vide
-        // dégrade proprement : chaque agent apparaît "absent", sans bloquer
-        // le reste du TUI.
+        // propres erreurs. Ce filet reste nécessaire pour que ce comportement
+        // ne devienne pas un détail d'implémentation dont dépendrait
+        // silencieusement l'écran — sans lui, tous les écrans resteraient
+        // bloqués sur « détection en cours » si un appel se mettait un jour à
+        // lever. Un statut vide dégrade proprement.
         setInstalledStatus(new Map());
       });
   }, []);
@@ -104,7 +108,9 @@ export function App({ root, renderer }: AppProps) {
     try {
       const saved = await saveConfigState(root, state);
       setState(saved);
-      notify(`Enregistré dans ${activeScopePath(root, saved)} (couche ${scopeLabel(saved.activeScope)}).`);
+      // Chemin raccourci par la gauche : le message tient alors sur une
+      // ligne, et la barre d'état juste dessous en porte la version entière.
+      notify(`Enregistré dans ${elideLeft(activeScopePath(root, saved), 52)} (couche ${scopeLabel(saved.activeScope)}).`);
     } catch (error) {
       notify(error instanceof Error ? error.message : String(error), true);
     } finally {
@@ -117,7 +123,7 @@ export function App({ root, renderer }: AppProps) {
     process.exit(0);
   }
 
-  /** Bascule vers la portée suivante (global → projet → local → global) — jamais sans confirmation si des modifications sont en attente : voir l'en-tête de ce fichier. */
+  /** Bascule vers la portée suivante — jamais sans confirmation si des modifications sont en attente. */
   function switchScope(): void {
     if (!state) return;
     if (isDirty(state)) {
@@ -133,13 +139,15 @@ export function App({ root, renderer }: AppProps) {
   }
 
   useKeyboard((key) => {
-    // Un champ texte ou une fenêtre modale possède le clavier : ce
-    // gestionnaire global ne doit rien intercepter (sinon taper "s" dans un
-    // nom de rôle déclencherait un enregistrement, entre autres surprises).
+    // Un champ texte, l'éditeur de prompt ou une fenêtre modale possède le
+    // clavier : ce gestionnaire global ne doit rien intercepter (sinon taper
+    // "s" dans un nom de rôle déclencherait un enregistrement, entre autres
+    // surprises).
     if (editingText || showHelp || showQuitConfirm || showScopeConfirm) return;
 
     if (key.name === "tab" && key.shift) setTab((t) => (t - 1 + TABS.length) % TABS.length);
     else if (key.name === "tab") setTab((t) => (t + 1) % TABS.length);
+    else if (/^[1-4]$/.test(key.name)) setTab(Number(key.name) - 1);
     else if (key.name === "s") void handleSave();
     else if (key.name === "p") switchScope();
     else if (key.name === "q" || (key.name === "c" && key.ctrl)) {
@@ -155,26 +163,49 @@ export function App({ root, renderer }: AppProps) {
 
   const installedBool = installedStatus ? new Map([...installedStatus].map(([id, s]) => [id, s.installed] as const)) : null;
   const dirty = state ? isDirty(state) : false;
+  const scope = state?.activeScope ?? "project";
+
+  // Barre d'état : trois informations sur une seule ligne, dont un chemin de
+  // longueur imprévisible. Les largeurs se calculent ici plutôt que d'être
+  // laissées au repli du terminal, qui coupait le sélecteur de portée en deux.
+  // -4 : le remplissage gauche et droit de la boîte racine, plus une
+  // colonne de garde — une ligne exactement à la largeur du terminal perdait
+  // son dernier caractère à la capture.
+  const contentWidth = Math.max(20, width - 4);
+  const scopeChip = ` PORTÉE : ${scopeLabel(scope).toUpperCase()} `;
+  const statusText = saving ? "enregistrement…" : dirty ? "● modifications non enregistrées" : "✓ tout est enregistré";
+  const scopePath = state ? activeScopePath(root, state) : "";
+  const pathRoom = contentWidth - scopeChip.length - 2 - statusText.length - 3 - '"s" écrit dans '.length;
 
   return (
-    <box flexDirection="column" width="100%" height="100%">
-      <box flexDirection="row" paddingLeft={1}>
+    <box flexDirection="column" width="100%" height="100%" paddingLeft={1} paddingRight={1}>
+      <box flexDirection="row" flexShrink={0}>
         <text attributes={TextAttributes.BOLD}>orch config</text>
-        <text fg="gray">{"  " + root}</text>
+        {/* La racine est raccourcie par la gauche : sa fin — le nom du projet —
+            est ce qui renseigne, et un chemin long repliait sinon le bandeau
+            sur deux lignes. */}
+        <text fg={DIM}>{`  ${elideLeft(root, Math.max(12, contentWidth - "orch config  ".length))}`}</text>
       </box>
-      <box flexDirection="row" paddingLeft={1} marginBottom={1}>
+
+      <box flexDirection="row" marginBottom={1} flexShrink={0}>
         {TABS.map((label, index) => (
-          <text key={label} fg={index === tab ? "black" : "white"} bg={index === tab ? "cyan" : undefined}>
-            {` ${label} `}
-          </text>
+          <box key={label} flexDirection="row" marginRight={1}>
+            <text
+              fg={index === tab ? ACCENT_INK : DIM}
+              bg={index === tab ? ACCENT : undefined}
+              attributes={index === tab ? TextAttributes.BOLD : undefined}
+            >
+              {` ${index + 1} ${label} `}
+            </text>
+          </box>
         ))}
       </box>
 
-      <box flexDirection="column" flexGrow={1} paddingLeft={1}>
+      <box flexDirection="column" flexGrow={1} overflow="hidden">
         {loadError ? (
-          <text fg="red">Impossible de charger la configuration : {loadError}</text>
+          <text fg={BAD}>Impossible de charger la configuration : {loadError}</text>
         ) : !state ? (
-          <text fg="yellow">Chargement de la configuration…</text>
+          <text fg={WARN}>Chargement de la configuration…</text>
         ) : showHelp ? (
           <HelpOverlay onClose={() => setShowHelp(false)} />
         ) : showQuitConfirm ? (
@@ -196,7 +227,14 @@ export function App({ root, renderer }: AppProps) {
             notify={notify}
           />
         ) : tab === 1 ? (
-          <RolesScreen state={state} installed={installedBool} onChange={setState} onEditingChange={setEditingText} notify={notify} />
+          <RolesScreen
+            root={root}
+            state={state}
+            installed={installedBool}
+            onChange={setState}
+            onEditingChange={setEditingText}
+            notify={notify}
+          />
         ) : tab === 2 ? (
           <PolicyScreen state={state} onChange={setState} onEditingChange={setEditingText} notify={notify} />
         ) : (
@@ -204,19 +242,45 @@ export function App({ root, renderer }: AppProps) {
         )}
       </box>
 
-      <box flexDirection="row" paddingLeft={1}>
-        <text attributes={TextAttributes.BOLD} fg="black" bg={SCOPE_COLOR[state?.activeScope ?? "project"]}>
-          {` PORTÉE : ${scopeLabel(state?.activeScope ?? "project").toUpperCase()} `}
+      {message ? (
+        <box flexDirection="column" marginTop={1} flexShrink={0}>
+          {/* Replié à la main plutôt que laissé au terminal : un message long
+              (un motif de refus, un chemin) recouvrait sinon la barre d'état
+              en se repliant par-dessus. */}
+          {wrap(`${message.isError ? "✗" : "✓"} ${message.text}`, contentWidth)
+            .slice(0, 2)
+            .map((line, index) => (
+              <text key={index} fg={message.isError ? BAD : OK}>
+                {line}
+              </text>
+            ))}
+        </box>
+      ) : null}
+
+      <box flexDirection="row" marginTop={1} flexShrink={0}>
+        <text attributes={TextAttributes.BOLD} fg={ACCENT_INK} bg={SCOPE_COLOR[scope]}>
+          {scopeChip}
         </text>
-        <text fg="gray">{"  (p pour changer)   "}</text>
-        <text fg={dirty ? "yellow" : "green"}>
-          {saving ? "Enregistrement…" : dirty ? "● modifications non enregistrées" : "✓ tout est enregistré"}
-        </text>
-        {message ? <text fg={message.isError ? "red" : "gray"}>{"   " + message.text}</text> : null}
+        <text fg={saving || dirty ? WARN : OK}>{`  ${statusText}`}</text>
+        {/* Le chemin, et pas seulement le nom de la couche : « couche projet »
+            ne dit pas *où*, et c'est justement ce qu'on veut vérifier avant
+            d'appuyer sur "s". Raccourci par la gauche pour tenir sur la ligne :
+            trois `<text>` d'une largeur cumulée supérieure à celle du terminal
+            se repliaient, et coupaient « PORTÉE : PROJET » en deux. */}
+        {pathRoom >= 24 ? (
+          <text fg={DIM}>{`   "s" écrit dans ${elideLeft(scopePath, pathRoom)}`}</text>
+        ) : null}
       </box>
-      <box flexDirection="row" paddingLeft={1}>
-        <text fg="gray">Tab/Maj-Tab : écran · s : enregistrer (couche active) · p : changer de portée · q ou Ctrl+C : quitter · ? : aide</text>
-      </box>
+
+      <KeyHints
+        hints={[
+          { key: "Tab", label: "écran" },
+          { key: "s", label: "enregistrer" },
+          { key: "p", label: "changer de portée" },
+          { key: "?", label: "aide" },
+          { key: "q", label: "quitter" },
+        ]}
+      />
     </box>
   );
 }
@@ -224,26 +288,35 @@ export function App({ root, renderer }: AppProps) {
 function HelpOverlay({ onClose }: { onClose: () => void }) {
   useKeyboard(() => onClose());
   return (
-    <box flexDirection="column" border borderStyle="double" title="Aide (une touche pour fermer)">
-      <text>Tab / Maj-Tab : écran suivant / précédent</text>
-      <text>s : enregistrer les modifications en attente sur la couche active</text>
-      <text>p : changer de portée d'édition (global → projet → local → global)</text>
-      <text>  Ce que "s" enregistre — confirmation si des modifications sont en attente</text>
-      <text>q ou Ctrl+C : quitter (confirmation si des modifications sont en attente)</text>
+    <box flexDirection="column" border borderStyle="double" borderColor={ACCENT} title=" Aide — une touche pour fermer " paddingLeft={1} paddingRight={1}>
+      <text attributes={TextAttributes.BOLD}>Partout</text>
+      <text>{"  Tab / Maj-Tab, ou 1-4 : changer d'écran"}</text>
+      <text>{"  s : enregistrer les modifications en attente sur la couche active"}</text>
+      <text>{"  p : changer de portée d'édition (global → projet → local)"}</text>
+      <text fg={DIM}>{"      Ce que \"s\" enregistre. Confirmation si des modifications sont en attente."}</text>
+      <text>{"  q ou Ctrl+C : quitter (confirmation si des modifications sont en attente)"}</text>
+      <text fg={FAINT}>{"  Rien n'est écrit sur disque avant \"s\" — sauf le prompt système, voir Rôles."}</text>
       <text> </text>
+
       <text attributes={TextAttributes.BOLD}>Agents</text>
-      <text>  Haut/Bas : ligne · Espace : autorisation · Entrée : détail des capacités</text>
-      <text>  n : déclarer un agent hors catalogue (un CLI décrit par sa commande)</text>
-      <text>  x : retirer une déclaration · Entrée sur un agent déclaré (*) : éditer ses champs</text>
+      <text>{"  ↑↓ : agent · Espace : autoriser / refuser · Entrée : éditer un agent déclaré"}</text>
+      <text>{"  n : déclarer un CLI hors catalogue · x : retirer une déclaration"}</text>
+      <text fg={DIM}>{"      Autoriser et déclarer sont deux gestes différents : le premier écrit une"}</text>
+      <text fg={DIM}>{"      liste de la politique, le second ajoute un agent au catalogue."}</text>
+      <text> </text>
+
       <text attributes={TextAttributes.BOLD}>Rôles</text>
-      <text>  Haut/Bas : rôle · n : nouveau rôle · x : supprimer le rôle sélectionné</text>
-      <text>  Entrée sur un rôle : éditer ses champs (Haut/Bas, Entrée, Échap pour sortir)</text>
-      <text>  champ "agents", puis Entrée : ordre de repli — Haut/Bas déplace le curseur,</text>
-      <text>  Maj+J/Maj+K réordonne, a ajoute un agent du catalogue, r le retire</text>
+      <text>{"  ↑↓ : rôle · Entrée : entrer dans les champs · n : nouveau · x : supprimer"}</text>
+      <text>{"  Dans les champs : Entrée modifie, Échap revient. Sur « Agents », Entrée ouvre"}</text>
+      <text>{"  l'ordre de repli — Maj+J/Maj+K déplace, a ajoute, r retire."}</text>
+      <text>{"  Sur « Prompt système » : Entrée ouvre l'éditeur (Ctrl+S écrit le fichier),"}</text>
+      <text>{"  f change le chemin du fichier."}</text>
+      <text> </text>
+
       <text attributes={TextAttributes.BOLD}>Politique</text>
-      <text>  Haut/Bas : champ · Entrée : éditer/cycler · listes : a ajoute, r retire</text>
+      <text>{"  ↑↓ : réglage · Entrée : modifier ou ouvrir la liste · a ajoute, r retire"}</text>
       <text attributes={TextAttributes.BOLD}>Intégrations</text>
-      <text>  Haut/Bas : client · Entrée : installer / mettre à jour l'enregistrement MCP</text>
+      <text>{"  ↑↓ : client · Entrée : installer / mettre à jour l'enregistrement MCP"}</text>
     </box>
   );
 }
@@ -254,18 +327,17 @@ function QuitConfirmOverlay({ onConfirm, onCancel }: { onConfirm: () => void; on
     else if (key.name === "n" || key.name === "escape") onCancel();
   });
   return (
-    <box flexDirection="column" border borderStyle="double" borderColor="red" title="Modifications non enregistrées">
+    <box flexDirection="column" border borderStyle="double" borderColor={BAD} title=" Modifications non enregistrées " paddingLeft={1} paddingRight={1}>
       <text>Des modifications ne sont pas enregistrées. Quitter quand même ?</text>
-      <text fg="gray">o : quitter sans enregistrer · n / Échap : annuler</text>
+      <text fg={DIM}>o : quitter sans enregistrer · n / Échap : annuler</text>
     </box>
   );
 }
 
 /**
  * Changer de portée avec des modifications en attente les abandonnerait
- * silencieusement (elles ne portent que sur la couche active — voir
- * `config-state.ts`, `setScope`) : ce garde-fou demande confirmation avant,
- * même principe que `QuitConfirmOverlay` juste au-dessus.
+ * silencieusement (elles ne portent que sur la couche active) : ce garde-fou
+ * demande confirmation avant, même principe que `QuitConfirmOverlay`.
  */
 function ScopeConfirmOverlay({
   from,
@@ -283,12 +355,12 @@ function ScopeConfirmOverlay({
     else if (key.name === "n" || key.name === "escape") onCancel();
   });
   return (
-    <box flexDirection="column" border borderStyle="double" borderColor="red" title="Modifications non enregistrées">
+    <box flexDirection="column" border borderStyle="double" borderColor={BAD} title=" Modifications non enregistrées " paddingLeft={1} paddingRight={1}>
       <text>
         Les modifications en attente sur la couche {scopeLabel(from)} ne sont pas enregistrées. Basculer vers la couche{" "}
         {scopeLabel(to)} les abandonnera. Continuer ?
       </text>
-      <text fg="gray">o : changer de portée sans enregistrer · n / Échap : annuler</text>
+      <text fg={DIM}>o : changer de portée sans enregistrer · n / Échap : annuler</text>
     </box>
   );
 }

@@ -34,6 +34,7 @@ import {
   policyFieldMark,
   removeRole,
   removeRoleAgentAt,
+  renameRole,
   roleDeclaredByActiveLayer,
   roleMark,
   saveConfigState,
@@ -182,6 +183,34 @@ describe("créer et supprimer un rôle", () => {
 
         const attempted = removeRole(state, ROLE.name);
         expect(findRole(attempted, ROLE.name)).toEqual(ROLE); // toujours là : rien n'a bougé
+        expect(isDirty(attempted)).toBe(false);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("renameRole change le nom en conservant tout le reste du rôle", () => {
+    const state = upsertRole(emptyState(), ROLE);
+    const renamed = renameRole(state, ROLE.name, "relecteur");
+
+    expect(findRole(renamed, ROLE.name)).toBeUndefined();
+    expect(findRole(renamed, "relecteur")).toEqual({ ...ROLE, name: "relecteur" });
+    expect(effectiveConfig(renamed).roles.length).toBe(effectiveConfig(state).roles.length);
+  });
+
+  it("renameRole n'a aucun effet sur un rôle hérité — sinon l'ancien nom survivrait dans la couche du dessous", async () => {
+    await withFakeHome(async () => {
+      const root = await mkdtemp(join(tmpdir(), "orch-tui-role-rename-"));
+      try {
+        await saveLayer("global", root, { roles: [ROLE] });
+        const state = await loadConfigState(root); // couche active "project"
+
+        const attempted = renameRole(state, ROLE.name, "relecteur");
+        // Renommer ici n'aurait pas *déplacé* le rôle : il en serait apparu un
+        // second, l'ancien continuant d'exister, hérité du global.
+        expect(findRole(attempted, ROLE.name)).toEqual(ROLE);
+        expect(findRole(attempted, "relecteur")).toBeUndefined();
         expect(isDirty(attempted)).toBe(false);
       } finally {
         await rm(root, { recursive: true, force: true });

@@ -42,18 +42,7 @@ export function cycle<T>(options: readonly T[], current: T): T {
   return options[(index + 1) % options.length]!;
 }
 
-/**
- * Complète `text` à `width` caractères (comme `padEnd`), ou le tronque avec
- * une élision ("…") s'il dépasse — toujours exactement `width` caractères en
- * sortie. Remplace un simple `padEnd` dans les tableaux d'`AgentsScreen`/
- * `IntegrationsScreen` : ces colonnes ne sont pas des `<box>` de largeur
- * fixe, seulement des chaînes complétées à une largeur conventionnelle — un
- * texte plus long qu'elle (le chemin d'un binaire, en particulier) débordait
- * donc sur la cellule suivante au lieu d'être coupé, désalignant tout le
- * tableau (défaut connu de la tâche 15).
- */
-export function fitColumn(text: string, width: number): string {
-  if (text.length <= width) return text.padEnd(width);
-  if (width <= 1) return text.slice(0, Math.max(width, 0));
-  return `${text.slice(0, width - 1)}…`;
-}
+// `fitColumn` vivait ici : elle complétait une cellule à une largeur écrite
+// en dur dans chaque écran. Remplacée par `cell` (`ui/layout.ts`), qui ne
+// décide plus seule de la largeur — celle-ci vient de `layoutColumns`, donc
+// de la place réellement disponible, gouttière comprise.

@@ -16,11 +16,27 @@ export interface ResolvedRole extends RoleConfig {
 }
 
 /**
+ * Où un `system_prompt_file` est réellement lu : sous `<root>/.orch/`,
+ * toujours — y compris quand le rôle vient de la couche globale, dont les
+ * chemins sont donc résolus dans le projet courant (limite connue, pas une
+ * décision de cette fonction).
+ *
+ * Exportée pour que les interfaces qui *écrivent* ce fichier — l'éditeur de
+ * prompt du TUI — visent exactement le fichier que `resolveRole` lira. Sans
+ * elle, chacune recomposerait le chemin de son côté, et un jour pas au même
+ * endroit : le prompt édité ne serait alors plus celui transmis à l'agent,
+ * sans que rien ne le signale.
+ */
+export function rolePromptPath(root: string, systemPromptFile: string): string {
+  return join(root, ".orch", systemPromptFile);
+}
+
+/**
  * Résout un rôle par nom et charge son prompt système. `null` si aucun rôle
  * de ce nom n'existe. `system_prompt_file` est résolu relativement à
- * `<root>/.orch/` ; un fichier absent n'est pas une erreur, `systemPrompt`
- * vaut simplement la chaîne vide — un rôle sans prompt système reste
- * parfaitement utilisable.
+ * `<root>/.orch/` (`rolePromptPath`) ; un fichier absent n'est pas une
+ * erreur, `systemPrompt` vaut simplement la chaîne vide — un rôle sans
+ * prompt système reste parfaitement utilisable.
  */
 export async function resolveRole(config: OrchConfig, root: string, name: string): Promise<ResolvedRole | null> {
   const role = config.roles.find((candidate) => candidate.name === name);
@@ -28,7 +44,7 @@ export async function resolveRole(config: OrchConfig, root: string, name: string
 
   let systemPrompt = "";
   if (role.system_prompt_file) {
-    const path = join(root, ".orch", role.system_prompt_file);
+    const path = rolePromptPath(root, role.system_prompt_file);
     try {
       systemPrompt = await readFile(path, "utf8");
     } catch (error) {
