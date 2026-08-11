@@ -29,10 +29,10 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Isolation, OrchEvent, TaskMode } from "@orch/protocol";
 import type { NetworkRequest, TaskOutcome } from "@orch/core";
-import { createQueue, fileTaskStore, generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation, runTask } from "@orch/core";
+import { createSlotQueue, fileTaskStore, generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation, runTask } from "@orch/core";
 import { ISOLATIONS, NETWORK_REQUEST_VALUES, TASK_MODES } from "../flags.js";
 import type { Io } from "../output.js";
-import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, writeLine } from "../output.js";
+import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, printWarning, writeLine } from "../output.js";
 
 export interface RunOptions {
   role?: string;
@@ -151,13 +151,35 @@ export async function runRun(root: string, objective: string, options: RunOption
   const { agentId, mode, isolation, network, networkWarning, timeoutMs, context: resolvedContext } = resolved;
 
   const store = fileTaskStore(root);
-  // Une `Queue` par appel : `orch run` ne lance qu'une seule tâche à la fois,
-  // mais la câbler explicitement (plutôt que de laisser `RunnerDeps.queue` à
-  // `undefined`) tient la promesse de `policy.max_parallel` — voir C4 de la
-  // revue finale, et le durcissement de typage qui rend ce champ obligatoire.
-  const queue = createQueue(config.policy.max_parallel);
   const taskId = generateTaskId();
+  // Le contrôleur précède la file : l'attente d'un créneau se produit *avant*
+  // que `runTask` ne soit appelé, et Ctrl-C doit pouvoir l'interrompre aussi —
+  // pas seulement la tâche une fois lancée.
   const controller = new AbortController();
+
+  // Créneaux sur disque plutôt que sémaphore en mémoire : chaque `orch run`
+  // est un processus distinct, et une file par processus laissait six
+  // terminaux lancer six agents quel que soit `max_parallel`. Les créneaux
+  // sont partagés par tout ce qui délègue sous cette racine, session MCP
+  // comprise.
+  const queue = createSlotQueue({
+    root,
+    limit: config.policy.max_parallel,
+    label: `orch run — ${objective.slice(0, 60)}`,
+    signal: controller.signal,
+    onWait: (holders) => {
+      // Une attente muette se lit comme un blocage. Nommer qui occupe la
+      // place, et combien il y en a, la rend compréhensible — et montre du
+      // même geste quel réglage la gouverne.
+      printWarning(
+        io,
+        `${holders.length} tâche(s) déjà en cours sous ce projet (max_parallel = ${config.policy.max_parallel}) — en attente d'un créneau. Ctrl-C pour renoncer.`,
+      );
+      for (const holder of holders) {
+        printWarning(io, `  · pid ${holder.pid}${holder.label ? ` — ${holder.label}` : ""} (depuis ${holder.startedAt})`);
+      }
+    },
+  });
 
   const onSigint = (): void => {
     printError(io, `Interruption demandée : arrêt de la tâche "${taskId}" (SIGTERM au sous-processus, SIGKILL s'il ne répond pas)…`);

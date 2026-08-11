@@ -12,7 +12,7 @@
  * rapportera, jamais une exception qui remonte dans le vide.
  */
 import type { Queue, RunTaskInput, TaskOutcome, TaskRecord, TaskStore } from "@orch/core";
-import { createQueue, fileTaskStore, loadConfig, runTask } from "@orch/core";
+import { createSlotQueue, fileTaskStore, loadConfig, runTask } from "@orch/core";
 import { REPORT_PROTOCOL, ReportSchema } from "@orch/protocol";
 
 export interface SessionTask {
@@ -38,13 +38,26 @@ export interface McpSession {
    * chaque frappe"), une édition ultérieure de la politique en cours de
    * session ne redimensionne pas cette file — limite assumée plutôt que de
    * reconstruire une file qui pourrait avoir des tâches en attente.
+   *
+   * Depuis, ce sémaphore est adossé à des fichiers-créneaux
+   * (`createSlotQueue`) plutôt qu'à la mémoire : la limite vaut désormais
+   * entre processus, donc entre cette session et les `orch run` lancés à la
+   * main sous la même racine.
    */
   queue: Queue;
 }
 
 export async function createSession(root: string): Promise<McpSession> {
   const { config } = await loadConfig(root);
-  return { root, store: fileTaskStore(root), tasks: new Map(), queue: createQueue(config.policy.max_parallel) };
+  // Créneaux sur disque, partagés avec tout ce qui délègue sous cette racine :
+  // sans eux, une session MCP à quatre tâches et un `orch run` lancé dans un
+  // terminal s'ignoraient, et `max_parallel = 4` autorisait cinq agents.
+  const queue = createSlotQueue({
+    root,
+    limit: config.policy.max_parallel,
+    label: "orch mcp serve",
+  });
+  return { root, store: fileTaskStore(root), tasks: new Map(), queue };
 }
 
 /**

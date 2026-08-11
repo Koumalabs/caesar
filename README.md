@@ -111,6 +111,22 @@ orch run --agent codex "…" -- --enable feature_x
 
 Le séparateur est obligatoire : sans lui, un opérande en trop reste une coquille et `orch` le refuse plutôt que de l'envoyer à l'agent. Volontairement absent du tool MCP `orch_delegate` — c'est un geste que vous tapez, pas une latitude laissée à l'orchestrateur, qui pourrait sinon élever seul les privilèges d'un sous-agent.
 
+## Tâches simultanées
+
+Plusieurs agents tournent de front, chacun dans son propre worktree (`.orch/wt/<taskId>`, branche `orch/<taskId>`). C'est le mode normal depuis Claude Code : `orch_delegate` rend la main aussitôt avec un `task_id`, on en lance plusieurs, `orch_await` récupère les résultats.
+
+`policy.max_parallel` (4 par défaut) plafonne le tout — **y compris entre processus**. Six `orch run` dans six terminaux, plus une conversation Claude Code qui délègue : tous se partagent les mêmes créneaux, matérialisés par des fichiers sous `.orch/state/slots/`. Un `orch run` qui ne trouve pas de place attend en le disant, et nomme qui occupe :
+
+```
+$ orch run --agent codex "…"
+1 tâche(s) déjà en cours sous ce projet (max_parallel = 1) — en attente d'un créneau. Ctrl-C pour renoncer.
+  · pid 51820 — orch run — relire le parseur (depuis 2026-08-11T13:42:11.004Z)
+```
+
+Un processus tué (`kill -9`) laisse son fichier-créneau derrière lui : le premier appelant qui trouve tout occupé vérifie chaque détenteur et récupère ceux dont le processus n'existe plus. Une limite qui deviendrait un blocage définitif serait pire que pas de limite du tout.
+
+Deux réserves à connaître. L'attente est une scrutation, pas une file d'attente : entre deux candidats, l'ordre d'entrée n'est pas garanti. Et la reprise d'un créneau mort repose sur le pid, ce qui n'a de sens que sur une seule machine — un `.orch/` sur un partage réseau, utilisé depuis deux postes, verrait les créneaux de l'autre comme vivants indéfiniment.
+
 Les autres sous-commandes : `orch ps` (tâches en cours et récentes), `orch logs <id> [--raw] [--follow]`, `orch cancel <id>`, `orch agents list|enable|disable|test` (`test` lance une micro-tâche réelle en lecture seule pour vérifier qu'un agent répond — `--yes` obligatoire, ça consomme son quota), `orch policy show|allow|deny`, `orch role list|show|add|remove`, `orch protocol schema <task|report|event> [--strict]` (publie le standard en JSON Schema). Celles qui modifient (`policy allow|deny`, `agents enable|disable`, `role add|remove`) acceptent `--global`/`--local` pour cibler une autre couche que le projet — voir « Configuration en couches » ci-dessous.
 
 ## Usage depuis Claude Code

@@ -19,7 +19,7 @@ import {
   GENERIC_ARG_TOKENS,
   agentProvenance,
   checkDelegation,
-  createQueue,
+  createSlotQueue,
   describeAgentCapabilities,
   describeAgentPolicy,
   fileTaskStore,
@@ -313,7 +313,9 @@ export async function runAgentsTest(root: string, id: string, options: AgentsTes
   }
 
   const store = fileTaskStore(root);
-  const queue = createQueue(config.policy.max_parallel);
+  // Même verrou que `orch run` : cette sonde lance un vrai agent, elle compte
+  // donc dans `max_parallel` comme n'importe quelle délégation.
+  const queue = createSlotQueue({ root, limit: config.policy.max_parallel, label: `orch agents test ${id}` });
   const startedAt = Date.now();
   const outcome = await runTask(
     { store, root, queue },

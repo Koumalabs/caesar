@@ -16,4 +16,5 @@ export * from "./engine/gc.js";
 export * from "./engine/spawn.js";
 export * from "./engine/report.js";
 export * from "./engine/queue.js";
+export * from "./engine/slots.js";
 export * from "./engine/runner.js";
