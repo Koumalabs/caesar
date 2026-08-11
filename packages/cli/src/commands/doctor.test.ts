@@ -83,7 +83,7 @@ describe("orch doctor", () => {
       expect(code).toBe(EXIT_OK);
       const out = io.stdoutText();
       expect(out).toContain("codex");
-      expect(out).toContain("À installer");
+      expect(out).toContain("À INSTALLER");
       expect(out).not.toMatch(/\x1b\[/);
 
       // Un binaire absent appelle une action, un agent refusé n'en appelle
@@ -95,7 +95,7 @@ describe("orch doctor", () => {
       // La colonne « binaire » n'est plus dans la vue par défaut : le chemin,
       // additionné des capacités en toutes lettres, est ce qui la faisait
       // déborder.
-      expect(out).not.toMatch(/^agent\s+binaire/m);
+      expect(out).not.toMatch(/│\s*binaire\s*│/);
     });
   });
 
@@ -103,7 +103,7 @@ describe("orch doctor", () => {
     await withFakeHome(async () => {
       const code = await withShimmedPath(shimDir, () => runDoctor(root, { verbose: true }, io));
       expect(code).toBe(EXIT_OK);
-      expect(io.stdoutText()).toMatch(/^agent\s+binaire\s+version/m);
+      expect(io.stdoutText()).toMatch(/│\s*agent\s*│\s*binaire\s*│\s*version/);
     });
   });
 

@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ENV } from "@orch/protocol";
+import type { OrchEventInput } from "@orch/protocol";
+import { ENV, EventSchema } from "@orch/protocol";
 import { FAKE_AGENT_PATH, makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
 import { runPolicyDeny } from "./policy.js";
-import { runRun } from "./run.js";
+import { describeEvent, formatEventLine, runRun } from "./run.js";
 import { runCli } from "../program.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE } from "../output.js";
 
@@ -242,14 +243,14 @@ describe("orch run", () => {
           return code;
         });
 
-        // La ligne "[démarrage]" (dérivée de l'événement "started") doit
+        // La ligne "départ" (dérivée de l'événement "started") doit
         // apparaître alors que `runRun` est encore en cours d'exécution —
         // c'est ce qui distingue un affichage en direct (onEvent) d'une
         // relecture après coup.
-        for (let i = 0; i < 100 && !io.stdoutText().includes("[démarrage]"); i++) {
+        for (let i = 0; i < 100 && !io.stdoutText().includes("départ"); i++) {
           await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 10));
         }
-        expect(io.stdoutText()).toContain("[démarrage]");
+        expect(io.stdoutText()).toContain("départ");
         expect(settled).toBe(false);
 
         const code = await runPromise;
@@ -271,10 +272,10 @@ describe("orch run", () => {
           io,
         );
 
-        for (let i = 0; i < 100 && !io.stdoutText().includes("[démarrage]"); i++) {
+        for (let i = 0; i < 100 && !io.stdoutText().includes("départ"); i++) {
           await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 10));
         }
-        expect(io.stdoutText()).toContain("[démarrage]");
+        expect(io.stdoutText()).toContain("départ");
 
         // `process.emit` invoque directement les gestionnaires enregistrés via
         // `process.on("SIGINT", ...)`, sans passer par le signal OS réel — on
@@ -431,5 +432,71 @@ describe("orch run — arguments bruts et le séparateur « -- »", () => {
     const code = await runCli(["node", "orch", "run", "--root", root, "--agent", "agent-absent", "objectif", "--", "coquille"], io);
     expect(code).toBe(EXIT_USAGE);
     expect(io.stderrText()).not.toContain("« -- »");
+  });
+});
+
+/**
+ * L'affichage au fil de l'eau, éprouvé directement : l'agent factice des
+ * tests n'émet pas de lignes au format d'un CLI réel, aucun test de bout en
+ * bout ne passerait donc par ces branches.
+ */
+describe("orch run — l'avancement affiché", () => {
+  function ev(partial: Omit<OrchEventInput, "protocol" | "seq" | "at" | "task_id">) {
+    return EventSchema.parse({ protocol: "orch.event/v1", seq: 0, at: "2026-08-11T14:00:00.000Z", task_id: "t", ...partial });
+  }
+
+  /** La ligne telle qu'elle s'écrit, sur un flux sans couleur. */
+  function ligne(partial: Omit<OrchEventInput, "protocol" | "seq" | "at" | "task_id">): string | undefined {
+    const line = describeEvent(ev(partial));
+    return line ? formatEventLine(line, makeIo()) : undefined;
+  }
+
+  it("montre enfin ce que l'agent dit", () => {
+    // Écrit dans `events.jsonl` depuis toujours, affiché nulle part : sur une
+    // tâche qui réfléchit longtemps entre deux outils, c'était la seule chose
+    // à voir.
+    expect(ligne({ type: "message", text: "J'ai relu le parseur." })).toBe("  » agent      J'ai relu le parseur.");
+    expect(ligne({ type: "thinking", text: "Voyons\nles trois couches." })).toBe("  · réflexion  Voyons les trois couches.");
+  });
+
+  it("lit le résumé d'un rapport plutôt que d'en déverser le JSON", () => {
+    const rapport = JSON.stringify({ protocol: "orch.report/v1", status: "partial", summary: "Je crée les trois fichiers." });
+    expect(ligne({ type: "message", text: rapport })).toBe("  » agent      Je crée les trois fichiers.");
+  });
+
+  it("annonce un outil dès son départ, et nomme sa fermeture anonyme", () => {
+    expect(ligne({ type: "tool_use", tool: "shell", id: "i1", input_summary: "npm test", status: "started" })).toBe(
+      "  ▸ outil      shell — npm test (started)",
+    );
+    // La fermeture d'un outil chez claude ne porte que l'identifiant d'appel.
+    expect(ligne({ type: "tool_use", tool: "", id: "toolu_1", input_summary: "", status: "succeeded" })).toBe(
+      "  ▸ outil      (fin) (succeeded)",
+    );
+  });
+
+  it("aligne les textes, quel que soit le libellé", () => {
+    // C'est tout l'intérêt du libellé à largeur fixe : la colonne se parcourt
+    // d'un coup d'œil, là où `[outil]`/`[réflexion]` décalaient chaque ligne.
+    const colonne = (line: string): number => line.indexOf(line.trim().split(/\s{2,}/)[1] ?? "");
+    const outil = ligne({ type: "tool_use", tool: "shell", id: "i", input_summary: "x", status: "started" }) ?? "";
+    const reflexion = ligne({ type: "thinking", text: "y" }) ?? "";
+    expect(colonne(outil)).toBe(colonne(reflexion));
+  });
+
+  it("la marque porte la couleur, jamais la parole de l'agent", () => {
+    const io = makeIo();
+    (io.stdout as unknown as { isTTY?: boolean }).isTTY = true;
+    const previous = process.env["NO_COLOR"];
+    delete process.env["NO_COLOR"];
+    try {
+      const line = describeEvent(ev({ type: "message", text: "Une phrase." }));
+      const rendu = formatEventLine(line!, io);
+      expect(rendu).toMatch(/\x1b\[/);
+      // Le texte lui-même sort du dernier RESET : il hérite de l'avant-plan du
+      // terminal, donc reste lisible sur fond clair comme sur fond sombre.
+      expect(rendu.slice(rendu.lastIndexOf("\x1b[0m") + 4)).toBe(" Une phrase.");
+    } finally {
+      if (previous !== undefined) process.env["NO_COLOR"] = previous;
+    }
   });
 });

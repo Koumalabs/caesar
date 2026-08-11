@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "packages/theme" },
     { "path": "packages/protocol" },
     { "path": "packages/core" },
     { "path": "packages/mcp-channel" },

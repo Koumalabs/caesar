@@ -1,8 +1,19 @@
 /** Façade CLI de la décision de nettoyage portée par `@orch/core`. */
 import { garbageCollectWorktrees } from "@orch/core";
 import type { WorktreeGcEntry } from "@orch/core";
-import type { Io } from "../output.js";
-import { EXIT_OK, EXIT_RUNTIME, printJson, renderTable, terminalWidth, wrapText, writeLine } from "../output.js";
+import type { Cell, Io } from "../output.js";
+import {
+  EXIT_OK,
+  EXIT_RUNTIME,
+  printHeading,
+  printJson,
+  printNote,
+  printTable,
+  sectionHeader,
+  terminalWidth,
+  wrapText,
+  writeLine,
+} from "../output.js";
 
 export interface GcOptions {
   dryRun?: boolean;
@@ -66,22 +77,27 @@ export async function runGc(root: string, options: GcOptions, io: Io): Promise<n
       entries: result.entries.map(jsonEntry),
     });
   } else if (result.entries.length === 0) {
+    sectionHeader(io, "gc");
     writeLine(io.stdout, "Aucun worktree à nettoyer.");
   } else {
-    const rows = result.entries.map((entry) => [
+    sectionHeader(io, "gc");
+    const rows: Cell[][] = result.entries.map((entry) => [
       entry.id,
-      entry.orphan ? "orphelin" : entry.status ?? "-",
-      actionLabel(entry),
-      reasonLabel(entry),
+      { text: entry.orphan ? "orphelin" : entry.status ?? "-", token: "dim" },
+      // La décision est ce qu'on vient lire : supprimer se distingue de
+      // conserver à la couleur, avant même que le mot ne soit lu.
+      { text: actionLabel(entry), token: entry.action === "kept" ? "ok" : "warn" },
+      { text: reasonLabel(entry), token: "dim" },
     ]);
-    writeLine(io.stdout, renderTable(["id", "origine/statut", "décision", "raison"], rows));
+    printTable(io, ["id", "origine/statut", "décision", "raison"], rows);
     const removedLabel = result.dryRun ? `${result.wouldRemove} suppression(s) prévue(s)` : `${result.removed} suppression(s)`;
     writeLine(io.stdout, `${removedLabel}, ${result.kept} conservation(s).`);
 
     const advices = result.entries.map(keptAdvice).filter((advice): advice is string => advice !== null);
     if (advices.length > 0) {
       writeLine(io.stdout);
-      writeLine(io.stdout, "Conservés parce qu'ils portent du travail non intégré :");
+      printHeading(io, "conservés");
+      printNote(io, "Ceux-ci portent du travail non intégré.");
       for (const advice of advices) {
         for (const line of wrapText(advice, terminalWidth(io.stdout), "  - ", "    ")) writeLine(io.stdout, line);
       }

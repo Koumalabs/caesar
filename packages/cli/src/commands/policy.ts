@@ -17,8 +17,20 @@
  */
 import type { ConfigScope, PolicyConfig } from "@orch/core";
 import { loadConfig, materializePolicyList, policyFieldProvenance } from "@orch/core";
-import type { Io } from "../output.js";
-import { EXIT_OK, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
+import type { Cell, Io } from "../output.js";
+import {
+  EXIT_OK,
+  EXIT_USAGE,
+  activeGlyphs,
+  colorize,
+  printDone,
+  printError,
+  printJson,
+  printNote,
+  printTable,
+  sectionHeader,
+  writeLine,
+} from "../output.js";
 import type { ScopeOptions } from "../scope.js";
 import { materializationNotice, resolveScope, scopeLabel } from "../scope.js";
 
@@ -40,8 +52,15 @@ export async function runPolicyShow(root: string, options: PolicyShowOptions, io
     return EXIT_OK;
   }
 
-  const rows = keys.map((key) => [key, JSON.stringify(config.policy[key]), provenance[key]]);
-  writeLine(io.stdout, renderTable(["champ", "valeur", "provenance"], rows));
+  sectionHeader(io, "policy");
+  // La provenance en demi-ton : c'est la colonne qu'on ne lit que lorsqu'une
+  // valeur surprend, jamais celle qu'on vient chercher.
+  const rows: Cell[][] = keys.map((key) => [
+    key,
+    JSON.stringify(config.policy[key]),
+    { text: provenance[key], token: "dim" },
+  ]);
+  printTable(io, ["champ", "valeur", "provenance"], rows);
   return EXIT_OK;
 }
 
@@ -85,7 +104,7 @@ export async function runPolicyAllow(root: string, id: string, options: PolicyEd
   if (options.json) {
     printJson(io, { id, scope, allowed: effective, narrowed_allowlist: wasEmptyAllowlist, materialized });
   } else {
-    writeLine(io.stdout, `Agent "${id}" ajouté à la liste "allowed" (couche ${scopeLabel(scope)}).`);
+    printDone(io, `Agent "${id}" ajouté à la liste "allowed" (couche ${scopeLabel(scope)}).`);
     // CONTRÔLEUR-2 de la revue finale : "allow" partait d'une liste vide —
     // où tout agent non refusé passait — et la rend désormais restrictive.
     // Un utilisateur qui voulait "autoriser un agent de plus" vient d'en
@@ -94,12 +113,14 @@ export async function runPolicyAllow(root: string, id: string, options: PolicyEd
     if (wasEmptyAllowlist) {
       writeLine(
         io.stdout,
-        `Attention : la liste "allowed" était vide (tous les agents non refusés passaient) ; elle ne contient ` +
+        `${colorize(activeGlyphs().status.warn, "warn", io.stdout)} ` +
+          colorize("Attention", "warn", io.stdout) +
+          ` : la liste "allowed" était vide (tous les agents non refusés passaient) ; elle ne contient ` +
           `désormais que "${id}" — les autres agents sont maintenant refusés. Pour autoriser un agent de plus sans ` +
           `restreindre les autres, préférez "orch policy deny"/"orch agents disable" sur ce que vous voulez exclure.`,
       );
     }
-    if (materialized) writeLine(io.stdout, materializationNotice("allowed", scope, effective));
+    if (materialized) printNote(io, materializationNotice("allowed", scope, effective));
   }
   return EXIT_OK;
 }
@@ -115,8 +136,8 @@ export async function runPolicyDeny(root: string, id: string, options: PolicyEdi
   if (options.json) {
     printJson(io, { id, scope, denied: effective, materialized });
   } else {
-    writeLine(io.stdout, `Agent "${id}" ajouté à la liste "denied" (couche ${scopeLabel(scope)}).`);
-    if (materialized) writeLine(io.stdout, materializationNotice("denied", scope, effective));
+    printDone(io, `Agent "${id}" ajouté à la liste "denied" (couche ${scopeLabel(scope)}).`);
+    if (materialized) printNote(io, materializationNotice("denied", scope, effective));
   }
   return EXIT_OK;
 }

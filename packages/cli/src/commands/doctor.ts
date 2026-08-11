@@ -19,8 +19,20 @@ import {
   policyFieldProvenance,
   remedyFor,
 } from "@orch/core";
-import type { Io } from "../output.js";
-import { EXIT_OK, printJson, renderTable, terminalWidth, wrapText, writeLine } from "../output.js";
+import type { Cell, Io } from "../output.js";
+import {
+  EXIT_OK,
+  homePath,
+  printDone,
+  printHeading,
+  printJson,
+  printNote,
+  printTable,
+  sectionHeader,
+  terminalWidth,
+  wrapText,
+  writeLine,
+} from "../output.js";
 
 export interface DoctorOptions {
   json?: boolean;
@@ -64,30 +76,36 @@ export async function runDoctor(root: string, options: DoctorOptions, io: Io): P
     return EXIT_OK;
   }
 
+  sectionHeader(io, "doctor");
+
   const version = (r: (typeof rows)[number]): string => r.version ?? (r.installed ? "version inconnue" : "-");
-  const tableRows = options.verbose
+  // La politique se lit à la couleur avant de se lire au mot : c'est la seule
+  // colonne de ce tableau dont on cherche la valeur plutôt que le contenu.
+  const policyCell = (r: (typeof rows)[number]): Cell =>
+    r.policy.allowed ? { text: "autorisé", token: "ok" } : { text: "refusé", token: "bad" };
+  const tableRows: Cell[][] = options.verbose
     ? rows.map((r) => [
         r.id,
-        r.installed ? (r.path ?? "trouvé") : "absent",
+        r.installed ? homePath(r.path ?? "trouvé") : { text: "absent", token: "bad" },
         version(r),
         r.capabilities.join(", ") || "-",
-        r.policy.allowed ? "autorisé" : "refusé",
+        policyCell(r),
       ])
     : rows.map((r) => [
         r.id,
-        r.installed ? version(r) : "absent",
-        r.capabilitiesShort.join(" ") || "-",
-        r.policy.allowed ? "autorisé" : "refusé",
+        r.installed ? version(r) : { text: "absent", token: "bad" },
+        { text: r.capabilitiesShort.join(" ") || "-", token: "dim" },
+        policyCell(r),
       ]);
   const headers = options.verbose
     ? ["agent", "binaire", "version", "capacités", "politique"]
     : ["agent", "version", "capacités", "politique"];
-  writeLine(io.stdout, renderTable(headers, tableRows));
+  printTable(io, headers, tableRows);
   writeLine(io.stdout);
 
   if (missing.length === 0 && denied.length === 0) {
-    writeLine(io.stdout, "Tous les agents du catalogue sont installés et autorisés par la politique.");
-    if (!options.verbose) writeLine(io.stdout, 'Chemins et capacités en toutes lettres : "orch doctor --verbose".');
+    printDone(io, "Tous les agents du catalogue sont installés et autorisés par la politique.");
+    if (!options.verbose) printNote(io, 'Chemins et capacités en toutes lettres : "orch doctor --verbose".');
     return EXIT_OK;
   }
 
@@ -103,7 +121,7 @@ export async function runDoctor(root: string, options: DoctorOptions, io: Io): P
   };
 
   if (missing.length > 0) {
-    writeLine(io.stdout, "À installer :");
+    printHeading(io, "à installer");
     for (const r of missing) {
       // Un agent déclaré en configuration porte souvent un chemin explicite
       // plutôt qu'un nom : le PATH n'entre alors pas en jeu (voir
@@ -121,7 +139,8 @@ export async function runDoctor(root: string, options: DoctorOptions, io: Io): P
   }
 
   if (denied.length > 0) {
-    writeLine(io.stdout, "Refusés par la politique — état voulu, sauf si vous en décidez autrement :");
+    printHeading(io, "refusés par la politique");
+    printNote(io, "État voulu, sauf si vous en décidez autrement.");
     for (const r of denied) {
       // `denied` est filtré sur `!r.policy.allowed` ci-dessus ; ce garde ne
       // change rien à l'exécution, il resserre le type de `r.policy` pour que

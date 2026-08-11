@@ -27,7 +27,7 @@ describe("buildProgram (structurel)", () => {
     const io = makeIo();
     const program = buildProgram(io, { value: 0 });
     const names = program.commands.map((c) => c.name()).sort();
-    expect(names).toEqual(["agents", "apply", "cancel", "channel", "config", "diff", "doctor", "gc", "init", "logs", "mcp", "policy", "protocol", "ps", "role", "run"]);
+    expect(names).toEqual(["agents", "apply", "cancel", "channel", "config", "diff", "doctor", "gc", "init", "logs", "mcp", "policy", "protocol", "ps", "role", "run", "watch"]);
 
     const agents = program.commands.find((c) => c.name() === "agents")!;
     expect(agents.commands.map((c) => c.name()).sort()).toEqual(["add", "disable", "enable", "list", "remove", "test"]);
@@ -76,7 +76,7 @@ describe("orch (binaire compilé)", () => {
 
   it("--help sort en code 0", async () => {
     const { stdout } = await execFileAsync("node", [BIN_PATH, "--help"]);
-    expect(stdout).toContain("Orchestrateur de sous-agents");
+    expect(stdout).toContain("Orchestrateur de sous-agents de code");
   });
 
   it("--version affiche la version du package.json, sort en code 0", async () => {

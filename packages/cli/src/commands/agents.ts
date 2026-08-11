@@ -21,6 +21,7 @@ import {
   checkDelegation,
   createSlotQueue,
   describeAgentCapabilities,
+  describeAgentCapabilitiesShort,
   describeAgentPolicy,
   fileTaskStore,
   findAgentDefinition,
@@ -34,8 +35,23 @@ import {
   splitArgTemplate,
   validateGenericAgentSpec,
 } from "@orch/core";
-import type { Io } from "../output.js";
-import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
+import type { Cell, Io } from "../output.js";
+import {
+  EXIT_OK,
+  EXIT_RUNTIME,
+  EXIT_USAGE,
+  homePath,
+  printDone,
+  printError,
+  printHeading,
+  printJson,
+  printNote,
+  printTable,
+  sectionHeader,
+  terminalWidth,
+  wrapText,
+  writeLine,
+} from "../output.js";
 import type { ScopeOptions } from "../scope.js";
 import { materializationNotice, resolveScope, scopeFlagHint, scopeLabel } from "../scope.js";
 
@@ -60,6 +76,9 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
         installed: path !== null,
         path: path ?? undefined,
         capabilities: describeAgentCapabilities(def),
+        // Seulement pour la mise en forme : `capabilities` reste ce que
+        // `--json` publie, en toutes lettres et inchangé.
+        capabilitiesShort: describeAgentCapabilitiesShort(def),
         policy: describeAgentPolicy(config.policy, def.id),
         // "default" pour les cinq agents du catalogue natif : aucune couche ne les déclare, ils sont câblés dans le registre.
         provenance: agentProvenance(layers, def.id),
@@ -72,14 +91,39 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
     return EXIT_OK;
   }
 
-  const tableRows = rows.map((r) => [
+  sectionHeader(io, "agents");
+
+  // La raison d'un refus est une phrase entière : dans une cellule, elle
+  // rognait la colonne « politique » à « refusé (Agent "c… » — donc à rien.
+  // Elle descend sous le tableau, où elle a la place de se lire, comme le
+  // fait déjà `orch doctor`.
+  const tableRows: Cell[][] = rows.map((r) => [
     r.id,
-    r.installed ? (r.path ?? "trouvé") : "absent",
-    r.capabilities.join(", ") || "-",
-    r.policy.allowed ? "autorisé" : `refusé (${r.policy.reason})`,
-    r.provenance,
+    r.installed ? homePath(r.path ?? "trouvé") : { text: "absent", token: "bad" },
+    { text: r.capabilitiesShort.join(" ") || "-", token: "dim" },
+    r.policy.allowed ? { text: "autorisé", token: "ok" } : { text: "refusé", token: "bad" },
+    { text: r.provenance, token: "dim" },
   ]);
-  writeLine(io.stdout, renderTable(["agent", "binaire", "capacités", "politique", "provenance"], tableRows));
+  printTable(io, ["agent", "binaire", "capacités", "politique", "provenance"], tableRows);
+
+  const denied = rows.filter((r) => !r.policy.allowed);
+  if (denied.length > 0) {
+    writeLine(io.stdout);
+    printHeading(io, "refus");
+    for (const r of denied) {
+      if (r.policy.allowed) continue;
+      for (const line of wrapText(`"${r.id}" : ${r.policy.reason}`, terminalWidth(io.stdout), "  - ", "    ")) {
+        writeLine(io.stdout, line);
+      }
+    }
+  }
+  writeLine(io.stdout);
+  for (const line of wrapText(
+    'Capacités en toutes lettres : "orch doctor --verbose", ou "orch agents list --json".',
+    terminalWidth(io.stdout),
+  )) {
+    printNote(io, line);
+  }
   return EXIT_OK;
 }
 
@@ -111,13 +155,13 @@ function reportToggle(
   if (options.json) {
     printJson(io, { id, enabled, scope, denied, materialized });
   } else {
-    writeLine(
-      io.stdout,
+    printDone(
+      io,
       enabled
         ? `Agent "${id}" retiré de la liste "denied" (couche ${scopeLabel(scope)}).`
         : `Agent "${id}" ajouté à la liste "denied" (couche ${scopeLabel(scope)}).`,
     );
-    if (materialized) writeLine(io.stdout, materializationNotice("denied", scope, denied));
+    if (materialized) printNote(io, materializationNotice("denied", scope, denied));
   }
   return EXIT_OK;
 }
@@ -219,8 +263,8 @@ export async function runAgentsAdd(root: string, id: string, options: AgentsAddO
     return EXIT_OK;
   }
 
-  writeLine(io.stdout, `Agent "${id}" ${replaced ? "remplacé" : "déclaré"} (couche ${scopeLabel(scope)}).`);
-  writeLine(io.stdout, `Ligne de commande : ${bin} ${args.join(" ")}`);
+  printDone(io, `Agent "${id}" ${replaced ? "remplacé" : "déclaré"} (couche ${scopeLabel(scope)}).`);
+  printNote(io, `  Ligne de commande : ${bin} ${args.join(" ")}`);
   if (NATIVE_IDS.has(id)) {
     writeLine(
       io.stdout,
@@ -279,8 +323,8 @@ export async function runAgentsRemove(root: string, id: string, options: AgentsR
     printJson(io, { id, removed: true, scope, restores_native: NATIVE_IDS.has(id) });
     return EXIT_OK;
   }
-  writeLine(io.stdout, `Agent "${id}" retiré (couche ${scopeLabel(scope)}).`);
-  if (NATIVE_IDS.has(id)) writeLine(io.stdout, `L'adaptateur natif "${id}" reprend la main.`);
+  printDone(io, `Agent "${id}" retiré (couche ${scopeLabel(scope)}).`);
+  if (NATIVE_IDS.has(id)) printNote(io, `  L'adaptateur natif "${id}" reprend la main.`);
   return EXIT_OK;
 }
 

@@ -21,7 +21,20 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { configPathFor, defaultConfig, isEnoent, loadConfig, projectConfigPath, repoRoot, saveLayer } from "@orch/core";
 import type { Io } from "../output.js";
-import { EXIT_OK, EXIT_USAGE, printError, printJson, printWarning, writeLine } from "../output.js";
+import { VERSION } from "../version.js";
+import {
+  EXIT_OK,
+  EXIT_USAGE,
+  activeGlyphs,
+  bannerLines,
+  colorize,
+  homePath,
+  printDone,
+  printError,
+  printJson,
+  printWarning,
+  writeLine,
+} from "../output.js";
 
 export interface InitOptions {
   force?: boolean;
@@ -111,7 +124,7 @@ async function runInitGlobal(root: string, options: InitOptions, io: Io): Promis
   if (options.json) {
     printJson(io, { scope: "global", config_path: configPath });
   } else {
-    writeLine(io.stdout, `Configuration globale créée : ${configPath}`);
+    printDone(io, `Configuration globale créée : ${homePath(configPath)}`);
   }
   return EXIT_OK;
 }
@@ -165,14 +178,20 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
       warnings,
     });
   } else {
-    writeLine(io.stdout, `Configuration créée : ${configPath}`);
-    writeLine(io.stdout, `Prompts système par défaut : ${rolesDir}`);
+    // Le logotype ouvre `orch init` et rien d'autre : c'est la seule commande
+    // qu'on tape une fois, sans savoir encore ce que l'outil est. Ailleurs, il
+    // serait du bruit à chaque invocation.
+    for (const line of bannerLines(io.stdout, `orchestrateur de sous-agents · v${VERSION}`)) writeLine(io.stdout, line);
+    writeLine(io.stdout);
+    printDone(io, `Configuration créée : ${homePath(configPath)}`);
+    printDone(io, `Prompts système par défaut : ${homePath(rolesDir)}`);
     if (gitignore) {
       writeLine(
         io.stdout,
-        gitignore.added.length > 0
-          ? `.gitignore complété : ${gitignore.path} (+${gitignore.added.length} ligne${gitignore.added.length > 1 ? "s" : ""})`
-          : `.gitignore déjà à jour : ${gitignore.path}`,
+        `${colorize(activeGlyphs().status.done, "ok", io.stdout)} ` +
+          (gitignore.added.length > 0
+            ? `.gitignore complété : ${homePath(gitignore.path)} (+${gitignore.added.length} ligne${gitignore.added.length > 1 ? "s" : ""})`
+            : `.gitignore déjà à jour : ${homePath(gitignore.path)}`),
       );
     }
     for (const warning of warnings) printWarning(io, warning);

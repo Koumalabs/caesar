@@ -71,11 +71,28 @@ function build(ctx: BuildContext): SpawnPlan {
 /**
  * Traduit le flux `agy --output-format stream-json`.
  *
- * Les formes `init`, `step_update` (types `agent_response` et `checkpoint`)
- * et `result` viennent de la capture réelle
- * (`test/fixtures/antigravity.jsonl`). La forme `error` de premier niveau
- * n'a pas été observée (la capture a réussi) ; elle suit la même convention
- * `event`/payload que les formes confirmées et reste strictement défensive.
+ * Formes observées sur deux captures réelles : `init`, `step_update` (types
+ * `user_input`, `unknown`, `agent_response`, `checkpoint`, `error_message`)
+ * et `result`. La forme `error` de premier niveau n'a été observée sur aucune
+ * des deux ; elle suit la même convention `event`/payload que les formes
+ * confirmées et reste strictement défensive.
+ *
+ * Deux constats de la capture courante (`test/fixtures/antigravity.jsonl`),
+ * qui est un échec de quota :
+ *
+ * - `result.error` porte l'explication entière (« Individual quota reached… »)
+ *   et n'était **pas lue** : trois erreurs se sont succédé et le flux traduit
+ *   n'en montrait aucune. Seul le repli synthétisé du moteur, qui recopie la
+ *   fin du journal brut, laissait deviner ce qui s'était passé.
+ * - les étapes `error_message` ne portent **aucun texte**, pas même un champ
+ *   vide. On les signale tout de même : « une erreur est survenue et le CLI
+ *   n'en dit pas plus » renseigne, un silence non.
+ *
+ * Aucune des deux captures n'a déclenché d'outil — la première était triviale,
+ * la seconde a échoué avant d'agir. Le `step_type` des étapes d'outil reste
+ * donc inconnu, et cet adaptateur n'émet aucun `tool_use` : une branche écrite
+ * d'après une convention plausible serait exactement l'erreur qui a rendu
+ * inopérante celle d'opencode.
  */
 function translate(line: string): Translation {
   const data = parseJsonLine(line);
@@ -87,10 +104,21 @@ function translate(line: string): Translation {
   if (event === "step_update") {
     const stepUpdate = data["step_update"];
     if (!isRecord(stepUpdate)) return { events: [] };
-    if (stepUpdate["step_type"] === "agent_response" && typeof stepUpdate["text_delta"] === "string") {
+    const stepType = stepUpdate["step_type"];
+
+    if (stepType === "agent_response" && typeof stepUpdate["text_delta"] === "string") {
       const text = stepUpdate["text_delta"];
       return { events: [{ type: "message", text }], finalText: text };
     }
+
+    if (stepType === "error_message") {
+      return {
+        events: [
+          { type: "error", message: "Antigravity a signalé une erreur, sans en donner le texte dans son flux.", fatal: false },
+        ],
+      };
+    }
+
     return { events: [] };
   }
 
@@ -99,7 +127,14 @@ function translate(line: string): Translation {
     if (!isRecord(result)) return { events: [] };
     const status = result["status"] === "SUCCESS" ? "success" : "failed";
     const response = typeof result["response"] === "string" ? result["response"] : "";
-    const events: PartialEvent[] = [{ type: "finished", status, summary: "", exit_code: null }];
+    const failure = typeof result["error"] === "string" && result["error"] !== "" ? result["error"] : undefined;
+
+    const events: PartialEvent[] = [];
+    // L'erreur d'abord : elle explique le `finished` qui suit, et c'est elle
+    // qu'on veut lire en tête du journal quand la tâche a échoué.
+    if (failure) events.push({ type: "error", message: failure, fatal: true });
+    events.push({ type: "finished", status, summary: failure ?? "", exit_code: null });
+
     return response ? { events, finalText: response } : { events };
   }
 

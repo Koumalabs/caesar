@@ -68,15 +68,38 @@ function build(ctx: BuildContext): SpawnPlan {
   return { command: "codex", args, cwd: ctx.task.workspace, env: {}, files: [] };
 }
 
+/** `kind` d'un `file_change` de codex → action du protocole. */
+function fileAction(kind: unknown): "created" | "modified" | "deleted" | "renamed" {
+  if (kind === "add") return "created";
+  if (kind === "delete") return "deleted";
+  if (kind === "rename") return "renamed";
+  // "update" est la valeur observée pour une modification ; tout `kind`
+  // inconnu tombe ici plutôt que de faire disparaître le fichier du journal.
+  return "modified";
+}
+
+/** Traduit `item.status` en statut d'outil. Les deux premières valeurs sont observées. */
+function toolStatus(status: unknown): "started" | "succeeded" | "failed" {
+  if (status === "completed") return "succeeded";
+  if (status === "failed") return "failed";
+  return "started";
+}
+
 /**
  * Traduit le flux `codex exec --json`.
  *
- * Les formes `thread.started` / `turn.started` / `item.completed` (items
- * `agent_message` et `error`) / `turn.completed` viennent de la capture
- * réelle (`test/fixtures/codex.jsonl`). `turn.failed`, `item.completed` avec
- * un item `command_execution`, et l'événement `error` de premier niveau sont
- * dérivés de la documentation publique de Codex ; ils n'ont pas été observés
- * sur cette machine et sont traités de façon strictement défensive.
+ * Formes observées dans la capture réelle (`test/fixtures/codex.jsonl`, une
+ * tâche qui écrit un fichier et lance deux commandes) : `thread.started`,
+ * `turn.started`, `item.started` et `item.completed` pour les items
+ * `agent_message`, `command_execution` et `file_change`, et `turn.completed`.
+ * L'item `error` vient d'une capture antérieure. `turn.failed` et
+ * l'événement `error` de premier niveau restent dérivés de la documentation
+ * publique, jamais observés, traités de façon strictement défensive.
+ *
+ * Volontairement absent : l'item `reasoning`. La capture porte bien
+ * `reasoning_output_tokens: 91` dans son `turn.completed`, mais **aucun item
+ * de ce type n'a été émis** — écrire la branche à l'aveugle est exactement
+ * l'erreur qui a rendu inopérante celle d'opencode pendant des mois.
  */
 function translate(line: string): Translation {
   const data = parseJsonLine(line);
@@ -85,17 +108,21 @@ function translate(line: string): Translation {
   const type = data["type"];
   if (typeof type !== "string") return { events: [] };
 
-  if (type === "item.completed") {
+  // `item.started` autant qu'`item.completed` : c'est toute la différence
+  // entre voir partir un `npm install` de trois minutes et le découvrir à la
+  // troisième. `item.updated` suit la même forme et est traité pareil.
+  if (type === "item.started" || type === "item.updated" || type === "item.completed") {
+    const completed = type === "item.completed";
     const item = data["item"];
     if (!isRecord(item)) return { events: [] };
     const itemType = item["type"];
 
-    if (itemType === "agent_message" && typeof item["text"] === "string") {
+    if (itemType === "agent_message" && completed && typeof item["text"] === "string") {
       const text = item["text"];
       return { events: [{ type: "message", text }], finalText: text };
     }
 
-    if (itemType === "error" && typeof item["message"] === "string") {
+    if (itemType === "error" && completed && typeof item["message"] === "string") {
       const events: PartialEvent[] = [{ type: "error", message: item["message"], fatal: false }];
       return { events };
     }
@@ -103,15 +130,30 @@ function translate(line: string): Translation {
     if (itemType === "command_execution") {
       const command = item["command"];
       const summary = typeof command === "string" ? command : Array.isArray(command) ? command.join(" ") : "";
-      const status = item["status"];
       const events: PartialEvent[] = [
         {
           type: "tool_use",
           tool: "shell",
+          id: typeof item["id"] === "string" ? item["id"] : "",
           input_summary: summary,
-          status: status === "completed" ? "succeeded" : status === "failed" ? "failed" : "started",
+          status: toolStatus(item["status"]),
         },
       ];
+      return { events };
+    }
+
+    if (itemType === "file_change") {
+      // Seulement à l'achèvement : un `file_change` est instantané et sa forme
+      // `item.started` porte exactement les mêmes changements — les émettre
+      // deux fois ferait apparaître chaque fichier en double dans le journal.
+      if (!completed) return { events: [] };
+      const changes = item["changes"];
+      if (!Array.isArray(changes)) return { events: [] };
+      const events: PartialEvent[] = [];
+      for (const change of changes) {
+        if (!isRecord(change) || typeof change["path"] !== "string") continue;
+        events.push({ type: "file_changed", path: change["path"], action: fileAction(change["kind"]) });
+      }
       return { events };
     }
 

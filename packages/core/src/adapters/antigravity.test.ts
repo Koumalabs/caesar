@@ -87,32 +87,76 @@ describe("antigravityAgent.translate", () => {
     expect(all.length).toBeGreaterThan(0);
   });
 
-  it("traduit un step_update agent_response en message, et porte finalText", () => {
-    const line = lines.find((l) => l.includes('"agent_response"'));
-    expect(line).toBeDefined();
-    const translation = antigravityAgent.translate(line as string);
+  it("traduit un step_update agent_response porteur de texte en message, et porte finalText", () => {
+    // Reconstituée : la capture courante est un échec de quota, où les
+    // `agent_response` arrivent sans `text_delta` (le modèle n'a rien produit).
+    // La forme, elle, vient d'une capture antérieure qui l'avait.
+    const line = JSON.stringify({
+      event: "step_update",
+      step_update: { conversation_id: "c", step_index: 3, state: "DONE", step_type: "agent_response", text_delta: "OK\n" },
+    });
+    const translation = antigravityAgent.translate(line);
     expect(translation.events).toEqual([{ type: "message", text: "OK\n" }]);
     expect(translation.finalText).toBe("OK\n");
   });
 
-  it("traduit la ligne result en finished réussi, et porte finalText", () => {
+  it("ignore un agent_response sans text_delta plutôt que d'émettre un message vide", () => {
+    const line = lines.find((l) => l.includes('"agent_response"'));
+    expect(line).toBeDefined();
+    expect(antigravityAgent.translate(line as string)).toEqual({ events: [] });
+  });
+
+  it("rend enfin lisible l'erreur portée par result.error", () => {
+    // Le défaut que cette capture a révélé : `result.error` portait toute
+    // l'explication de l'échec (« Individual quota reached… ») et n'était pas
+    // lu. Trois erreurs se sont succédé sans qu'aucune ne soit visible.
     const line = lines.find((l) => l.includes('"event":"result"'));
     expect(line).toBeDefined();
     const translation = antigravityAgent.translate(line as string);
+    expect(translation.events).toHaveLength(2);
+    expect(translation.events[0]).toMatchObject({ type: "error", fatal: true });
+    expect((translation.events[0] as { message: string }).message).toContain("quota");
+    expect(translation.events[1]).toMatchObject({ type: "finished", status: "failed" });
+    // Le motif accompagne aussi la fin de tâche, pas seulement l'erreur.
+    expect((translation.events[1] as { summary: string }).summary).toContain("quota");
+  });
+
+  it("traduit la ligne result d'un succès en finished réussi, et porte finalText", () => {
+    const line = JSON.stringify({
+      event: "result",
+      result: { conversation_id: "c", status: "SUCCESS", response: "OK\n", duration_seconds: 5 },
+    });
+    const translation = antigravityAgent.translate(line);
     expect(translation.events).toEqual([{ type: "finished", status: "success", summary: "", exit_code: null }]);
     expect(translation.finalText).toBe("OK\n");
   });
 
-  it("ignore les step_update sans intérêt (init, user_input, unknown, checkpoint)", () => {
+  it("signale une étape error_message, faute de pouvoir en dire le contenu", () => {
+    // Ces étapes ne portent aucun texte, pas même un champ vide. Les taire
+    // laisserait la tâche paraître silencieuse pendant qu'elle échoue.
+    const line = lines.find((l) => l.includes('"step_type":"error_message"'));
+    expect(line).toBeDefined();
+    const translation = antigravityAgent.translate(line as string);
+    expect(translation.events).toHaveLength(1);
+    expect(translation.events[0]).toMatchObject({ type: "error", fatal: false });
+  });
+
+  it("ignore les step_update sans intérêt (init, user_input, unknown)", () => {
     const initLine = lines.find((l) => l.includes('"event":"init"'));
     const userInputLine = lines.find((l) => l.includes('"step_type":"user_input"'));
     const unknownLine = lines.find((l) => l.includes('"step_type":"unknown"'));
-    const checkpointLine = lines.find((l) => l.includes('"step_type":"checkpoint"'));
 
-    for (const line of [initLine, userInputLine, unknownLine, checkpointLine]) {
+    for (const line of [initLine, userInputLine, unknownLine]) {
       expect(line).toBeDefined();
       expect(antigravityAgent.translate(line as string)).toEqual({ events: [] });
     }
+    // `checkpoint` n'apparaît pas dans cette capture (elle échoue avant) ;
+    // sa forme reste ignorée de la même façon.
+    const checkpoint = JSON.stringify({
+      event: "step_update",
+      step_update: { conversation_id: "c", step_index: 4, state: "DONE", step_type: "checkpoint" },
+    });
+    expect(antigravityAgent.translate(checkpoint)).toEqual({ events: [] });
   });
 
   it("ignore silencieusement une ligne vide, du JSON invalide, ou du JSON inconnu", () => {

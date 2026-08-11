@@ -10,6 +10,19 @@ const FIXTURE_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..
 const { sampleTask, sampleContext } = makeSampleFactory("claude");
 
 describe("claudeAgent.build", () => {
+  it("demande le flux, pas l'objet final unique", () => {
+    // `json` n'émet qu'un objet, à la toute fin : le sous-agent était muet
+    // pendant toute son exécution. `--verbose` accompagne obligatoirement
+    // `stream-json` sous `--print`.
+    const plan = claudeAgent.build(sampleContext());
+    const index = plan.args.indexOf("--output-format");
+    expect(plan.args[index + 1]).toBe("stream-json");
+    expect(plan.args).toContain("--verbose");
+    // Pas de fragments : un événement par bribe de quelques caractères
+    // noierait `events.jsonl` sans rien apprendre de plus.
+    expect(plan.args).not.toContain("--include-partial-messages");
+  });
+
   it("choisit --permission-mode plan en lecture seule", () => {
     const plan = claudeAgent.build(sampleContext({ task: sampleTask({ mode: "read-only" }) }));
     const index = plan.args.indexOf("--permission-mode");
@@ -86,14 +99,90 @@ describe("claudeAgent.translate", () => {
     expect(all.length).toBeGreaterThan(0);
   });
 
-  it("traduit la ligne result unique en message + finished, et porte finalText", () => {
-    expect(lines).toHaveLength(1);
-    const translation = claudeAgent.translate(lines[0] as string);
-    expect(translation.events).toEqual([
-      { type: "message", text: "OK" },
-      { type: "finished", status: "success", summary: "", exit_code: null },
+  it("montre l'agent au travail bien avant la fin de la tâche", () => {
+    // Le défaut que la bascule vers `stream-json` corrige : en `json`, la
+    // capture entière tenait sur **une seule ligne**, émise à la toute fin.
+    // Un sous-agent claude était muet du début à la fin de son exécution.
+    expect(lines.length).toBeGreaterThan(10);
+    const resultIndex = lines.findIndex((l) => l.includes('"type":"result"'));
+    const avantLaFin = lines.slice(0, resultIndex).flatMap((line) => claudeAgent.translate(line).events);
+    expect(avantLaFin.filter((e) => e.type === "tool_use").length).toBeGreaterThan(0);
+    expect(avantLaFin.filter((e) => e.type === "message").length).toBeGreaterThan(0);
+  });
+
+  it("traduit la ligne result finale en message + finished, et porte finalText", () => {
+    // Ce que la bascule ne change pas, et c'est ce qui la rendait sûre : la
+    // ligne finale porte toujours `type`, `result` et `is_error` au premier
+    // niveau. Le repli d'extraction du rapport garde donc la même source.
+    const line = lines.find((l) => l.includes('"type":"result"'));
+    expect(line).toBeDefined();
+    const translation = claudeAgent.translate(line as string);
+    expect(translation.events).toHaveLength(2);
+    expect(translation.events[0]).toMatchObject({ type: "message" });
+    expect(translation.events[1]).toEqual({ type: "finished", status: "success", summary: "", exit_code: null });
+    expect(translation.finalText).toBe((translation.events[0] as { text: string }).text);
+    expect(translation.finalText).not.toBe("");
+  });
+
+  it("ouvre un outil sur un bloc tool_use, avec un résumé lisible", () => {
+    const line = lines.find((l) => l.includes('"type":"tool_use"') && l.includes('"Bash"'));
+    expect(line).toBeDefined();
+    const events = claudeAgent.translate(line as string).events;
+    expect(events).toHaveLength(1);
+    // Le résumé vient de `input.command`, pas de l'entrée sérialisée — pour
+    // `Write`, celle-ci porterait le contenu entier du fichier.
+    expect(events[0]).toMatchObject({ type: "tool_use", tool: "Bash", input_summary: "ls -1", status: "started" });
+    expect((events[0] as { id: string }).id).toMatch(/^toolu_/);
+  });
+
+  it("ferme l'outil sur le tool_result correspondant, par identifiant seul", () => {
+    // Un bloc `tool_result` ne porte que `tool_use_id`, jamais le nom de
+    // l'outil, et `translate` est sans état par contrat : la fermeture arrive
+    // donc avec `tool` vide. C'est l'identifiant qui la rattache à son
+    // ouverture, pas le nom.
+    const open = lines.find((l) => l.includes('"type":"tool_use"') && l.includes('"Bash"'));
+    const close = lines.find((l) => l.includes('"tool_result"') && l.includes('"note.txt\\nREADME.md"'));
+    expect(close).toBeDefined();
+    const openEvent = claudeAgent.translate(open as string).events[0] as { id: string };
+    const closeEvents = claudeAgent.translate(close as string).events;
+    expect(closeEvents).toEqual([{ type: "tool_use", tool: "", id: openEvent.id, input_summary: "", status: "succeeded" }]);
+  });
+
+  it("marque l'outil en échec quand le tool_result porte is_error", () => {
+    const line = JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_x", content: "boom", is_error: true }] },
+    });
+    expect(claudeAgent.translate(line).events).toEqual([
+      { type: "tool_use", tool: "", id: "toolu_x", input_summary: "", status: "failed" },
     ]);
-    expect(translation.finalText).toBe("OK");
+  });
+
+  it("traduit thinking_tokens en progression — le seul signal de réflexion exploitable", () => {
+    // Les blocs `thinking` du flux arrivent avec leur texte vide (l'API n'en
+    // rend que la signature) : sans cette ligne, une longue phase de
+    // raisonnement serait indiscernable d'un agent figé.
+    const line = lines.find((l) => l.includes('"thinking_tokens"'));
+    expect(line).toBeDefined();
+    const events = claudeAgent.translate(line as string).events;
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "progress" });
+    expect((events[0] as { message: string }).message).toContain("jetons");
+  });
+
+  it("n'émet jamais un thinking creux", () => {
+    const vide = JSON.stringify({ type: "assistant", message: { content: [{ type: "thinking", thinking: "", signature: "x" }] } });
+    expect(claudeAgent.translate(vide).events).toEqual([]);
+    const plein = JSON.stringify({ type: "assistant", message: { content: [{ type: "thinking", thinking: "Je réfléchis." }] } });
+    expect(claudeAgent.translate(plein).events).toEqual([{ type: "thinking", text: "Je réfléchis." }]);
+  });
+
+  it("ignore les lignes system de mise en place (hooks, init)", () => {
+    for (const subtype of ["hook_started", "hook_response", "init"]) {
+      const line = lines.find((l) => l.includes(`"subtype":"${subtype}"`));
+      expect(line).toBeDefined();
+      expect(claudeAgent.translate(line as string)).toEqual({ events: [] });
+    }
   });
 
   it("marque finished en échec quand is_error vaut true", () => {

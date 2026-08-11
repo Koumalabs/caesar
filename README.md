@@ -14,7 +14,7 @@ Ce dépôt livre un CLI (`orch`), un serveur MCP à dix tools pour piloter tout 
 | Antigravity CLI | `antigravity` | `agy` | `agy --print <prompt> --output-format stream-json --mode <plan\|accept-edits> …` | ouvert |
 | OpenCode | `opencode` | `opencode` | `opencode run --format json --dir <workspace> …` | ouvert |
 | GitHub Copilot CLI | `copilot` | `copilot` | `copilot --prompt <prompt> --output-format json --no-color --log-level none …` | pilotable |
-| Claude Code | `claude` | `claude` | `claude --print <prompt> --output-format json --permission-mode <plan\|acceptEdits> …` | ouvert |
+| Claude Code | `claude` | `claude` | `claude --print <prompt> --output-format stream-json --verbose --permission-mode <plan\|acceptEdits> …` | ouvert |
 
 Le détail complet des flags (schéma de sortie natif, canal MCP, modèle, répertoires additionnels…) est dans `packages/core/src/adapters/*.ts`, un fichier par agent — chaque flag y a été vérifié par `--help` sur une machine réelle, aucun n'est inventé.
 
@@ -53,15 +53,30 @@ pnpm run orch doctor --root <chemin-vers-votre-projet>   # quels agents sont ins
 `orch doctor` inspecte le catalogue et croise avec la politique effective. Exemple réel, sur une machine où les cinq agents sont installés :
 
 ```
-$ pnpm run orch doctor --root <chemin-vers-votre-projet>
-agent        binaire                    version              capacités                                          politique
------------  -------------------------  -------------------  --------------------------------------------------  -----------------------------
-codex        /Users/…/bin/codex         codex-cli 0.146.0    lecture-seule native, schéma de sortie, …            autorisé
-antigravity  /Users/…/bin/agy           1.1.11               lecture-seule native, schéma de sortie, …            autorisé
-opencode     /Users/…/bin/opencode      1.18.15               reprise, choix du modèle, mcp:project-config        autorisé
-copilot      /Users/…/bin/copilot       GitHub Copilot 1.0.78 lecture-seule native, reprise, …                    autorisé
-claude       /Users/…/bin/claude        2.1.226 (Claude Code) lecture-seule native, reprise, …                    refusé (récursion désactivée)
+$ orch doctor
+▞▚ orch · doctor ───────────────────────────────────────────────────────────────
+
+╭─────────────┬─────────────────────────┬──────────────────────────┬───────────╮
+│ agent       │ version                 │ capacités                │ politique │
+├─────────────┼─────────────────────────┼──────────────────────────┼───────────┤
+│ codex       │ codex-cli 0.147.0       │ net(w) ro schéma msg re… │ autorisé  │
+│ antigravity │ 1.1.12                  │ net ro schéma reprise d… │ autorisé  │
+│ opencode    │ 1.18.16                 │ net reprise modèle mcp   │ autorisé  │
+│ copilot     │ GitHub Copilot CLI 1.0… │ net± ro reprise dirs mo… │ refusé    │
+│ claude      │ 2.1.227 (Claude Code)   │ net ro reprise dirs mod… │ refusé    │
+╰─────────────┴─────────────────────────┴──────────────────────────┴───────────╯
+
+REFUSÉS PAR LA POLITIQUE
+État voulu, sauf si vous en décidez autrement.
+  - "copilot" : Agent "copilot" refusé : présent dans la liste "denied" de la
+    politique. Autorisez-le avec "orch agents enable copilot --global".
+  - "claude" : Agent "claude" refusé : allow_recursion est désactivé (déléguer à
+    Claude depuis Claude Code serait une récursion). Activez "allow_recursion"
+    (onglet Politique du TUI "orch config", ou éditez .orch/config.toml — aucune
+    sous-commande dédiée aujourd'hui).
 ```
+
+`autorisé` s'y lit en vert et `refusé` en rouge : voir « [Le thème](#le-thème) » pour ce que la couleur porte, et pour ce qui se passe quand elle n'est pas disponible. `--verbose` ajoute le chemin du binaire et les capacités en toutes lettres.
 
 `packages/cli/package.json` déclare aussi un binaire `orch` (`bin: { orch: "./dist/bin.js" }`) : une fois publié, ou lié dans vos propres projets par les moyens habituels de pnpm, `orch <commande>` fonctionne directement sur le `PATH`, lancé **depuis le projet cible** — plus besoin de `--root` ni de revenir dans ce dépôt, `resolveRoot` remonte alors automatiquement jusqu'au premier `.orch/` ou `.git/` trouvé depuis le répertoire courant. **C'est le cas que suppose le reste de ce document** (`orch <commande>`, tapé depuis le projet cible) ; substituez `pnpm run orch <commande> --root <chemin-vers-votre-projet>` si vous travaillez depuis une copie non liée de ce dépôt, comme ci-dessus.
 
@@ -69,20 +84,30 @@ Toute commande accepte `--root <dir>` (racine explicite du projet ; par défaut,
 
 ## Usage en ligne de commande
 
+`orch --help` est la carte : les seize commandes y sont groupées par usage — démarrer, déléguer, suivre, configurer, intégrer — plutôt que listées dans leur ordre de déclaration. `orch <commande> --help` donne le détail d'une seule.
+
 `orch run` est l'aller-retour complet : délègue, attend, rend le rapport. Exemple réel (agent Codex, isolation sur un worktree jetable) :
 
 ```
 $ orch run --agent codex --isolation worktree "Crée un fichier hello.txt contenant exactement OK"
+▞▚ orch · run ──────────────────────────────────────────────────────────────────
 
-  [démarrage] agent "codex"
-  [outil] shell — wc -c hello.txt && od -An -t x1 hello.txt … (succeeded)
+  ● départ     agent "codex"
+  ▸ outil      shell — wc -c hello.txt && od -An -t x1 hello.txt (started)
+  » agent      Je crée le fichier avec exactement deux octets, sans saut de ligne final.
+  ▸ outil      shell — wc -c hello.txt && od -An -t x1 hello.txt (succeeded)
+  ~ fichier    created hello.txt
 
-Tâche t_680818a6a92047a2b08bb904e46d8427 — statut : succeeded (rapport via "schema")
-Le fichier hello.txt a été créé avec exactement les deux octets « OK », sans saut de ligne final.
-Fichiers modifiés (d'après git) :
-  - created hello.txt
-Isolée dans un worktree : "orch diff t_680818a6a92047a2b08bb904e46d8427" pour voir le diff, "orch apply t_680818a6a92047a2b08bb904e46d8427" pour l'intégrer.
+✓ Tâche t_680818a6 — statut : succeeded (rapport "success" via "schema")
+  Le fichier hello.txt a été créé avec exactement les deux octets « OK », sans saut de ligne final.
+
+Fichiers modifiés (d'après git)
+  ~ created hello.txt
+
+Isolée dans un worktree : "orch diff t_680818a6" pour voir le diff, "orch apply t_680818a6" pour l'intégrer.
 ```
+
+L'outil apparaît **dès son départ**, pas seulement à son issue, et ce que l'agent dit s'affiche au fil de l'eau. Le libellé est à largeur fixe pour que les textes s'alignent : la colonne se parcourt d'un coup d'œil, là où des préfixes entre crochets de longueur variable obligeaient à lire chaque début de ligne.
 
 En isolation `worktree`, rien ne touche le dépôt principal tant que vous ne l'avez pas décidé :
 
@@ -126,6 +151,51 @@ $ orch run --agent codex "…"
 Un processus tué (`kill -9`) laisse son fichier-créneau derrière lui : le premier appelant qui trouve tout occupé vérifie chaque détenteur et récupère ceux dont le processus n'existe plus. Une limite qui deviendrait un blocage définitif serait pire que pas de limite du tout.
 
 Deux réserves à connaître. L'attente est une scrutation, pas une file d'attente : entre deux candidats, l'ordre d'entrée n'est pas garanti. Et la reprise d'un créneau mort repose sur le pid, ce qui n'a de sens que sur une seule machine — un `.orch/` sur un partage réseau, utilisé depuis deux postes, verrait les créneaux de l'autre comme vivants indéfiniment.
+
+## Regarder les sous-agents travailler
+
+Une tâche déléguée n'est pas une boîte noire : `orch watch` ouvre une fenêtre sur ce qui se passe, à côté de la conversation ou du terminal qui a lancé la délégation.
+
+```bash
+orch watch                 # toutes les tâches en cours, image redessinée
+orch watch t_a1b2 t_c3d4   # seulement celles-ci
+orch watch --once          # une image, puis sortie
+orch watch --json          # NDJSON des événements, plusieurs tâches fusionnées
+```
+
+```
+▞▚ orch · watch   1 active · max_parallel 4                             17:21:20
+
+● t_efb5914d codex        —            25s  inplace · write
+  Écris trois fichiers a.txt, b.txt et c.txt, puis exécute 'sleep 8 && ls -1'…
+  ▸ shell /bin/zsh -lc 'sleep 8 && ls -1' — 3s
+  ~ 3 fichier(s)  ·  11 événement(s)
+
+q ou Ctrl-C pour quitter — regarder ne modifie rien.
+```
+
+Aucun démon n'est nécessaire : le moteur écrit `events.jsonl` **pendant** l'exécution et publie l'état des tâches par des écritures atomiques. `orch watch` ne fait que lire ce qu'un autre processus écrit — la même propriété qui fait marcher `orch cancel` et le partage de `max_parallel`.
+
+Quatre choses y sont délibérées :
+
+- **Un outil apparaît dès son départ**, pas à son achèvement. C'est toute la différence entre voir partir un `npm install` de trois minutes et le découvrir à la troisième.
+- **Le silence est affiché.** Une tâche bloquée et une tâche qui travaille sont indiscernables sans lui ; au-delà de trente secondes sans le moindre événement, la vue le dit.
+- **Une question en attente passe devant tout le reste.** Un sous-agent qui attend une réponse via le canal retour ressemble exactement à un sous-agent figé.
+- **Les tâches terminées restent visibles** quelques minutes, avec leur statut de rapport : une tâche qui disparaît au moment où elle finit est une tâche dont on ne saura jamais comment elle s'est terminée.
+
+Hors terminal (redirection, `| tee`, script), pas de redessin ni de séquences ANSI : une ligne par événement, et `--json` rend du NDJSON exploitable.
+
+Ce que chaque agent laisse voir dépend de ce que son CLI raconte, et cela varie beaucoup :
+
+| Agent | Pendant l'exécution |
+|---|---|
+| `codex` | départ **et** fin de chaque commande, fichiers modifiés, ses rapports d'étape |
+| `claude` | outils, résultats, texte, et un signal de réflexion en cours |
+| `opencode` | outils (une fois terminés seulement — son flux n'annonce pas leur départ), texte |
+| `antigravity` | son texte au fil de l'eau, ses erreurs ; ses appels d'outils ne sont pas encore traduits |
+| `copilot` | texte, erreurs de session ; ses appels d'outils restent non vérifiés faute de quota disponible |
+
+Ces traductions sont écrites d'après des captures réelles, conservées dans `packages/core/test/fixtures/` et rejouées par les tests. Là où une forme n'a pas pu être observée, l'adaptateur le dit en toutes lettres plutôt que de deviner — une branche écrite d'après une convention plausible avait laissé les appels d'outils d'opencode invisibles pendant des mois, tout en passant au vert.
 
 Les autres sous-commandes : `orch ps` (tâches en cours et récentes), `orch logs <id> [--raw] [--follow]`, `orch cancel <id>`, `orch agents list|enable|disable|test` (`test` lance une micro-tâche réelle en lecture seule pour vérifier qu'un agent répond — `--yes` obligatoire, ça consomme son quota), `orch policy show|allow|deny`, `orch role list|show|add|remove`, `orch protocol schema <task|report|event> [--strict]` (publie le standard en JSON Schema). Celles qui modifient (`policy allow|deny`, `agents enable|disable`, `role add|remove`) acceptent `--global`/`--local` pour cibler une autre couche que le projet — voir « Configuration en couches » ci-dessous.
 
@@ -180,6 +250,32 @@ Attention : la liste "denied" n'était pas déclarée par la couche projet (.orc
 À l'issue de ce scénario, `.orch/config.toml` ne contient **que** `denied = ["copilot", "opencode"]` — aucun défaut recopié, aucun réglage global figé ; modifier ensuite `max_parallel` dans le fichier global continue de se répercuter dans ce projet. `orch policy show` indique la provenance de chaque valeur (`global`, `project`, `local`, ou `default`), et `orch role show`/`orch agents list` l'étendent aux rôles et aux agents.
 
 `orch init` crée la couche **projet** : les prompts système par défaut (`.orch/roles/*.md`) et complète le `.gitignore` du projet avec `.orch/config.local.toml`, `.orch/tasks/`, `.orch/wt/` et `.orch/state/` (n'ajoute que les lignes absentes, ne réécrit jamais le fichier depuis rien ; ne fait rien, en le disant, si le répertoire n'est pas un dépôt git). `orch init --global` crée la couche **globale**, intégralement à partir des réglages par défaut. Les deux refusent d'écraser une configuration existante sans `--force`.
+
+## Le thème
+
+Une seule palette pour la ligne de commande **et** pour le TUI, dans `packages/theme` : elle vivait auparavant dans le TUI seul, pendant que la CLI choisissait ses couleurs au cas par cas parmi sept codes ANSI de base — les deux moitiés du même outil ne se ressemblaient pas à l'écran.
+
+Deux règles la tiennent, et elles expliquent l'essentiel de ce qu'on voit :
+
+- **Le texte principal ne porte jamais de couleur.** Il hérite de l'avant-plan du terminal, donc reste lisible sur fond clair comme sur fond sombre. Seuls le secondaire, le tertiaire et le sémantique (`autorisé` / `refusé`, les statuts de tâche, les statuts de rapport) sont colorés. C'est pourquoi la parole d'un sous-agent, dans `orch run`, sort en texte neutre : c'est sa marque qui est teintée, pas ce qu'il dit.
+- **La couleur classe, elle ne décore pas.** Une valeur colorée est une valeur qu'on vient chercher du regard sans la lire.
+
+### Les trois canaux
+
+| | Structure (encadrés, bandeaux) | Couleur |
+|---|---|---|
+| `--json` | non | non |
+| Hors terminal (tuyau, redirection, `\| tee`) | oui | non |
+| Terminal | oui | oui |
+
+`--json` reste strictement du JSON : aucune séquence ANSI, aucun bandeau, rien d'autre sur `stdout`. C'est le canal par lequel un agent consomme ce CLI, et il ne bouge pas. Un tableau encadré se découpe en revanche mal à `grep`/`awk` — c'est assumé, `--json` est fait pour ça.
+
+### Ce qui s'adapte tout seul
+
+- **Profondeur de couleur** : truecolor si `COLORTERM` l'annonce, sinon les 256 si `TERM` contient `256color`, sinon les 16 de base. Volontairement conservateur : une séquence 256 émise vers un terminal qui l'ignore s'affiche en clair au milieu du texte.
+- **[`NO_COLOR`](https://no-color.org)** et `TERM=dumb` coupent toute couleur.
+- **Locale non-UTF-8** (`LC_ALL=C`) : les traits fins et les marques retombent sur un jeu ASCII de même largeur — `+--+`, `|`, `*`, `+`, `x`. Sans ce repli, un encadré Unicode sur un terminal qui ne le lit pas est moins lisible qu'un tableau sans encadré.
+- **Largeur du terminal** : le coût du cadre (`3N+1` caractères pour N colonnes) entre dans le budget, de sorte qu'aucune bordure ne se replie. Quand le cadre ne peut plus tenir, il est abandonné au profit d'une mise en page alignée, qui récupère la place qu'il coûtait.
 
 ## Interface de configuration
 

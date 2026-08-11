@@ -23,7 +23,7 @@ import { buildServer } from "@orch/mcp-server";
 import type { InstallPlan } from "@orch/core";
 import { SERVER_NAME, applyPlan, buildPlan, isMcpClient, MCP_CLIENTS } from "@orch/core";
 import type { Io } from "../output.js";
-import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, writeLine } from "../output.js";
+import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printDone, printError, printJson, printNote, writeLine } from "../output.js";
 
 export { checkMcpStatus, MCP_CLIENTS, type McpClient, type McpRegistrationState, type McpStatus } from "@orch/core";
 
@@ -77,7 +77,7 @@ export async function runMcpInstall(root: string, client: string, options: McpIn
 
   if (options.dryRun) {
     if (options.json) printJson(io, { dry_run: true, ...planToJson(plan) });
-    else writeLine(io.stdout, `[simulation] ${describePlan(plan)}`);
+    else printNote(io, `[simulation] ${describePlan(plan)}`);
     return EXIT_OK;
   }
 
@@ -89,6 +89,6 @@ export async function runMcpInstall(root: string, client: string, options: McpIn
   }
 
   if (options.json) printJson(io, { dry_run: false, ...planToJson(plan) });
-  else writeLine(io.stdout, describePlan(plan));
+  else printDone(io, describePlan(plan));
   return EXIT_OK;
 }

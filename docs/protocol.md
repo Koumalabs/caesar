@@ -120,13 +120,19 @@ Une ligne JSON par événement, en append-only. Chaque ligne se suffit à elle-m
 
 ```jsonc
 {"protocol":"orch.event/v1","seq":0,"at":"…","task_id":"t_7f3a","type":"started","agent":"codex","command":"codex exec …"}
-{"protocol":"orch.event/v1","seq":1,"at":"…","task_id":"t_7f3a","type":"tool_use","tool":"bash","input_summary":"pnpm test","status":"succeeded"}
-{"protocol":"orch.event/v1","seq":2,"at":"…","task_id":"t_7f3a","type":"finished","status":"success","summary":"…"}
+{"protocol":"orch.event/v1","seq":1,"at":"…","task_id":"t_7f3a","type":"tool_use","tool":"bash","id":"item_1","input_summary":"pnpm test","status":"started"}
+{"protocol":"orch.event/v1","seq":2,"at":"…","task_id":"t_7f3a","type":"tool_use","tool":"bash","id":"item_1","input_summary":"pnpm test","status":"succeeded"}
+{"protocol":"orch.event/v1","seq":3,"at":"…","task_id":"t_7f3a","type":"finished","status":"success","summary":"…"}
 ```
 
 Types disponibles : `started`, `thinking`, `message`, `tool_use`, `file_changed`, `progress`, `question`, `answer`, `error`, `finished`.
 
-Émettre des événements est **facultatif**. Un agent qui se contente d'écrire son rapport final reste parfaitement conforme.
+Deux points sur `tool_use`, qui décident de ce qu'un observateur (`orch watch`) peut montrer d'une tâche en cours :
+
+- **Émettez le `started`, pas seulement l'issue.** Un outil signalé une fois terminé n'apprend rien pendant qu'il tourne, et c'est justement le moment où l'on regarde. `codex` le fait, `opencode` non — la différence se voit à l'écran.
+- **`id`** porte l'identifiant d'appel de l'agent, quand son flux en fournit un, et sert à apparier le départ et la fin d'un même appel. Sans lui, il faut recouper sur (nom, résumé), ce qui confond deux exécutions successives de la même commande. Il est parfois le seul recours : chez `claude`, la fin d'un outil arrive dans un bloc qui ne porte que cet identifiant, jamais le nom — l'événement de fermeture a donc un `tool` vide. Champ facultatif, vide par défaut : les journaux écrits avant son introduction se relisent.
+
+Émettre des événements est **facultatif**. Un agent qui se contente d'écrire son rapport final reste parfaitement conforme — mais il sera, littéralement, invisible pendant tout son travail.
 
 ## Comment le rapport est récupéré
 

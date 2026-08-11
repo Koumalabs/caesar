@@ -40,6 +40,21 @@ export const EventSchema = z.discriminatedUnion("type", [
     tool: z.string(),
     input_summary: z.string().default(""),
     status: z.enum(["started", "succeeded", "failed"]).default("started"),
+    /**
+     * Identifiant de l'appel d'outil chez l'agent, quand son flux en fournit
+     * un — `item_1` chez codex, `write_0` chez opencode, `toolu_…` chez
+     * claude. Sert à apparier le « démarré » et le « terminé » d'un même
+     * appel : sans lui, il faut recouper sur (nom, résumé), ce qui confond
+     * deux exécutions identiques de la même commande.
+     *
+     * Il est parfois le *seul* moyen : claude annonce la fin d'un outil dans
+     * un bloc `tool_result` qui ne porte que `tool_use_id`, jamais le nom de
+     * l'outil — et `translate` est sans état, par contrat. L'événement de
+     * fermeture arrive donc avec `tool` vide et cet identifiant seul.
+     *
+     * Défaut vide : les `events.jsonl` écrits avant ce champ se relisent.
+     */
+    id: z.string().default(""),
   }),
   base.extend({
     type: z.literal("file_changed"),

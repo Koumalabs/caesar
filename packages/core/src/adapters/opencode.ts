@@ -95,13 +95,22 @@ function build(ctx: BuildContext): SpawnPlan {
 /**
  * Traduit le flux `opencode run --format json`.
  *
- * Les formes `step_start` / `text` / `step_finish` viennent de la capture
- * réelle (`test/fixtures/opencode.jsonl`). Le préfixe `tool-` sur
- * `part.type` est dérivé des conventions du Vercel AI SDK, sur lequel
- * opencode s'appuie ; il n'a pas été observé sur cette machine (le prompt de
- * capture n'a déclenché aucun outil) et reste strictement défensif. opencode
- * ne signale aucune fin de session dans son flux JSON : c'est au moteur de
- * la déduire du code de sortie du processus.
+ * Toutes les formes traitées ici viennent de la capture réelle
+ * (`test/fixtures/opencode.jsonl`, une tâche qui écrit un fichier et lance une
+ * commande) : `step_start`, `text`, `step_finish`, et les parts `tool`.
+ *
+ * La version précédente cherchait un `part.type` préfixé `tool-`, un
+ * `part.input` et un `part.state` de type chaîne — trois formes dérivées des
+ * conventions du Vercel AI SDK, sur lequel opencode s'appuie, et **jamais
+ * observées**. Aucune ne correspond : la forme réelle est `part.type ===
+ * "tool"`, le nom dans `part.tool`, l'entrée et l'état dans `part.state`.
+ * Aucun `tool_use` n'était donc émis, et un sous-agent opencode paraissait
+ * n'utiliser aucun outil.
+ *
+ * Deux limites de ce flux, constatées plutôt que supposées : opencode ne
+ * signale un outil qu'**une fois terminé** (jamais son départ, contrairement à
+ * codex — un outil long y reste invisible tant qu'il tourne), et il ne signale
+ * aucune fin de session, que le moteur déduit du code de sortie du processus.
  */
 function translate(line: string): Translation {
   const data = parseJsonLine(line);
@@ -117,13 +126,20 @@ function translate(line: string): Translation {
     return { events: [{ type: "message", text }], finalText: text };
   }
 
-  if (partType.startsWith("tool-")) {
-    const tool = partType.slice("tool-".length);
-    const input = part["input"] ?? part["args"];
-    const summary = input === undefined ? "" : JSON.stringify(input).slice(0, 200);
-    const state = part["state"];
-    const status = state === "output-available" ? "succeeded" : state === "output-error" ? "failed" : "started";
-    const events: PartialEvent[] = [{ type: "tool_use", tool, input_summary: summary, status }];
+  if (partType === "tool") {
+    const tool = typeof part["tool"] === "string" ? part["tool"] : "outil";
+    const state = isRecord(part["state"]) ? part["state"] : undefined;
+    // `state.title` est déjà le résumé qu'un humain veut lire — « ls -1 »,
+    // « note.txt » — là où l'entrée sérialisée porte le contenu entier d'un
+    // fichier écrit. On ne retombe sur celle-ci qu'à défaut de titre.
+    const title = state && typeof state["title"] === "string" && state["title"] !== "" ? state["title"] : undefined;
+    const input = state?.["input"];
+    const summary = title ?? (input === undefined ? "" : JSON.stringify(input).slice(0, 200));
+    // Seul "completed" a été observé ; les deux autres restent défensifs.
+    const rawStatus = state?.["status"];
+    const status = rawStatus === "completed" ? "succeeded" : rawStatus === "error" ? "failed" : "started";
+    const callId = typeof part["callID"] === "string" ? part["callID"] : "";
+    const events: PartialEvent[] = [{ type: "tool_use", tool, id: callId, input_summary: summary, status }];
     return { events };
   }
 

@@ -33,7 +33,6 @@
  * seulement quand Node le charge comme point d'entrée réel.
  */
 import { Command, CommanderError } from "commander";
-import packageJson from "../package.json" with { type: "json" };
 import {
   ARG_TOKENS_HINT,
   runAgentsAdd,
@@ -55,9 +54,12 @@ import { runProtocolSchema } from "./commands/protocol.js";
 import { runRoleAdd, runRoleList, runRoleRemove, runRoleShow } from "./commands/role.js";
 import { runRun } from "./commands/run.js";
 import { runApply, runCancel, runDiff, runLogs, runPs } from "./commands/tasks.js";
+import { runWatch } from "./commands/watch.js";
 import type { Io } from "./output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, processIo } from "./output.js";
+import { formatHelp } from "./help.js";
 import { resolveRoot } from "./root.js";
+import { VERSION } from "./version.js";
 
 interface GlobalOptions {
   root?: string;
@@ -105,12 +107,22 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   program
     .name("orch")
     .description("Orchestrateur de sous-agents de code (Antigravity, Codex, OpenCode, Copilot, Claude).")
-    .version(packageJson.version)
+    // Les libellés par défaut de commander sont en anglais : sans ces trois
+    // remplacements, « output the version number » et « display help for
+    // command » figuraient au milieu d'une aide entièrement française.
+    .version(VERSION, "-V, --version", "Affiche la version d'orch.")
+    .helpOption("-h, --help", "Affiche cette aide.")
+    .helpCommand("help [commande]", "Affiche l'aide d'une commande.")
     .exitOverride()
     .configureOutput({
       writeOut: (str) => io.stdout.write(str),
       writeErr: (str) => io.stderr.write(str),
-    });
+    })
+    // Posé **avant** la création des sous-commandes : commander copie la
+    // configuration d'aide au moment du `.command()`, jamais après. Réglée
+    // plus bas, elle ne s'appliquerait qu'à `orch --help` et laisserait
+    // `orch run --help` en anglais.
+    .configureHelp({ formatHelp: (cmd, helper) => formatHelp(cmd, helper, io) });
 
   async function run(action: () => Promise<number>): Promise<void> {
     try {
@@ -470,8 +482,17 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     );
 
   // ---------------------------------------------------------------------
-  // ps / logs / cancel / diff / apply
+  // ps / watch / logs / cancel / diff / apply
   // ---------------------------------------------------------------------
+
+  withCommonOptions(program.command("watch"))
+    .description("Regarde les sous-agents travailler, en direct.")
+    .argument("[ids...]", "Tâches à suivre. Par défaut : toutes celles en cours.")
+    .option("--once", "Une seule image, puis sortie — pour un script ou un coup d'œil.")
+    .action(async (ids: string[], options: GlobalOptions & { once?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<typeof options>();
+      await run(async () => runWatch(await resolveRoot(opts.root), ids, { json: opts.json, once: opts.once }, io));
+    });
 
   withCommonOptions(program.command("ps"))
     .description("Liste les tâches du store (par défaut : en cours + dernières terminées).")

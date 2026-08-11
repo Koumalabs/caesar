@@ -35,6 +35,9 @@ importers:
       '@orch/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@orch/theme':
+        specifier: workspace:*
+        version: link:../theme
       '@orch/tui':
         specifier: workspace:*
         version: link:../tui
@@ -100,6 +103,8 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  packages/theme: {}
+
   packages/tui:
     dependencies:
       '@opentui/core':
@@ -114,6 +119,9 @@ importers:
       '@orch/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@orch/theme':
+        specifier: workspace:*
+        version: link:../theme
       react:
         specifier: ^19.2.0
         version: 19.2.8

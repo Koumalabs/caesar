@@ -18,8 +18,19 @@ import type { NetworkRequest, RoleConfig } from "@orch/core";
 import { loadConfig, loadLayer, parseDuration, pickAgentForRole, resolveInstalledMap, resolveRole, roleProvenance, saveLayer } from "@orch/core";
 import type { Isolation, TaskMode } from "@orch/protocol";
 import { ISOLATIONS, NETWORK_REQUEST_VALUES, TASK_MODES } from "../flags.js";
-import type { Io } from "../output.js";
-import { EXIT_OK, EXIT_USAGE, printError, printJson, renderTable, writeLine } from "../output.js";
+import type { Cell, Io } from "../output.js";
+import {
+  EXIT_OK,
+  EXIT_USAGE,
+  printDone,
+  printError,
+  printField,
+  printJson,
+  printNote,
+  printTable,
+  sectionHeader,
+  writeLine,
+} from "../output.js";
 import type { ScopeOptions } from "../scope.js";
 import { resolveScope, scopeFlagHint, scopeLabel } from "../scope.js";
 
@@ -54,8 +65,13 @@ export async function runRoleList(root: string, options: RoleListOptions, io: Io
     return EXIT_OK;
   }
 
-  const tableRows = rows.map((r) => [r.name, r.agents.join(" > "), r.picked ?? `aucun (${r.error})`]);
-  writeLine(io.stdout, renderTable(["rôle", "agents (ordre de repli)", "retenu aujourd'hui"], tableRows));
+  sectionHeader(io, "role");
+  const tableRows: Cell[][] = rows.map((r) => [
+    r.name,
+    { text: r.agents.join(" > "), token: "dim" },
+    r.picked ? { text: r.picked, token: "ok" } : { text: `aucun (${r.error})`, token: "bad" },
+  ]);
+  printTable(io, ["rôle", "agents (ordre de repli)", "retenu aujourd'hui"], tableRows);
   return EXIT_OK;
 }
 
@@ -77,15 +93,19 @@ export async function runRoleShow(root: string, name: string, options: RoleShowO
     return EXIT_OK;
   }
 
-  writeLine(io.stdout, `Rôle : ${resolved.name}`);
-  writeLine(io.stdout, `Provenance : ${provenance}`);
-  writeLine(io.stdout, `Intention : ${resolved.purpose || "(non précisée)"}`);
-  writeLine(io.stdout, `Agents (ordre de repli) : ${resolved.agents.join(", ") || "(aucun)"}`);
-  writeLine(io.stdout, `Mode : ${resolved.mode}`);
-  writeLine(io.stdout, `Isolation : ${resolved.isolation}`);
-  writeLine(io.stdout, `Réseau : ${resolved.network}`);
-  writeLine(io.stdout, `Délai : ${resolved.timeout_ms} ms`);
-  writeLine(io.stdout, "Prompt système :");
+  sectionHeader(io, `role ${resolved.name}`);
+  // Les libellés alignés en demi-ton, les valeurs neutres : la colonne de
+  // gauche se saute, celle de droite se lit.
+  const LARGEUR = 22;
+  printField(io, "provenance", provenance, LARGEUR);
+  printField(io, "intention", resolved.purpose || "(non précisée)", LARGEUR);
+  printField(io, "agents (ordre de repli)", resolved.agents.join(" > ") || "(aucun)", LARGEUR);
+  printField(io, "mode", resolved.mode, LARGEUR);
+  printField(io, "isolation", resolved.isolation, LARGEUR);
+  printField(io, "réseau", resolved.network, LARGEUR);
+  printField(io, "délai", `${resolved.timeout_ms} ms`, LARGEUR);
+  writeLine(io.stdout);
+  printNote(io, "prompt système");
   writeLine(io.stdout, resolved.systemPrompt || "(aucun)");
   return EXIT_OK;
 }
@@ -125,7 +145,7 @@ export async function runRoleRemove(root: string, name: string, options: RoleRem
   await saveLayer(scope, root, { ...layer, roles });
 
   if (options.json) printJson(io, { name, removed: true, scope });
-  else writeLine(io.stdout, `Rôle "${name}" supprimé (couche ${scopeLabel(scope)}).`);
+  else printDone(io, `Rôle "${name}" supprimé (couche ${scopeLabel(scope)}).`);
   return EXIT_OK;
 }
 
@@ -197,6 +217,6 @@ export async function runRoleAdd(root: string, name: string, options: RoleAddOpt
   await saveLayer(scope, root, { ...layer, roles });
 
   if (options.json) printJson(io, { role, replaced, scope });
-  else writeLine(io.stdout, `Rôle "${name}" ${replaced ? "remplacé" : "créé"} (couche ${scopeLabel(scope)}).`);
+  else printDone(io, `Rôle "${name}" ${replaced ? "remplacé" : "créé"} (couche ${scopeLabel(scope)}).`);
   return EXIT_OK;
 }

@@ -5,9 +5,21 @@ import { readFile } from "node:fs/promises";
 import type { OrchEvent } from "@orch/protocol";
 import { EventSchema, readEvents, taskPaths } from "@orch/protocol";
 import type { TaskRecord, TaskStatus, TaskStore } from "@orch/core";
-import { applyWorktree, diffWorktree, fileTaskStore, loadWorktreeHandle } from "@orch/core";
-import type { Io } from "../output.js";
-import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, printWarning, renderTable, writeLine } from "../output.js";
+import { applyWorktree, diffWorktree, fileTaskStore, formatDuration, loadWorktreeHandle } from "@orch/core";
+import type { Cell, Io, ThemeToken } from "../output.js";
+import {
+  EXIT_OK,
+  EXIT_RUNTIME,
+  EXIT_USAGE,
+  activeGlyphs,
+  printError,
+  printJson,
+  printTable,
+  printWarning,
+  sectionHeader,
+  writeLine,
+} from "../output.js";
+import { createFileTail } from "../tail.js";
 
 const KNOWN_STATUSES: readonly TaskStatus[] = ["pending", "running", "succeeded", "failed", "cancelled", "timed_out"];
 const ACTIVE_STATUSES: readonly TaskStatus[] = ["pending", "running"];
@@ -17,6 +29,35 @@ const FOLLOW_POLL_MS = 150;
 
 function isActive(status: TaskStatus): boolean {
   return ACTIVE_STATUSES.includes(status);
+}
+
+/** L'issue du processus, dite par la couleur autant que par le mot. */
+function statusToken(status: TaskStatus): ThemeToken {
+  if (status === "running") return "accent";
+  if (status === "pending") return "dim";
+  if (status === "succeeded") return "ok";
+  return "bad";
+}
+
+/** L'issue déclarée par l'agent — `partial` et `blocked` appellent l'œil sans être des échecs. */
+function reportToken(report: string): ThemeToken {
+  if (report === "success") return "ok";
+  if (report === "partial" || report === "blocked") return "warn";
+  if (report === "failed") return "bad";
+  return "dim";
+}
+
+/**
+ * L'âge d'une tâche, plutôt que sa date de création.
+ *
+ * Un horodatage ISO occupe vingt-quatre colonnes pour dire ce qu'« il y a
+ * 2m14s » dit en onze, et il oblige à faire la soustraction de tête. La date
+ * exacte reste dans `--json`, où elle a un lecteur qui en a l'usage.
+ */
+function age(iso: string, now: number): string {
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return "-";
+  return `il y a ${formatDuration(now - at)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,13 +98,32 @@ export async function runPs(root: string, options: PsOptions, io: Io): Promise<n
     return EXIT_OK;
   }
 
-  // "rapport" à côté de "statut" (I3 de la revue finale) : "statut" ne
-  // reflète que l'issue du processus, jamais ce que l'agent a déclaré dans
-  // son rapport — une tâche "succeeded" au niveau processus peut porter un
-  // rapport "failed"/"partial"/"blocked", et l'inverse n'était visible nulle
-  // part avant que `report_status` ne soit persisté dans le store.
-  const rows = records.map((r) => [r.id, r.agent, r.role ?? "-", r.status, r.report_status ?? "-", r.mode, r.isolation, r.created_at]);
-  writeLine(io.stdout, renderTable(["id", "agent", "rôle", "statut", "rapport", "mode", "isolation", "créée"], rows));
+  sectionHeader(io, "ps");
+  if (records.length === 0) {
+    writeLine(io.stdout, "Aucune tâche.");
+    return EXIT_OK;
+  }
+
+  // Six colonnes, et non huit. L'agent porte son rôle, le mode porte son
+  // isolation : ces couples se lisent ensemble et se cherchent ensemble, et
+  // les séparer coûtait deux colonnes qu'un cadre à 80 caractères n'a pas.
+  //
+  // "rapport" reste en revanche distinct de "statut" (I3 de la revue finale) :
+  // "statut" ne reflète que l'issue du processus, jamais ce que l'agent a
+  // déclaré dans son rapport — une tâche "succeeded" au niveau processus peut
+  // porter un rapport "failed"/"partial"/"blocked", et c'est précisément
+  // l'écart entre les deux qu'on vient lire ici.
+  const bullet = activeGlyphs().status.bullet;
+  const now = Date.now();
+  const rows: Cell[][] = records.map((r) => [
+    r.id,
+    r.role ? `${r.agent} ${bullet} ${r.role}` : r.agent,
+    { text: r.status, token: statusToken(r.status) },
+    r.report_status ? { text: r.report_status, token: reportToken(r.report_status) } : "-",
+    `${r.isolation} ${bullet} ${r.mode}`,
+    { text: age(r.created_at, now), token: "dim" },
+  ]);
+  printTable(io, ["id", "agent", "statut", "rapport", "exécution", "âge"], rows);
   return EXIT_OK;
 }
 
@@ -86,18 +146,18 @@ async function readTextSafe(path: string): Promise<string> {
 }
 
 /**
- * Relit `path` par blocs successifs et transmet chaque nouveau segment à
- * `onChunk`, jusqu'à ce que la tâche `id` ne soit plus active. Pas
- * d'inotify/fswatch ici — une scrutation courte suffit et reste portable.
+ * Transmet à `onChunk` chaque nouveau segment de `path`, jusqu'à ce que la
+ * tâche `id` ne soit plus active.
+ *
+ * Le suivi par décalage lui-même vit dans `../tail.js` : `orch watch` en a
+ * besoin aussi, avec une condition d'arrêt différente (plusieurs tâches, et
+ * une fenêtre qui reste ouverte après leur fin).
  */
 async function tailFile(store: TaskStore, id: string, path: string, onChunk: (chunk: string) => void): Promise<void> {
-  let offset = 0;
+  const tail = createFileTail(path);
   const emitNew = async (): Promise<void> => {
-    const text = await readTextSafe(path);
-    if (text.length > offset) {
-      onChunk(text.slice(offset));
-      offset = text.length;
-    }
+    const chunk = await tail.read();
+    if (chunk !== "") onChunk(chunk);
   };
 
   for (;;) {

@@ -86,8 +86,10 @@ describe("opencodeAgent.translate", () => {
     const line = lines.find((l) => l.includes('"type":"text"'));
     expect(line).toBeDefined();
     const translation = opencodeAgent.translate(line as string);
-    expect(translation.events).toEqual([{ type: "message", text: "OK" }]);
-    expect(translation.finalText).toBe("OK");
+    expect(translation.events).toHaveLength(1);
+    expect(translation.events[0]).toMatchObject({ type: "message" });
+    expect(translation.finalText).toBe((translation.events[0] as { text: string }).text);
+    expect(translation.finalText).not.toBe("");
   });
 
   it("ignore step_start / step_finish, qui ne portent pas de contenu reconnu", () => {
@@ -100,14 +102,35 @@ describe("opencodeAgent.translate", () => {
     }
   });
 
-  it("traduit une part tool-<nom> de façon défensive", () => {
+  /**
+   * Ce bloc remplace un test qui construisait lui-même une part
+   * `type: "tool-bash"`, avec `part.input` et `part.state` de type chaîne —
+   * la forme supposée d'après les conventions du Vercel AI SDK. Il passait au
+   * vert, et validait une forme qu'opencode n'émet pas : aucun `tool_use`
+   * n'était produit en vrai, et un sous-agent opencode paraissait n'utiliser
+   * aucun outil. Les assertions portent désormais sur la capture réelle.
+   */
+  it("traduit les parts tool de la capture réelle, avec leur identifiant d'appel", () => {
+    const toolEvents = lines.flatMap((line) => opencodeAgent.translate(line).events).filter((e) => e.type === "tool_use");
+    expect(toolEvents.length).toBeGreaterThanOrEqual(2);
+
+    const bash = toolEvents.find((e) => (e as { tool: string }).tool === "bash");
+    expect(bash).toMatchObject({ type: "tool_use", tool: "bash", input_summary: "ls -1", status: "succeeded" });
+    expect((bash as { id: string }).id).toBe("bash_1");
+
+    // `state.title` est préféré à l'entrée sérialisée : celle-ci porte le
+    // contenu entier du fichier écrit, illisible dans une vue en direct.
+    const write = toolEvents.find((e) => (e as { tool: string }).tool === "write");
+    expect((write as { input_summary: string }).input_summary).toBe("note.txt");
+  });
+
+  it("retombe sur l'entrée sérialisée quand la part ne porte pas de titre", () => {
     const line = JSON.stringify({
-      type: "tool",
-      part: { type: "tool-bash", input: { command: "ls" }, state: "output-available" },
+      type: "tool_use",
+      part: { type: "tool", tool: "grep", callID: "grep_0", state: { status: "completed", input: { pattern: "TODO" } } },
     });
-    const translation = opencodeAgent.translate(line);
-    expect(translation.events).toEqual([
-      { type: "tool_use", tool: "bash", input_summary: '{"command":"ls"}', status: "succeeded" },
+    expect(opencodeAgent.translate(line).events).toEqual([
+      { type: "tool_use", tool: "grep", id: "grep_0", input_summary: '{"pattern":"TODO"}', status: "succeeded" },
     ]);
   });
 

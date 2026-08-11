@@ -29,10 +29,22 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Isolation, OrchEvent, TaskMode } from "@orch/protocol";
 import type { NetworkRequest, TaskOutcome } from "@orch/core";
-import { createSlotQueue, fileTaskStore, generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation, runTask } from "@orch/core";
+import { createSlotQueue, fileTaskStore, generateTaskId, loadConfig, nextDelegationDepth, readableMessage, resolveDelegation, runTask } from "@orch/core";
 import { ISOLATIONS, NETWORK_REQUEST_VALUES, TASK_MODES } from "../flags.js";
-import type { Io } from "../output.js";
-import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printError, printJson, printWarning, writeLine } from "../output.js";
+import type { Glyphs } from "@orch/theme";
+import type { Io, ThemeToken } from "../output.js";
+import {
+  EXIT_OK,
+  EXIT_RUNTIME,
+  EXIT_USAGE,
+  activeGlyphs,
+  colorize,
+  printError,
+  printJson,
+  printWarning,
+  sectionHeader,
+  writeLine,
+} from "../output.js";
 
 export interface RunOptions {
   role?: string;
@@ -66,21 +78,92 @@ async function resolveContext(raw: string | undefined): Promise<string | undefin
   return raw;
 }
 
-function describeEvent(event: OrchEvent): string | undefined {
+/** Une ligne d'avancement, décomposée pour que seule la marque porte la couleur. */
+export interface EventLine {
+  /** La marque, tirée du jeu de glyphes courant. */
+  glyph: string;
+  /** Ce dont il s'agit, en un mot — aligné en colonne d'une ligne à l'autre. */
+  label: string;
+  /** Le rôle du thème pour la marque et le libellé. */
+  token: ThemeToken;
+  text: string;
+  /** Le rôle du thème pour le texte lui-même. Absent : le texte reste neutre. */
+  textToken?: ThemeToken;
+}
+
+/** Largeur de la colonne des libellés, pour que les textes s'alignent. */
+const LABEL_WIDTH = 10;
+
+/**
+ * L'avancement, une ligne par événement.
+ *
+ * `message` et `thinking` étaient absents : ce que le sous-agent *dit* était
+ * écrit dans `events.jsonl` depuis toujours et affiché nulle part. Sur une
+ * tâche qui réfléchit longtemps entre deux outils, c'était la seule chose à
+ * voir, et on ne la voyait pas.
+ *
+ * Chaque ligne est mise à plat : antigravity émet un `message` par bribe de
+ * texte, retours à la ligne compris, et une bribe par ligne d'affichage
+ * déroulerait l'écran sans rien apprendre.
+ *
+ * Le libellé remplace les crochets d'origine (`[outil]`, `[agent]`) : à
+ * largeur fixe, les textes s'alignent d'une ligne à l'autre, et la colonne
+ * ainsi formée se parcourt d'un coup d'œil là où des crochets de longueur
+ * variable obligeaient à lire chaque début de ligne.
+ *
+ * Exportée pour être éprouvée directement : l'agent factice des tests n'émet
+ * pas de lignes au format d'un CLI réel, aucun test de bout en bout ne
+ * passerait donc par ces branches.
+ */
+export function describeEvent(event: OrchEvent, glyphs: Glyphs = activeGlyphs()): EventLine | undefined {
+  const g = glyphs.status;
   switch (event.type) {
     case "started":
-      return `  [démarrage] agent "${event.agent}"`;
+      return { glyph: g.running, label: "départ", token: "accent", text: `agent "${event.agent}"` };
     case "tool_use":
-      return `  [outil] ${event.tool}${event.input_summary ? ` — ${event.input_summary}` : ""} (${event.status})`;
+      // Le nom est vide quand l'agent ne le porte pas sur la fermeture (le
+      // `tool_result` de claude n'a que l'identifiant d'appel).
+      return {
+        glyph: g.tool,
+        label: "outil",
+        token: "accent",
+        text: `${event.tool || "(fin)"}${event.input_summary ? ` — ${event.input_summary}` : ""} (${event.status})`,
+      };
     case "file_changed":
-      return `  [fichier] ${event.action} ${event.path}`;
+      return { glyph: g.file, label: "fichier", token: "warn", text: `${event.action} ${event.path}` };
     case "progress":
-      return `  [progression] ${event.message}`;
+      return { glyph: g.bullet, label: "avancement", token: "dim", text: event.message, textToken: "dim" };
+    case "message":
+      // `readableMessage` plutôt que le texte brut : les `agent_message` de
+      // codex sont des rapports JSON sérialisés, illisibles tels quels.
+      return { glyph: g.speech, label: "agent", token: "dim", text: flatten(readableMessage(event.text)) };
+    case "thinking":
+      return { glyph: g.bullet, label: "réflexion", token: "dim", text: flatten(event.text), textToken: "dim" };
     case "error":
-      return `  [erreur] ${event.message}`;
+      return { glyph: g.warn, label: "erreur", token: "bad", text: event.message, textToken: "bad" };
     default:
       return undefined;
   }
+}
+
+/**
+ * Assemble une ligne d'avancement.
+ *
+ * La marque et le libellé portent la couleur ; **le texte de l'agent reste
+ * neutre**. C'est ce que dit la palette : le texte principal hérite de
+ * l'avant-plan du terminal, seul ce qui le classe est coloré. Teinter la
+ * parole de l'agent la rendrait moins lisible qu'elle ne l'est, sans rien
+ * apprendre — elle est déjà nommée par son libellé.
+ */
+export function formatEventLine(line: EventLine, io: Io): string {
+  const marque = colorize(`${line.glyph} ${line.label.padEnd(LABEL_WIDTH)}`, line.token, io.stdout);
+  const texte = line.textToken ? colorize(line.text, line.textToken, io.stdout) : line.text;
+  return `  ${marque} ${texte}`;
+}
+
+/** Une seule ligne, sans blancs superflus. Vide si le texte n'en portait aucun. */
+function flatten(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 export async function runRun(root: string, objective: string, options: RunOptions, io: Io): Promise<number> {
@@ -150,6 +233,10 @@ export async function runRun(root: string, objective: string, options: RunOption
   }
   const { agentId, mode, isolation, network, networkWarning, timeoutMs, context: resolvedContext } = resolved;
 
+  // Après la branche d'erreur, et seulement en mode humain : `--json` ne doit
+  // porter que le résultat final sur stdout.
+  if (!options.json) sectionHeader(io, "run");
+
   const store = fileTaskStore(root);
   const taskId = generateTaskId();
   // Le contrôleur précède la file : l'attente d'un créneau se produit *avant*
@@ -191,11 +278,12 @@ export async function runRun(root: string, objective: string, options: RunOption
   // stdout") exclut tout affichage en direct : `onEvent` reste alors
   // silencieux, les événements ne sont utiles qu'au fil de l'eau en mode
   // humain.
+  const glyphs = activeGlyphs();
   const onEvent = options.json
     ? undefined
     : (event: OrchEvent): void => {
-        const line = describeEvent(event);
-        if (line) writeLine(io.stdout, line);
+        const line = describeEvent(event, glyphs);
+        if (line) writeLine(io.stdout, formatEventLine(line, io));
       };
 
   let outcome;
@@ -242,28 +330,46 @@ export async function runRun(root: string, objective: string, options: RunOption
     return exitCodeFor(outcome);
   }
 
+  const g = glyphs.status;
+  const réussi = outcome.record.status === "succeeded" && outcome.report.status === "success";
   writeLine(io.stdout);
   writeLine(
     io.stdout,
-    `Tâche ${outcome.record.id} — statut : ${outcome.record.status} ` +
-      `(rapport "${outcome.report.status}" via "${outcome.source}")`,
+    `${colorize(réussi ? g.done : g.failed, réussi ? "ok" : "bad", io.stdout)} ` +
+      `Tâche ${outcome.record.id} — statut : ${colorize(outcome.record.status, réussi ? "ok" : "bad", io.stdout)} ` +
+      colorize(`(rapport "${outcome.report.status}" via "${outcome.source}")`, "dim", io.stdout),
   );
-  writeLine(io.stdout, outcome.report.summary);
+  writeLine(io.stdout, `  ${outcome.report.summary}`);
 
   if (outcome.diff && !outcome.diff.isEmpty) {
-    writeLine(io.stdout, "Fichiers modifiés (d'après git) :");
-    for (const change of outcome.diff.files) writeLine(io.stdout, `  - ${change.action} ${change.path}`);
+    writeLine(io.stdout);
+    writeLine(io.stdout, colorize("Fichiers modifiés (d'après git)", "dim", io.stdout));
+    for (const change of outcome.diff.files) {
+      writeLine(io.stdout, `  ${colorize(g.file, "warn", io.stdout)} ${change.action} ${change.path}`);
+    }
   }
   if (outcome.report.findings.length > 0) {
-    writeLine(io.stdout, "Constats :");
+    writeLine(io.stdout);
+    writeLine(io.stdout, colorize("Constats", "dim", io.stdout));
     for (const finding of outcome.report.findings) {
-      writeLine(io.stdout, `  - [${finding.severity}] ${finding.title}${finding.file ? ` (${finding.file})` : ""}`);
+      const grave = finding.severity === "high" || finding.severity === "critical";
+      writeLine(
+        io.stdout,
+        `  ${colorize(g.warn, grave ? "bad" : "warn", io.stdout)} ` +
+          `${colorize(`[${finding.severity}]`, grave ? "bad" : "warn", io.stdout)} ` +
+          `${finding.title}${finding.file ? colorize(` (${finding.file})`, "dim", io.stdout) : ""}`,
+      );
     }
   }
   if (outcome.record.isolation === "worktree") {
+    writeLine(io.stdout);
     writeLine(
       io.stdout,
-      `Isolée dans un worktree : "orch diff ${outcome.record.id}" pour voir le diff, "orch apply ${outcome.record.id}" pour l'intégrer.`,
+      colorize(
+        `Isolée dans un worktree : "orch diff ${outcome.record.id}" pour voir le diff, "orch apply ${outcome.record.id}" pour l'intégrer.`,
+        "dim",
+        io.stdout,
+      ),
     );
   }
 

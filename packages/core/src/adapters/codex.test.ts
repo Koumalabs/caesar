@@ -119,19 +119,66 @@ describe("codexAgent.translate", () => {
   });
 
   it("traduit le message de l'agent en événement message, et porte finalText", () => {
+    // Le texte n'est plus asserté littéralement : la capture porte désormais
+    // une vraie tâche (écrire un fichier, lancer deux commandes), dont les
+    // messages sont les rapports successifs de l'agent. C'est la forme qui
+    // compte — un `message` unique dont le texte alimente `finalText`.
     const messageLine = lines.find((l) => l.includes('"agent_message"'));
     expect(messageLine).toBeDefined();
     const translation = codexAgent.translate(messageLine as string);
-    expect(translation.events).toEqual([{ type: "message", text: "OK" }]);
-    expect(translation.finalText).toBe("OK");
+    expect(translation.events).toHaveLength(1);
+    expect(translation.events[0]).toMatchObject({ type: "message" });
+    expect(translation.finalText).toBe((translation.events[0] as { text: string }).text);
+    expect(translation.finalText).not.toBe("");
+  });
+
+  it("annonce une commande dès son départ, sans attendre qu'elle finisse", () => {
+    // Le gain principal de la relecture des captures : `item.started` existe
+    // bel et bien. Sans lui, un `npm install` de trois minutes n'apparaissait
+    // qu'à la troisième minute — la tâche semblait figée entre-temps.
+    const startedLine = lines.find((l) => l.includes('"item.started"') && l.includes('"command_execution"'));
+    expect(startedLine).toBeDefined();
+    const translation = codexAgent.translate(startedLine as string);
+    expect(translation.events).toHaveLength(1);
+    expect(translation.events[0]).toMatchObject({ type: "tool_use", tool: "shell", status: "started" });
+    expect((translation.events[0] as { id: string }).id).not.toBe("");
+    expect((translation.events[0] as { input_summary: string }).input_summary).not.toBe("");
+  });
+
+  it("apparie le départ et la fin d'une même commande par leur identifiant", () => {
+    const started = lines.find((l) => l.includes('"item.started"') && l.includes('"command_execution"'));
+    const completed = lines.find((l) => l.includes('"item.completed"') && l.includes('"command_execution"'));
+    const open = codexAgent.translate(started as string).events[0] as { id: string; status: string };
+    const close = codexAgent.translate(completed as string).events[0] as { id: string; status: string };
+    expect(open.status).toBe("started");
+    expect(close.status).toBe("succeeded");
+    expect(close.id).toBe(open.id);
+  });
+
+  it("traduit un item file_change en file_changed, une seule fois", () => {
+    const started = lines.find((l) => l.includes('"item.started"') && l.includes('"file_change"'));
+    const completed = lines.find((l) => l.includes('"item.completed"') && l.includes('"file_change"'));
+    expect(started).toBeDefined();
+    expect(completed).toBeDefined();
+    // La forme `item.started` porte exactement les mêmes changements : la
+    // traduire aussi ferait apparaître chaque fichier en double.
+    expect(codexAgent.translate(started as string).events).toEqual([]);
+    expect(codexAgent.translate(completed as string).events).toEqual([
+      { type: "file_changed", path: "/tmp/orch-capture/note.txt", action: "created" },
+    ]);
   });
 
   it("traduit l'item error en événement error non fatal", () => {
-    const errorLine = lines.find((l) => l.includes('"type":"error"') && l.includes('"item_0"'));
-    expect(errorLine).toBeDefined();
-    const translation = codexAgent.translate(errorLine as string);
-    expect(translation.events).toHaveLength(1);
-    expect(translation.events[0]).toMatchObject({ type: "error", fatal: false });
+    // Absent de la capture courante — elle réussit — mais observé dans une
+    // capture antérieure. La ligne est donc reconstituée ici plutôt que
+    // cherchée dans la fixture : la branche reste couverte sans prétendre que
+    // le flux actuel la contient.
+    const errorLine = JSON.stringify({
+      type: "item.completed",
+      item: { id: "item_0", type: "error", message: "Le modèle a refusé la requête." },
+    });
+    const translation = codexAgent.translate(errorLine);
+    expect(translation.events).toEqual([{ type: "error", message: "Le modèle a refusé la requête.", fatal: false }]);
   });
 
   it("traduit turn.completed en finished réussi", () => {
