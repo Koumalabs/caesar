@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -123,6 +123,21 @@ async function initGitRepo(root: string): Promise<void> {
   await git(root, ["init", "-q"]);
   await git(root, ["config", "user.email", "orch-test@example.com"]);
   await git(root, ["config", "user.name", "Orch Test"]);
+  // Ce qu'`orch init` inscrit dans tout projet réel. Sans cette ligne, chaque
+  // tâche isolée porterait le constat « Worktrees non ignorés par git » —
+  // vrai, mais hors sujet pour les tests qui suivent. Le constat lui-même est
+  // vérifié par `initGitRepoWithoutIgnore`, plus bas.
+  await writeFile(join(root, ".gitignore"), ".orch/wt/\n", "utf8");
+  await writeFile(join(root, "a.txt"), "hello\n", "utf8");
+  await git(root, ["add", "-A"]);
+  await git(root, ["commit", "-q", "-m", "init"]);
+}
+
+/** Le même dépôt, mais sans la ligne qu'`orch init` pose — pour le constat d'étape 0. */
+async function initGitRepoWithoutIgnore(root: string): Promise<void> {
+  await git(root, ["init", "-q"]);
+  await git(root, ["config", "user.email", "orch-test@example.com"]);
+  await git(root, ["config", "user.name", "Orch Test"]);
   await writeFile(join(root, "a.txt"), "hello\n", "utf8");
   await git(root, ["add", "a.txt"]);
   await git(root, ["commit", "-q", "-m", "init"]);
@@ -162,7 +177,10 @@ describe("runTask", () => {
       );
 
       expect(outcome.record.isolation).toBe("worktree");
-      expect(outcome.record.branch).toBe(`orch/${outcome.record.id}`);
+      // Nommée pour être lue : rôle ou agent, objectif, puis les huit
+      // premiers caractères de l'identifiant pour l'unicité. Le répertoire,
+      // lui, reste `.orch/wt/<taskId>` — c'est la clé du store.
+      expect(outcome.record.branch).toBe(`orch/fake-agent/ecrire-${outcome.record.id.replace("t_", "").slice(0, 8)}`);
       expect(outcome.record.workspace).toBe(join(root, ".orch", "wt", outcome.record.id));
       expect(outcome.record.status).toBe("succeeded");
       expect(outcome.report.status).toBe("success");
@@ -332,6 +350,333 @@ describe("runTask", () => {
     });
   });
 
+  /**
+   * L'atelier, de bout en bout : le worktree que git crée ne porte que les
+   * fichiers suivis, et c'est ce qui rendait l'isolation inexploitable sur un
+   * projet réel — donc contournée. Ces tests vérifient qu'un sous-agent y
+   * trouve ce dont il a besoin, et que ce que l'orchestrateur y a posé ne
+   * ressort ni dans le diff, ni dans `orch apply`.
+   */
+  describe("l'atelier ([worktree])", () => {
+    async function seedIgnored(): Promise<void> {
+      await writeFile(join(root, ".gitignore"), "node_modules/\n.env\n", "utf8");
+      await git(root, ["add", ".gitignore"]);
+      await git(root, ["commit", "-q", "-m", "gitignore"]);
+      await execFileAsync("mkdir", ["-p", join(root, "node_modules")]);
+      await writeFile(join(root, "node_modules", "dep.js"), "module.exports = 1;\n", "utf8");
+      await writeFile(join(root, ".env"), "SECRET=1\n", "utf8");
+    }
+
+    it("livre au sous-agent un worktree contenant ses dépendances", async () => {
+      await initGitRepo(root);
+      await seedIgnored();
+
+      const outcome = await runTask(
+        { store, root },
+        {
+          agentId: "fake-agent",
+          objective: "travailler",
+          mode: "write",
+          workspace: root,
+          worktreeSetup: { copy: ["node_modules", ".env"], link: [], setup: [] },
+        },
+      );
+
+      expect(outcome.record.isolation).toBe("worktree");
+      const workspace = outcome.record.workspace;
+      expect(await readFile(join(workspace, "node_modules", "dep.js"), "utf8")).toBe("module.exports = 1;\n");
+      expect(await readFile(join(workspace, ".env"), "utf8")).toBe("SECRET=1\n");
+    });
+
+    it("ce que l'orchestrateur a posé ne ressort pas comme travail de l'agent", async () => {
+      // Sans exclusion, un `.env` recopié redeviendrait applicable au dépôt
+      // principal par `orch apply` — l'orchestrateur reprocherait à l'agent ce
+      // qu'il a lui-même déposé.
+      await initGitRepo(root);
+      await seedIgnored();
+
+      const outcome = await runTask(
+        { store, root },
+        {
+          agentId: "fake-agent",
+          objective: "écrire un fichier",
+          mode: "write",
+          workspace: root,
+          worktreeSetup: { copy: ["node_modules", ".env"], link: [], setup: [] },
+          context: JSON.stringify({ files: [{ path: "vrai-travail.txt", content: "de l'agent" }] }),
+        },
+      );
+
+      expect(outcome.record.excluded_paths).toEqual(["node_modules", ".env"]);
+      const paths = outcome.diff!.files.map((f) => f.path);
+      expect(paths).toContain("vrai-travail.txt");
+      expect(paths).not.toContain(".env");
+      expect(paths.some((p) => p.startsWith("node_modules"))).toBe(false);
+    });
+
+    it("lance les commandes de setup dans le worktree avant l'agent", async () => {
+      await initGitRepo(root);
+      const outcome = await runTask(
+        { store, root },
+        {
+          agentId: "fake-agent",
+          objective: "travailler",
+          mode: "write",
+          workspace: root,
+          worktreeSetup: { copy: [], link: [], setup: ["echo monté > .preparation"] },
+        },
+      );
+
+      expect((await readFile(join(outcome.record.workspace, ".preparation"), "utf8")).trim()).toBe("monté");
+    });
+
+    it("un setup en échec fait échouer la tâche, avec la sortie collée", async () => {
+      // Mieux vaut ne pas démarrer qu'ouvrir à l'agent un atelier à moitié
+      // monté, où il passerait son budget à réparer une installation.
+      await initGitRepo(root);
+      await expect(
+        runTask(
+          { store, root },
+          {
+            agentId: "fake-agent",
+            objective: "travailler",
+            mode: "write",
+            workspace: root,
+            worktreeSetup: { copy: [], link: [], setup: ["echo 'dépendance introuvable' >&2; exit 1"] },
+          },
+        ),
+      ).rejects.toThrow(/dépendance introuvable[\s\S]*\[worktree\]/);
+    });
+
+    it("un chemin déclaré mais non ignoré par git produit un constat nommant le remède", async () => {
+      // Le diagnostic qui manquait le jour du contournement : sans lui, un
+      // worktree incomplet ne se manifeste que par une tâche qui échoue sans
+      // raison visible, et la réaction naturelle est de renoncer à l'isolation.
+      await initGitRepo(root);
+      await writeFile(join(root, "brouillon.txt"), "ni suivi ni ignoré\n", "utf8");
+
+      const outcome = await runTask(
+        { store, root },
+        {
+          agentId: "fake-agent",
+          objective: "travailler",
+          mode: "write",
+          workspace: root,
+          worktreeSetup: { copy: ["brouillon.txt"], link: [], setup: [] },
+        },
+      );
+
+      expect(outcome.report.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            severity: "low",
+            title: "Chemin non matérialisé dans le worktree",
+            detail: expect.stringMatching(/\.gitignore/),
+          }),
+        ]),
+      );
+    });
+
+    it("un chemin lié est signalé comme non isolé", async () => {
+      await initGitRepo(root);
+      await seedIgnored();
+
+      const outcome = await runTask(
+        { store, root },
+        {
+          agentId: "fake-agent",
+          objective: "travailler",
+          mode: "write",
+          workspace: root,
+          worktreeSetup: { copy: [], link: ["node_modules"], setup: [] },
+        },
+      );
+
+      expect(outcome.report.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            severity: "info",
+            title: "Chemins partagés avec le workspace",
+            detail: expect.stringMatching(/NON isolés[\s\S]*node_modules/),
+          }),
+        ]),
+      );
+    });
+
+    it("signale — sans refuser — que .orch/wt/ n'est pas ignoré par git", async () => {
+      // L'étape 0 du skill `superpowers:using-git-worktrees`, adaptée : un
+      // constat, pas un refus. Vérifié plutôt que supposé, git n'aspire pas le
+      // contenu d'un worktree non ignoré — il le reconnaît comme dépôt
+      // imbriqué et n'ajoute qu'un gitlink. Faire échouer une délégation pour
+      // une ligne de .gitignore coûterait plus cher que ce qu'elle protège.
+      await initGitRepoWithoutIgnore(root);
+      const outcome = await runTask(
+        { store, root },
+        { agentId: "fake-agent", objective: "travailler", mode: "write", workspace: root },
+      );
+
+      expect(outcome.record.isolation).toBe("worktree");
+      expect(outcome.report.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            severity: "low",
+            title: "Worktrees non ignorés par git",
+            detail: expect.stringMatching(/\.gitignore/),
+          }),
+        ]),
+      );
+    });
+
+    it("sans section [worktree], rien ne change : le worktree reste ce que git en fait", async () => {
+      await initGitRepo(root);
+      const outcome = await runTask(
+        { store, root },
+        { agentId: "fake-agent", objective: "travailler", mode: "write", workspace: root },
+      );
+      expect(outcome.record.isolation).toBe("worktree");
+      expect(outcome.record.excluded_paths).toBeUndefined();
+      expect(outcome.report.findings).toEqual([]);
+    });
+  });
+
+  /**
+   * Le durcissement dont ce bloc est la garantie : `prepareIsolation` est le
+   * seul point que toutes les façades traversent, y compris un appel direct à
+   * `runTask`. `resolveDelegation` rend le même verdict plus tôt, mais rien
+   * n'oblige un appelant à passer par lui — ces tests-ci portent sur le filet.
+   */
+  describe("écriture en place : refusée sans opt-in", () => {
+    it('refuse "inplace" + write dans un dépôt utilisable, en nommant le remède', async () => {
+      // Le cas constaté en production : trois tâches `implementer` déléguées
+      // avec `isolation: "inplace"` ont écrit sur la branche de travail de
+      // l'utilisateur, sans que rien ne le dise.
+      await initGitRepo(root);
+      await expect(
+        runTask(
+          { store, root },
+          { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "inplace" },
+        ),
+      ).rejects.toThrow(/refusée[\s\S]*allow_inplace_write/);
+    });
+
+    it("laisse passer sous opt-in porté par l'appelant", async () => {
+      await initGitRepo(root);
+      const outcome = await runTask(
+        { store, root },
+        {
+          agentId: "fake-agent",
+          objective: "écrire",
+          mode: "write",
+          workspace: root,
+          isolation: "inplace",
+          allowInplaceWrite: true,
+        },
+      );
+      expect(outcome.record.isolation).toBe("inplace");
+    });
+
+    it("ne refuse pas hors dépôt utilisable : un projet non versionné reste accessible", async () => {
+      // Sans dépôt, aucun worktree n'est créable : refuser n'offrirait aucune
+      // issue et mettrait `orch` hors service là où il fonctionnait.
+      const outcome = await runTask(
+        { store, root },
+        { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "inplace" },
+      );
+      expect(outcome.record.isolation).toBe("inplace");
+    });
+
+    it('ne refuse pas la lecture seule : elle relève de "mustForceWorktree", qui contient au lieu d\'interdire', async () => {
+      await initGitRepo(root);
+      const outcome = await runTask(
+        { store, root },
+        { agentId: "fake-agent", objective: "lire", mode: "read-only", workspace: root, isolation: "inplace" },
+      );
+      // Forcée sur worktree par `mustForceWorktree`, pas refusée.
+      expect(outcome.record.isolation).toBe("worktree");
+    });
+
+    it('ne refuse pas "auto" : la résolution choisit déjà le worktree en écriture', async () => {
+      await initGitRepo(root);
+      const outcome = await runTask(
+        { store, root },
+        { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "auto" },
+      );
+      expect(outcome.record.isolation).toBe("worktree");
+    });
+
+    it("deux écritures en place simultanées : la seconde échoue en nommant l'occupante", async () => {
+      // Sous opt-in, deux tâches partagent le même arbre —
+      // `diffWorkspaceStatus` compare l'état git avant/après et attribuerait
+      // alors à chacune les modifications de l'autre. Le recoupement, qui est
+      // toute la valeur du système, deviendrait faux sans rien signaler.
+      await initGitRepo(root);
+      const commun = {
+        agentId: "fake-agent",
+        mode: "write" as const,
+        isolation: "inplace" as const,
+        allowInplaceWrite: true,
+        workspace: root,
+      };
+
+      const premiere = runTask(
+        { store, root },
+        { ...commun, objective: "première", context: JSON.stringify({ mode: "hang", sleepMs: 700 }) },
+      );
+      // Laisse la première prendre le verrou avant de lancer la seconde.
+      await new Promise((r) => setTimeout(r, 150));
+      await expect(
+        runTask({ store, root }, { ...commun, objective: "seconde" }),
+      ).rejects.toThrow(/y écrit déjà[\s\S]*worktree/);
+
+      await premiere;
+    }, 20_000);
+
+    it("le verrou est rendu à la fin : une écriture en place peut en suivre une autre", async () => {
+      await initGitRepo(root);
+      const commun = {
+        agentId: "fake-agent",
+        mode: "write" as const,
+        isolation: "inplace" as const,
+        allowInplaceWrite: true,
+        workspace: root,
+      };
+
+      await runTask({ store, root }, { ...commun, objective: "première" });
+      const seconde = await runTask({ store, root }, { ...commun, objective: "seconde" });
+      expect(seconde.record.status).toBe("succeeded");
+    });
+
+    it("ne verrouille pas quand aucun worktree n'était possible : le parallélisme reste entier", async () => {
+      // Hors dépôt git, `inplace` n'est pas un choix mais la seule option.
+      // Verrouiller sérialiserait toute délégation en écriture sur un projet
+      // non versionné, sans offrir d'alternative — et c'est justement la
+      // promesse de parallélisme d'`orch_delegate` qui en paierait le prix.
+      const commun = { agentId: "fake-agent", mode: "write" as const, workspace: root };
+      const [a, b] = await Promise.all([
+        runTask({ store, root }, { ...commun, objective: "a" }),
+        runTask({ store, root }, { ...commun, objective: "b" }),
+      ]);
+      expect(a.record.isolation).toBe("inplace");
+      expect(b.record.isolation).toBe("inplace");
+    }, 20_000);
+
+    it("refuse avant d'avoir rien créé : ni worktree, ni répertoire de tâche", async () => {
+      // Un refus qui laisserait derrière lui un worktree ou une tâche fantôme
+      // ferait payer au dépôt le prix d'une décision négative.
+      await initGitRepo(root);
+      await expect(
+        runTask(
+          { store, root },
+          { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "inplace" },
+        ),
+      ).rejects.toThrow();
+
+      const { stdout } = await execFileAsync("git", ["-C", root, "worktree", "list", "--porcelain"]);
+      expect(stdout).not.toContain(".orch/wt");
+      expect(await store.list()).toHaveLength(0);
+    });
+  });
+
   it("une tâche read-only dont l'agent écrit produit un finding de sévérité high, nommant le fichier", async () => {
     await initGitRepo(root);
     const outcome = await runTask(
@@ -374,6 +719,12 @@ describe("runTask", () => {
           objective: "agent qui ment sur ses changements, en inplace",
           mode: "write",
           isolation: "inplace",
+          // `inplace` + écriture dans un dépôt utilisable est désormais refusé
+          // par défaut (`decideInplaceWrite`) : ce test porte sur le
+          // recoupement du diff, pas sur la règle d'isolation, il assume donc
+          // l'opt-in comme le ferait un utilisateur ayant posé
+          // `allow_inplace_write = true`.
+          allowInplaceWrite: true,
           workspace: root,
           context: JSON.stringify({
             files: [{ path: "reel.txt", content: "vraiment écrit" }],

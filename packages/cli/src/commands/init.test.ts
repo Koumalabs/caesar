@@ -246,3 +246,95 @@ describe("orch init — .gitignore hors dépôt git", () => {
     });
   });
 });
+
+/**
+ * `[worktree]` : la section qui rend le worktree des sous-agents habitable.
+ * Sans elle, un worktree ne contient que les fichiers suivis par git — ni
+ * dépendances installées, ni `.env` — et l'isolation devient inexploitable,
+ * donc contournée. C'est la cause de fond du défaut d'origine, et `orch init`
+ * est le seul endroit où elle peut être posée avant qu'il ne se manifeste.
+ */
+describe("orch init — l'atelier des sous-agents ([worktree])", () => {
+  let root: string;
+  let io: CapturedIo;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-cli-init-worktree-"));
+    io = makeIo();
+    await execFileAsync("git", ["init", "-q"], { cwd: root });
+    await execFileAsync("git", ["config", "user.email", "orch-test@example.com"], { cwd: root });
+    await execFileAsync("git", ["config", "user.name", "Orch Test"], { cwd: root });
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  async function seedNodeProject(): Promise<void> {
+    await writeFile(join(root, "package.json"), "{}\n", "utf8");
+    await writeFile(join(root, ".gitignore"), "node_modules/\n.env\n", "utf8");
+    await execFileAsync("git", ["add", "-A"], { cwd: root });
+    await execFileAsync("git", ["commit", "-q", "-m", "init"], { cwd: root });
+    await execFileAsync("mkdir", ["-p", join(root, "node_modules")]);
+    await writeFile(join(root, ".env"), "SECRET=1\n", "utf8");
+  }
+
+  it("détecte les besoins d'un projet Node et les inscrit dans la couche projet", async () => {
+    await withFakeHome(async () => {
+      await seedNodeProject();
+      expect(await runInit(root, {}, io)).toBe(EXIT_OK);
+
+      const { config } = await loadConfig(root);
+      expect(config.worktree.copy.sort()).toEqual([".env", "node_modules"]);
+      expect(config.worktree.setup).toEqual(["npm install"]);
+      // Annoncé, pas déposé en silence : c'est une supposition sur le projet.
+      expect(io.stdoutText()).toMatch(/Atelier des sous-agents/);
+    });
+  });
+
+  it("projet nu : aucune section, plutôt qu'une section vide qui ferait croire à un réglage", async () => {
+    await withFakeHome(async () => {
+      expect(await runInit(root, {}, io)).toBe(EXIT_OK);
+
+      const raw = await readFile(projectConfigPath(root), "utf8");
+      expect(raw).not.toMatch(/\[worktree\]/);
+      expect(io.stdoutText()).not.toMatch(/Atelier des sous-agents/);
+    });
+  });
+
+  it("ne propose jamais un chemin que git ne veut pas ignorer", async () => {
+    await withFakeHome(async () => {
+      // Un `node_modules` non ignoré polluerait `orch diff`, qui fait foi, et
+      // `orch gc` ne nettoierait plus jamais ce worktree.
+      await writeFile(join(root, "package.json"), "{}\n", "utf8");
+      await execFileAsync("git", ["add", "-A"], { cwd: root });
+      await execFileAsync("git", ["commit", "-q", "-m", "init"], { cwd: root });
+      await execFileAsync("mkdir", ["-p", join(root, "node_modules")]);
+
+      expect(await runInit(root, {}, io)).toBe(EXIT_OK);
+      const { config } = await loadConfig(root);
+      expect(config.worktree.copy).toEqual([]);
+      expect(config.worktree.setup).toEqual(["npm install"]);
+    });
+  });
+
+  it("--json rend la section détectée", async () => {
+    await withFakeHome(async () => {
+      await seedNodeProject();
+      expect(await runInit(root, { json: true }, io)).toBe(EXIT_OK);
+      const parsed = JSON.parse(io.stdoutText());
+      expect(parsed.worktree.copy.sort()).toEqual([".env", "node_modules"]);
+    });
+  });
+
+  it("--force redétecte : une section obsolète se remet à jour", async () => {
+    await withFakeHome(async () => {
+      expect(await runInit(root, {}, io)).toBe(EXIT_OK);
+      expect((await loadConfig(root)).config.worktree.copy).toEqual([]);
+
+      await seedNodeProject();
+      expect(await runInit(root, { force: true }, makeIo())).toBe(EXIT_OK);
+      expect((await loadConfig(root)).config.worktree.copy.sort()).toEqual([".env", "node_modules"]);
+    });
+  });
+});

@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeEvent, taskPaths } from "@orch/protocol";
 import type { TaskRecord } from "@orch/core";
-import { fileTaskStore, runTask } from "@orch/core";
+import { clearWorktreeInUse, fileTaskStore, markWorktreeInUse, runTask } from "@orch/core";
 import { makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
 import { runApply, runCancel, runDiff, runLogs, runPs } from "./tasks.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE } from "../output.js";
@@ -88,6 +88,41 @@ describe("orch ps", () => {
     const code = await runPs(root, { json: true }, io);
     expect(code).toBe(EXIT_OK);
     expect(JSON.parse(io.stdoutText()).tasks).toEqual([]);
+  });
+
+  /**
+   * Le symptôme d'origine : une tâche dont l'orchestrateur a été tué reste
+   * « running » à vie, en tête de `ps`, des heures après que plus rien ne la
+   * conduit. `ps` est le premier endroit où ce mensonge se voit — donc le
+   * premier où il se répare.
+   */
+  it("une tâche dont l'orchestrateur a disparu n'est plus affichée en cours", async () => {
+    const store = fileTaskStore(root);
+    await store.create(record({ id: "t_abandonnee", status: "running" }));
+    // Le marqueur que `markWorktreeInUse` laisse derrière un processus tué.
+    const lease = await markWorktreeInUse(root, "t_abandonnee");
+    await writeFile(lease.path, JSON.stringify({ pid: 2_147_483_647, token: lease.token }) + "\n", "utf8");
+
+    const code = await runPs(root, { json: true }, io);
+
+    expect(code).toBe(EXIT_OK);
+    const [task] = JSON.parse(io.stdoutText()).tasks as TaskRecord[];
+    expect(task.status).toBe("failed");
+    expect(task.ended_at).toBeDefined();
+    expect((await store.get("t_abandonnee"))?.status).toBe("failed");
+  });
+
+  it("une tâche réellement en cours n'est pas conclue par un simple ps", async () => {
+    const store = fileTaskStore(root);
+    await store.create(record({ id: "t_en_cours", status: "running" }));
+    const lease = await markWorktreeInUse(root, "t_en_cours");
+
+    const code = await runPs(root, { json: true }, io);
+
+    expect(code).toBe(EXIT_OK);
+    expect((JSON.parse(io.stdoutText()).tasks as TaskRecord[])[0]?.status).toBe("running");
+
+    await clearWorktreeInUse(lease);
   });
 });
 

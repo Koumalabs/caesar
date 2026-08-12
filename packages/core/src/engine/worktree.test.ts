@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -7,7 +7,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { taskPaths, writeTask } from "@orch/protocol";
 import type { Task } from "@orch/protocol";
 import type { TaskRecord } from "../store.js";
-import { applyWorktree, createWorktree, diffWorktree, loadWorktreeHandle, removeWorktree, repoRoot } from "./worktree.js";
+import {
+  applyWorktree,
+  createWorktree,
+  describeWorkspaceMismatch,
+  diffWorktree,
+  listGitWorktrees,
+  loadWorktreeHandle,
+  removeWorktree,
+  repoRoot,
+  worktreesDirIgnored,
+} from "./worktree.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -59,7 +69,10 @@ describe("worktree", () => {
       const handle = await createWorktree(root, "task-1");
       expect(handle.path).toBe(join(root, ".orch", "wt", "task-1"));
       expect(handle.branch).toBe("orch/task-1");
-      expect(handle.baseRef).toBe("HEAD");
+      // Un SHA, jamais la chaîne "HEAD" : c'est ce qui rend le diff insensible
+      // aux commits que l'agent fait dans son atelier.
+      expect(handle.baseRef).toMatch(/^[0-9a-f]{40}$/);
+      expect(handle.baseRef).toBe((await git(root, ["rev-parse", "HEAD"])).trim());
 
       const content = await readFile(join(handle.path, "a.txt"), "utf8");
       expect(content).toBe("hello\n");
@@ -98,6 +111,78 @@ describe("worktree", () => {
       await rm(join(handle.path, "a.txt"));
       const diff = await diffWorktree(handle);
       expect(diff.files).toEqual([{ path: "a.txt", action: "deleted", summary: "" }]);
+    });
+
+    /**
+     * L'atelier lève l'hypothèse sous laquelle ce module a été écrit — « les
+     * agents ne committent pas ». Un sous-agent qui installe, lance les tests
+     * et jalonne son travail par des commits est exactement ce que le worktree
+     * doit permettre ; le diff doit y survivre.
+     */
+    describe("un agent qui commite dans son atelier", () => {
+      async function commitAll(dir: string, message: string): Promise<void> {
+        await git(dir, ["config", "user.email", "agent@example.com"]);
+        await git(dir, ["config", "user.name", "Sous-agent"]);
+        await git(dir, ["add", "-A"]);
+        await git(dir, ["commit", "-q", "-m", message]);
+      }
+
+      it("voit son travail dans le diff, exactement comme s'il n'avait pas commité", async () => {
+        // Diffé contre `HEAD`, ce diff serait vide : `HEAD` désignerait le
+        // commit de l'agent lui-même. `orch` aurait conclu « aucun
+        // changement », `orch apply` n'aurait rien appliqué, et tout le
+        // travail se serait évaporé en silence.
+        const handle = await createWorktree(root, "task-commit");
+        await writeFile(join(handle.path, "nouveau.txt"), "contenu\n", "utf8");
+        await writeFile(join(handle.path, "a.txt"), "hello\nmodifié\n", "utf8");
+        await commitAll(handle.path, "travail de l'agent");
+
+        const diff = await diffWorktree(handle);
+        expect(diff.isEmpty).toBe(false);
+        expect(diff.files).toEqual(
+          expect.arrayContaining([
+            { path: "nouveau.txt", action: "created", summary: "" },
+            { path: "a.txt", action: "modified", summary: "" },
+          ]),
+        );
+        expect(diff.patch).toContain("+contenu");
+      });
+
+      it("cumule plusieurs commits en un seul diff contre le point de départ", async () => {
+        const handle = await createWorktree(root, "task-commits");
+        await writeFile(join(handle.path, "un.txt"), "1\n", "utf8");
+        await commitAll(handle.path, "premier jalon");
+        await writeFile(join(handle.path, "deux.txt"), "2\n", "utf8");
+        await commitAll(handle.path, "second jalon");
+
+        const diff = await diffWorktree(handle);
+        expect(diff.files.map((f) => f.path).sort()).toEqual(["deux.txt", "un.txt"]);
+      });
+
+      it("son travail commité s'applique au dépôt principal", async () => {
+        // `applyWorktree` hérite de la correction sans changement : c'est
+        // `diffWorktree` qu'il appelle.
+        const handle = await createWorktree(root, "task-commit-apply");
+        await writeFile(join(handle.path, "livre.txt"), "contenu\n", "utf8");
+        await commitAll(handle.path, "travail de l'agent");
+
+        const result = await applyWorktree(root, handle);
+        expect(result).toEqual({ applied: true, conflicts: [] });
+        expect(await readFile(join(root, "livre.txt"), "utf8")).toBe("contenu\n");
+      });
+
+      it("mêle un commit et du travail non commité dans le même diff", async () => {
+        // Le cas réel de fin de tâche : quelques commits, puis des
+        // modifications encore dans l'arbre de travail. Les deux mécanismes —
+        // le SHA de départ et `--intent-to-add` — doivent jouer ensemble.
+        const handle = await createWorktree(root, "task-mixte");
+        await writeFile(join(handle.path, "commite.txt"), "commité\n", "utf8");
+        await commitAll(handle.path, "jalon");
+        await writeFile(join(handle.path, "en-cours.txt"), "pas encore\n", "utf8");
+
+        const diff = await diffWorktree(handle);
+        expect(diff.files.map((f) => f.path).sort()).toEqual(["commite.txt", "en-cours.txt"]);
+      });
     });
   });
 
@@ -148,6 +233,40 @@ describe("worktree", () => {
 
       const branches = await git(root, ["branch", "--list", "orch/task-remove"]);
       expect(branches.trim()).toBe("");
+    });
+
+    /**
+     * La garantie sur laquelle repose `[worktree] link` : la cible du lien vit
+     * dans le dépôt principal, et sa survie ne doit pas être une supposition.
+     * Ces deux tests la constatent plutôt que de la présumer — ils échoueraient
+     * le jour où `git worktree remove --force` se mettrait à suivre les liens,
+     * ce qui rendrait la matérialisation par lien indéfendable telle quelle.
+     */
+    it("un lien vers le dépôt principal est détaché, jamais suivi : sa cible survit", async () => {
+      await mkdir(join(root, "node_modules"), { recursive: true });
+      await writeFile(join(root, "node_modules", "marqueur.txt"), "précieux\n", "utf8");
+
+      const handle = await createWorktree(root, "task-lien");
+      await symlink(join(root, "node_modules"), join(handle.path, "node_modules"), "dir");
+      await removeWorktree(root, handle);
+
+      expect(await readFile(join(root, "node_modules", "marqueur.txt"), "utf8")).toBe("précieux\n");
+      const worktrees = await git(root, ["worktree", "list"]);
+      expect(worktrees).not.toContain("task-lien");
+    });
+
+    it("y compris pour un lien posé sous un chemin imbriqué", async () => {
+      // `[worktree] link` accepte `packages/api/node_modules` : la garantie ne
+      // vaut rien si elle s'arrête à la racine du worktree.
+      await mkdir(join(root, "cible"), { recursive: true });
+      await writeFile(join(root, "cible", "dedans.txt"), "intact\n", "utf8");
+
+      const handle = await createWorktree(root, "task-imbrique");
+      await mkdir(join(handle.path, "packages", "api"), { recursive: true });
+      await symlink(join(root, "cible"), join(handle.path, "packages", "api", "node_modules"), "dir");
+      await removeWorktree(root, handle);
+
+      expect(await readFile(join(root, "cible", "dedans.txt"), "utf8")).toBe("intact\n");
     });
   });
 
@@ -231,6 +350,101 @@ describe("worktree", () => {
 
       const handle = await loadWorktreeHandle(rec);
       expect(handle?.baseRef).toBe("HEAD");
+    });
+  });
+});
+
+/**
+ * L'étape 0 du skill `superpowers:using-git-worktrees`, que ce projet
+ * supposait acquise : détecter avant de créer. Deux angles morts qu'`orch`
+ * n'avait nulle part — l'état du `.gitignore`, et le décalage entre la racine
+ * sur laquelle il délègue et celle où l'on travaille.
+ */
+describe("étape 0 — détecter avant de créer", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), "orch-etape0-")));
+    await initRepo(root);
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  describe("worktreesDirIgnored", () => {
+    it("faux quand rien n'ignore .orch/wt/", async () => {
+      expect(await worktreesDirIgnored(root, "t_1")).toBe(false);
+    });
+
+    it("vrai avec la ligne qu'orch init écrit — motif terminé par un slash", async () => {
+      // Le cas qui a demandé de reformuler la question : un motif de
+      // répertoire ne s'applique à `.orch/wt` qu'à la condition que ce
+      // répertoire existe déjà. Interroger le chemin qu'on va occuper
+      // (`.orch/wt/<taskId>`) répond dans tous les cas.
+      await writeFile(join(root, ".gitignore"), ".orch/wt/\n", "utf8");
+      expect(await worktreesDirIgnored(root, "t_1")).toBe(true);
+    });
+
+    it("vrai aussi quand tout .orch/ est ignoré", async () => {
+      await writeFile(join(root, ".gitignore"), ".orch/\n", "utf8");
+      expect(await worktreesDirIgnored(root, "t_1")).toBe(true);
+    });
+
+    it("faux quand le .gitignore parle d'autre chose", async () => {
+      await writeFile(join(root, ".gitignore"), "node_modules/\n.orch/tasks/\n", "utf8");
+      expect(await worktreesDirIgnored(root, "t_1")).toBe(false);
+    });
+  });
+
+  describe("listGitWorktrees", () => {
+    it("rend le dépôt principal puis chaque worktree, avec sa branche", async () => {
+      const handle = await createWorktree(root, "t_liste");
+      const entries = await listGitWorktrees(root);
+
+      expect(entries[0]!.path).toBe(root);
+      const found = entries.find((entry) => entry.path === handle.path);
+      // La branche vient de git, jamais d'une déduction sur le nom du
+      // répertoire : c'est ce qui permet au gc de nettoyer une branche dont le
+      // nom ne se devine pas.
+      expect(found!.branch).toBe("orch/t_liste");
+    });
+
+    it("rend une liste vide hors d'un dépôt git, plutôt que de lever", async () => {
+      const outside = await mkdtemp(join(tmpdir(), "orch-pas-un-depot-"));
+      try {
+        expect(await listGitWorktrees(outside)).toEqual([]);
+      } finally {
+        await rm(outside, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("describeWorkspaceMismatch", () => {
+    it("silencieux quand les deux racines coïncident", async () => {
+      expect(await describeWorkspaceMismatch(root, root)).toBeNull();
+    });
+
+    it("silencieux quand le répertoire courant n'est pas dans un dépôt", async () => {
+      // Le répertoire courant du serveur MCP n'est pas une preuve d'intention :
+      // hors dépôt, il n'y a aucune raison de croire qu'il désigne un lieu de
+      // travail.
+      const outside = await mkdtemp(join(tmpdir(), "orch-hors-depot-"));
+      try {
+        expect(await describeWorkspaceMismatch(root, outside)).toBeNull();
+      } finally {
+        await rm(outside, { recursive: true, force: true });
+      }
+    });
+
+    it("signale le cas Superpowers : on travaille dans un worktree, orch délègue sur le dépôt d'origine", async () => {
+      // `orch mcp install` fige `--root` une fois pour toutes. Que l'agent
+      // principal passe dans un worktree — ce que le skill lui recommande — et
+      // les sous-agents travaillent dans un arbre que plus personne ne regarde.
+      const handle = await createWorktree(root, "t_ailleurs");
+      const message = await describeWorkspaceMismatch(root, handle.path);
+      expect(message).toContain(root);
+      expect(message).toContain("orch mcp install");
     });
   });
 });

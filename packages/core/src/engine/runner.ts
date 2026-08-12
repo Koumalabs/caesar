@@ -21,7 +21,11 @@ import {
   writeReport,
   writeTask,
 } from "@orch/protocol";
+import type { WorktreeConfig } from "../config.js";
+import { decideInplaceWrite } from "../isolation.js";
 import { resolveAgentDefinition } from "../registry/index.js";
+import { detectUntrackedNeeds, materializeUntracked, runSetup } from "./materialize.js";
+import type { MaterializeResult } from "./materialize.js";
 import type { AgentDefinition, SpawnPlan } from "../registry/types.js";
 import type { GenericAgentSpec } from "../registry/generic.js";
 import type { ChangesVerifiedBy, ReportSource, TaskRecord, TaskStatus, TaskStore } from "../store.js";
@@ -35,10 +39,12 @@ import {
   diffWorktree,
   hasCommits,
   repoRoot,
+  worktreesDirIgnored,
 } from "./worktree.js";
 import type { Queue } from "./queue.js";
 import type { WorktreeDiff, WorktreeHandle } from "./worktree.js";
 import { clearWorktreeInUse, markWorktreeInUse } from "./gc.js";
+import { acquireLease, releaseLease } from "./lock.js";
 
 const DEFAULT_TIMEOUT_MS = 600_000;
 
@@ -172,6 +178,21 @@ export interface RunTaskInput {
   mode: TaskMode;
   isolation?: Isolation | "auto";
   /**
+   * Autorise une tâche en écriture à s'exécuter en isolation `"inplace"` dans
+   * un dépôt git utilisable — ce que `decideInplaceWrite` (`isolation.ts`)
+   * refuse sinon.
+   *
+   * Une permission **portée par l'appelant**, jamais lue depuis la
+   * configuration par le moteur, sur le modèle d'`extraAgents` : `runTask` n'a
+   * que `deps.root`, et un moteur qui irait chercher lui-même l'opt-in
+   * transformerait chaque appel direct en angle mort. Absente (le défaut), la
+   * réponse est non : un appelant qui oublie de transmettre
+   * `policy.allow_inplace_write` obtient un refus, jamais un contournement
+   * silencieux. C'est le sens même de la correction — voir l'en-tête
+   * d'`isolation.ts`.
+   */
+  allowInplaceWrite?: boolean;
+  /**
    * Le réseau est-il disponible pour cette tâche ? Déjà résolu — la demande
    * tri-état s'arrête chez `resolveDelegation`, qui l'a confrontée à ce que
    * l'agent permet. Absent : vrai, comme le défaut du protocole, pour que les
@@ -195,6 +216,18 @@ export interface RunTaskInput {
    * faire recharger par `runTask`, qui n'a autrement que `deps.root`.
    */
   extraAgents?: GenericAgentSpec[];
+  /**
+   * La section `[worktree]` du projet (`OrchConfig.worktree`) : ce qu'il faut
+   * ajouter au worktree pour qu'on puisse y travailler, et ce qu'il faut y
+   * lancer avant l'agent.
+   *
+   * Transmise par l'appelant plutôt que rechargée ici, comme `extraAgents` et
+   * pour la même raison : `runTask` n'a que `deps.root`, et les façades
+   * disposent déjà de la configuration fusionnée. Absente : le worktree reste
+   * ce que git en fait — les fichiers suivis, rien de plus. Sans effet en
+   * isolation `"inplace"`, où le workspace réel est déjà complet.
+   */
+  worktreeSetup?: WorktreeConfig;
   extraArgs?: string[];
   /**
    * Active le canal retour MCP bidirectionnel pour cette tâche, si l'agent
@@ -269,8 +302,46 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   // orphelin, même pendant la fenêtre précédant `store.create`.
   const worktreeLease = await markWorktreeInUse(deps.root, id);
   try {
-  const { isolation, warning, handle } = await prepareIsolation(deps.root, id, input, agentDef);
+  const { isolation, warning, handle, materialization, missingSection, gitignoreWarning, worktreeWasPossible } = await prepareIsolation(
+    deps.root,
+    id,
+    input,
+    agentDef,
+  );
   const workspace = handle ? handle.path : input.workspace;
+
+  // Exclusivité d'écriture sur un arbre partagé. Deux tâches `worktree` ont
+  // chacune le leur et ne peuvent pas se gêner ; deux tâches `inplace` en
+  // écriture partagent le même, et `diffWorkspaceStatus` — qui compare l'état
+  // git avant et après — attribuerait alors à chacune les modifications de
+  // l'autre. Le recoupement, qui est toute la valeur du système, deviendrait
+  // faux sans que rien ne le signale.
+  //
+  // Seulement quand un worktree **était possible** : c'est ce qui sépare le
+  // `"inplace"` choisi (opt-in `allow_inplace_write`, où l'exclusivité est le
+  // prix assumé du choix) du `"inplace"` subi, faute de dépôt git utilisable.
+  // Verrouiller le second sérialiserait toute délégation en écriture sur un
+  // projet non versionné — au prix de la promesse de parallélisme que porte
+  // `orch_delegate` — sans offrir la moindre alternative, puisqu'aucun
+  // worktree n'y est créable. Le constat d'isolation dégradée, lui, est déjà
+  // au rapport.
+  //
+  // Ni `createSlotQueue` (qui borne un *nombre* de tâches, pas leur
+  // exclusivité) ni `markWorktreeInUse` (indexé par tâche) ne répondent à
+  // cette question : c'est le workspace qui est la ressource. Échec immédiat
+  // nommant l'occupant, jamais une file d'attente silencieuse — l'appelant
+  // saura mieux que nous s'il veut attendre ou reformuler.
+  const writeLease =
+    isolation === "inplace" && input.mode === "write" && worktreeWasPossible
+      ? await acquireLease(join(deps.root, ".orch", "state", "workspace-writers"), workspace, {
+          label: `tâche ${id} (${agentDef.id})`,
+          describeHolder: (holder) =>
+            `Écriture en place impossible dans "${workspace}" : ${holder.label ?? `le processus ${holder.pid}`} y écrit déjà. ` +
+            `Deux tâches en écriture dans le même arbre rendraient leurs diffs inattribuables. Attendez sa fin, ` +
+            `ou laissez l'isolation à "worktree" pour que chacune ait le sien.`,
+        })
+      : null;
+  try {
 
   const channel: Channel | undefined =
     input.channel === true && agentDef.capabilities.mcpInjection !== "none" ? buildChannel(paths.dir) : undefined;
@@ -348,6 +419,10 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     isolation,
     mode: input.mode,
     branch: handle?.branch,
+    // Persisté dès la création, et non à la fin : `orch diff` peut être appelé
+    // sur une tâche encore en cours, et doit déjà exclure ce que
+    // l'orchestrateur a posé.
+    ...(handle?.excluded ? { excluded_paths: handle.excluded } : {}),
     report_via: reportVia,
     depth,
   };
@@ -448,6 +523,40 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     report = withFinding(report, { severity: "low", title: "Isolation dégradée", detail: warning });
   }
 
+  // Le diagnostic qui manquait le jour du contournement : dire, dans le
+  // rapport, ce que l'atelier n'a pas pu contenir et par quelle clé le
+  // corriger. Sans lui, un worktree incomplet ne se manifeste que par une
+  // tâche qui échoue sans raison visible — et la réaction naturelle est de
+  // renoncer à l'isolation, pas de compléter `[worktree]`.
+  if (missingSection) {
+    report = withFinding(report, { severity: "low", title: "Worktree sans atelier", detail: missingSection });
+  }
+
+  if (gitignoreWarning) {
+    report = withFinding(report, { severity: "low", title: "Worktrees non ignorés par git", detail: gitignoreWarning });
+  }
+
+  if (materialization) {
+    for (const entry of materialization.skipped) {
+      report = withFinding(report, {
+        severity: "low",
+        title: "Chemin non matérialisé dans le worktree",
+        detail: entry.detail,
+        file: entry.path,
+      });
+    }
+    if (materialization.shared.length > 0) {
+      report = withFinding(report, {
+        severity: "info",
+        title: "Chemins partagés avec le workspace",
+        detail:
+          `Posés en lien symbolique, donc NON isolés : ${materialization.shared.join(", ")}. ` +
+          `Ce que le sous-agent y écrit touche le workspace, et deux tâches simultanées s'y marchent dessus. ` +
+          `Passez ces chemins de "link" à "copy" sous [worktree] dès que le coût de la copie le permet.`,
+      });
+    }
+  }
+
   // `info` plutôt que `low` : rien n'a échoué, et ce cas est le quotidien des
   // rôles en lecture seule sur codex. Déclarer `network = "off"` sur le rôle
   // rend l'intention explicite et fait taire l'avertissement.
@@ -491,6 +600,9 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   finalized = true;
 
   return { record: updated, report, source: resolved.source, diff };
+  }
+  } finally {
+    if (writeLease) await releaseLease(writeLease);
   }
   } finally {
     await clearWorktreeInUse(worktreeLease);
@@ -585,6 +697,31 @@ interface IsolationPreparation {
   isolation: Isolation;
   warning?: string;
   handle?: WorktreeHandle;
+  /**
+   * Ce que la matérialisation de l'atelier a posé et écarté (`[worktree]`,
+   * voir `materializeUntracked`), à verser au rapport. Absent hors isolation
+   * worktree, ou quand le projet ne déclare rien.
+   */
+  materialization?: MaterializeResult;
+  /**
+   * Renseigné quand le projet n'a pas de section `[worktree]` mais semble en
+   * avoir besoin (dépendances installées et ignorées par git, détectées par
+   * `detectUntrackedNeeds`). Le worktree est alors vide de tout ce qui
+   * s'exécute, et c'est précisément ce que le rapport doit dire.
+   */
+  missingSection?: string;
+  /** Renseigné quand `.orch/wt/` n'est pas ignoré par git — voir `worktreesDirIgnored`. */
+  gitignoreWarning?: string;
+  /**
+   * Un worktree était-il possible ? Faux hors dépôt git, ou dans un dépôt sans
+   * le moindre commit.
+   *
+   * Sert à distinguer les deux `"inplace"`, qui n'engagent pas la même
+   * responsabilité : celui qu'on a **choisi** alors qu'un worktree était à
+   * portée, et celui auquel on s'est **résigné** faute d'alternative. Voir le
+   * verrou d'écriture, dans `runTask`.
+   */
+  worktreeWasPossible: boolean;
 }
 
 /**
@@ -631,6 +768,30 @@ async function prepareIsolation(
       ? `Initialisez un dépôt ("git init" puis un premier commit) pour isoler le travail, ou demandez explicitement "inplace" en connaissance de cause.`
       : `Faites un premier commit ("git add -A && git commit -m …", au besoin "git commit --allow-empty -m init"), ou demandez explicitement "inplace" — l'agent travaillera alors directement dans le workspace.`;
 
+  // Avant toute décision, et non après : une tâche en écriture n'a pas le
+  // droit de s'exécuter dans l'arbre de travail de l'utilisateur sans opt-in
+  // assumé. Ce point-ci est le seul que *toutes* les façades traversent — y
+  // compris un appel direct à `runTask` qui court-circuiterait
+  // `resolveDelegation`, où le même verdict est déjà rendu, plus tôt et sans
+  // rien laisser sur le disque. `decideInplaceWrite` étant pure, les deux ne
+  // peuvent pas diverger.
+  //
+  // On lève au lieu de replier sur `"worktree"` : contrairement à
+  // `mustForceWorktree` juste en dessous — qui *contient* une écriture
+  // interdite — l'écriture est ici légitime et c'est son emplacement qui est
+  // en cause. Déplacer sans le dire les modifications attendues par
+  // l'appelant serait pire que de refuser.
+  const inplaceWrite = decideInplaceWrite({
+    requested,
+    mode: input.mode,
+    repoUsable: baseUsable,
+    allowed: input.allowInplaceWrite ?? false,
+    ...(base !== null ? { repo: base } : {}),
+  });
+  if (inplaceWrite.refused) {
+    throw new Error(`Tâche "${taskId}" : ${inplaceWrite.reason} ${inplaceWrite.remedy}`);
+  }
+
   const mustForceWorktree = input.mode === "read-only" && !agentDef.capabilities.nativeReadOnly && baseUsable;
 
   let isolation: Isolation;
@@ -664,7 +825,7 @@ async function prepareIsolation(
   }
 
   if (isolation !== "worktree") {
-    return { isolation, warning };
+    return { isolation, warning, worktreeWasPossible: baseUsable };
   }
 
   if (!baseUsable) {
@@ -676,12 +837,83 @@ async function prepareIsolation(
     );
   }
 
-  const handle = await createWorktree(base, taskId);
+  // L'étape 0 du skill `superpowers:using-git-worktrees`, que le projet
+  // supposait acquise depuis `orch init` — un `.gitignore` réécrit à la main
+  // suffit à défaire ce qu'il avait posé.
+  //
+  // Un constat, pas un refus, et c'est délibéré : vérifié plutôt que supposé,
+  // git n'aspire *pas* le contenu d'un worktree non ignoré. Il le reconnaît
+  // comme un dépôt imbriqué et n'ajoute qu'une seule entrée (un gitlink), en
+  // avertissant lui-même. Le désagrément est réel, la catastrophe non — et
+  // faire échouer une délégation pour une ligne de `.gitignore` manquante
+  // coûterait plus cher que ce qu'elle protège.
+  const gitignoreWarning = (await worktreesDirIgnored(base, taskId))
+    ? undefined
+    : `Le répertoire des worktrees ".orch/wt/" n'est pas ignoré par git dans "${base}" : un "git add -A" y ajouterait ` +
+      `une entrée de dépôt imbriqué. Ajoutez ".orch/wt/" au ".gitignore" (ou relancez "orch init --force", qui le fait).`;
+
+  // Nommée pour être lue : dans un atelier, l'utilisateur relit ses branches.
+  // Le rôle quand il y en a un, l'agent sinon — c'est ce qui distingue deux
+  // ateliers ouverts en même temps sur le même objectif.
+  const handle = await createWorktree(base, taskId, "HEAD", {
+    objective: input.objective,
+    label: input.role ?? agentDef.id,
+  });
+
+  // L'atelier : le worktree que git vient de créer ne porte que les fichiers
+  // suivis. Ce qui suit y ajoute ce que le projet déclare sous `[worktree]` —
+  // dépendances, `.env`, répertoires ignorés — puis lance son setup. Ici, et
+  // pas ailleurs : avant `writeTask`, avant `agentDef.build`, avant tout
+  // lancement. Un agent qui démarrerait dans un atelier à moitié monté
+  // passerait son budget à réparer une installation au lieu de travailler.
+  const request = input.worktreeSetup;
+  let materialization: MaterializeResult | undefined;
+  let missingSection: string | undefined;
+  if (request && (request.copy.length > 0 || request.link.length > 0)) {
+    materialization = await materializeUntracked(input.workspace, handle.path, request);
+    if (materialization.excluded.length > 0) handle.excluded = materialization.excluded;
+  } else {
+    // Aucune section, mais un projet qui en aurait manifestement besoin : le
+    // dire ici plutôt que de laisser l'agent buter sur un `node_modules`
+    // absent. Sans ce constat, un worktree vide ne se manifeste que par une
+    // tâche qui échoue sans raison visible — et la réaction naturelle est de
+    // renoncer à l'isolation, pas de compléter la configuration.
+    const detected = await detectUntrackedNeeds(input.workspace);
+    if (detected && detected.copy.length > 0) {
+      missingSection =
+        `Le worktree ne contient que les fichiers suivis par git. Ce projet semble avoir besoin d'y emporter ` +
+        `${detected.copy.join(", ")} — sans quoi rien ne s'y installe ni ne s'y lance. Déclarez-les sous [worktree] ` +
+        `dans ".orch/config.toml" (clé "copy"${detected.setup.length > 0 ? `, et "setup" pour ${detected.setup.join(" ; ")}` : ""}), ` +
+        `ou relancez "orch init --force" qui les détectera.`;
+    }
+  }
+
+  if (request && request.setup.length > 0) {
+    const setup = await runSetup(handle.path, request.setup, input.signal);
+    if (setup.failure) {
+      // Échec franc, avec la sortie collée : le motif doit suffire à
+      // comprendre sans avoir à relancer la commande à la main.
+      throw new Error(
+        `Tâche "${taskId}" : la commande de préparation du worktree a échoué — "${setup.failure.command}" ` +
+          `(code ${setup.failure.exitCode ?? "inconnu"}).\n${setup.failure.output}\n` +
+          `Corrigez la commande sous [worktree] setup dans ".orch/config.toml", ou retirez-la.`,
+      );
+    }
+  }
+
   // `warning` peut être défini ici : voir C3 de la revue finale, le cas où
   // `mustForceWorktree` contredit une isolation explicitement demandée. Sans
   // le propager, ce dernier `return` — seul chemin de sortie une fois
   // `isolation === "worktree"` — le perdrait silencieusement, quand bien
   // même le rapport doit en porter la trace (`withFinding`, plus haut dans
   // `runTask`).
-  return { isolation, warning, handle };
+  return {
+    isolation,
+    warning,
+    handle,
+    worktreeWasPossible: true,
+    ...(materialization ? { materialization } : {}),
+    ...(missingSection ? { missingSection } : {}),
+    ...(gitignoreWarning ? { gitignoreWarning } : {}),
+  };
 }

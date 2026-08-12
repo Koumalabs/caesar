@@ -24,7 +24,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { RunTaskInput } from "@orch/core";
-import { generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation } from "@orch/core";
+import { describeWorkspaceMismatch, generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation } from "@orch/core";
 import { launchTask } from "../session.js";
 import type { McpSession } from "../session.js";
 import { errorResult, jsonResult } from "./result.js";
@@ -74,9 +74,14 @@ export const orchDelegateInputShape = {
     .enum(["inplace", "worktree", "auto"])
     .optional()
     .describe(
-      "\"worktree\" runs the agent on a disposable git branch so its changes can be inspected with orch_diff and " +
-        "landed with orch_apply instead of touching the workspace directly; \"inplace\" runs directly in the " +
-        "workspace; \"auto\" (default) picks based on mode and git availability.",
+      "\"worktree\" runs the agent in its own workshop — a disposable git branch, complete with the untracked files " +
+        "the project declares under [worktree] (dependencies, .env) and its setup commands already run, so the agent " +
+        "can install, run and test there. Its work is inspected with orch_diff and landed with orch_apply instead of " +
+        "touching the workspace directly. \"auto\" (default) picks based on mode and git availability, and already " +
+        "chooses worktree for write tasks in a git repository — prefer it. \"inplace\" runs directly in the user's " +
+        "working tree and is REFUSED for write tasks in a usable git repository unless the project opted in with " +
+        "policy.allow_inplace_write; if the worktree seems incomplete, the fix is to declare the missing paths under " +
+        "[worktree] in .orch/config.toml, never to fall back to \"inplace\".",
     ),
   network: z
     .enum(["auto", "on", "off"])
@@ -151,6 +156,7 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
     ...(input.acceptance_criteria ? { acceptance_criteria: input.acceptance_criteria } : {}),
     mode: resolved.mode,
     isolation: resolved.isolation,
+    allowInplaceWrite: resolved.allowInplaceWrite,
     network: resolved.network,
     ...(resolved.networkWarning !== undefined ? { networkWarning: resolved.networkWarning } : {}),
     workspace: session.root,
@@ -159,17 +165,31 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
     timeoutMs: resolved.timeoutMs,
     depth,
     extraAgents: config.agents,
+    worktreeSetup: config.worktree,
     taskId,
     signal: controller.signal,
     ...(input.channel ? { channel: true } : {}),
   };
   launchTask(session, runInput, controller);
 
+  // Le décalage de racine, dit au moment où il compte. `orch mcp install` fige
+  // `--root` une fois pour toutes : si l'agent principal est passé dans un
+  // worktree depuis, les sous-agents travaillent dans un arbre que plus
+  // personne ne regarde. Un avertissement plutôt qu'un refus — le répertoire
+  // courant du serveur n'est pas une preuve de l'intention de l'appelant, et
+  // faire échouer la délégation sur cette base coûterait plus qu'elle ne
+  // rapporte.
+  const workspaceWarning = await describeWorkspaceMismatch(session.root, process.cwd());
+
   return jsonResult({
     task_id: taskId,
     agent: resolved.agentId,
     mode: resolved.mode,
     isolation: resolved.isolation,
+    // Rendu explicitement : sans lui, rien dans la réponse ne dit *où* le
+    // sous-agent travaille, et le décalage ci-dessous serait invérifiable.
+    workspace: session.root,
+    ...(workspaceWarning !== null ? { workspace_warning: workspaceWarning } : {}),
     // Rendu dès le lancement, et non seulement dans le rapport final :
     // l'orchestrateur peut ainsi reformuler l'objectif ou changer d'agent
     // avant que le sous-agent n'ait dépensé son budget.

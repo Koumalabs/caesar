@@ -10,7 +10,7 @@
  * tourne alors pour de vrai, seul le processus externe est un agent
  * factice.
  */
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { Writable } from "node:stream";
@@ -117,6 +117,37 @@ export async function withFakeAgentAsBin<T>(bin: string, fn: (shimDir: string) =
   } finally {
     await rm(shimDir, { recursive: true, force: true });
   }
+}
+
+/**
+ * Pose `allow_inplace_write = true` dans la couche projet de `root`.
+ *
+ * Une tâche en écriture demandant explicitement `isolation = "inplace"` dans un
+ * dépôt git utilisable est refusée par défaut (voir `decideInplaceWrite`,
+ * `@orch/core`) : c'est la correction du défaut qui laissait des délégations
+ * écrire sur la branche de travail de l'utilisateur en silence. Les tests qui
+ * exercent *autre chose* que cette règle — un aller-retour complet, un timeout,
+ * un code de sortie — n'ont pas à la subir, mais ils doivent l'assumer
+ * explicitement, exactement comme un utilisateur le ferait.
+ *
+ * Insère la clé dans un `[policy]` existant plutôt que d'écraser le fichier :
+ * plusieurs tests écrivent déjà leur propre couche projet (`[[agent]]`, …), et
+ * deux tables `[policy]` dans un même TOML seraient une erreur de parsing.
+ */
+export async function allowInplaceWrite(root: string): Promise<void> {
+  const path = join(root, ".orch", "config.toml");
+  let existing = "";
+  try {
+    existing = await readFile(path, "utf8");
+  } catch {
+    // Aucune couche projet : on en crée une.
+  }
+  const line = "allow_inplace_write = true\n";
+  const next = existing.includes("[policy]")
+    ? existing.replace("[policy]\n", `[policy]\n${line}`)
+    : `[policy]\n${line}\n${existing}`;
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, next, "utf8");
 }
 
 /** Dépose un script minimal répondant `--version` avec succès, pour les tests de `orch doctor`. */

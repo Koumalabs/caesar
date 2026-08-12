@@ -12,6 +12,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { TaskOutcome, TaskRecord } from "@orch/core";
+import { sweepAbandonedTasks } from "@orch/core";
 import { listPendingQuestions } from "@orch/mcp-channel";
 import { readReport, taskPaths } from "@orch/protocol";
 import type { McpSession } from "../session.js";
@@ -114,6 +115,12 @@ async function describeFromStore(record: TaskRecord): Promise<Record<string, unk
 async function awaitOne(session: McpSession, taskId: string, timeoutMs: number): Promise<Record<string, unknown>> {
   const entry = session.tasks.get(taskId);
   if (!entry) {
+    // Tâche d'un autre processus. S'il a été tué sans conclure, son
+    // enregistrement dit encore "running" : le rendre `pending: true`
+    // reviendrait à conseiller d'attendre une tâche que plus personne ne
+    // conduit, indéfiniment. Le balayage n'agit que sur la preuve que le
+    // processus a disparu — voir `sweepAbandonedTasks`.
+    await sweepAbandonedTasks(session.root, session.store);
     const record = await session.store.get(taskId);
     if (!record) return { task_id: taskId, status: "unknown" };
     return describeFromStore(record);

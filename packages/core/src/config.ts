@@ -50,7 +50,64 @@ export interface PolicyConfig {
   default_network: NetworkRequest;
   default_timeout_ms: number;
   allow_recursion: boolean;
+  /**
+   * Autorise une tâche en écriture à s'exécuter directement dans l'arbre de
+   * travail (`isolation = "inplace"`) alors qu'un worktree serait possible.
+   *
+   * Faux par défaut, et c'est tout l'objet du réglage : `decideInplaceWrite`
+   * (`isolation.ts`) refuse cette combinaison, parce qu'elle mêle les
+   * modifications du sous-agent à celles de l'utilisateur et à celles des
+   * autres tâches, hors de portée d'`orch diff`. L'opt-in existe pour les
+   * dépôts où l'utilisateur assume ce mélange en connaissance de cause —
+   * jamais comme réponse à un worktree incomplet, dont le remède est la
+   * section `[worktree]`.
+   */
+  allow_inplace_write: boolean;
   max_depth: number;
+}
+
+/**
+ * `[worktree]` : ce qu'il faut ajouter au worktree d'une tâche isolée pour
+ * qu'on puisse y travailler.
+ *
+ * Un worktree git ne contient que les fichiers **suivis**. Tout le reste —
+ * dépendances installées, `.env`, répertoires ignorés portant des briefs ou
+ * des artefacts — en est absent, si bien que l'isolation était souvent
+ * littéralement inexploitable : rien ne s'y installait, rien ne s'y lançait,
+ * et la contourner par `isolation = "inplace"` restait la seule issue
+ * praticable. C'est la cause de fond du défaut que ce module et
+ * `isolation.ts` corrigent ensemble : durcir la règle sans rendre le worktree
+ * habitable n'aurait fait que déplacer le contournement.
+ *
+ * Hors de `[policy]` délibérément : ce n'est pas un arbitrage de gouvernance
+ * — qui a le droit de quoi — mais une description du projet, au même titre
+ * que la liste de ses agents. Rien ici ne s'autorise ni ne s'interdit.
+ */
+export interface WorktreeConfig {
+  /**
+   * Chemins recopiés du workspace vers le worktree, relatifs à la racine.
+   * Isolés : ce que le sous-agent y écrit ne touche pas l'original. Sur un
+   * système de fichiers copy-on-write (APFS, Btrfs, XFS…), rien n'est
+   * réellement dupliqué tant que personne n'écrit — voir `copyTree`
+   * (`engine/materialize.ts`) pour les mesures.
+   */
+  copy: string[];
+  /**
+   * Chemins **liés** plutôt que copiés — partagés, donc non isolés : deux
+   * tâches simultanées écrivent dans le même répertoire, et ce qu'elles y
+   * cassent, elles le cassent pour le workspace. Dernier recours, quand la
+   * copie est hors de prix faute de copy-on-write ; la tâche le signale alors
+   * dans son rapport plutôt que de le taire.
+   */
+  link: string[];
+  /**
+   * Commandes lancées dans le worktree après sa création et sa
+   * matérialisation, avant que le sous-agent ne démarre — l'étape « Project
+   * Setup » du skill `superpowers:using-git-worktrees`. Un échec fait échouer
+   * la tâche : mieux vaut ne pas démarrer qu'ouvrir à l'agent un atelier à
+   * moitié monté.
+   */
+  setup: string[];
 }
 
 export interface RoleConfig {
@@ -66,6 +123,7 @@ export interface RoleConfig {
 
 export interface OrchConfig {
   policy: PolicyConfig;
+  worktree: WorktreeConfig;
   roles: RoleConfig[];
   agents: GenericAgentSpec[];
 }
@@ -85,6 +143,15 @@ export interface OrchConfig {
  */
 export interface ConfigOverride {
   policy?: Partial<PolicyConfig>;
+  /**
+   * `Partial<WorktreeConfig>` pour la même raison que `policy` : la fusion se
+   * fait champ par champ, un fichier qui déclare `setup` sans `copy` ne dit
+   * rien de `copy`. Chaque champ présent **remplace** celui de la couche
+   * précédente, jamais ne s'y ajoute : une union rendrait impossible le
+   * retrait local d'une entrée héritée du global, alors que c'est justement
+   * le cas d'usage de la couche locale.
+   */
+  worktree?: Partial<WorktreeConfig>;
   roles?: RoleConfig[];
   agents?: GenericAgentSpec[];
 }
@@ -195,10 +262,54 @@ const RawPolicySchema = z
     default_network: NetworkRequestSchema.optional(),
     default_timeout: optionalDurationMsSchema(),
     allow_recursion: z.boolean().optional(),
+    allow_inplace_write: z.boolean().optional(),
     max_depth: z.number().int().nonnegative().optional(),
   })
   .strict();
 type RawPolicy = z.infer<typeof RawPolicySchema>;
+
+/**
+ * Un chemin de `[worktree] copy`/`link` : relatif à la racine du workspace,
+ * restant à l'intérieur, et ne touchant ni `.git` ni `.orch`.
+ *
+ * Validé ici plutôt qu'à la matérialisation, parce qu'une entrée invalide est
+ * une erreur de configuration, pas une circonstance d'exécution : elle doit se
+ * voir au chargement du fichier, avec son nom et sa ligne, et non se
+ * transformer plus tard en tâche qui échoue. Les trois interdits :
+ *
+ * - **absolu** : désignerait un ailleurs quelconque de la machine ;
+ * - **`..`** : sortirait du workspace, donc du périmètre que l'isolation
+ *   promet de contenir ;
+ * - **`.git` / `.orch`** : recopier ou lier l'un des deux ferait écrire le
+ *   sous-agent dans l'administration du dépôt ou de l'orchestrateur —
+ *   exactement ce à quoi le worktree sert à ne pas toucher.
+ */
+const WorktreePathSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !value.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(value), {
+    message: "chemin absolu interdit : les chemins sont relatifs à la racine du workspace",
+  })
+  .refine((value) => !value.split(/[\\/]/).includes(".."), {
+    message: 'segment ".." interdit : un chemin ne peut pas sortir du workspace',
+  })
+  .refine((value) => {
+    const first = value.split(/[\\/]/)[0];
+    return first !== ".git" && first !== ".orch";
+  }, { message: '".git" et ".orch" sont exclus : ce sont l\'administration du dépôt et celle d\'orch' });
+
+/**
+ * `[worktree]` : mêmes règles que `[policy]` — chaque champ facultatif, la
+ * fusion décide. Voir `WorktreeConfig`.
+ */
+const RawWorktreeSchema = z
+  .object({
+    copy: z.array(WorktreePathSchema).optional(),
+    link: z.array(WorktreePathSchema).optional(),
+    setup: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+type RawWorktree = z.infer<typeof RawWorktreeSchema>;
 
 /**
  * `[[role]]` : à l'inverse de `policy`, un rôle du projet qui porte le même
@@ -253,6 +364,7 @@ type RawAgent = z.infer<typeof RawAgentSchema>;
 const RawFileSchema = z
   .object({
     policy: RawPolicySchema.optional(),
+    worktree: RawWorktreeSchema.optional(),
     role: z.array(RawRoleSchema).default([]),
     agent: z.array(RawAgentSchema).default([]),
   })
@@ -273,8 +385,26 @@ function toPolicyOverride(raw: RawPolicy): Partial<PolicyConfig> {
   if (raw.default_network !== undefined) override.default_network = raw.default_network;
   if (raw.default_timeout !== undefined) override.default_timeout_ms = raw.default_timeout;
   if (raw.allow_recursion !== undefined) override.allow_recursion = raw.allow_recursion;
+  if (raw.allow_inplace_write !== undefined) override.allow_inplace_write = raw.allow_inplace_write;
   if (raw.max_depth !== undefined) override.max_depth = raw.max_depth;
   return override;
+}
+
+/** Même contrat que `toPolicyOverride` : seuls les champs réellement déclarés. */
+function toWorktreeOverride(raw: RawWorktree): Partial<WorktreeConfig> {
+  const override: Partial<WorktreeConfig> = {};
+  if (raw.copy !== undefined) override.copy = raw.copy;
+  if (raw.link !== undefined) override.link = raw.link;
+  if (raw.setup !== undefined) override.setup = raw.setup;
+  return override;
+}
+
+function fromWorktreeOverride(worktree: Partial<WorktreeConfig>): Record<string, unknown> {
+  const raw: Record<string, unknown> = {};
+  if (worktree.copy !== undefined) raw.copy = worktree.copy;
+  if (worktree.link !== undefined) raw.link = worktree.link;
+  if (worktree.setup !== undefined) raw.setup = worktree.setup;
+  return raw;
 }
 
 function toRoleConfig(raw: RawRole): RoleConfig {
@@ -322,6 +452,7 @@ function fromPolicyOverride(policy: Partial<PolicyConfig>): Record<string, unkno
   // save/load reste ainsi exact au lieu de dépendre d'un formatage inverse.
   if (policy.default_timeout_ms !== undefined) raw.default_timeout = policy.default_timeout_ms;
   if (policy.allow_recursion !== undefined) raw.allow_recursion = policy.allow_recursion;
+  if (policy.allow_inplace_write !== undefined) raw.allow_inplace_write = policy.allow_inplace_write;
   if (policy.max_depth !== undefined) raw.max_depth = policy.max_depth;
   return raw;
 }
@@ -520,6 +651,7 @@ function parseConfigFile(toml: string, filePath: string): ConfigOverride {
   const override: ConfigOverride = {};
   if (rawRecord["role"] !== undefined) override.roles = result.data.role.map(toRoleConfig);
   if (rawRecord["agent"] !== undefined) override.agents = result.data.agent.map(toAgentSpec);
+  if (result.data.worktree) override.worktree = toWorktreeOverride(result.data.worktree);
   if (result.data.policy) {
     // `toPolicyOverride` renvoie déjà un `Partial<PolicyConfig>` ne portant
     // que les champs présents dans ce fichier — exactement la forme que
@@ -630,9 +762,13 @@ function mergeByKey<T>(base: readonly T[], override: readonly T[] | undefined, k
  */
 export function mergeConfig(base: OrchConfig, override: ConfigOverride): OrchConfig {
   const policy: PolicyConfig = override.policy ? { ...base.policy, ...override.policy } : base.policy;
+  // Champ par champ, comme `policy` — et donc par *remplacement* de chaque
+  // liste, jamais par concaténation : une union rendrait impossible le retrait
+  // local d'une entrée héritée du global. Voir `ConfigOverride.worktree`.
+  const worktree: WorktreeConfig = override.worktree ? { ...base.worktree, ...override.worktree } : base.worktree;
   const roles = mergeByKey(base.roles, override.roles, (role) => role.name);
   const agents = mergeByKey(base.agents, override.agents, (agent) => agent.id);
-  return { policy, roles, agents };
+  return { policy, worktree, roles, agents };
 }
 
 // ---------------------------------------------------------------------------
@@ -652,6 +788,11 @@ const DEFAULT_POLICY: PolicyConfig = {
   default_network: "auto",
   default_timeout_ms: parseDuration("10m"),
   allow_recursion: false,
+  // Faux : une tâche en écriture ne s'exécute pas dans l'arbre de travail de
+  // l'utilisateur tant qu'un worktree est possible. Le défaut inverse est ce
+  // qui a laissé trois délégations écrire sur une branche de travail réelle,
+  // en silence.
+  allow_inplace_write: false,
   max_depth: 2,
 };
 
@@ -708,6 +849,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
 export function defaultConfig(): OrchConfig {
   return {
     policy: { ...DEFAULT_POLICY, allowed: [...DEFAULT_POLICY.allowed], denied: [...DEFAULT_POLICY.denied] },
+    worktree: { copy: [], link: [], setup: [] },
     roles: DEFAULT_ROLES.map((role) => ({ ...role, agents: [...role.agents] })),
     agents: [],
   };
@@ -738,6 +880,7 @@ const SAVE_HEADER =
 export async function saveLayer(scope: ConfigScope, root: string, override: ConfigOverride): Promise<void> {
   const raw: Record<string, unknown> = {};
   if (override.policy !== undefined) raw.policy = fromPolicyOverride(override.policy);
+  if (override.worktree !== undefined) raw.worktree = fromWorktreeOverride(override.worktree);
   if (override.roles !== undefined) raw.role = override.roles.map(fromRoleConfig);
   if (override.agents !== undefined) raw.agent = override.agents.map(fromAgentSpec);
   const content = SAVE_HEADER + stringifyToml(raw);

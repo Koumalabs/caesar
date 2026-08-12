@@ -69,7 +69,7 @@ Le contrat minimal tient dans deux d'entre elles : `ORCH_TASK_FILE` pour lire, `
   "isolation": "worktree",         // "inplace" | "worktree"
   "network": true,                 // le réseau est-il disponible ? (défaut : true)
   "workspace": "/abs/path",        // racine de travail
-  "base_ref": "main",              // en isolation worktree
+  "base_ref": "3f2a91c…",          // en isolation worktree : le SHA du point de départ
   "deadline_ms": 600000,
   "depth": 1,
   "report_path": "/abs/.orch/tasks/t_7f3a/report.json",
@@ -113,6 +113,11 @@ Le sens des statuts :
 - **`blocked`** — une décision hors de son périmètre est requise ; elle est posée dans `questions`.
 
 `changes` relève de la déclaration de l'agent. Quand le workspace de la tâche est un dépôt git — en isolation `worktree` comme `inplace` — l'orchestrateur la recoupe avec l'état git constaté, **qui seul fait foi** ; c'est alors le seul cas où `changes` reflète la réalité plutôt que la seule parole de l'agent. Hors dépôt git (aucun recoupement possible), `changes` reste la déclaration brute. Le rapport normalisé rendu par `orch_await`/`orch_delegate` porte cette distinction dans `changes_verified_by` (`"git"` ou `"declaration"`).
+
+Deux propriétés de ce recoupement méritent d'être dites, parce que le worktree est un **atelier** où le sous-agent installe, exécute et vérifie :
+
+- **Le diff porte contre `base_ref`, jamais contre `HEAD`.** `base_ref` est le SHA du point de départ, figé à la création du worktree. Un agent qui commite son travail — ce qu'un atelier l'autorise à faire — déplacerait `HEAD` sur son propre commit, et un diff contre `HEAD` rendrait vide : l'orchestrateur conclurait « aucun changement » et `orch apply` n'appliquerait rien. Contre le SHA de départ, le résultat est le même que l'agent commite ou non.
+- **Ce que l'orchestrateur a lui-même posé est exclu.** Les chemins matérialisés dans le worktree depuis `[worktree] copy`/`link` (dépendances, `.env`) sont retirés du diff, avec une sémantique de préfixe — un répertoire posé exclut ce qu'il contient. Ils sont notés dans l'enregistrement de la tâche, de sorte qu'`orch diff` et `orch apply`, qui recalculent le diff longtemps après, les excluent aussi.
 
 ## `events.jsonl` — le flux
 

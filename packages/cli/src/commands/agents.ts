@@ -367,10 +367,18 @@ export async function runAgentsTest(root: string, id: string, options: AgentsTes
       agentId: id,
       objective: PING_OBJECTIVE,
       mode: "read-only",
-      isolation: "inplace",
+      // "auto" plutôt que "inplace" codé en dur : la sonde n'a aucune raison
+      // d'imposer un emplacement d'exécution, et le faire court-circuitait la
+      // règle d'isolation pour la seule commande qui lance un agent sans
+      // passer par `resolveDelegation`. Le résultat est le même qu'avant pour
+      // les agents nativement en lecture seule ; pour les autres, `runTask`
+      // isole la sonde comme il isole toute tâche en lecture seule.
+      isolation: "auto",
+      allowInplaceWrite: config.policy.allow_inplace_write,
       workspace: root,
       timeoutMs: 60_000,
       extraAgents: config.agents,
+      worktreeSetup: config.worktree,
     },
   );
   const durationMs = Date.now() - startedAt;

@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import type { OrchEvent } from "@orch/protocol";
 import { EventSchema, readEvents, taskPaths } from "@orch/protocol";
 import type { TaskRecord, TaskStatus, TaskStore } from "@orch/core";
-import { applyWorktree, diffWorktree, fileTaskStore, formatDuration, loadWorktreeHandle } from "@orch/core";
+import { applyWorktree, diffWorktree, fileTaskStore, formatDuration, loadWorktreeHandle, sweepAbandonedTasks } from "@orch/core";
 import type { Cell, Io, ThemeToken } from "../output.js";
 import {
   EXIT_OK,
@@ -71,6 +71,23 @@ export interface PsOptions {
 
 export async function runPs(root: string, options: PsOptions, io: Io): Promise<number> {
   const store = fileTaskStore(root);
+
+  // `ps` est le premier endroit où se voit une tâche dont l'orchestrateur est
+  // mort sans la conclure — elle y reste "running" à vie, en tête de liste,
+  // sans que rien ne dise que plus personne ne la conduit. C'est donc aussi le
+  // premier endroit où cet état doit se réparer, comme les autres verrous du
+  // dépôt se réparent à la lecture (`reclaimDead`, `purgeLease`).
+  //
+  // Une lecture qui écrit demande à être justifiée : le balayage n'agit que
+  // sur une preuve positive — le marqueur de la tâche nomme un processus qui
+  // n'existe plus — et n'inscrit qu'un fait déjà vrai. Il ne doit pour autant
+  // jamais empêcher la liste de s'afficher : un `.orch/state/` illisible est
+  // un ennui à signaler, pas une raison de ne plus rien montrer.
+  try {
+    await sweepAbandonedTasks(root, store);
+  } catch (error) {
+    printWarning(io, `Tâches abandonnées non réconciliées : ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   let records: TaskRecord[];
   if (options.status) {

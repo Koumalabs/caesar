@@ -231,7 +231,7 @@ export async function runRun(root: string, objective: string, options: RunOption
     printError(io, resolved.error);
     return EXIT_USAGE;
   }
-  const { agentId, mode, isolation, network, networkWarning, timeoutMs, context: resolvedContext } = resolved;
+  const { agentId, mode, isolation, allowInplaceWrite, network, networkWarning, timeoutMs, context: resolvedContext } = resolved;
 
   // Après la branche d'erreur, et seulement en mode humain : `--json` ne doit
   // porter que le résultat final sur stdout.
@@ -296,6 +296,7 @@ export async function runRun(root: string, objective: string, options: RunOption
         ...(resolvedContext !== undefined ? { context: resolvedContext } : {}),
         mode,
         isolation,
+        allowInplaceWrite,
         network,
         ...(networkWarning !== undefined ? { networkWarning } : {}),
         workspace: root,
@@ -304,6 +305,7 @@ export async function runRun(root: string, objective: string, options: RunOption
         timeoutMs,
         depth,
         extraAgents: config.agents,
+        worktreeSetup: config.worktree,
         ...(options.extraArgs && options.extraArgs.length > 0 ? { extraArgs: options.extraArgs } : {}),
         taskId,
         signal: controller.signal,

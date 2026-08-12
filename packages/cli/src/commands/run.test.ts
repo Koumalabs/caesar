@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { OrchEventInput } from "@orch/protocol";
 import { ENV, EventSchema } from "@orch/protocol";
-import { FAKE_AGENT_PATH, makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
+import { allowInplaceWrite, FAKE_AGENT_PATH, makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
 import { runPolicyDeny } from "./policy.js";
 import { describeEvent, formatEventLine, runRun } from "./run.js";
 import { runCli } from "../program.js";
@@ -21,6 +21,22 @@ async function initGitRepo(root: string): Promise<void> {
   await writeFile(join(root, "a.txt"), "hello\n", "utf8");
   await execFileAsync("git", ["add", "a.txt"], { cwd: root });
   await execFileAsync("git", ["commit", "-q", "-m", "init"], { cwd: root });
+}
+
+/**
+ * Le dépôt **et** l'opt-in qui rend `--isolation inplace` acceptable en
+ * écriture.
+ *
+ * Les tests d'aller-retour ci-dessous demandent tous `inplace` : ils vérifient
+ * le code de sortie, le rapport, un timeout, une ligne de commande — jamais la
+ * règle d'isolation elle-même, et un worktree ne ferait qu'y ajouter une
+ * indirection. Depuis que cette combinaison est refusée par défaut, l'assumer
+ * fait partie de leur mise en place, exactement comme pour un utilisateur. Le
+ * refus, lui, a son propre test : « refuse … sans opt-in ».
+ */
+async function initGitRepoAllowingInplaceWrite(root: string): Promise<void> {
+  await initGitRepo(root);
+  await allowInplaceWrite(root);
 }
 
 describe("orch run", () => {
@@ -39,7 +55,7 @@ describe("orch run", () => {
   it("aller-retour complet avec un agent factice substitué au vrai binaire de \"codex\"", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        await initGitRepo(root);
+        await initGitRepoAllowingInplaceWrite(root);
         const code = await runRun(
           root,
           "écrire un fichier",
@@ -58,7 +74,7 @@ describe("orch run", () => {
   it("I3 (revue finale) : un agent qui sort en code 0 mais déclare un rapport \"failed\" ne rend pas un exit code de succès", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        await initGitRepo(root);
+        await initGitRepoAllowingInplaceWrite(root);
         // mode "success" (défaut) : le processus sort en code 0. `status: "failed"`
         // (surcharge du rapport écrit) : l'agent déclare néanmoins un échec.
         // Avant I3, exit code et "statut : succeeded" ne regardaient que le
@@ -81,7 +97,7 @@ describe("orch run", () => {
   it("--channel active le canal retour : le palier de rapport devient \"channel\" (tâche 9)", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        await initGitRepo(root);
+        await initGitRepoAllowingInplaceWrite(root);
         const code = await runRun(
           root,
           "écrire un fichier, avec canal",
@@ -103,12 +119,39 @@ describe("orch run", () => {
   it("--json ne produit rien d'autre qu'un JSON valide sur stdout, sans ANSI", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        await initGitRepo(root);
+        await initGitRepoAllowingInplaceWrite(root);
         const code = await runRun(root, "tâche", { agent: "codex", mode: "write", isolation: "inplace", json: true }, io);
         expect(code).toBe(EXIT_OK);
         expect(() => JSON.parse(io.stdoutText())).not.toThrow();
         expect(io.stdoutText()).not.toMatch(/\x1b\[/);
         expect(io.stderrText()).toBe("");
+      }),
+    );
+  }, 20_000);
+
+  it("--isolation inplace en écriture dans un dépôt git : refusé, sans rien lancer ni rien laisser derrière", async () => {
+    // Le défaut d'origine, vu depuis le CLI : sans ce refus, l'agent écrivait
+    // sur la branche de travail courante de l'utilisateur, et seul le contenu
+    // du dépôt le révélait après coup. Le refus tombe dans `resolveDelegation`,
+    // donc avant tout répertoire de tâche et tout sous-processus.
+    await withFakeHome(async () => {
+      await initGitRepo(root);
+      const code = await runRun(root, "tâche", { agent: "codex", mode: "write", isolation: "inplace" }, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toMatch(/refusée/);
+      // Le motif doit envoyer vers l'atelier avant l'opt-in : le worktree est
+      // l'issue, l'opt-in la dérogation.
+      expect(io.stderrText()).toMatch(/\[worktree\]/);
+      expect(io.stderrText()).toMatch(/allow_inplace_write/);
+      await expect(readFile(join(root, ".orch", "tasks"), "utf8")).rejects.toThrow();
+    });
+  });
+
+  it("--isolation inplace en écriture hors dépôt git : accepté, aucun worktree n'y étant possible", async () => {
+    await withFakeHome(() =>
+      withFakeAgentAsBin("codex", async () => {
+        const code = await runRun(root, "tâche", { agent: "codex", mode: "write", isolation: "inplace", json: true }, io);
+        expect(code).toBe(EXIT_OK);
       }),
     );
   }, 20_000);
@@ -196,7 +239,7 @@ describe("orch run", () => {
   it("un agent qui échoue (exit non nul) fait sortir la commande en code 1", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        await initGitRepo(root);
+        await initGitRepoAllowingInplaceWrite(root);
         const code = await runRun(
           root,
           "tâche",
@@ -213,7 +256,7 @@ describe("orch run", () => {
   it("--context @fichier lit le fichier désigné", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        await initGitRepo(root);
+        await initGitRepoAllowingInplaceWrite(root);
         const contextFile = join(root, "contexte.txt");
         await writeFile(contextFile, JSON.stringify({ summary: "depuis un fichier" }), "utf8");
 
@@ -231,7 +274,7 @@ describe("orch run", () => {
   it("l'avancement (mode humain) est émis pendant l'exécution, pas seulement relu à la fin", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        await initGitRepo(root);
+        await initGitRepoAllowingInplaceWrite(root);
         let settled = false;
         const runPromise = runRun(
           root,
@@ -262,7 +305,7 @@ describe("orch run", () => {
   it("SIGINT interrompt proprement une tâche en cours, sans laisser de processus fils", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async (shimDir) => {
-        await initGitRepo(root);
+        await initGitRepoAllowingInplaceWrite(root);
         const shimPath = join(shimDir, "codex");
 
         const runPromise = runRun(
@@ -379,7 +422,7 @@ describe("orch run", () => {
   it("transmet les arguments bruts au CLI de l'agent, en fin de ligne de commande", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        await initGitRepo(root);
+        await initGitRepoAllowingInplaceWrite(root);
         const code = await runRun(
           root,
           "objectif",

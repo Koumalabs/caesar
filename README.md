@@ -136,9 +136,38 @@ orch run --agent codex "…" -- --enable feature_x
 
 Le séparateur est obligatoire : sans lui, un opérande en trop reste une coquille et `orch` le refuse plutôt que de l'envoyer à l'agent. Volontairement absent du tool MCP `orch_delegate` — c'est un geste que vous tapez, pas une latitude laissée à l'orchestrateur, qui pourrait sinon élever seul les privilèges d'un sous-agent.
 
+## L'atelier
+
+Un worktree git ne contient que les fichiers **suivis**. Les dépendances installées, le `.env`, les répertoires ignorés portant des briefs ou des artefacts n'y sont pas : rien ne s'y installe, rien ne s'y lance, rien ne s'y vérifie. Sur un projet réel, l'isolation devenait un espace vide dans lequel il n'y avait rien à faire — et la contourner par `--isolation inplace` restait la seule issue praticable. C'est ainsi qu'un sous-agent finissait par écrire directement sur la branche de travail de l'utilisateur.
+
+La section `[worktree]` de `.orch/config.toml` décrit ce qu'il faut emporter pour que le worktree devienne un lieu de travail :
+
+```toml
+[worktree]
+copy  = ["node_modules", ".env"]   # recopié — isolé du workspace
+link  = []                         # lié — partagé, donc non isolé
+setup = ["pnpm install --offline"] # lancé dans le worktree, avant l'agent
+```
+
+`orch init` la remplit à partir de ce qu'il trouve (`pnpm-lock.yaml`, `Cargo.toml`, `pyproject.toml`, `.env`…), et n'écrit rien s'il ne trouve rien.
+
+**`copy` plutôt que `link`.** Sur un système de fichiers copy-on-write — APFS, Btrfs, XFS — la copie se fait par clone, et ne duplique rien tant que personne n'écrit. Mesuré sur un `node_modules` de 975 Mo (~100 000 fichiers) : **6,3 s et 11 Mo de disque**, contre 15,0 s et 994 Mo pour une copie ordinaire. Ce n'est donc pas gratuit — le parcours de l'arborescence reste à faire — mais c'est le prix d'une isolation réelle, et il se compare à celui du `setup` qu'il évite de relancer. La copie reste une vraie copie du point de vue de l'agent : deux tâches simultanées ne partagent rien, et ce que l'une casse chez elle ne casse rien ailleurs.
+
+`link` existe pour les systèmes de fichiers sans copy-on-write, mais partage le répertoire avec le workspace — le rapport de la tâche le dit alors en toutes lettres.
+
+Ce qu'`orch` a lui-même posé est retiré du diff : un `.env` recopié n'apparaît ni dans `orch diff`, ni dans `orch apply`. Et un chemin déclaré qui ne peut pas être posé — suivi par git, non ignoré, absent — produit un constat nommant la clé à corriger, plutôt qu'une tâche qui échoue sans raison visible.
+
+### L'écriture en place est refusée par défaut
+
+Une tâche en **écriture** qui demande `--isolation inplace` dans un dépôt git utilisable est refusée, en nommant le remède. Ce n'est pas une précaution abstraite : c'est la règle que son absence a rendue nécessaire. Le refus tombe avant qu'aucun répertoire de tâche ne soit créé.
+
+Si le worktree paraît incomplet, la réponse est `[worktree]`, jamais `inplace`. Pour les dépôts où le mélange est assumé en connaissance de cause, `allow_inplace_write = true` sous `[policy]` lève l'interdiction — et deux tâches en écriture ne peuvent alors toujours pas partager le même arbre en même temps, leurs diffs deviendraient inattribuables.
+
+Hors dépôt git, ou dans un dépôt sans le moindre commit, aucun worktree n'est possible : `inplace` y reste le seul mode de fonctionnement, et rien n'est refusé.
+
 ## Tâches simultanées
 
-Plusieurs agents tournent de front, chacun dans son propre worktree (`.orch/wt/<taskId>`, branche `orch/<taskId>`). C'est le mode normal depuis Claude Code : `orch_delegate` rend la main aussitôt avec un `task_id`, on en lance plusieurs, `orch_await` récupère les résultats.
+Plusieurs agents tournent de front, chacun dans son propre atelier (`.orch/wt/<taskId>`, sur une branche nommée pour être lue — `orch/<rôle>/<objectif>-<8 car.>`). C'est le mode normal depuis Claude Code : `orch_delegate` rend la main aussitôt avec un `task_id`, on en lance plusieurs, `orch_await` récupère les résultats.
 
 `policy.max_parallel` (4 par défaut) plafonne le tout — **y compris entre processus**. Six `orch run` dans six terminaux, plus une conversation Claude Code qui délègue : tous se partagent les mêmes créneaux, matérialisés par des fichiers sous `.orch/state/slots/`. Un `orch run` qui ne trouve pas de place attend en le disant, et nomme qui occupe :
 
@@ -149,6 +178,8 @@ $ orch run --agent codex "…"
 ```
 
 Un processus tué (`kill -9`) laisse son fichier-créneau derrière lui : le premier appelant qui trouve tout occupé vérifie chaque détenteur et récupère ceux dont le processus n'existe plus. Une limite qui deviendrait un blocage définitif serait pire que pas de limite du tout.
+
+Il laisse aussi sa tâche en plan. Le statut d'une tâche est écrit par le processus qui la conduit : tué — `kill -9`, session MCP fermée, machine arrêtée — il ne l'écrit jamais, et l'enregistrement reste « en cours » indéfiniment. `orch ps` et `orch gc` réconcilient cet état : une tâche dont le marqueur nomme un processus disparu passe en échec, avec un rapport qui dit ce qui s'est passé, et le worktree qu'elle retenait redevient collectable. La preuve est positive — un pid qu'on ne trouve plus — jamais déduite d'une absence : une tâche sans marqueur n'est jamais conclue d'office, et `orch cancel <id>` reste la sortie manuelle.
 
 Deux réserves à connaître. L'attente est une scrutation, pas une file d'attente : entre deux candidats, l'ordre d'entrée n'est pas garanti. Et la reprise d'un créneau mort repose sur le pid, ce qui n'a de sens que sur une seule machine — un `.orch/` sur un partage réseau, utilisé depuis deux postes, verrait les créneaux de l'autre comme vivants indéfiniment.
 

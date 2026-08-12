@@ -1,6 +1,6 @@
 /** Façade CLI de la décision de nettoyage portée par `@orch/core`. */
 import { garbageCollectWorktrees } from "@orch/core";
-import type { WorktreeGcEntry } from "@orch/core";
+import type { WorktreeGcEntry, WorktreeGcResult } from "@orch/core";
 import type { Cell, Io } from "../output.js";
 import {
   EXIT_OK,
@@ -64,6 +64,27 @@ function keptAdvice(entry: WorktreeGcEntry): string | null {
     : `"${entry.id}" : "orch diff ${entry.id}" pour voir ce qui n'a pas été intégré, "orch apply ${entry.id}" pour l'intégrer.`;
 }
 
+/**
+ * Les tâches conclues d'office, dites avant les worktrees : c'est la cause,
+ * eux n'en sont que la conséquence. Une tâche restée « en cours » retenait son
+ * worktree, et l'utilisateur voyait un `gc` sans effet sans jamais savoir
+ * pourquoi.
+ */
+function printAbandoned(io: Io, result: WorktreeGcResult): void {
+  if (result.abandoned.length === 0) return;
+  printHeading(io, result.dryRun ? "tâches à conclure" : "tâches conclues");
+  printNote(
+    io,
+    result.dryRun
+      ? "Le processus qui les conduisait a disparu ; sans --dry-run, elles passeraient en échec."
+      : "Le processus qui les conduisait avait disparu sans les conclure : passées en échec.",
+  );
+  for (const task of result.abandoned) {
+    writeLine(io.stdout, `  - ${task.id} (${task.status}, orchestrateur pid ${task.pid} disparu)`);
+  }
+  writeLine(io.stdout);
+}
+
 export async function runGc(root: string, options: GcOptions, io: Io): Promise<number> {
   const result = await garbageCollectWorktrees(root, { dryRun: options.dryRun, force: options.force });
 
@@ -74,13 +95,16 @@ export async function runGc(root: string, options: GcOptions, io: Io): Promise<n
       removed: result.removed,
       would_remove: result.wouldRemove,
       kept: result.kept,
+      abandoned: result.abandoned,
       entries: result.entries.map(jsonEntry),
     });
   } else if (result.entries.length === 0) {
     sectionHeader(io, "gc");
+    printAbandoned(io, result);
     writeLine(io.stdout, "Aucun worktree à nettoyer.");
   } else {
     sectionHeader(io, "gc");
+    printAbandoned(io, result);
     const rows: Cell[][] = result.entries.map((entry) => [
       entry.id,
       { text: entry.orphan ? "orphelin" : entry.status ?? "-", token: "dim" },

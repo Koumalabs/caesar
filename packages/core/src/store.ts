@@ -46,6 +46,18 @@ export interface TaskRecord {
   isolation: Isolation;
   mode: TaskMode;
   branch?: string;
+  /**
+   * Chemins que l'orchestrateur a posés dans le worktree (`[worktree]
+   * copy`/`link`), à retirer du diff — voir `WorktreeHandle.excluded`.
+   *
+   * Persisté ici parce que `orch diff` et `orch apply` recalculent le diff
+   * longtemps après la fin de la tâche, à partir du seul enregistrement : sans
+   * cette trace, un `.env` recopié redeviendrait applicable au dépôt
+   * principal. Absent pour toute tâche antérieure à `[worktree]`, ou sans
+   * matérialisation — le schéma n'est pas `.strict()`, l'ajout est
+   * rétrocompatible dans les deux sens.
+   */
+  excluded_paths?: string[];
   exit_code?: number | null;
   report_via: ReportChannel;
   report_source?: ReportSource;
@@ -139,6 +151,7 @@ const TaskRecordSchema = z.object({
   isolation: IsolationSchema,
   mode: TaskModeSchema,
   branch: z.string().optional(),
+  excluded_paths: z.array(z.string()).optional(),
   exit_code: z.number().int().nullish(),
   report_via: z.enum(["channel", "schema", "file"]),
   report_source: z.enum(["channel", "schema", "file", "extracted", "synthesized"]).optional(),

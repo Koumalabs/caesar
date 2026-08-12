@@ -235,6 +235,123 @@ describe("resolveDelegation — réseau", () => {
 });
 
 /**
+ * Le refus d'écriture en place, vu depuis la première des deux portes.
+ *
+ * `prepareIsolation` rend le même verdict — c'est le filet que traverse tout
+ * appel direct à `runTask` — mais après avoir créé le répertoire de tâche.
+ * Ici, un refus ne laisse rien derrière lui : c'est ce que le dernier test de
+ * ce bloc vérifie, et c'est la raison d'être de cette porte-ci.
+ */
+describe("resolveDelegation — écriture en place", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-delegation-inplace-"));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  async function initGitRepo(dir: string): Promise<void> {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const run = promisify(execFile);
+    await run("git", ["init", "-q"], { cwd: dir });
+    await run("git", ["config", "user.email", "orch-test@example.com"], { cwd: dir });
+    await run("git", ["config", "user.name", "Orch Test"], { cwd: dir });
+    await writeFile(join(dir, "a.txt"), "hello\n", "utf8");
+    await run("git", ["add", "a.txt"], { cwd: dir });
+    await run("git", ["commit", "-q", "-m", "init"], { cwd: dir });
+  }
+
+  it('refuse "inplace" + write dans un dépôt utilisable, en nommant la provenance explicite', async () => {
+    await initGitRepo(root);
+    const result = await resolveDelegation(defaultConfig(), root, {
+      agent: "codex",
+      mode: "write",
+      isolation: "inplace",
+      depth: 0,
+    });
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toMatch(/demandée explicitement/);
+      expect(result.error).toMatch(/allow_inplace_write/);
+    }
+  });
+
+  it("nomme le rôle quand l'isolation en vient, plutôt que la demande", async () => {
+    // Le cas réel : un rôle `implementer` mal configuré en `inplace`. Un motif
+    // disant « demandée explicitement » enverrait corriger le mauvais endroit.
+    await initGitRepo(root);
+    const config: OrchConfig = {
+      ...defaultConfig(),
+      roles: [role({ name: "implementer", mode: "write", isolation: "inplace" })],
+    };
+    const result = await resolveDelegation(config, root, { role: "implementer", agent: "codex", depth: 0 });
+    expect("error" in result).toBe(true);
+    if ("error" in result) expect(result.error).toMatch(/rôle "implementer"/);
+  });
+
+  it("nomme la politique quand l'isolation vient de son défaut", async () => {
+    await initGitRepo(root);
+    const config: OrchConfig = {
+      ...defaultConfig(),
+      policy: { ...defaultConfig().policy, default_isolation: "inplace" },
+    };
+    const result = await resolveDelegation(config, root, { agent: "codex", mode: "write", depth: 0 });
+    expect("error" in result).toBe(true);
+    if ("error" in result) expect(result.error).toMatch(/default_isolation/);
+  });
+
+  it("accepte sous opt-in, et rend la permission à transmettre au moteur", async () => {
+    await initGitRepo(root);
+    const config: OrchConfig = {
+      ...defaultConfig(),
+      policy: { ...defaultConfig().policy, allow_inplace_write: true },
+    };
+    const result = await resolveDelegation(config, root, {
+      agent: "codex",
+      mode: "write",
+      isolation: "inplace",
+      depth: 0,
+    });
+    expect("error" in result).toBe(false);
+    if (!("error" in result)) {
+      expect(result.isolation).toBe("inplace");
+      // Sans cette transmission, `prepareIsolation` refuserait ce que
+      // `resolveDelegation` vient d'accorder — le défaut par défaut fermé
+      // n'a de sens que si la permission voyage.
+      expect(result.allowInplaceWrite).toBe(true);
+    }
+  });
+
+  it("accepte hors dépôt git : aucun worktree n'y serait possible", async () => {
+    const result = await resolveDelegation(defaultConfig(), root, {
+      agent: "codex",
+      mode: "write",
+      isolation: "inplace",
+      depth: 0,
+    });
+    expect("error" in result).toBe(false);
+  });
+
+  it("refuse sans rien écrire sur le disque", async () => {
+    // Même promesse que le refus réseau, qui précède déjà toute écriture :
+    // une délégation refusée ne doit pas laisser de répertoire de tâche.
+    await initGitRepo(root);
+    const before = await readdir(root);
+    await resolveDelegation(defaultConfig(), root, {
+      agent: "codex",
+      mode: "write",
+      isolation: "inplace",
+      depth: 0,
+    });
+    expect(await readdir(root)).toEqual(before);
+  });
+});
+
+/**
  * `nextDelegationDepth` — voir C4 de la revue finale : `$ORCH_DEPTH` était
  * bien exporté vers les sous-processus (`taskEnv`, `@orch/protocol`) mais
  * jamais relu par personne, ce qui rendait `max_depth` inapplicable dès

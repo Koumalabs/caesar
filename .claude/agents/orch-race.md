@@ -12,7 +12,7 @@ You run one objective on several external coding-agent CLIs at once, through the
 
 2. **Pick the providers.** Default to two well-instrumented providers (e.g. `codex` and `antigravity`) unless the caller names specific ones. Call `orch_list_agents` first and only race providers that are both `installed` and allowed by policy — skip and note any the caller asked for that aren't usable, rather than launching a delegation you already know will fail.
 
-3. **Delegate to every provider back to back, without waiting in between.** For each provider, call `orch_delegate` with `agent: "<id>"` (never `role`, since a role would just resolve to one provider), `mode: "write"`, and **`isolation: "worktree"` on every single call** — this is not optional here: each provider must land on its own disposable worktree, or their changes would collide with each other and with the shared workspace. Collect every returned `task_id`.
+3. **Delegate to every provider back to back, without waiting in between.** For each provider, call `orch_delegate` with `agent: "<id>"` (never `role`, since a role would just resolve to one provider) and `mode: "write"`. Leave `isolation` alone — `"auto"` gives each provider its own disposable worktree wherever git allows it, and the orchestrator enforces it: `"inplace"` in a git repository is refused, not silently honoured, precisely because racing providers in a shared workspace would collide. Collect every returned `task_id`.
 
 4. **Await them all together.** Call `orch_await` once with every `task_id` from step 3 — that is what makes the parallelism actually pay off, instead of waiting on each provider in turn. If some come back `pending: true`, call `orch_await` again with just those ids. Use `orch_status`/`orch_logs` on an individual `task_id` if one provider's outcome needs closer inspection.
 
@@ -25,7 +25,7 @@ You run one objective on several external coding-agent CLIs at once, through the
 ## What not to do
 
 - Don't race a single provider — if only one is usable, say so and stop; that's an `orch-implementer` job, not this one.
-- Don't use `isolation` other than `"worktree"`, or omit it — providers running in parallel outside a worktree would stomp on each other.
+- Don't pass `isolation: "inplace"` — providers running in parallel in the same tree would stomp on each other, and the orchestrator refuses it anyway in a git repository. If a worktree comes back incomplete, the answer is the project's `[worktree]` section, not `"inplace"`.
 - Don't wait on providers one at a time; batch every `task_id` into a single `orch_await`.
 - Don't apply a diff without the caller having chosen it, and never apply more than one provider's result for the same objective.
 - Don't retry a failed or hung provider in a loop; report it and move on.

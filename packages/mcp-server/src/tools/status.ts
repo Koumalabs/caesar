@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { listPendingQuestions } from "@orch/mcp-channel";
+import { sweepAbandonedTasks } from "@orch/core";
 import { readEvents, taskPaths } from "@orch/protocol";
 import type { McpSession } from "../session.js";
 import { errorResult, jsonResult } from "./result.js";
@@ -35,6 +36,14 @@ const OrchStatusInputSchema = z.object(orchStatusInputShape);
 export type OrchStatusInput = z.infer<typeof OrchStatusInputSchema>;
 
 export async function orchStatus(session: McpSession, input: OrchStatusInput): Promise<CallToolResult> {
+  // Une tâche lancée par un serveur MCP qu'on a depuis fermé garde le statut
+  // "running" que son processus n'a jamais eu l'occasion de conclure. La
+  // rendre telle quelle ici serait dire à l'appelant d'attendre quelque chose
+  // que plus personne ne fait — voir `sweepAbandonedTasks`. Les tâches de
+  // cette session, elles, sont conduites par ce processus-ci : leur marqueur
+  // est vivant, le balayage ne les touche pas.
+  await sweepAbandonedTasks(session.root, session.store);
+
   const record = await session.store.get(input.task_id);
   if (!record) return errorResult(`Tâche inconnue : "${input.task_id}".`);
 

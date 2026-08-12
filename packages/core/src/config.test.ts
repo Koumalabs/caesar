@@ -103,6 +103,7 @@ describe("defaultConfig", () => {
       default_network: "auto",
       default_timeout_ms: 600_000,
       allow_recursion: false,
+      allow_inplace_write: false,
       max_depth: 2,
     });
   });
@@ -403,6 +404,129 @@ describe("loadConfig", () => {
       await mkdir(path, { recursive: true });
 
       await expect(loadConfig(projectRoot)).rejects.toThrow(path);
+    });
+  });
+});
+
+/**
+ * `[worktree]` — la section qui rend le worktree habitable. Sans elle, un
+ * worktree ne contient que les fichiers suivis par git : ni dépendances
+ * installées, ni `.env`, ni répertoires ignorés — et l'isolation devient
+ * inexploitable, donc contournée. Voir `WorktreeConfig`.
+ */
+describe("[worktree]", () => {
+  let projectRoot: string;
+
+  beforeEach(async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), "orch-worktree-cfg-"));
+  });
+
+  afterEach(async () => {
+    await rm(projectRoot, { recursive: true, force: true });
+  });
+
+  async function writeProject(toml: string): Promise<void> {
+    await mkdir(join(projectRoot, ".orch"), { recursive: true });
+    await writeFile(join(projectRoot, ".orch", "config.toml"), toml, "utf8");
+  }
+
+  it("absente partout : trois listes vides, jamais undefined", async () => {
+    await withFakeHome(async () => {
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.worktree).toEqual({ copy: [], link: [], setup: [] });
+    });
+  });
+
+  it("lit copy, link et setup", async () => {
+    await withFakeHome(async () => {
+      await writeProject('[worktree]\ncopy = ["node_modules", ".env"]\nlink = ["gros-cache"]\nsetup = ["pnpm install --offline"]\n');
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.worktree).toEqual({
+        copy: ["node_modules", ".env"],
+        link: ["gros-cache"],
+        setup: ["pnpm install --offline"],
+      });
+    });
+  });
+
+  it("un champ absent du fichier ne dit rien : la couche précédente le garde", async () => {
+    await withFakeHome(async (home) => {
+      await mkdir(join(home, ".config", "orch"), { recursive: true });
+      await writeFile(join(home, ".config", "orch", "config.toml"), '[worktree]\ncopy = ["node_modules"]\nsetup = ["npm ci"]\n', "utf8");
+      await writeProject('[worktree]\nsetup = ["pnpm install"]\n');
+
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.worktree.copy).toEqual(["node_modules"]);
+      expect(loaded.config.worktree.setup).toEqual(["pnpm install"]);
+    });
+  });
+
+  it("remplace la liste héritée au lieu de s'y ajouter", async () => {
+    // La propriété qui rend le retrait local possible : une union laisserait
+    // une entrée héritée du global impossible à retirer côté projet.
+    await withFakeHome(async (home) => {
+      await mkdir(join(home, ".config", "orch"), { recursive: true });
+      await writeFile(join(home, ".config", "orch", "config.toml"), '[worktree]\ncopy = ["node_modules", ".venv"]\n', "utf8");
+      await writeProject('[worktree]\ncopy = [".env"]\n');
+
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.worktree.copy).toEqual([".env"]);
+    });
+  });
+
+  it("liste vide déclarée : retire tout ce qui était hérité", async () => {
+    await withFakeHome(async (home) => {
+      await mkdir(join(home, ".config", "orch"), { recursive: true });
+      await writeFile(join(home, ".config", "orch", "config.toml"), '[worktree]\ncopy = ["node_modules"]\n', "utf8");
+      await writeProject("[worktree]\ncopy = []\n");
+
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.worktree.copy).toEqual([]);
+    });
+  });
+
+  describe("chemins refusés au chargement, avec leur cause", () => {
+    // Une entrée invalide est une erreur de configuration, pas une
+    // circonstance d'exécution : elle doit se voir en lisant le fichier, pas
+    // se transformer plus tard en tâche qui échoue sans qu'on sache pourquoi.
+    const cases: [string, string, RegExp][] = [
+      ["absolu", '[worktree]\ncopy = ["/etc/passwd"]\n', /absolu/],
+      ["remontée", '[worktree]\ncopy = ["../ailleurs"]\n', /\.\./],
+      ["imbriqué remontant", '[worktree]\nlink = ["a/../../b"]\n', /\.\./],
+      [".git", '[worktree]\ncopy = [".git"]\n', /\.git/],
+      [".orch", '[worktree]\nlink = [".orch/state"]\n', /\.orch/],
+      ["vide", '[worktree]\ncopy = [""]\n', /vide/],
+    ];
+    for (const [name, toml, motif] of cases) {
+      it(name, async () => {
+        await withFakeHome(async () => {
+          await writeProject(toml);
+          await expect(loadConfig(projectRoot)).rejects.toThrow(motif);
+        });
+      });
+    }
+
+    it("champ inconnu de la section : refusé comme partout ailleurs", async () => {
+      await withFakeHome(async () => {
+        await writeProject('[worktree]\ncoppy = ["node_modules"]\n');
+        await expect(loadConfig(projectRoot)).rejects.toThrow(/champ inconnu/);
+      });
+    });
+  });
+
+  it("accepte un chemin imbriqué légitime", async () => {
+    await withFakeHome(async () => {
+      await writeProject('[worktree]\ncopy = ["packages/api/node_modules", ".superpowers"]\n');
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.worktree.copy).toEqual(["packages/api/node_modules", ".superpowers"]);
+    });
+  });
+
+  it("survit à l'aller-retour saveLayer/loadLayer", async () => {
+    await withFakeHome(async () => {
+      const worktree = { copy: ["node_modules"], link: ["cache"], setup: ["pnpm install --offline"] };
+      await saveLayer("project", projectRoot, { worktree });
+      expect(await loadLayer("project", projectRoot)).toEqual({ worktree });
     });
   });
 });

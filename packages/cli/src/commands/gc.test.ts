@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TaskRecord } from "@orch/core";
-import { createWorktree, fileTaskStore } from "@orch/core";
+import { createWorktree, fileTaskStore, markWorktreeInUse } from "@orch/core";
 import { makeIo, type CapturedIo } from "../../test/support.js";
 import { EXIT_OK } from "../output.js";
 import { runGc } from "./gc.js";
@@ -96,6 +96,38 @@ describe("orch gc", () => {
     expect(io.stdoutText()).toContain("t_a_appliquer");
     expect(io.stdoutText()).toContain("orch diff t_a_appliquer");
     expect(io.stdoutText()).toContain("orch apply t_a_appliquer");
+  });
+
+  /**
+   * Le cas qui a fait remonter le défaut : `orch gc` disait « Aucun worktree à
+   * nettoyer » pendant que `orch ps` affichait une tâche en cours depuis six
+   * heures. La cause — une tâche que plus personne ne conduit — doit se lire
+   * dans la sortie, même quand il n'y a par ailleurs rien à supprimer.
+   */
+  it("nomme la tâche conclue d'office, même sans aucun worktree à nettoyer", async () => {
+    const store = fileTaskStore(root);
+    await store.create({
+      id: "t_sans_worktree",
+      agent: "codex",
+      objective: "écrire en place",
+      status: "running",
+      created_at: "2026-08-11T10:00:00.000Z",
+      task_dir: join(root, ".orch", "tasks", "t_sans_worktree"),
+      workspace: root,
+      isolation: "inplace",
+      mode: "write",
+      report_via: "file",
+      depth: 0,
+    });
+    const lease = await markWorktreeInUse(root, "t_sans_worktree");
+    await writeFile(lease.path, JSON.stringify({ pid: 2_147_483_647, token: lease.token }) + "\n", "utf8");
+
+    const code = await runGc(root, {}, io);
+
+    expect(code).toBe(EXIT_OK);
+    expect(io.stdoutText()).toContain("t_sans_worktree");
+    expect(io.stdoutText()).toContain("Aucun worktree à nettoyer.");
+    expect((await store.get("t_sans_worktree"))?.status).toBe("failed");
   });
 
   it("un orphelin modifié indique son chemin sans conseiller diff/apply", async () => {

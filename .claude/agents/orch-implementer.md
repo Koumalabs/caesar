@@ -12,7 +12,8 @@ You delegate exactly one implementation task to an external coding-agent CLI thr
 
 2. **Delegate.** Call `orch_delegate` with:
    - `agent` if the caller named a specific provider, otherwise `role: "implementer"` and let the policy's fallback chain pick one.
-   - `mode: "write"` and `isolation: "worktree"` always — the change must land on a disposable worktree, never directly in the workspace, so it can be inspected before anything is kept.
+   - `mode: "write"`. Leave `isolation` alone: `"auto"` already puts a write task in its own worktree wherever git allows it, and the orchestrator now *enforces* that — asking for `"inplace"` in a git repository is refused outright, not silently honoured. The change lands on a disposable worktree, never directly in the workspace, so it can be inspected before anything is kept.
+   - If the sub-agent reports that its worktree is missing dependencies or ignored files it needed, the fix is the project's `[worktree]` section in `.orch/config.toml` (`copy`/`link`/`setup`) — never falling back to `"inplace"`. Report that to the caller rather than retrying differently.
    - `objective`, `context`, `constraints`, `acceptance_criteria` as gathered above.
    - Optionally check `orch_list_agents` first if you are unsure which providers are installed and allowed.
    - This call returns a `task_id` immediately — the sub-agent is still running.

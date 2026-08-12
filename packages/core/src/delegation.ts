@@ -33,6 +33,9 @@ import { parseDuration } from "./config.js";
 import { checkDelegation } from "./policy.js";
 import { decideNetwork } from "./network.js";
 import type { NetworkRequest } from "./network.js";
+import { decideInplaceWrite } from "./isolation.js";
+import type { IsolationSource } from "./isolation.js";
+import { usableRepoRoot } from "./engine/worktree.js";
 import { pickAgentForRole, resolveInstalledMap, resolveRole } from "./roles.js";
 import { findAgentDefinition } from "./registry/index.js";
 
@@ -79,6 +82,17 @@ export interface ResolvedDelegation {
   role?: string;
   mode: TaskMode;
   isolation: Isolation | "auto";
+  /**
+   * L'opt-in `policy.allow_inplace_write`, à transmettre tel quel à
+   * `RunTaskInput.allowInplaceWrite`.
+   *
+   * Rendu ici plutôt que relu de `config.policy` par chaque façade : le moteur
+   * refuse par défaut, donc c'est l'acheminement de cette permission qui doit
+   * être unique et évident. Trois lectures indépendantes de la même clé, c'est
+   * trois occasions d'en oublier une — le défaut même que `resolveDelegation`
+   * existe pour clore.
+   */
+  allowInplaceWrite: boolean;
   /**
    * Le réseau sera-t-il disponible ? Déjà confronté à ce que l'agent retenu
    * permet — la demande tri-état, elle, s'arrête ici.
@@ -140,6 +154,35 @@ export async function resolveDelegation(config: OrchConfig, root: string, params
   const mode: TaskMode = params.mode ?? role?.mode ?? config.policy.default_mode;
   const isolation: Isolation | "auto" = params.isolation ?? role?.isolation ?? config.policy.default_isolation;
 
+  // Avant tout le reste, et avant que quoi que ce soit ne soit écrit sur le
+  // disque : une tâche en écriture n'a pas le droit de s'exécuter dans l'arbre
+  // de travail de l'utilisateur sans opt-in assumé. `prepareIsolation` rend le
+  // même verdict — `decideInplaceWrite` est pure, les deux ne peuvent pas
+  // diverger — mais plus tard, une fois le répertoire de tâche créé ; ici le
+  // refus ne laisse rien derrière lui, et son motif nomme la couche à corriger.
+  //
+  // L'état git n'est interrogé que là où il peut changer la réponse : les deux
+  // commandes de `usableRepoRoot` ne sont pas gratuites, et chaque délégation
+  // les paierait pour un verdict connu d'avance. Quand la garde est inactive,
+  // `repoUsable: false` conduit `decideInplaceWrite` au même « non refusé »
+  // que les autres gardes auraient de toute façon rendu.
+  const inplaceUnderReview = isolation === "inplace" && mode === "write" && !config.policy.allow_inplace_write;
+  const repo = inplaceUnderReview ? await usableRepoRoot(root) : null;
+  const isolationSource: IsolationSource =
+    params.isolation !== undefined ? "explicit" : role !== null ? "role" : "policy";
+  const inplaceWrite = decideInplaceWrite({
+    requested: isolation,
+    mode,
+    repoUsable: repo !== null,
+    allowed: config.policy.allow_inplace_write,
+    source: isolationSource,
+    ...(repo !== null ? { repo } : {}),
+    ...(role ? { roleName: role.name } : {}),
+  });
+  if (inplaceWrite.refused) {
+    return { error: `${inplaceWrite.reason} ${inplaceWrite.remedy}` };
+  }
+
   // Après le mode, dont la décision dépend : un agent qui ne sait ouvrir le
   // réseau qu'en écriture ne peut être jugé qu'une fois le mode connu. Et
   // avant que quoi que ce soit ne soit écrit sur le disque — un refus ne
@@ -166,7 +209,14 @@ export async function resolveDelegation(config: OrchConfig, root: string, params
     context = [role.systemPrompt, context].filter((part) => part && part.trim() !== "").join("\n\n---\n\n");
   }
 
-  const result: ResolvedDelegation = { agentId, mode, isolation, network: netDecision.available, timeoutMs };
+  const result: ResolvedDelegation = {
+    agentId,
+    mode,
+    isolation,
+    allowInplaceWrite: config.policy.allow_inplace_write,
+    network: netDecision.available,
+    timeoutMs,
+  };
   if (netDecision.warning !== undefined) result.networkWarning = netDecision.warning;
   if (params.role) result.role = params.role;
   if (context !== undefined) result.context = context;

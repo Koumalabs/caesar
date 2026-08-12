@@ -65,14 +65,30 @@ export async function createSession(root: string): Promise<McpSession> {
  * pu produire le sien. Deux cas, selon l'endroit où l'échec est survenu :
  *
  * - avant même `store.create` (p. ex. isolation "worktree" demandée hors
- *   d'un dépôt git) : aucun enregistrement n'existe encore, on en crée un ;
+ *   d'un dépôt git, ou "inplace" refusée en écriture) : aucun enregistrement
+ *   n'existe encore, on en crée un ;
  * - après (p. ex. `diffWorktree` qui échoue de façon inattendue) : on
  *   termine l'enregistrement existant plutôt que de le dupliquer. `pid` est
  *   explicitement effacé : le processus fils, s'il a été lancé, est déjà
  *   sorti par construction (`runAgentProcess` ne résout qu'une fois le fils
  *   terminé), un pid encore renseigné à ce stade serait obsolète.
+ *
+ * L'enregistrement neuf décrit ce que l'appelant a **demandé**, pas des
+ * valeurs de remplissage : `isolation: "inplace"` et `mode: "read-only"`
+ * étaient codés en dur ici, si bien qu'une délégation en écriture refusée
+ * laissait dans le store la trace exactement inverse de sa demande. Le refus
+ * d'écriture en place (voir `isolation.ts`) rend ce chemin ordinaire plutôt
+ * qu'exceptionnel : il ne peut plus se permettre de mentir. Faute de décision
+ * d'isolation prise — `prepareIsolation` n'a pas abouti — `"auto"` est
+ * rabattu sur `"inplace"`, seule valeur constatable : aucun worktree n'a été
+ * créé.
  */
-async function synthesizeFailure(store: TaskStore, taskId: string, agentId: string, error: unknown): Promise<TaskOutcome> {
+async function synthesizeFailure(
+  store: TaskStore,
+  input: RunTaskInput & { taskId: string },
+  error: unknown,
+): Promise<TaskOutcome> {
+  const { taskId, agentId } = input;
   const message = error instanceof Error ? error.message : String(error);
   const now = new Date().toISOString();
 
@@ -84,18 +100,19 @@ async function synthesizeFailure(store: TaskStore, taskId: string, agentId: stri
     const fresh: TaskRecord = {
       id: taskId,
       agent: agentId,
-      objective: "",
+      objective: input.objective,
       status: "failed",
       created_at: now,
       started_at: now,
       ended_at: now,
       task_dir: "",
-      workspace: "",
-      isolation: "inplace",
-      mode: "read-only",
+      workspace: input.workspace,
+      isolation: input.isolation && input.isolation !== "auto" ? input.isolation : "inplace",
+      mode: input.mode,
       report_via: "file",
-      depth: 0,
+      depth: input.depth ?? 0,
     };
+    if (input.role !== undefined) fresh.role = input.role;
     await store.create(fresh);
     record = fresh;
   }
@@ -118,27 +135,28 @@ async function synthesizeFailure(store: TaskStore, taskId: string, agentId: stri
  * disque, mais la promesse de la session, elle, ne rejette jamais — c'est la
  * garantie que ce module porte (voir l'en-tête du fichier).
  */
-function buildInMemoryFailureOutcome(taskId: string, agentId: string, error: unknown): TaskOutcome {
+function buildInMemoryFailureOutcome(input: RunTaskInput & { taskId: string }, error: unknown): TaskOutcome {
   const message = error instanceof Error ? error.message : String(error);
   const now = new Date().toISOString();
   const record: TaskRecord = {
-    id: taskId,
-    agent: agentId,
-    objective: "",
+    id: input.taskId,
+    agent: input.agentId,
+    objective: input.objective,
     status: "failed",
     created_at: now,
     started_at: now,
     ended_at: now,
     task_dir: "",
-    workspace: "",
-    isolation: "inplace",
-    mode: "read-only",
+    workspace: input.workspace,
+    isolation: input.isolation && input.isolation !== "auto" ? input.isolation : "inplace",
+    mode: input.mode,
     report_via: "file",
-    depth: 0,
+    depth: input.depth ?? 0,
   };
+  if (input.role !== undefined) record.role = input.role;
   const report = ReportSchema.parse({
     protocol: REPORT_PROTOCOL,
-    task_id: taskId,
+    task_id: input.taskId,
     status: "failed",
     summary: `Tâche interrompue avant son terme, et la trace elle-même n'a pas pu être écrite dans le store : ${message}`,
   });
@@ -154,12 +172,12 @@ function buildInMemoryFailureOutcome(taskId: string, agentId: string, error: unk
 export function launchTask(session: McpSession, input: RunTaskInput & { taskId: string }, controller: AbortController): SessionTask {
   const promise = runTask({ store: session.store, root: session.root, queue: session.queue }, input).catch(async (error: unknown) => {
     try {
-      return await synthesizeFailure(session.store, input.taskId, input.agentId, error);
+      return await synthesizeFailure(session.store, input, error);
     } catch (storeError) {
       // Même la trace de repli n'a pas pu être déposée dans le store : on ne
       // laisse jamais cette promesse rejeter pour autant (voir le point de
       // vigilance du brief).
-      return buildInMemoryFailureOutcome(input.taskId, input.agentId, storeError);
+      return buildInMemoryFailureOutcome(input, storeError);
     }
   });
   const entry: SessionTask = { agentId: input.agentId, startedAt: new Date().toISOString(), controller, promise };

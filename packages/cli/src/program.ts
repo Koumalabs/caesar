@@ -365,7 +365,10 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     .option("--purpose <text>", "Intention du rôle, en une phrase.")
     .option("--agents <ids>", "Agents candidats, dans l'ordre de repli, séparés par des virgules (a,b,c).")
     .option("--mode <mode>", "\"read-only\" ou \"write\".")
-    .option("--isolation <isolation>", "\"inplace\", \"worktree\" ou \"auto\" (défaut : auto).")
+    .option(
+      "--isolation <isolation>",
+      "\"worktree\" (atelier dédié sur une branche jetable), \"auto\" (défaut, choisit le worktree en écriture) ou \"inplace\" — ce dernier refusé en écriture dans un dépôt git sans allow_inplace_write.",
+    )
     .option("--network <network>", "\"auto\" (défaut), \"on\" (refuse la délégation si l'agent ne sait pas ouvrir le réseau) ou \"off\".")
     .option("--timeout <durée>", "Délai maximal, p. ex. \"10m\" (défaut : 10m).")
     .action(
@@ -419,7 +422,10 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     .option("--role <name>", "Rôle à travers lequel choisir l'agent.")
     .option("--agent <id>", "Agent à utiliser directement (l'emporte sur --role).")
     .option("--mode <mode>", "\"read-only\" ou \"write\".")
-    .option("--isolation <isolation>", "\"inplace\", \"worktree\" ou \"auto\".")
+    .option(
+      "--isolation <isolation>",
+      "\"worktree\" : atelier dédié — branche jetable, plus les fichiers non suivis déclarés sous [worktree] et son setup déjà lancé. \"auto\" (défaut) le choisit en écriture dès qu'un dépôt git le permet. \"inplace\" écrit dans votre arbre de travail, et est refusé en écriture dans un dépôt git utilisable sans allow_inplace_write ; si le worktree paraît incomplet, complétez [worktree] plutôt que d'y renoncer.",
+    )
     .option("--network <network>", "\"auto\" (défaut), \"on\" (refuse la délégation si l'agent ne sait pas ouvrir le réseau) ou \"off\".")
     .option("--timeout <durée>", "Délai maximal, p. ex. \"10m\".")
     .option("--model <model>", "Modèle à demander à l'agent, s'il le supporte.")

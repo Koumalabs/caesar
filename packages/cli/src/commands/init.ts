@@ -19,7 +19,16 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { configPathFor, defaultConfig, isEnoent, loadConfig, projectConfigPath, repoRoot, saveLayer } from "@orch/core";
+import {
+  configPathFor,
+  defaultConfig,
+  detectUntrackedNeeds,
+  isEnoent,
+  loadConfig,
+  projectConfigPath,
+  repoRoot,
+  saveLayer,
+} from "@orch/core";
 import type { Io } from "../output.js";
 import { VERSION } from "../version.js";
 import {
@@ -156,7 +165,16 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
   // défaut I11 que cette tâche corrige (la couche figerait les valeurs par
   // défaut, masquant toute configuration globale). Ce fichier vide marque
   // simplement l'initialisation du projet (garde-fou --force ci-dessus).
-  await saveLayer("project", root, {});
+  //
+  // `[worktree]` fait exception, et pour une raison précise : ce n'est pas une
+  // valeur par défaut mais un **fait de ce projet-ci** — ce que son worktree
+  // doit emporter pour qu'on puisse y travailler. Sans cette section, un
+  // worktree ne contient que les fichiers suivis, l'isolation devient
+  // inexploitable, et la contourner par `isolation = "inplace"` reste la seule
+  // issue praticable : le défaut d'origine. Rien n'est écrit quand rien n'est
+  // détecté — une section vide ferait croire à un réglage.
+  const worktree = await detectUntrackedNeeds(root);
+  await saveLayer("project", root, worktree ? { worktree } : {});
 
   const warnings: string[] = [];
   const isGitRepo = (await repoRoot(root)) !== null;
@@ -175,6 +193,7 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
       roles_dir: rolesDir,
       role_files: roleFiles,
       gitignore: gitignore ? { path: gitignore.path, added: gitignore.added } : null,
+      worktree: worktree ?? null,
       warnings,
     });
   } else {
@@ -193,6 +212,17 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
             ? `.gitignore complété : ${homePath(gitignore.path)} (+${gitignore.added.length} ligne${gitignore.added.length > 1 ? "s" : ""})`
             : `.gitignore déjà à jour : ${homePath(gitignore.path)}`),
       );
+    }
+    if (worktree) {
+      // Annoncé plutôt que déposé en silence : ces chemins seront recopiés
+      // dans chaque worktree et ces commandes y tourneront avant chaque
+      // sous-agent. C'est une supposition sur le projet, et elle se corrige
+      // dans le fichier.
+      const parts = [
+        worktree.copy.length > 0 ? `copie ${worktree.copy.join(", ")}` : "",
+        worktree.setup.length > 0 ? `lance ${worktree.setup.join(" ; ")}` : "",
+      ].filter(Boolean);
+      printDone(io, `Atelier des sous-agents ([worktree]) : ${parts.join(" puis ")}`);
     }
     for (const warning of warnings) printWarning(io, warning);
   }

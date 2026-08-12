@@ -58,6 +58,7 @@ const FIELDS: Field_[] = [
   "max_parallel",
   "max_depth",
   "allow_recursion",
+  "allow_inplace_write",
   "allowed",
   "denied",
 ];
@@ -70,6 +71,7 @@ const FIELD_LABELS: Record<Field_, string> = {
   max_parallel: "Tâches en parallèle",
   max_depth: "Profondeur maximale",
   allow_recursion: "Délégation récursive",
+  allow_inplace_write: "Écriture en place",
   allowed: "Agents autorisés",
   denied: "Agents refusés",
 };
@@ -83,6 +85,7 @@ const TOML_KEYS: Record<Field_, string> = {
   max_parallel: "max_parallel",
   max_depth: "max_depth",
   allow_recursion: "allow_recursion",
+  allow_inplace_write: "allow_inplace_write",
   allowed: "allowed",
   denied: "denied",
 };
@@ -97,6 +100,8 @@ const FIELD_HINTS: Record<Field_, string> = {
   max_parallel: "Nombre de tâches menées de front.",
   max_depth: "Un agent délégataire ne peut plus déléguer une fois cette profondeur atteinte.",
   allow_recursion: 'Désactivé, l\'agent "claude" est refusé : déléguer à Claude depuis Claude Code serait une récursion.',
+  allow_inplace_write:
+    'Désactivé, une tâche en écriture ne peut pas demander "inplace" dans un dépôt git : elle travaille sur une branche jetable, dont "orch diff" montre le résultat. Activé, le sous-agent écrit dans votre arbre de travail, sur votre branche courante, mêlé à vos propres modifications.',
   allowed: "Liste blanche. Vide : tout agent non refusé passe. Non vide : seuls les agents listés passent.",
   denied: "Liste noire — elle l'emporte toujours sur la liste blanche.",
 };
@@ -149,6 +154,8 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
         else if (field === "default_mode") onChange(updatePolicy(state, { default_mode: cycle(MODE_OPTIONS, policy.default_mode) }));
         else if (field === "default_network") onChange(updatePolicy(state, { default_network: cycle(NETWORK_OPTIONS, policy.default_network) }));
         else if (field === "allow_recursion") onChange(updatePolicy(state, { allow_recursion: !policy.allow_recursion }));
+        else if (field === "allow_inplace_write")
+          onChange(updatePolicy(state, { allow_inplace_write: !policy.allow_inplace_write }));
         else if (field === "max_parallel") setEditingAndNotifyApp({ field: "max_parallel", buffer: String(policy.max_parallel) });
         else if (field === "max_depth") setEditingAndNotifyApp({ field: "max_depth", buffer: String(policy.max_depth) });
         else if (field === "default_timeout_ms") setEditingAndNotifyApp({ field: "default_timeout_ms", buffer: formatMs(policy.default_timeout_ms) });
@@ -208,6 +215,8 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
         return { text: String(policy.max_depth) };
       case "allow_recursion":
         return policy.allow_recursion ? { text: "activée", fg: WARN } : { text: "désactivée", fg: OK };
+      case "allow_inplace_write":
+        return policy.allow_inplace_write ? { text: "autorisée", fg: WARN } : { text: "refusée", fg: OK };
       case "allowed":
         return policy.allowed.length > 0
           ? { text: policy.allowed.join(", ") }

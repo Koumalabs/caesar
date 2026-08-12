@@ -1,5 +1,7 @@
 /**
- * Inventaire et nettoyage des worktrees jetables laissés par les tâches.
+ * Inventaire et nettoyage de ce que les tâches laissent derrière elles :
+ * leurs worktrees jetables, et leurs enregistrements restés « en cours »
+ * alors que plus personne ne les conduit.
  *
  * Toute la décision vit ici, et non dans le CLI : les autres façades peuvent
  * ainsi présenter exactement les mêmes suppressions et conservations. Une
@@ -7,16 +9,23 @@
  * n'est supprimée que si son worktree est propre, sauf demande explicite avec
  * `force`. Les répertoires sous `.orch/wt` qui ne correspondent à aucun
  * enregistrement worktree encore présent sont traités comme orphelins.
+ *
+ * Les deux nettoyages sont dans le même fichier parce que le premier
+ * conditionne le second : un enregistrement bloqué « running » protège son
+ * worktree indéfiniment (`kept: active`), et le processus qui aurait dû le
+ * conclure n'existe plus pour lever cette protection.
  */
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
 import type { Dirent } from "node:fs";
-import { access, mkdir, readFile, readdir, rmdir, unlink, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { access, readdir, realpath } from "node:fs/promises";
+import { basename, isAbsolute, join, relative as relative_, resolve } from "node:path";
 import { promisify } from "node:util";
-import type { TaskRecord, TaskStatus } from "../store.js";
+import { REPORT_PROTOCOL, ReportSchema, readReport, taskPaths, writeReport } from "@orch/protocol";
+import type { TaskRecord, TaskStatus, TaskStore } from "../store.js";
 import { fileTaskStore } from "../store.js";
-import { removeWorktree } from "./worktree.js";
+import { acquireLease, inspectLease, purgeLease, releaseLease } from "./lock.js";
+import type { Lease, LeaseInspection } from "./lock.js";
+import { listGitWorktrees, removeWorktree, repoRoot } from "./worktree.js";
 import type { WorktreeHandle } from "./worktree.js";
 
 const execFileAsync = promisify(execFile);
@@ -48,6 +57,14 @@ export interface WorktreeGcResult {
   removed: number;
   wouldRemove: number;
   kept: number;
+  /**
+   * Les tâches conclues d'office parce que le processus qui les conduisait
+   * avait disparu — voir `sweepAbandonedTasks`. En `dryRun`, celles qui
+   * l'auraient été : rien n'est écrit, mais leurs worktrees sont décomptés
+   * comme collectables, sans quoi l'aperçu annoncerait une conservation que
+   * le passage réel ne ferait pas.
+   */
+  abandoned: AbandonedTask[];
 }
 
 interface Candidate {
@@ -57,164 +74,150 @@ interface Candidate {
   status?: TaskStatus;
 }
 
-function inUseDirectory(root: string, id: string): string {
-  // L'identifiant est fourni par l'appelant avant que le store ait pu le
-  // valider. Son empreinte, de taille fixe et sans séparateur, ne peut jamais
-  // s'échapper du répertoire des marqueurs.
-  const safeName = createHash("sha256").update(id).digest("hex");
-  return join(root, WORKTREES_IN_USE_DIR, `${safeName}.lock`);
-}
-
-function inUseFile(root: string, id: string): string {
-  return join(inUseDirectory(root, id), "marker.json");
-}
-
-interface WorktreeInUseMarker {
-  pid: number;
-  token: string;
-}
-
-export interface WorktreeInUseLease {
+/**
+ * Le bail que le runner pose sur l'identifiant d'une tâche, avant même que son
+ * worktree existe sur le disque.
+ *
+ * Reste un type propre à ce module plutôt qu'un alias de `Lease` : les
+ * appelants raisonnent en identifiants de tâche, pas en clés de verrou.
+ */
+export interface WorktreeInUseLease extends Lease {
   id: string;
-  token: string;
-  directory: string;
-  path: string;
 }
-
-type MarkerInspection =
-  | { state: "absent" }
-  | { state: "active"; marker: WorktreeInUseMarker; directory: string; path: string }
-  | { state: "stale"; marker: WorktreeInUseMarker; directory: string; path: string }
-  | { state: "unknown"; error: string };
 
 /**
  * Marque un identifiant avant que son worktree soit exposé sur le disque.
  * Le runner conserve ce marqueur jusqu'à sa terminaison afin qu'un GC
  * concurrent ne confonde jamais la fenêtre pré-store avec un orphelin.
+ *
+ * Le mécanisme lui-même vit désormais dans `lock.ts`, d'où un second usage l'a
+ * tiré (l'exclusivité d'écriture sur un workspace). Le contrat de cette
+ * fonction est inchangé, motif de refus compris.
  */
 export async function markWorktreeInUse(root: string, id: string): Promise<WorktreeInUseLease> {
-  const dir = join(root, WORKTREES_IN_USE_DIR);
-  await mkdir(dir, { recursive: true });
-  const directory = inUseDirectory(root, id);
-  const path = inUseFile(root, id);
-
-  for (;;) {
-    const token = randomUUID();
-    const marker: WorktreeInUseMarker = { pid: process.pid, token };
-    try {
-      // Le répertoire joue le rôle de verrou exclusif. Il reste occupé
-      // jusqu'à la libération du propriétaire et ne peut pas être remplacé
-      // entre la vérification du jeton et sa suppression.
-      await mkdir(directory);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const inspection = await inspectWorktreeMarker(root, id);
-      if (inspection.state === "active") {
-        throw new Error(`Tâche "${id}" déjà en cours de préparation ou d'exécution.`);
-      }
-      if (inspection.state === "unknown") {
-        throw new Error(`Impossible de vérifier le marqueur de la tâche "${id}" : ${inspection.error}`);
-      }
-      if (inspection.state === "stale" && !(await purgeMarker(inspection))) {
-        throw new Error(`Impossible de réclamer le marqueur périmé de la tâche "${id}" : une autre opération le nettoie.`);
-      }
-      // Marqueur absent ou périmé purgé : retente la prise exclusive.
-      continue;
-    }
-
-    try {
-      await writeFile(path, JSON.stringify(marker) + "\n", { encoding: "utf8", flag: "wx" });
-      return { id, token, directory, path };
-    } catch (error) {
-      await unlink(path).catch(() => {});
-      await rmdir(directory).catch(() => {});
-      throw error;
-    }
-  }
+  const lease = await acquireLease(join(root, WORKTREES_IN_USE_DIR), id, {
+    describeHolder: () => `Tâche "${id}" déjà en cours de préparation ou d'exécution.`,
+  });
+  return { ...lease, id };
 }
 
 /** Retire au mieux le marqueur, seulement si le jeton du propriétaire correspond encore. */
 export async function clearWorktreeInUse(lease: WorktreeInUseLease): Promise<void> {
-  try {
-    await removeMarker(lease.directory, lease.path, lease.token);
-  } catch {
-    // La libération ne doit jamais masquer l'issue de la tâche.
-  }
+  await releaseLease(lease);
 }
 
-function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM signifie que le processus existe mais ne peut pas être signalé.
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
-  }
+function inspectWorktreeMarker(root: string, id: string): Promise<LeaseInspection> {
+  return inspectLease(join(root, WORKTREES_IN_USE_DIR), id);
 }
 
-async function inspectWorktreeMarker(root: string, id: string): Promise<MarkerInspection> {
-  const directory = inUseDirectory(root, id);
-  const path = inUseFile(root, id);
-  let raw: string;
-  try {
-    raw = await readFile(path, "utf8");
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") {
-      // Le répertoire peut ne pas exister (absence normale) ou être présent
-      // sans fichier (prise/libération interrompue) : seul le premier cas est
-      // réellement absent.
-      try {
-        await access(directory);
-        return { state: "unknown", error: "répertoire de marqueur incomplet" };
-      } catch {
-        return { state: "absent" };
-      }
+// ---------------------------------------------------------------------------
+// Tâches abandonnées
+// ---------------------------------------------------------------------------
+
+/** Une tâche que le store dit encore active, alors que le processus qui la conduisait n'existe plus. */
+export interface AbandonedTask {
+  id: string;
+  /** Le statut que le store portait encore : "running", ou "pending" si la tâche est morte avant son lancement. */
+  status: TaskStatus;
+  /** Le processus orchestrateur disparu, tel que son marqueur le nommait. */
+  pid: number;
+}
+
+/**
+ * Les tâches dont l'orchestrateur est mort sans les conclure.
+ *
+ * Le statut d'une tâche est écrit par le processus qui la conduit, dans son
+ * `finally` : tué (`kill -9`, fermeture de la session MCP qui l'hébergeait,
+ * arrêt de la machine), il ne l'écrit jamais. L'enregistrement reste
+ * « running » pour toujours — `orch ps` l'affiche indéfiniment en tête,
+ * `orch watch` la suit sans fin, et son worktree, protégé comme celui d'une
+ * tâche active, n'est plus jamais collecté. Rien, jusqu'ici, ne réconciliait
+ * cet état ; les autres verrous du dépôt, eux, se réparent tous à la lecture
+ * (`reclaimDead` dans `slots.ts`, `purgeLease` dans `lock.ts`).
+ *
+ * La preuve de la mort est le marqueur que `markWorktreeInUse` pose **avant**
+ * l'enregistrement et ne retire qu'**après** le statut final : tant qu'une
+ * tâche est réellement conduite, son marqueur nomme un processus vivant.
+ * Un marqueur périmé (`stale` : le pid n'existe plus) est donc un fait daté
+ * et positif, jamais une déduction.
+ *
+ * Un marqueur **absent** ne conclut rien, volontairement : l'absence n'est pas
+ * une preuve de mort. Un enregistrement écrit par autre chose que le moteur —
+ * une réparation à la main, un jeu d'essai — ne doit pas être déclaré mort
+ * parce qu'il n'a jamais pris de marqueur. `orch cancel <id>` reste la sortie
+ * manuelle : il marque déjà « annulée » une tâche dont le pid a disparu.
+ */
+export function detectAbandonedTasks(root: string, store: TaskStore = fileTaskStore(root)): Promise<AbandonedTask[]> {
+  return collectAbandoned(root, store, false);
+}
+
+/**
+ * Conclut les tâches abandonnées : marqueur repris, statut "failed",
+ * `ended_at` posé, `pid` effacé.
+ *
+ * "failed" plutôt qu'un nouveau statut : l'issue est celle que le `finally` du
+ * moteur écrit déjà lorsqu'il perd une tâche en route, et un septième statut
+ * traverserait le protocole, le CLI, le TUI et les codes de sortie pour dire
+ * la même chose. Le rapport, lui, dit ce qui s'est réellement passé — c'est
+ * là que la nuance a un lecteur.
+ *
+ * Le marqueur est repris **avant** l'écriture du statut : sa reprise est
+ * exclusive (`purgeLease`), elle sert donc de mutex entre deux balayages
+ * simultanés. Celui qui perd la course ne conclut rien.
+ */
+export function sweepAbandonedTasks(root: string, store: TaskStore = fileTaskStore(root)): Promise<AbandonedTask[]> {
+  return collectAbandoned(root, store, true);
+}
+
+/** Le constat, commun aux deux ; `commit` seul décide s'il est aussi inscrit. */
+async function collectAbandoned(root: string, store: TaskStore, commit: boolean): Promise<AbandonedTask[]> {
+  const records = await store.list({ status: ["pending", "running"] });
+  const abandoned: AbandonedTask[] = [];
+  for (const record of records) {
+    const marker = await inspectWorktreeMarker(root, record.id);
+    if (marker.state !== "stale") continue;
+    if (commit) {
+      if (!(await purgeLease(marker))) continue;
+      await finalizeAbandoned(store, record, marker.marker.pid);
     }
-    return { state: "unknown", error: error instanceof Error ? error.message : String(error) };
+    abandoned.push({ id: record.id, status: record.status, pid: marker.marker.pid });
   }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    return { state: "unknown", error: error instanceof Error ? error.message : String(error) };
-  }
-  if (typeof parsed !== "object" || parsed === null || !("pid" in parsed) || !("token" in parsed)) {
-    return { state: "unknown", error: "contenu de marqueur invalide" };
-  }
-  const { pid, token } = parsed as { pid?: unknown; token?: unknown };
-  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0 || typeof token !== "string" || token === "") {
-    return { state: "unknown", error: "contenu de marqueur invalide" };
-  }
-  const marker = { pid, token };
-  return processIsAlive(pid) ? { state: "active", marker, directory, path } : { state: "stale", marker, directory, path };
+  return abandoned;
 }
 
-async function removeMarker(directory: string, path: string, token: string): Promise<boolean> {
-  const cleanupLock = join(directory, "cleanup.lock");
-  try {
-    await mkdir(cleanupLock);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
-    throw error;
+/**
+ * Écrit le rapport d'une tâche abandonnée, puis son statut final.
+ *
+ * Le rapport déjà présent n'est **jamais** écrasé : un agent peut très bien
+ * avoir déposé le sien juste avant que l'orchestrateur ne disparaisse, et
+ * c'est alors le seul témoignage de ce qu'il a fait. Le statut du processus
+ * reste "failed" pour autant : personne n'a vu son code de sortie, et le
+ * recoupement avec git n'a jamais eu lieu — `report_status` porte l'autre
+ * niveau, comme partout ailleurs.
+ */
+async function finalizeAbandoned(store: TaskStore, record: TaskRecord, pid: number): Promise<void> {
+  const patch: Partial<TaskRecord> = { status: "failed", ended_at: new Date().toISOString(), pid: undefined };
+
+  if (record.task_dir) {
+    const paths = taskPaths(record.task_dir);
+    const existing = await readReport(paths);
+    if (existing) {
+      patch.report_status = existing.status;
+    } else {
+      const report = ReportSchema.parse({
+        protocol: REPORT_PROTOCOL,
+        task_id: record.id,
+        status: "failed",
+        summary:
+          `Tâche interrompue avant son terme : le processus orchestrateur (pid ${pid}) a disparu sans la conclure. ` +
+          `Ce que l'agent avait fait avant cette disparition n'a jamais été recoupé avec git.`,
+      });
+      await writeReport(paths, report);
+      patch.report_status = report.status;
+    }
   }
 
-  try {
-    const current = JSON.parse(await readFile(path, "utf8")) as Partial<WorktreeInUseMarker>;
-    if (current.token !== token) return false;
-    await unlink(path);
-    await rmdir(cleanupLock);
-    await rmdir(directory);
-    return true;
-  } finally {
-    // Encore présent seulement si la vérification ou la suppression a échoué.
-    await rmdir(cleanupLock).catch(() => {});
-  }
-}
-
-async function purgeMarker(inspection: Extract<MarkerInspection, { state: "stale" }>): Promise<boolean> {
-  return removeMarker(inspection.directory, inspection.path, inspection.marker.token);
+  await store.update(record.id, patch);
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -267,24 +270,105 @@ async function recordedCandidates(root: string): Promise<Candidate[]> {
   return candidates.filter((candidate): candidate is Candidate => candidate !== null);
 }
 
+/**
+ * Les worktrees d'orch qu'aucun enregistrement du store ne réclame.
+ *
+ * Deux sources, réunies, chacune couvrant l'angle mort de l'autre :
+ *
+ * - **`git worktree list --porcelain`**, la vérité sur ce que git tient pour
+ *   un worktree, et la seule à donner la branche réellement associée. Le GC la
+ *   déduisait du nom de répertoire (`orch/<dirname>`) : une coïncidence de
+ *   construction, qui laisserait des branches derrière elle dès que les deux
+ *   cesseraient d'être fabriqués ensemble. Elle rapporte aussi les worktrees
+ *   dont l'arborescence a été effacée à la main, que le balayage de répertoire
+ *   ne peut par construction pas voir.
+ * - **le balayage de `.orch/wt/`**, pour les résidus que git ne connaît pas :
+ *   un répertoire laissé par une création interrompue avant que git ne
+ *   l'enregistre. `removeWorktree` échouera dessus, et l'entrée dira
+ *   `inspection_failed` plutôt que de laisser le répertoire invisible.
+ *
+ * Le dépôt est cherché **depuis `root`**, et les worktrees sont reconnus à
+ * leur emplacement sous `<dépôt>/.orch/wt/`, jamais sous `<root>/.orch/wt/` :
+ * `createWorktree` les crée sous la racine *git*, alors que `root` est la
+ * racine *orch* — `resolveRoot` (CLI) s'arrête au premier `.orch/` **ou**
+ * `.git/`. Quand `.orch/` vit dans un sous-répertoire d'un dépôt, les deux
+ * divergent, et le GC cherchait jusqu'ici là où rien n'est jamais créé : les
+ * orphelins y étaient purement invisibles.
+ */
 async function orphanCandidates(root: string, recorded: Candidate[]): Promise<Candidate[]> {
-  const worktreesDir = join(root, ".orch", "wt");
-  let entries: Dirent<string>[];
-  try {
-    entries = await readdir(worktreesDir, { withFileTypes: true });
-  } catch {
-    return [];
+  const repo = (await repoRoot(root)) ?? root;
+  const worktreesDir = join(repo, ".orch", "wt");
+  const byPath = new Map<string, Candidate>();
+
+  const canonicalWorktreesDir = await canonical(worktreesDir);
+  for (const entry of await listGitWorktrees(repo)) {
+    if (!isUnderDir(entry.path, canonicalWorktreesDir)) continue;
+    const id = basename(entry.path);
+    byPath.set(await canonical(entry.path), {
+      id,
+      handle: {
+        path: entry.path,
+        branch: entry.branch ?? `orch/${id}`,
+        // Le nettoyage ne compare jamais à la base ; seule la forme du handle
+        // partagé exige cette valeur.
+        baseRef: "HEAD",
+      },
+      orphan: true,
+    });
   }
 
-  const recordedPaths = new Set(recorded.map((candidate) => resolve(candidate.handle.path)));
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry): Candidate => ({
+  let dirEntries: Dirent<string>[] = [];
+  try {
+    dirEntries = await readdir(worktreesDir, { withFileTypes: true });
+  } catch {
+    // Aucun worktree n'a jamais été créé sous ce dépôt.
+  }
+  for (const entry of dirEntries) {
+    if (!entry.isDirectory()) continue;
+    const path = join(worktreesDir, entry.name);
+    const key = await canonical(path);
+    if (byPath.has(key)) continue;
+    byPath.set(key, {
       id: entry.name,
-      handle: { path: join(worktreesDir, entry.name), branch: `orch/${entry.name}`, baseRef: "HEAD" },
+      handle: { path, branch: `orch/${entry.name}`, baseRef: "HEAD" },
       orphan: true,
-    }))
-    .filter((candidate) => !recordedPaths.has(resolve(candidate.handle.path)));
+    });
+  }
+
+  const recordedPaths = new Set(await Promise.all(recorded.map((candidate) => canonical(candidate.handle.path))));
+  const candidates: Candidate[] = [];
+  for (const [key, candidate] of byPath) {
+    if (!recordedPaths.has(key)) candidates.push(candidate);
+  }
+  return candidates;
+}
+
+/** `path` est-il `dir` lui-même ou l'un de ses descendants ? Comparaison par chemins résolus, jamais par préfixe de chaîne. */
+function isUnderDir(path: string, dir: string): boolean {
+  const relative = relative_(resolve(dir), resolve(path));
+  return relative !== "" && !relative.startsWith("..") && !isAbsolute(relative);
+}
+
+/**
+ * Forme canonique d'un chemin, liens symboliques résolus — la seule sur
+ * laquelle deux chemins de provenances différentes peuvent être comparés.
+ *
+ * `git worktree list` rend des chemins réels, quand le store a enregistré
+ * celui que l'appelant lui avait donné : sur macOS, `/var/folders/…` d'un côté
+ * et `/private/var/folders/…` de l'autre désignent le même répertoire, et
+ * `resolve` seul ne le voit pas. Sans cette normalisation, chaque worktree
+ * enregistré réapparaissait aussi comme orphelin.
+ *
+ * Retombe sur `resolve` quand le chemin n'existe plus : c'est justement le cas
+ * d'un worktree dont l'arborescence a été effacée à la main, que `git worktree
+ * list` rapporte encore.
+ */
+async function canonical(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
 }
 
 /**
@@ -293,6 +377,25 @@ async function orphanCandidates(root: string, recorded: Candidate[]): Promise<Ca
  * calculée mais aucune suppression n'est effectuée.
  */
 export async function garbageCollectWorktrees(root: string, options: WorktreeGcOptions = {}): Promise<WorktreeGcResult> {
+  // Les commandes git s'exécutent depuis la racine du dépôt, pas depuis la
+  // racine orch : les deux divergent dès que `.orch/` vit dans un
+  // sous-répertoire d'un dépôt (voir `orphanCandidates`), et `git worktree
+  // remove` lancé hors du dépôt échouerait sur chaque candidat.
+  const repo = (await repoRoot(root)) ?? root;
+
+  // D'abord les tâches abandonnées, et avant toute lecture du store : leur
+  // statut « running » protège leur worktree (`kept: active`) alors que plus
+  // personne ne le tient. Sans ce passage, un orchestrateur tué condamnait son
+  // worktree — et sa branche, et le `node_modules` qu'on venait d'y cloner —
+  // à ne plus jamais être collectés. C'est aussi ici, et nulle part ailleurs,
+  // que le marqueur périmé d'une tâche sans worktree finit par être repris :
+  // le balayage des orphelins ne visite que ce que git ou `.orch/wt` connaît.
+  const abandoned = await collectAbandoned(root, fileTaskStore(root), !(options.dryRun ?? false));
+  // En `dryRun`, le store n'a pas bougé : leurs enregistrements disent encore
+  // "running" et les feraient conserver. L'aperçu doit montrer ce que le
+  // passage réel ferait, pas ce que l'inaction produit.
+  const abandonedIds = new Set(abandoned.map((task) => task.id));
+
   const recorded = await recordedCandidates(root);
   const orphans = await orphanCandidates(root, recorded);
   const candidates = [...recorded, ...orphans].sort((a, b) => a.id.localeCompare(b.id));
@@ -321,7 +424,7 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
         entries.push({ ...common, action: "kept", reason: "inspection_failed", error: marker.error });
         continue;
       }
-      if (marker.state === "stale" && !options.dryRun && !(await purgeMarker(marker))) {
+      if (marker.state === "stale" && !options.dryRun && !(await purgeLease(marker))) {
         entries.push({
           ...common,
           action: "kept",
@@ -332,7 +435,7 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
       }
     }
 
-    if (isActive(candidate.status)) {
+    if (isActive(candidate.status) && !abandonedIds.has(candidate.id)) {
       entries.push({ ...common, action: "kept", reason: "active" });
       continue;
     }
@@ -356,13 +459,29 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
     }
 
     const action: WorktreeGcAction = options.dryRun ? "would_remove" : "removed";
-    if (!options.dryRun) await removeWorktree(root, candidate.handle);
+    if (!options.dryRun) {
+      try {
+        await removeWorktree(repo, candidate.handle);
+      } catch (error) {
+        // Un résidu que git ne connaît pas (création interrompue avant son
+        // enregistrement) : le dire, plutôt que de faire échouer tout le
+        // nettoyage sur un répertoire que git refuse de reprendre en main.
+        entries.push({
+          ...common,
+          action: "kept",
+          reason: "inspection_failed",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
+    }
     entries.push({ ...common, action, reason: modified ? "modified" : "clean" });
   }
 
   return {
     dryRun: options.dryRun ?? false,
     force: options.force ?? false,
+    abandoned,
     entries,
     removed: entries.filter((entry) => entry.action === "removed").length,
     wouldRemove: entries.filter((entry) => entry.action === "would_remove").length,

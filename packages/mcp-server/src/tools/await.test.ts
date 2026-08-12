@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { markWorktreeInUse } from "@orch/core";
 import { writeQuestion } from "@orch/mcp-channel";
 import { withFakeAgentAsBin, withFakeHome } from "../../test/support.js";
 import { createSession } from "../session.js";
@@ -202,5 +203,43 @@ describe("orch_await", () => {
     ).tasks;
     expect(tasks["t_q"]?.pending).toBe(true);
     expect(tasks["t_q"]?.pending_questions).toEqual([expect.objectContaining({ id: "q1", question: "Quelle branche ?" })]);
+  });
+
+  /**
+   * Une tâche laissée par un serveur MCP qu'on a depuis fermé : son
+   * enregistrement dit "running" pour toujours, faute d'un processus vivant
+   * pour le conclure. La rendre `pending: true` reviendrait à conseiller
+   * d'attendre indéfiniment quelque chose que plus personne ne fait.
+   */
+  it("une tâche dont l'orchestrateur a disparu est conclue, pas rendue en attente", async () => {
+    const taskDir = join(root, ".orch", "tasks", "t_abandonnee");
+    await mkdir(taskDir, { recursive: true });
+    const session = await createSession(root);
+    await session.store.create({
+      id: "t_abandonnee",
+      agent: "codex",
+      objective: "obj",
+      status: "running",
+      created_at: new Date().toISOString(),
+      started_at: new Date().toISOString(),
+      task_dir: taskDir,
+      workspace: root,
+      isolation: "inplace",
+      mode: "write",
+      report_via: "channel",
+      depth: 0,
+    });
+    // Le marqueur qu'un orchestrateur tué laisse derrière lui.
+    const lease = await markWorktreeInUse(root, "t_abandonnee");
+    await writeFile(lease.path, JSON.stringify({ pid: 2_147_483_647, token: lease.token }) + "\n", "utf8");
+
+    const awaited = await orchAwait(session, { task_ids: ["t_abandonnee"] });
+
+    const tasks = (
+      awaited.structuredContent as { tasks: Record<string, { status: string; pending: boolean; report?: { status: string; summary: string } }> }
+    ).tasks;
+    expect(tasks["t_abandonnee"]?.pending).toBe(false);
+    expect(tasks["t_abandonnee"]?.status).toBe("failed");
+    expect(tasks["t_abandonnee"]?.report?.summary).toContain("disparu");
   });
 });
