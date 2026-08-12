@@ -117,6 +117,23 @@ describe("planAgentAssets", () => {
     expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("a//b.md") })).toThrow(/vide/);
   });
 
+  it("chemin d'asset invalide : contournement par antislash rejeté (segment antislash pur, et mélangé à des '/')", () => {
+    // Le contrat d'AgentAsset.path promet des séparateurs POSIX uniquement :
+    // un antislash n'est jamais une donnée légitime. Un découpage naïf sur
+    // "/" seul laisserait passer cette valeur (aucun "/", donc un unique
+    // segment opaque, ni ".." ni vide) alors qu'elle sort bel et bien de la
+    // racine une fois recombinée par path.join sous Windows — défaut
+    // signalé en revue.
+    const withPath = (path: string): AgentAsset[] => [{ kind: "skill", id: "orch", path, content: "x" }];
+    expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("..\\..\\..\\..\\evil.md") })).toThrow(/antislash/);
+    // Mélange "/" et "\" : la moitié POSIX du chemin ne doit pas suffire à le faire passer.
+    expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("references/..\\..\\evil.md") })).toThrow(
+      /antislash/,
+    );
+    // N'écrit rien sous root/ : l'échec est levé avant tout accès disque.
+    expect(readdirSync(root)).toEqual([]);
+  });
+
   it("strictement pur : l'arbre reste intact après l'appel", () => {
     planAgentAssets({ root, scope: "project", clients: [...MCP_CLIENTS], catalog: FULL_CATALOG });
     expect(readdirSync(root)).toEqual([]);
@@ -301,6 +318,45 @@ describe("fusion de <root>/.claude/settings.json", () => {
 
     expect(result.settings?.action).toBe("skip");
     expect(result.warnings.some((w) => w.includes(path))).toBe(true);
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  it('"permissions" présent mais non-objet (chaîne) : avertissement, fichier intact, pas de fusion silencieuse', async () => {
+    const path = join(root, ".claude", "settings.json");
+    await mkdir(dirname(path), { recursive: true });
+    const before = JSON.stringify({ permissions: "foo" });
+    await writeFile(path, before, "utf8");
+
+    const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: [] });
+
+    expect(result.settings?.action).toBe("skip");
+    expect(result.warnings.some((w) => w.includes(path) && w.includes("permissions"))).toBe(true);
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  it('"permissions": null (posé à la main par l\'utilisateur) : avertissement, jamais écrasé silencieusement', async () => {
+    const path = join(root, ".claude", "settings.json");
+    await mkdir(dirname(path), { recursive: true });
+    const before = JSON.stringify({ permissions: null });
+    await writeFile(path, before, "utf8");
+
+    const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: [] });
+
+    expect(result.settings?.action).toBe("skip");
+    expect(result.warnings.some((w) => w.includes(path))).toBe(true);
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  it('"permissions.allow" présent mais non-liste : avertissement, fichier intact', async () => {
+    const path = join(root, ".claude", "settings.json");
+    await mkdir(dirname(path), { recursive: true });
+    const before = JSON.stringify({ permissions: { allow: "tout" } });
+    await writeFile(path, before, "utf8");
+
+    const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: [] });
+
+    expect(result.settings?.action).toBe("skip");
+    expect(result.warnings.some((w) => w.includes(path) && w.includes("allow"))).toBe(true);
     expect(await readFile(path, "utf8")).toBe(before);
   });
 

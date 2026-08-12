@@ -220,10 +220,25 @@ export interface AgentAssetsOptions {
 // Validation des chemins — avant tout `join`
 // ---------------------------------------------------------------------------
 
-/** Rejette un chemin d'asset qui sortirait de son artefact : absolu, segment `..`, ou segment vide. Séparateurs POSIX uniquement (contrat d'`AgentAsset.path`). */
+/**
+ * Rejette un chemin d'asset qui sortirait de son artefact : absolu,
+ * antislash, segment `..`, ou segment vide.
+ *
+ * Le contrat d'`AgentAsset.path` promet des séparateurs POSIX uniquement
+ * (voir sa doc) — un antislash n'y est donc jamais un caractère de nom de
+ * fichier légitime. Rejeté explicitement plutôt que découpé comme un
+ * séparateur ou ignoré comme un caractère opaque : un découpage sur `/`
+ * seul laissait passer `"..\\..\\..\\..\\evil.md"` (aucun `/`, donc traité
+ * comme un unique segment sans `..`), qui échappe pourtant bel et bien à la
+ * racine une fois recombiné par `path.join` sous Windows — défaut trouvé en
+ * revue de cette tâche, voir `agent-assets.test.ts`.
+ */
 function assertSafeAssetPath(path: string): void {
   if (path.startsWith("/")) {
     throw new Error(`Chemin d'asset invalide : "${path}" est absolu (attendu relatif à l'artefact).`);
+  }
+  if (path.includes("\\")) {
+    throw new Error(`Chemin d'asset invalide : "${path}" contient un antislash — seuls les séparateurs POSIX ("/") sont acceptés.`);
   }
   for (const segment of path.split("/")) {
     if (segment === "") throw new Error(`Chemin d'asset invalide : "${path}" contient un segment vide.`);
@@ -231,10 +246,23 @@ function assertSafeAssetPath(path: string): void {
   }
 }
 
-/** Défense en profondeur : `skillDir`/`commandsDir` sont des constantes de la table, et `asset.path` est déjà validé — cette destination ne peut mathématiquement pas sortir de `base`, mais une erreur claire vaut mieux qu'un write silencieux ailleurs si l'invariant se rompait un jour. */
+/**
+ * Défense en profondeur : `skillDir`/`commandsDir` sont des constantes de la
+ * table, et `asset.path` est déjà validé (`assertSafeAssetPath`) — cette
+ * destination ne peut mathématiquement pas sortir de `base`, mais une erreur
+ * claire vaut mieux qu'un write silencieux ailleurs si l'invariant se
+ * rompait un jour.
+ *
+ * Agnostique au séparateur (découpage sur `/[\\/]/`, jamais sur `"../"` en
+ * dur) : sous Windows, `path.relative` rend ses résultats avec des
+ * antislashes, et un test codé sur le seul séparateur POSIX laissait passer
+ * cette même défense inopérante — trouvé dans la même revue que le défaut
+ * ci-dessus.
+ */
 function assertWithinBase(path: string, base: string): void {
   const rel = relative(base, path);
-  if (rel === ".." || rel.startsWith("../") || isAbsolute(rel)) {
+  const segments = rel.split(/[\\/]/);
+  if (isAbsolute(rel) || segments.includes("..")) {
     throw new Error(`Chemin résolu hors de la racine visée : "${path}" (racine : "${base}").`);
   }
 }
@@ -326,11 +354,18 @@ interface PlannedSettings extends AgentAssetSettingsMerge {
  * quand `permissions.allow` appartient à l'utilisateur et ne doit être
  * qu'augmenté.
  *
- * JSON invalide (ou racine non-objet) ⇒ `action: "skip"` et un avertissement
- * — jamais d'écriture qui écraserait un fichier que l'utilisateur n'a pas
- * fini d'éditer. N'agit qu'en portée projet, et seulement si `claude` fait
- * partie des cibles retenues ; `~/.claude/settings.json` n'est jamais touché
- * (portée globale hors de propos pour ce fichier).
+ * JSON invalide, racine non-objet, ou forme anormale de `permissions`/
+ * `permissions.allow` (présent mais pas un objet / pas une liste — `null`
+ * compris) ⇒ `action: "skip"` et un avertissement, jamais d'écriture. Ce
+ * dernier cas est délibérément traité comme le JSON invalide plutôt que
+ * silencieusement retombé sur `{}`/`[]` : un `"permissions": null` ou
+ * `"allow": "tout"` posé à la main par l'utilisateur est une valeur qu'il a
+ * choisie, pas une absence — l'écraser sans le dire aurait perdu cette
+ * intention sans qu'aucun signal n'apparaisse dans `warnings` (défaut trouvé
+ * en revue de cette tâche, voir `agent-assets.test.ts`). N'agit qu'en portée
+ * projet, et seulement si `claude` fait partie des cibles retenues ;
+ * `~/.claude/settings.json` n'est jamais touché (portée globale hors de
+ * propos pour ce fichier).
  */
 function computeSettingsMerge(
   opts: AgentAssetsOptions,
@@ -361,8 +396,24 @@ function computeSettingsMerge(
     };
   }
 
-  const permissions = isRecord(parsed["permissions"]) ? parsed["permissions"] : {};
-  const allow = Array.isArray(permissions["allow"]) ? (permissions["allow"] as unknown[]) : [];
+  const permissionsValue = parsed["permissions"];
+  if (permissionsValue !== undefined && !isRecord(permissionsValue)) {
+    return {
+      settings: { path, action: "skip", added: [] },
+      warning: `${path} : "permissions" n'est pas un objet (${JSON.stringify(permissionsValue)}) — permissions.allow non modifié.`,
+    };
+  }
+  const permissions = permissionsValue ?? {};
+
+  const allowValue = permissions["allow"];
+  if (allowValue !== undefined && !Array.isArray(allowValue)) {
+    return {
+      settings: { path, action: "skip", added: [] },
+      warning: `${path} : "permissions.allow" n'est pas une liste (${JSON.stringify(allowValue)}) — permissions.allow non modifié.`,
+    };
+  }
+  const allow: unknown[] = allowValue ?? [];
+
   const missing = SETTINGS_MANAGED_TOOLS.filter((tool) => !allow.includes(tool));
 
   if (missing.length === 0) {
