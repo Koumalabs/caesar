@@ -29,11 +29,11 @@
  * interdisent ; `opencode` est donc traité ici comme les clients à fichier.
  */
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { homeDirectory, isEnoent } from "./config.js";
+import { writeFileAtomic } from "./fs-atomic.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -122,13 +122,9 @@ async function readJsonFile(path: string): Promise<Record<string, unknown>> {
   }
 }
 
-/** Écriture atomique — fichier temporaire dans le même répertoire, puis `rename` — même motif que `config.ts`/`store.ts`. */
+/** Sérialisation JSON lisible (indentée) par-dessus `writeFileAtomic` (`fs-atomic.ts`). */
 async function writeJsonFileAtomic(path: string, data: unknown): Promise<void> {
-  const dir = dirname(path);
-  await mkdir(dir, { recursive: true });
-  const tmp = join(dir, `.orch-mcp-install.${randomUUID()}.tmp`);
-  await writeFile(tmp, JSON.stringify(data, null, 2) + "\n", "utf8");
-  await rename(tmp, path);
+  await writeFileAtomic(path, JSON.stringify(data, null, 2) + "\n");
 }
 
 /** N'écrase jamais le fichier : ne modifie que la clé `mergeKey.orch`, tout le reste (dont, pour Antigravity, `trustedWorkspaces`) est préservé tel quel. */

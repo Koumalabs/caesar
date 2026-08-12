@@ -16,8 +16,7 @@
  * intégralement : c'est le point de départ éditable d'un "preset" partagé
  * par tous les projets d'un même poste — voir le plan de la tâche 13.
  */
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   configPathFor,
@@ -28,6 +27,7 @@ import {
   projectConfigPath,
   repoRoot,
   saveLayer,
+  writeFileAtomic,
 } from "@orch/core";
 import type { Io } from "../output.js";
 import { VERSION } from "../version.js";
@@ -93,9 +93,9 @@ interface GitignoreResult {
  * dans sa propre sortie plutôt que cette fonction n'écrive un `.gitignore`
  * orphelin hors de tout dépôt.
  *
- * Écriture atomique — fichier temporaire dans le même répertoire puis
- * `rename` — même motif que `saveLayer` (`@orch/core`, `config.ts`) et
- * `packages/core/src/store.ts`, plutôt que réécrire `.gitignore` en place.
+ * Écriture atomique (`writeFileAtomic`, `@orch/core`) — même motif que
+ * `saveLayer` (`config.ts`) et `packages/core/src/store.ts`, plutôt que
+ * réécrire `.gitignore` en place.
  */
 async function completeGitignore(root: string, isGitRepo: boolean): Promise<GitignoreResult | null> {
   if (!isGitRepo) return null;
@@ -114,9 +114,7 @@ async function completeGitignore(root: string, isGitRepo: boolean): Promise<Giti
 
   const prefix = existing.length > 0 && !existing.endsWith("\n") ? existing + "\n" : existing;
   const content = prefix + added.join("\n") + "\n";
-  const tmp = join(root, `.gitignore.${randomUUID()}.tmp`);
-  await writeFile(tmp, content, "utf8");
-  await rename(tmp, path);
+  await writeFileAtomic(path, content);
   return { path, added };
 }
 

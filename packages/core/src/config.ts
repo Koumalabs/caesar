@@ -28,16 +28,16 @@
  * validation nomment systématiquement le fichier et le champ en cause, et
  * un fichier absent n'est jamais une erreur (voir `loadConfig`).
  */
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { ZodIssue } from "zod";
 import { z } from "zod";
 import { parse as parseToml, stringify as stringifyToml, TomlError } from "smol-toml";
 import type { Isolation, TaskMode } from "@orch/protocol";
 import { TaskModeSchema } from "@orch/protocol";
 import type { GenericAgentSpec } from "./registry/generic.js";
+import { writeFileAtomic } from "./fs-atomic.js";
 import { NETWORK_REQUESTS } from "./network.js";
 import type { NetworkRequest } from "./network.js";
 
@@ -874,8 +874,8 @@ const SAVE_HEADER =
  * préalable (`loadLayer`) et ne réécrire que le champ voulu dans l'override
  * relu, sous peine d'effacer le reste de ce qu'elle déclarait.
  *
- * Écriture atomique — fichier temporaire dans le même répertoire puis
- * `rename` — même motif que `packages/core/src/store.ts`.
+ * Écriture atomique (`writeFileAtomic`, `fs-atomic.ts`) — même motif que
+ * `packages/core/src/store.ts`.
  */
 export async function saveLayer(scope: ConfigScope, root: string, override: ConfigOverride): Promise<void> {
   const raw: Record<string, unknown> = {};
@@ -885,12 +885,7 @@ export async function saveLayer(scope: ConfigScope, root: string, override: Conf
   if (override.agents !== undefined) raw.agent = override.agents.map(fromAgentSpec);
   const content = SAVE_HEADER + stringifyToml(raw);
 
-  const path = configPathFor(scope, root);
-  const dir = dirname(path);
-  await mkdir(dir, { recursive: true });
-  const tmp = join(dir, `.config.${randomUUID()}.tmp`);
-  await writeFile(tmp, content, "utf8");
-  await rename(tmp, path);
+  await writeFileAtomic(configPathFor(scope, root), content);
 }
 
 export interface PolicyListEdit {
