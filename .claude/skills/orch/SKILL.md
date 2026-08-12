@@ -194,9 +194,11 @@ eventually proceeds on its own judgment, so silence is a decision too.
 
 **Applying is a decision, not a final step.** Nothing reaches the repository until it is applied.
 State what is being applied and which criterion it met; when it met none, say so and leave the
-worktree unapplied — `orch gc` collects the worktrees of finished tasks, keeping any that still
-carry changes unless `--force` (see `references/cli.md`). A diff nobody can defend is not cheaper
-for having been written elsewhere.
+worktree unapplied. Close the loop with `orch gc` once the session's delegations are settled:
+applied worktrees are collected on their own, and what gc keeps is exactly the work never applied
+— or modified since its application — to settle with `orch diff`/`orch apply` rather than a
+reflexive `--force` (see `references/cli.md`). A diff nobody can defend is not cheaper for having
+been written elsewhere.
 
 ## What not to do
 

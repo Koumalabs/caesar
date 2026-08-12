@@ -7,6 +7,13 @@ The CLI and the delegation tools are two façades over the same engine. Use the 
 tools do not expose: inspecting configuration, editing policy and roles, garbage-collecting
 worktrees, and passing raw arguments through to a provider.
 
+## Invocation
+
+`orch` is a standalone binary on the PATH — never a dependency of the project. `npx orch` always
+fails with `could not determine executable to run`, whatever the project's `package.json` says:
+call `orch` directly. When in doubt, `command -v orch` says where it lives and `orch doctor` says
+what it can reach.
+
 ## Getting started
 
 | Command | Arguments and flags |
@@ -91,6 +98,12 @@ be interrupted.
 
 `orch apply` applies a worktree task's diff to the main repository with `git apply --3way`. It never
 commits and never touches branches.
+
+`orch gc` removes the worktrees and branches of finished tasks. A worktree whose diff was applied
+(`orch apply`) is collected as long as nothing changed in it since the application — the
+application is recorded on the task, so gc never has to guess. What it keeps is exactly the work
+that was never applied, or modified after it: settle it with `orch diff`/`orch apply`, or discard
+it knowingly with `--force`.
 
 ## Configuring
 

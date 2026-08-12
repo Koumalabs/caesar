@@ -154,3 +154,29 @@ mission. A sub-agent that writes `{"status":"failed"}` and exits `0` produces ex
 **Remedy.** Check both before concluding anything. Treat the report status as the verdict on the
 mission and the diff as the record of what happened. `orch run` already crosses the two before
 returning exit code `0`.
+
+## `npx orch` fails: could not determine executable to run
+
+**Symptom.** Any `npx orch …` invocation fails immediately with npm's
+`could not determine executable to run`.
+
+**Cause.** `orch` is a standalone binary installed on the PATH, never an npm dependency of the
+project: there is nothing under `node_modules/.bin` for npx to find, whatever the project.
+
+**Remedy.** Call `orch` directly. `command -v orch` tells where the binary lives; `orch doctor`
+confirms what it can reach. If the shell finds nothing, the installation is missing — not the
+project's `package.json`.
+
+## `orch gc` keeps a worktree whose diff was already applied
+
+**Symptom.** `orch gc` reports a finished task's worktree as kept — "unintegrated changes", or
+"modified since its application" — even though its diff has landed in the workspace.
+
+**Cause.** Three possibilities. The diff entered the workspace by another path than `orch apply`
+(manual copy, re-implementation): the application was never recorded, and gc will not deduce it
+from content. Or the worktree changed after the application: what changed is precisely what was
+never applied. Or the application predates the version of orch that records it.
+
+**Remedy.** `orch diff <id>` shows what the worktree still carries. Re-run `orch apply <id>` if it
+should land; once settled — or when the work is known to be integrated — `orch gc --force` removes
+what gc could not prove applied.
