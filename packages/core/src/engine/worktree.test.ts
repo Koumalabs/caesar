@@ -4,16 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { taskPaths, writeTask } from "@orch/protocol";
+import { TASK_PROTOCOL, TaskSchema, taskPaths, writeTask } from "@orch/protocol";
 import type { Task } from "@orch/protocol";
+import { fileTaskStore } from "../store.js";
 import type { TaskRecord } from "../store.js";
 import {
-  applyWorktree,
+  applyRecordedWorktree,
   createWorktree,
   describeWorkspaceMismatch,
   diffWorktree,
   listGitWorktrees,
   loadWorktreeHandle,
+  patchDigest,
   removeWorktree,
   repoRoot,
   worktreesDirIgnored,
@@ -159,18 +161,6 @@ describe("worktree", () => {
         expect(diff.files.map((f) => f.path).sort()).toEqual(["deux.txt", "un.txt"]);
       });
 
-      it("son travail commité s'applique au dépôt principal", async () => {
-        // `applyWorktree` hérite de la correction sans changement : c'est
-        // `diffWorktree` qu'il appelle.
-        const handle = await createWorktree(root, "task-commit-apply");
-        await writeFile(join(handle.path, "livre.txt"), "contenu\n", "utf8");
-        await commitAll(handle.path, "travail de l'agent");
-
-        const result = await applyWorktree(root, handle);
-        expect(result).toEqual({ applied: true, conflicts: [] });
-        expect(await readFile(join(root, "livre.txt"), "utf8")).toBe("contenu\n");
-      });
-
       it("mêle un commit et du travail non commité dans le même diff", async () => {
         // Le cas réel de fin de tâche : quelques commits, puis des
         // modifications encore dans l'arbre de travail. Les deux mécanismes —
@@ -183,43 +173,6 @@ describe("worktree", () => {
         const diff = await diffWorktree(handle);
         expect(diff.files.map((f) => f.path).sort()).toEqual(["commite.txt", "en-cours.txt"]);
       });
-    });
-  });
-
-  describe("applyWorktree", () => {
-    it("applique proprement un patch sans conflit au dépôt principal", async () => {
-      const handle = await createWorktree(root, "task-apply-ok");
-      await writeFile(join(handle.path, "nouveau.txt"), "contenu\n", "utf8");
-
-      const result = await applyWorktree(root, handle);
-      expect(result).toEqual({ applied: true, conflicts: [] });
-      expect(await readFile(join(root, "nouveau.txt"), "utf8")).toBe("contenu\n");
-
-      // Réversible, sans effet de bord sur l'historique : rien n'est commité.
-      const status = await git(root, ["status", "--porcelain"]);
-      expect(status.trim()).not.toBe("");
-      const log = await git(root, ["log", "--oneline"]);
-      expect(log.trim().split("\n")).toHaveLength(1);
-    });
-
-    it("diff vide : n'échoue pas et ne change rien", async () => {
-      const handle = await createWorktree(root, "task-apply-empty");
-      const result = await applyWorktree(root, handle);
-      expect(result).toEqual({ applied: true, conflicts: [] });
-    });
-
-    it("renvoie les fichiers en conflit plutôt que de lever", async () => {
-      const handle = await createWorktree(root, "task-apply-conflict");
-      await writeFile(join(handle.path, "a.txt"), "hello\nbranche agent\n", "utf8");
-
-      // Le dépôt principal diverge sur la même ligne pendant que l'agent travaille.
-      await writeFile(join(root, "a.txt"), "hello\nbranche principale\n", "utf8");
-      await git(root, ["add", "a.txt"]);
-      await git(root, ["commit", "-q", "-m", "diverge"]);
-
-      const result = await applyWorktree(root, handle);
-      expect(result.applied).toBe(false);
-      expect(result.conflicts).toEqual(["a.txt"]);
     });
   });
 
@@ -446,5 +399,114 @@ describe("étape 0 — détecter avant de créer", () => {
       expect(message).toContain(root);
       expect(message).toContain("orch mcp install");
     });
+  });
+});
+
+describe("applyRecordedWorktree", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-apply-record-"));
+    await initRepo(root);
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  /** Une tâche worktree enregistrée, avec le task.json que relira loadWorktreeHandle. */
+  async function recordedTask(id: string): Promise<TaskRecord> {
+    const handle = await createWorktree(root, id);
+    const record: TaskRecord = {
+      id,
+      agent: "codex",
+      objective: "appliquer et enregistrer",
+      status: "succeeded",
+      created_at: "2026-08-12T09:00:00.000Z",
+      ended_at: "2026-08-12T09:01:00.000Z",
+      task_dir: join(root, ".orch", "tasks", id),
+      workspace: handle.path,
+      isolation: "worktree",
+      mode: "write",
+      branch: handle.branch,
+      report_via: "file",
+      depth: 0,
+    };
+    await fileTaskStore(root).create(record);
+    const paths = taskPaths(record.task_dir);
+    await writeTask(paths, TaskSchema.parse({
+      protocol: TASK_PROTOCOL,
+      id,
+      created_at: record.created_at,
+      agent: record.agent,
+      objective: record.objective,
+      mode: "write",
+      isolation: "worktree",
+      workspace: handle.path,
+      base_ref: handle.baseRef,
+      deadline_ms: 60_000,
+      report_path: paths.reportPath,
+      events_path: paths.eventsPath,
+    }));
+    return record;
+  }
+
+  it("applique le patch et inscrit applied_at + empreinte dans l'enregistrement", async () => {
+    const record = await recordedTask("t_enregistre");
+    await writeFile(join(record.workspace, "b.txt"), "travail\n", "utf8");
+
+    const result = await applyRecordedWorktree(root, fileTaskStore(root), record);
+
+    expect(result).toEqual({ outcome: "applied", conflicts: [], isEmpty: false });
+    expect(await readFile(join(root, "b.txt"), "utf8")).toBe("travail\n");
+    const relu = await fileTaskStore(root).get(record.id);
+    expect(relu?.applied_at).toBeDefined();
+    const handle = await loadWorktreeHandle(relu!);
+    expect(relu?.applied_patch_digest).toBe(patchDigest((await diffWorktree(handle!)).patch));
+  });
+
+  it("diff vide : outcome applied mais rien d'appliqué, rien d'enregistré", async () => {
+    const record = await recordedTask("t_vide");
+
+    const result = await applyRecordedWorktree(root, fileTaskStore(root), record);
+
+    expect(result).toEqual({ outcome: "applied", conflicts: [], isEmpty: true });
+    expect((await fileTaskStore(root).get(record.id))?.applied_at).toBeUndefined();
+  });
+
+  it("conflit : fichiers nommés, rien d'enregistré", async () => {
+    const record = await recordedTask("t_conflit");
+    await writeFile(join(record.workspace, "a.txt"), "version worktree\n", "utf8");
+    await writeFile(join(root, "a.txt"), "version workspace divergente\n", "utf8");
+    await git(root, ["add", "a.txt"]);
+    await git(root, ["commit", "-q", "-m", "divergence"]);
+
+    const result = await applyRecordedWorktree(root, fileTaskStore(root), record);
+
+    expect(result.outcome).toBe("conflicts");
+    expect(result.conflicts).toContain("a.txt");
+    expect((await fileTaskStore(root).get(record.id))?.applied_at).toBeUndefined();
+  });
+
+  it("tâche sans worktree (inplace) : no_worktree, rien d'enregistré", async () => {
+    const record: TaskRecord = {
+      id: "t_inplace",
+      agent: "codex",
+      objective: "tâche sur place",
+      status: "succeeded",
+      created_at: "2026-08-12T09:00:00.000Z",
+      task_dir: join(root, ".orch", "tasks", "t_inplace"),
+      workspace: root,
+      isolation: "inplace",
+      mode: "write",
+      report_via: "file",
+      depth: 0,
+    };
+    await fileTaskStore(root).create(record);
+
+    const result = await applyRecordedWorktree(root, fileTaskStore(root), record);
+
+    expect(result).toEqual({ outcome: "no_worktree", conflicts: [], isEmpty: true });
+    expect((await fileTaskStore(root).get(record.id))?.applied_at).toBeUndefined();
   });
 });

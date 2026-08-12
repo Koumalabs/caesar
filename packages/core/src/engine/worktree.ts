@@ -6,13 +6,14 @@
  * que `git diff` révèle, contenue hors du dépôt principal.
  */
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Change } from "@orch/protocol";
 import { readTask, taskPaths } from "@orch/protocol";
-import type { TaskRecord } from "../store.js";
+import type { TaskRecord, TaskStore } from "../store.js";
 import { isUnderPath } from "./materialize.js";
 
 const execFileAsync = promisify(execFile);
@@ -342,6 +343,53 @@ function excludeMaterialized(files: Change[], excluded: readonly string[] | unde
 }
 
 /**
+ * Empreinte sha256 (hex) du texte d'un patch — calculée au même endroit des
+ * deux côtés qui doivent la comparer : à l'application (ci-dessous) et au
+ * ramasse-miettes (`gc.ts`), qui recalcule le patch par le même
+ * `diffWorktree` pour décider si le worktree a bougé depuis.
+ */
+export function patchDigest(patch: string): string {
+  return createHash("sha256").update(patch).digest("hex");
+}
+
+export type RecordedApplyOutcome = "applied" | "conflicts" | "no_worktree";
+
+export interface RecordedApplyResult {
+  outcome: RecordedApplyOutcome;
+  conflicts: string[];
+  /** Vrai quand il n'y avait rien à appliquer (pas de worktree, ou diff vide) : rien n'est enregistré. */
+  isEmpty: boolean;
+}
+
+/**
+ * Le seul chemin d'application : diffe le worktree, applique le patch au
+ * dépôt principal, puis inscrit le fait dans l'enregistrement de la tâche —
+ * `applied_at` et l'empreinte du patch appliqué. Rien n'est inscrit sur un
+ * diff vide ni sur un conflit : l'enregistrement ne témoigne que d'une
+ * application réellement advenue, et un nouvel apply réussi l'écrase (la
+ * dernière application fait foi). Sans cette trace, `orch gc` ne pouvait
+ * pas distinguer un worktree intégré d'un worktree porteur de travail
+ * unique : il refusait les deux, même après un cycle parfaitement
+ * discipliné (constaté sur deux tâches du projet `support`, 2026-08-12).
+ */
+export async function applyRecordedWorktree(root: string, store: TaskStore, record: TaskRecord): Promise<RecordedApplyResult> {
+  const handle = await loadWorktreeHandle(record);
+  if (!handle) return { outcome: "no_worktree", conflicts: [], isEmpty: true };
+
+  const diff = await diffWorktree(handle);
+  if (diff.isEmpty) return { outcome: "applied", conflicts: [], isEmpty: true };
+
+  const result = await applyPatch(root, diff.patch);
+  if (!result.applied) return { outcome: "conflicts", conflicts: result.conflicts, isEmpty: false };
+
+  await store.update(record.id, {
+    applied_at: new Date().toISOString(),
+    applied_patch_digest: patchDigest(diff.patch),
+  });
+  return { outcome: "applied", conflicts: [], isEmpty: false };
+}
+
+/**
  * Applique le patch du worktree au dépôt principal par `git apply --3way`,
  * sans toucher aux branches ni à l'historique : réversible, sans effet de
  * bord sur l'historique de l'utilisateur. N'appelle jamais `git commit`.
@@ -351,16 +399,11 @@ function excludeMaterialized(files: Change[], excluded: readonly string[] | unde
  * l'état réel de l'index après la tentative, pas d'un décodage fragile des
  * messages humains de `git apply`.
  */
-export async function applyWorktree(root: string, handle: WorktreeHandle): Promise<{ applied: boolean; conflicts: string[] }> {
-  const diff = await diffWorktree(handle);
-  if (diff.isEmpty) {
-    return { applied: true, conflicts: [] };
-  }
-
+async function applyPatch(root: string, patch: string): Promise<{ applied: boolean; conflicts: string[] }> {
   const scratchDir = await mkdtemp(join(tmpdir(), "orch-patch-"));
   const patchFile = join(scratchDir, "worktree.patch");
   try {
-    await writeFile(patchFile, diff.patch, "utf8");
+    await writeFile(patchFile, patch, "utf8");
     try {
       await execFileAsync("git", ["apply", "--3way", patchFile], { cwd: root });
       return { applied: true, conflicts: [] };
