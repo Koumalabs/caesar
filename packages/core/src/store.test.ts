@@ -141,6 +141,32 @@ describe("fileTaskStore", () => {
     expect(sawTruncated).toBe(false);
   });
 
+  it("persiste et relit les champs d'application (applied_at, applied_patch_digest)", async () => {
+    const store_local = fileTaskStore(root);
+    const record: TaskRecord = {
+      id: "t_applique",
+      agent: "codex",
+      objective: "persister les champs d'application",
+      status: "succeeded",
+      created_at: "2026-08-12T09:00:00.000Z",
+      task_dir: join(root, ".orch", "tasks", "t_applique"),
+      workspace: join(root, "ws"),
+      isolation: "worktree",
+      mode: "write",
+      report_via: "file",
+      depth: 0,
+    };
+    await store_local.create(record);
+    await store_local.update("t_applique", {
+      applied_at: "2026-08-12T10:00:00.000Z",
+      applied_patch_digest: "a".repeat(64),
+    });
+
+    const relu = await store_local.get("t_applique");
+    expect(relu?.applied_at).toBe("2026-08-12T10:00:00.000Z");
+    expect(relu?.applied_patch_digest).toBe("a".repeat(64));
+  });
+
   /**
    * I9 de la revue finale : vérifié à l'époque en exécutant le code compilé
    * (`store.get("../../../secret")` rendait le contenu d'un fichier

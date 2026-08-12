@@ -82,6 +82,19 @@ export interface TaskRecord {
    * moyen de retrouver son PID.
    */
   pid?: number;
+  /**
+   * Posés par `applyRecordedWorktree` (engine/worktree.ts) quand le diff du
+   * worktree a été appliqué au dépôt principal : l'instant de l'application,
+   * et le sha256 (hex) du texte du patch appliqué. Un nouvel apply réussi
+   * les écrase — c'est la dernière application qui fait foi. `orch gc` s'en
+   * sert pour collecter un worktree dont le patch courant porte encore la
+   * même empreinte : un fait daté et positif, jamais une déduction depuis le
+   * contenu. Absents pour toute tâche jamais appliquée, appliquée à vide, ou
+   * antérieure à ce mécanisme — le schéma n'étant pas `.strict()`, l'ajout
+   * est rétrocompatible dans les deux sens.
+   */
+  applied_at?: string;
+  applied_patch_digest?: string;
 }
 
 export interface TaskStore {
@@ -159,6 +172,8 @@ const TaskRecordSchema = z.object({
   report_status: ReportStatusSchema.optional(),
   depth: z.number().int().nonnegative(),
   pid: z.number().int().positive().optional(),
+  applied_at: z.string().optional(),
+  applied_patch_digest: z.string().optional(),
 });
 
 export function fileTaskStore(root: string): TaskStore {
