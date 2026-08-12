@@ -1,6 +1,6 @@
 ---
 name: orch
-description: Use when work should go to an external coding agent (codex, claude, copilot, opencode, antigravity) rather than being typed out inline — an implementation to delegate, a wide code reading or investigation, a repetitive multi-file change, several independent pieces that could run in parallel, a comparison of providers before committing to one, or an independent review of a diff by a sub-agent that did not write it. Also use when asked to delegate, to fan work out, to race providers against each other, to follow delegations already running, or to land what one of them came back with.
+description: Use when work should go to an external coding agent (codex, claude, copilot, opencode, antigravity) — delegating an implementation or an independent review, fanning work out in parallel, racing providers on one objective, following running delegations, or landing a returned diff.
 ---
 
 # Directing external coding agents
