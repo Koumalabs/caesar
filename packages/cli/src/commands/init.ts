@@ -229,10 +229,16 @@ function plural(n: number): string {
  * Rend le résultat de `depositAssets` en sortie humaine : une ligne de
  * confirmation nommant les runtimes servis et le nombre de fichiers
  * déposés/rafraîchis, un avertissement agrégé pour les fichiers qui
- * différaient du catalogue et ont été remplacés, les avertissements du
- * module lui-même (`settings.json` malformé, notamment), puis la suite
- * logique : la skill appelle les tools du serveur MCP `orch`, qui n'existent
- * pour un runtime qu'une fois `orch mcp install <client>` lancé pour lui.
+ * différaient du catalogue et ont été remplacés, puis la suite logique : la
+ * skill appelle les tools du serveur MCP `orch`, qui n'existent pour un
+ * runtime qu'une fois `orch mcp install <client>` lancé pour lui.
+ *
+ * Ne rend PAS `outcome.install.warnings` (`settings.json` malformé,
+ * notamment) : ce sont les seuls avertissements du module qui doivent aussi
+ * apparaître dans `--json`, donc l'appelant les fait passer par le tableau
+ * `warnings` de premier niveau existant plutôt que par cette fonction — une
+ * seule voie de rendu, jamais un doublon en sortie humaine entre cette
+ * fonction et la boucle qui vide ce tableau.
  */
 function printAssetsOutcome(io: Io, outcome: AssetOutcome): void {
   const changed = outcome.install.files.filter((f) => f.action !== "unchanged");
@@ -253,8 +259,6 @@ function printAssetsOutcome(io: Io, outcome: AssetOutcome): void {
       `${updated.length} fichier${plural(updated.length)} géré${plural(updated.length)} par orch remplacé${plural(updated.length)}, divergent${plural(updated.length)} du catalogue : ${updated.map((f) => homePath(f.path)).join(", ")}`,
     );
   }
-
-  for (const warning of outcome.install.warnings) printWarning(io, warning);
 
   printNote(
     io,
@@ -293,7 +297,15 @@ async function runInitGlobal(root: string, options: InitOptions, io: Io): Promis
         ? `Configuration globale laissée telle quelle : ${homePath(configPath)} (--force pour la réinitialiser).`
         : `Configuration globale créée : ${homePath(configPath)}`,
     );
-    if (assets) printAssetsOutcome(io, assets);
+    if (assets) {
+      printAssetsOutcome(io, assets);
+      // `computeSettingsMerge` (agent-assets.ts) ne peut rien émettre en
+      // portée globale (elle sort tôt dès `scope !== "project"`) : ce
+      // tableau est donc toujours vide aujourd'hui, mais rendu quand même,
+      // pour ne pas dépendre silencieusement de cet invariant si le module
+      // apprenait un jour un autre avertissement en portée globale.
+      for (const warning of assets.install.warnings) printWarning(io, warning);
+    }
   }
   return EXIT_OK;
 }
@@ -351,6 +363,15 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
   const gitignore = await completeGitignore(root, isGitRepo);
 
   const assets = options.skills === false ? null : await depositAssets(root, "project", options);
+  if (assets) {
+    // Les avertissements du module (`settings.json` malformé ou de forme
+    // anormale, notamment — voir `computeSettingsMerge`, agent-assets.ts)
+    // rejoignent le même tableau que les avertissements ci-dessus plutôt que
+    // de ne vivre que dans la sortie humaine : sans ça, un consommateur
+    // `--json` verrait `assets.files` plein de succès sans jamais apprendre
+    // qu'une fusion de permissions a été sautée (`action: "skip"`).
+    warnings.push(...assets.install.warnings);
+  }
   if (!isGitRepo && assets) {
     warnings.push(
       `Hors dépôt git, les fichiers de connaissance agentique déposés (skill, commandes) ne seront pas versionnés : lancez "git init" dans ce répertoire pour les partager avec l'équipe.`,

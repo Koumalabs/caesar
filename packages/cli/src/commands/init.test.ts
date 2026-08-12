@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
@@ -525,6 +525,26 @@ describe("orch init — connaissance agentique (assets)", () => {
         if (previousPath === undefined) delete process.env["PATH"];
         else process.env["PATH"] = previousPath;
       }
+    });
+  });
+
+  it("--json : un settings.json malformé remonte son avertissement dans `warnings`, et la fusion n'a pas lieu", async () => {
+    await withFakeHome(async () => {
+      const settingsPath = join(root, ".claude", "settings.json");
+      await mkdir(join(root, ".claude"), { recursive: true });
+      const malformed = "{ ceci n'est pas du JSON";
+      await writeFile(settingsPath, malformed, "utf8");
+
+      const code = await runInit(root, { agent: ["claude"], json: true }, io);
+      expect(code).toBe(EXIT_OK);
+      const parsed = JSON.parse(io.stdoutText());
+      // Le warning du module (agent-assets.ts, computeSettingsMerge) remonte
+      // dans le tableau `warnings` de premier niveau, pas seulement en
+      // sortie humaine — sinon un consommateur `--json` ne verrait que des
+      // fichiers déposés avec succès et jamais la fusion sautée.
+      expect(parsed.warnings.some((w: string) => /JSON invalide/.test(w))).toBe(true);
+      // La fusion n'a pas eu lieu : le fichier reste tel quel, toujours malformé.
+      expect(await readFile(settingsPath, "utf8")).toBe(malformed);
     });
   });
 });
