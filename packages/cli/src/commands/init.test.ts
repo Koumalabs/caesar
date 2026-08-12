@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadConfig, projectConfigPath } from "@orch/core";
@@ -10,6 +11,35 @@ import { runInit } from "./init.js";
 import { EXIT_OK, EXIT_USAGE } from "../output.js";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Isole entièrement le PATH sur `dir` (plus `/usr/bin`/`/bin`, ni l'un ni
+ * l'autre ne contenant de CLI d'agent) : contrairement à `withShimmedPath`
+ * (`test/support.ts`), on n'ajoute PAS `dirname(process.execPath)` — ce
+ * répertoire peut légitimement héberger un vrai CLI d'agent installé via
+ * `npm install -g` à côté de node lui-même (constaté avec `copilot` sur un
+ * poste nvm), ce qui fausserait la détection que ces tests vérifient
+ * précisément. Sans risque ici : `findBinaryInPath` ne fait qu'un `access`,
+ * jamais un `spawn` — le binaire factice n'a donc pas besoin d'être
+ * exécutable au sens "tourne vraiment", seulement présent et +x.
+ */
+async function withIsolatedPath<T>(dir: string, fn: () => Promise<T>): Promise<T> {
+  const previous = process.env["PATH"];
+  process.env["PATH"] = [dir, "/usr/bin", "/bin"].join(delimiter);
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env["PATH"];
+    else process.env["PATH"] = previous;
+  }
+}
+
+/** Dépose un binaire factice minimal (jamais exécuté, voir `withIsolatedPath`) sous `dir`. */
+async function writeFakeBinary(dir: string, name: string): Promise<void> {
+  const target = join(dir, name);
+  await writeFile(target, "", "utf8");
+  await chmod(target, 0o755);
+}
 
 describe("orch init", () => {
   let root: string;
@@ -39,24 +69,44 @@ describe("orch init", () => {
     });
   });
 
-  it("refuse d'écraser une configuration existante sans --force", async () => {
+  it("sur un projet déjà initialisé, sans --force : rafraîchit les assets mais laisse `.orch/config.toml` et `.orch/roles/*.md` strictement intacts (succès)", async () => {
     await withFakeHome(async () => {
-      expect(await runInit(root, {}, io)).toBe(EXIT_OK);
+      expect(await runInit(root, { agent: ["claude"] }, io)).toBe(EXIT_OK);
+
+      // Édités à la main : c'est exactement ce que le refresh doit préserver
+      // (voir l'en-tête d'init.ts) — comparaison par contenu, pas seulement
+      // par présence.
+      const configPath = projectConfigPath(root);
+      const editedConfig = (await readFile(configPath, "utf8")) + "# édité à la main\n";
+      await writeFile(configPath, editedConfig, "utf8");
+
+      const rolePath = join(root, ".orch", "roles", "reviewer.md");
+      const editedRole = "Mon prompt personnalisé, édité à la main.\n";
+      await writeFile(rolePath, editedRole, "utf8");
 
       const io2 = makeIo();
-      const code = await runInit(root, {}, io2);
-      expect(code).toBe(EXIT_USAGE);
-      expect(io2.stderrText()).toContain(projectConfigPath(root));
-      expect(io2.stdoutText()).toBe("");
+      const code = await runInit(root, { agent: ["claude"] }, io2);
+      expect(code).toBe(EXIT_OK);
+      expect(await readFile(configPath, "utf8")).toBe(editedConfig);
+      expect(await readFile(rolePath, "utf8")).toBe(editedRole);
+      // La sortie dit que la config a été laissée telle quelle...
+      expect(io2.stdoutText()).toMatch(/laissés tels quels/);
+      // ...mais les assets, eux, ont bien été (re)déposés.
+      expect(existsSync(join(root, ".claude", "skills", "orch", "SKILL.md"))).toBe(true);
     });
   });
 
-  it("--force écrase une configuration existante", async () => {
+  it("--force écrase une configuration existante (rôles compris), et redépose les assets", async () => {
     await withFakeHome(async () => {
-      expect(await runInit(root, {}, io)).toBe(EXIT_OK);
+      expect(await runInit(root, { agent: ["claude"] }, io)).toBe(EXIT_OK);
+
+      const rolePath = join(root, ".orch", "roles", "reviewer.md");
+      await writeFile(rolePath, "édité à la main : --force doit l'écraser.\n", "utf8");
+
       const io2 = makeIo();
-      const code = await runInit(root, { force: true }, io2);
+      const code = await runInit(root, { force: true, agent: ["claude"] }, io2);
       expect(code).toBe(EXIT_OK);
+      expect(await readFile(rolePath, "utf8")).not.toMatch(/doit l'écraser/);
     });
   });
 
@@ -116,23 +166,34 @@ describe("orch init --global", () => {
     });
   });
 
-  it("refuse d'écraser une configuration globale existante sans --force", async () => {
-    await withFakeHome(async () => {
-      expect(await runInit(root, { global: true }, io)).toBe(EXIT_OK);
+  it("sur une configuration globale déjà présente, sans --force : rafraîchit les assets mais laisse la configuration intacte (succès)", async () => {
+    await withFakeHome(async (home) => {
+      expect(await runInit(root, { global: true, agent: ["claude"] }, io)).toBe(EXIT_OK);
+
+      const configPath = join(home, ".config", "orch", "config.toml");
+      const edited = (await readFile(configPath, "utf8")) + "# édité à la main\n";
+      await writeFile(configPath, edited, "utf8");
 
       const io2 = makeIo();
-      const code = await runInit(root, { global: true }, io2);
-      expect(code).toBe(EXIT_USAGE);
-      expect(io2.stderrText()).toMatch(/globale/);
-      expect(io2.stdoutText()).toBe("");
+      const code = await runInit(root, { global: true, agent: ["claude"] }, io2);
+      expect(code).toBe(EXIT_OK);
+      expect(await readFile(configPath, "utf8")).toBe(edited);
+      expect(io2.stdoutText()).toMatch(/laissée telle quelle/);
+      expect(existsSync(join(home, ".claude", "skills", "orch", "SKILL.md"))).toBe(true);
     });
   });
 
-  it("--force écrase une configuration globale existante", async () => {
-    await withFakeHome(async () => {
-      expect(await runInit(root, { global: true }, io)).toBe(EXIT_OK);
+  it("--force écrase une configuration globale existante, et redépose les assets", async () => {
+    await withFakeHome(async (home) => {
+      expect(await runInit(root, { global: true, agent: ["claude"] }, io)).toBe(EXIT_OK);
+
+      const configPath = join(home, ".config", "orch", "config.toml");
+      const edited = (await readFile(configPath, "utf8")) + "# édité à la main : --force doit l'écraser\n";
+      await writeFile(configPath, edited, "utf8");
+
       const io2 = makeIo();
-      expect(await runInit(root, { global: true, force: true }, io2)).toBe(EXIT_OK);
+      expect(await runInit(root, { global: true, force: true, agent: ["claude"] }, io2)).toBe(EXIT_OK);
+      expect(await readFile(configPath, "utf8")).not.toMatch(/doit l'écraser/);
     });
   });
 
@@ -335,6 +396,135 @@ describe("orch init — l'atelier des sous-agents ([worktree])", () => {
       await seedNodeProject();
       expect(await runInit(root, { force: true }, makeIo())).toBe(EXIT_OK);
       expect((await loadConfig(root)).config.worktree.copy.sort()).toEqual([".env", "node_modules"]);
+    });
+  });
+});
+
+/**
+ * La connaissance agentique (skill Agent Skills + commandes, `@orch/core`
+ * `installAgentAssets`) : `--agent` explicite est utilisé partout où le test
+ * porte sur *quelles* cibles sont servies, pour rester indépendant de ce qui
+ * est réellement installé sur la machine qui fait tourner la suite — voir
+ * `withIsolatedPath`/`writeFakeBinary` plus haut pour les deux tests qui, à
+ * l'inverse, portent sur la détection PATH elle-même.
+ */
+describe("orch init — connaissance agentique (assets)", () => {
+  let root: string;
+  let io: CapturedIo;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "orch-cli-init-assets-"));
+    io = makeIo();
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("dépose effectivement la skill et les commandes pour les cibles retenues, sur un projet neuf", async () => {
+    await withFakeHome(async () => {
+      const code = await runInit(root, { agent: ["claude", "codex"] }, io);
+      expect(code).toBe(EXIT_OK);
+
+      // claude : copie dédiée, skill et commandes.
+      expect(existsSync(join(root, ".claude", "skills", "orch", "SKILL.md"))).toBe(true);
+      expect(existsSync(join(root, ".claude", "commands", "orch-delegate.md"))).toBe(true);
+      // codex : partagé, skill seulement (voir agent-assets.ts, ASSET_TARGETS).
+      expect(existsSync(join(root, ".agents", "skills", "orch", "SKILL.md"))).toBe(true);
+      // opencode n'a pas été demandé : son répertoire dédié n'existe pas.
+      expect(existsSync(join(root, ".opencode", "commands"))).toBe(false);
+    });
+  });
+
+  it("--agent restreint bien les cibles retenues, et un id inconnu échoue clairement", async () => {
+    await withFakeHome(async () => {
+      const code = await runInit(root, { agent: ["claude", "codex"], json: true }, io);
+      expect(code).toBe(EXIT_OK);
+      const parsed = JSON.parse(io.stdoutText());
+      expect([...parsed.assets.targets].sort()).toEqual(["claude", "codex"]);
+
+      const io2 = makeIo();
+      const code2 = await runInit(root, { agent: ["pas-un-client"] }, io2);
+      expect(code2).toBe(EXIT_USAGE);
+      expect(io2.stderrText()).toMatch(/pas-un-client/);
+      expect(io2.stdoutText()).toBe("");
+    });
+  });
+
+  it("--json rend assets.targets/files/stale sans séquence ANSI, en portée projet et globale", async () => {
+    await withFakeHome(async () => {
+      const code = await runInit(root, { agent: ["claude"], json: true }, io);
+      expect(code).toBe(EXIT_OK);
+      const parsed = JSON.parse(io.stdoutText());
+      expect(parsed.assets.targets).toEqual(["claude"]);
+      expect(Array.isArray(parsed.assets.files)).toBe(true);
+      expect(parsed.assets.files.length).toBeGreaterThan(0);
+      expect(Array.isArray(parsed.assets.stale)).toBe(true);
+      expect(io.stdoutText()).not.toMatch(/\x1b\[/);
+
+      const io2 = makeIo();
+      const code2 = await runInit(root, { global: true, agent: ["claude"], json: true }, io2);
+      expect(code2).toBe(EXIT_OK);
+      const parsedGlobal = JSON.parse(io2.stdoutText());
+      expect(parsedGlobal.assets.targets).toEqual(["claude"]);
+      expect(parsedGlobal.assets.files.length).toBeGreaterThan(0);
+      expect(Array.isArray(parsedGlobal.assets.stale)).toBe(true);
+      expect(io2.stdoutText()).not.toMatch(/\x1b\[/);
+    });
+  });
+
+  it("--no-skills : assets: null en JSON, et aucun fichier d'asset déposé", async () => {
+    await withFakeHome(async () => {
+      const code = await runInit(root, { json: true, skills: false }, io);
+      expect(code).toBe(EXIT_OK);
+      const parsed = JSON.parse(io.stdoutText());
+      expect(parsed.assets).toBeNull();
+      expect(existsSync(join(root, ".agents"))).toBe(false);
+      expect(existsSync(join(root, ".claude"))).toBe(false);
+    });
+  });
+
+  it("--global dépose les assets sous HOME, jamais sous root/", async () => {
+    await withFakeHome(async (home) => {
+      const code = await runInit(root, { global: true, agent: ["claude"] }, io);
+      expect(code).toBe(EXIT_OK);
+      expect(existsSync(join(home, ".claude", "skills", "orch", "SKILL.md"))).toBe(true);
+      expect(existsSync(join(root, ".claude"))).toBe(false);
+      expect(existsSync(join(root, ".agents"))).toBe(false);
+    });
+  });
+
+  it("détection sous PATH factice : seule la cible dont le binaire est présent est servie", async () => {
+    await withFakeHome(async () => {
+      const shimDir = await mkdtemp(join(tmpdir(), "orch-cli-init-shim-"));
+      try {
+        await writeFakeBinary(shimDir, "codex");
+        const code = await withIsolatedPath(shimDir, () => runInit(root, { json: true }, io));
+        expect(code).toBe(EXIT_OK);
+        const parsed = JSON.parse(io.stdoutText());
+        expect(parsed.assets.targets).toEqual(["codex"]);
+        expect(existsSync(join(root, ".agents", "skills", "orch", "SKILL.md"))).toBe(true);
+        expect(existsSync(join(root, ".claude"))).toBe(false);
+      } finally {
+        await rm(shimDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("PATH vide : aucun runtime détecté, le socle partagé est déposé quand même, et la sortie le dit", async () => {
+    await withFakeHome(async () => {
+      const previousPath = process.env["PATH"];
+      process.env["PATH"] = "";
+      try {
+        const code = await runInit(root, {}, io);
+        expect(code).toBe(EXIT_OK);
+        expect(io.stdoutText()).toMatch(/Aucun runtime détecté/);
+        expect(existsSync(join(root, ".agents", "skills", "orch", "SKILL.md"))).toBe(true);
+        expect(existsSync(join(root, ".claude"))).toBe(false);
+      } finally {
+        if (previousPath === undefined) delete process.env["PATH"];
+        else process.env["PATH"] = previousPath;
+      }
     });
   });
 });

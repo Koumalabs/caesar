@@ -11,11 +11,24 @@ worktrees, and passing raw arguments through to a provider.
 
 | Command | Arguments and flags |
 |---|---|
-| `orch init` | `--force` (overwrite an existing configuration), `--global` (write `~/.config/orch/config.toml` instead of the project layer) |
+| `orch init` | `--force` (overwrite an existing configuration), `--global` (write `~/.config/orch/config.toml` instead of the project layer), `--agent <id>` (repeatable — force these targets instead of PATH detection), `--no-skills` (skip depositing/refreshing the agentic assets, not remembered) |
 | `orch doctor` | `--verbose` (adds the binary path and spelled-out capabilities) |
 | `orch config` | none — launches the interactive configuration TUI |
 
-`orch init` creates `<root>/.orch/config.toml` and the default system prompt of every role.
+`orch init` creates `<root>/.orch/config.toml` and the default system prompt of every role, and
+deposits the Agent Skills skill plus provider-specific commands (`installAgentAssets`) for every
+`claude`/`codex`/`copilot`/`opencode`/`antigravity` binary found on the PATH — `--agent` overrides
+that detection with an explicit list instead (validated against the same five ids); with none
+detected and no `--agent`, the shared `.agents/skills/orch/` location is still deposited, ready for
+whichever of the four non-`claude` runtimes gets installed next. On a project already initialized,
+re-running `orch init` **without** `--force` refreshes only the assets: `.orch/config.toml` and
+`.orch/roles/*.md` are left byte-for-byte untouched (they are what the user edits) and the command
+still exits `0`. `--force` restores the original all-or-nothing behaviour: it also rewrites the
+configuration and every role prompt from scratch. `--global` writes under the user's home directory
+instead of the project root and is never committed to git — the project layer, by contrast, is
+versioned and shared with the team. `--json` adds an `assets` key (`{ targets, files, stale }`, or
+`null` under `--no-skills`) to the existing output, in both scopes.
+
 `orch doctor` reports, per catalogue agent: presence, version, capabilities, and its status under
 the effective policy.
 

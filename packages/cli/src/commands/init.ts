@@ -15,20 +15,46 @@
  * La couche **globale** (`--global`), à l'inverse, écrit `defaultConfig()`
  * intégralement : c'est le point de départ éditable d'un "preset" partagé
  * par tous les projets d'un même poste — voir le plan de la tâche 13.
+ *
+ * ## Connaissance agentique (skill + commandes) et refresh
+ *
+ * `orch init` dépose aussi la skill Agent Skills et les commandes des
+ * runtimes détectés (`installAgentAssets`, `@orch/core`) — la façon dont un
+ * agent principal (claude, codex, copilot, opencode, antigravity) apprend à
+ * diriger `orch` plutôt que d'exécuter lui-même.
+ *
+ * **Sur un projet déjà initialisé, sans `--force` : refresh.** Relancer
+ * `orch init` ne réécrit ni `.orch/config.toml` ni `.orch/roles/*.md` — ce
+ * sont les fichiers que l'utilisateur édite (politique, rôles, prompts
+ * système), et un `init` réexécuté par réflexe (ou par un script) les
+ * écraserait sans le vouloir. Seuls les assets agentiques sont
+ * réécrits/rafraîchis : ils sont, eux, entièrement dérivés du catalogue
+ * (`AGENT_ASSETS`) et n'ont donc rien d'un contenu que l'utilisateur
+ * possède — les réécrire à l'identique du catalogue n'efface jamais un
+ * choix qu'il aurait fait. C'est ce qui remplace l'ancien garde-fou
+ * `EXIT_USAGE` ("configuration déjà présente") : la commande réussit
+ * toujours (code 0), et le dit.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  AGENT_ASSETS,
+  MCP_CLIENTS,
   configPathFor,
   defaultConfig,
   detectUntrackedNeeds,
+  findBinaryInPath,
+  installAgentAssets,
   isEnoent,
+  isMcpClient,
+  listAgentDefinitions,
   loadConfig,
   projectConfigPath,
   repoRoot,
   saveLayer,
   writeFileAtomic,
 } from "@orch/core";
+import type { AgentAssetInstall, AssetScope, McpClient, WorktreeConfig } from "@orch/core";
 import type { Io } from "../output.js";
 import { VERSION } from "../version.js";
 import {
@@ -41,6 +67,7 @@ import {
   printDone,
   printError,
   printJson,
+  printNote,
   printWarning,
   writeLine,
 } from "../output.js";
@@ -49,6 +76,10 @@ export interface InitOptions {
   force?: boolean;
   json?: boolean;
   global?: boolean;
+  /** `--agent <id>`, répétable : force la liste des cibles plutôt que la détection PATH. Déjà validé (contre `MCP_CLIENTS`) par `runInit` avant tout usage. */
+  agent?: readonly string[];
+  /** `--no-skills` (commander) : `false` coupe entièrement le dépôt/refresh des assets agentiques. Non persistant — à repasser à chaque `init`. */
+  skills?: boolean;
 }
 
 /**
@@ -118,61 +149,197 @@ async function completeGitignore(root: string, isGitRepo: boolean): Promise<Giti
   return { path, added };
 }
 
-async function runInitGlobal(root: string, options: InitOptions, io: Io): Promise<number> {
-  const loaded = await loadConfig(root);
-  if (loaded.sources.global && !options.force) {
-    printError(io, `Configuration globale déjà présente : ${loaded.sources.global} (utilisez --force pour l'écraser).`);
-    return EXIT_USAGE;
+// ---------------------------------------------------------------------------
+// Connaissance agentique — sélection des cibles, dépôt, rendu
+// ---------------------------------------------------------------------------
+
+/**
+ * Cible interne, jamais annoncée dans `targets` : sert uniquement à déposer
+ * le socle partagé (`.agents/skills/orch/`, voir `ASSET_TARGETS` dans
+ * `agent-assets.ts`) quand aucun runtime n'est détecté et qu'aucun `--agent`
+ * n'a été donné. `codex` ne porte ni commandes ni fusion `settings.json` —
+ * le choisir ne dépose donc jamais rien de plus que le socle partagé
+ * lui-même. Le pari : les runtimes non-`claude` lisent tous ce même
+ * répertoire, donc le déposer par avance profite au premier d'entre eux
+ * qu'on installera — sans prétendre qu'un runtime précis est déjà servi.
+ */
+const SHARED_ONLY_CLIENT: McpClient = "codex";
+
+/**
+ * Détecte, pour chaque client de `MCP_CLIENTS`, si son binaire est présent
+ * dans le PATH — jamais `detectAgentInstallation` (qui sonde `--version`,
+ * jusqu'à 3 s par agent : coûteux et hors de propos ici, on ne veut savoir
+ * que "présent ou pas"), et jamais les agents génériques de la configuration
+ * (`[[agent]]`) : `orch init` dépose la connaissance des cinq runtimes
+ * natifs, pas d'un agent personnalisé qui ne lira de toute façon aucune
+ * skill standard.
+ */
+async function detectMcpClients(): Promise<McpClient[]> {
+  const defs = listAgentDefinitions();
+  const present: McpClient[] = [];
+  for (const client of MCP_CLIENTS) {
+    const def = defs.find((d) => d.id === client);
+    if (def && (await findBinaryInPath(def.bin))) present.push(client);
+  }
+  return present;
+}
+
+interface TargetSelection {
+  /** Cibles annoncées à l'utilisateur — vide seulement dans le cas "zéro détecté, pas de --agent". */
+  targets: readonly McpClient[];
+  /** Cibles réellement transmises à `installAgentAssets` — jamais vide (voir `SHARED_ONLY_CLIENT`). */
+  install: readonly McpClient[];
+}
+
+/** `agent` est déjà validé par `runInit` (chaque id est un `McpClient` connu) avant d'atteindre cette fonction. */
+async function selectAssetTargets(agent: readonly string[] | undefined): Promise<TargetSelection> {
+  if (agent && agent.length > 0) {
+    const explicit = [...new Set(agent)].filter(isMcpClient);
+    return { targets: explicit, install: explicit };
+  }
+  const detected = await detectMcpClients();
+  if (detected.length > 0) return { targets: detected, install: detected };
+  return { targets: [], install: [SHARED_ONLY_CLIENT] };
+}
+
+interface AssetOutcome {
+  targets: readonly McpClient[];
+  install: AgentAssetInstall;
+}
+
+/**
+ * Calcule les cibles puis dépose/rafraîchit la skill et les commandes.
+ * Appelée aussi bien au premier `init` qu'au refresh — c'est la seule partie
+ * de la commande qui s'exécute dans les deux cas (voir l'en-tête du
+ * module) : les runtimes présents aujourd'hui ne sont pas forcément ceux
+ * détectés au premier `init`, et rien n'empêche d'ajouter `--agent` entre
+ * deux passages.
+ */
+async function depositAssets(root: string, scope: AssetScope, options: InitOptions): Promise<AssetOutcome> {
+  const selection = await selectAssetTargets(options.agent);
+  const install = await installAgentAssets({ root, scope, clients: selection.install, catalog: AGENT_ASSETS });
+  return { targets: selection.targets, install };
+}
+
+function plural(n: number): string {
+  return n > 1 ? "s" : "";
+}
+
+/**
+ * Rend le résultat de `depositAssets` en sortie humaine : une ligne de
+ * confirmation nommant les runtimes servis et le nombre de fichiers
+ * déposés/rafraîchis, un avertissement agrégé pour les fichiers qui
+ * différaient du catalogue et ont été remplacés, les avertissements du
+ * module lui-même (`settings.json` malformé, notamment), puis la suite
+ * logique : la skill appelle les tools du serveur MCP `orch`, qui n'existent
+ * pour un runtime qu'une fois `orch mcp install <client>` lancé pour lui.
+ */
+function printAssetsOutcome(io: Io, outcome: AssetOutcome): void {
+  const changed = outcome.install.files.filter((f) => f.action !== "unchanged");
+  const total = outcome.install.files.length;
+  const label =
+    outcome.targets.length > 0
+      ? `Connaissance agentique déposée pour ${outcome.targets.join(", ")}`
+      : "Aucun runtime détecté dans le PATH : socle partagé (.agents/skills/orch/) déposé quand même";
+  printDone(
+    io,
+    `${label} — ${changed.length} fichier${plural(changed.length)} déposé${plural(changed.length)} ou rafraîchi${plural(changed.length)} (sur ${total} géré${plural(total)}).`,
+  );
+
+  const updated = outcome.install.files.filter((f) => f.action === "update");
+  if (updated.length > 0) {
+    printWarning(
+      io,
+      `${updated.length} fichier${plural(updated.length)} géré${plural(updated.length)} par orch remplacé${plural(updated.length)}, divergent${plural(updated.length)} du catalogue : ${updated.map((f) => homePath(f.path)).join(", ")}`,
+    );
   }
 
-  await saveLayer("global", root, defaultConfig());
+  for (const warning of outcome.install.warnings) printWarning(io, warning);
+
+  printNote(
+    io,
+    'La skill appelle les tools du serveur MCP "orch" : ils n\'existent pour un runtime qu\'une fois "orch mcp install <client>" lancé pour lui.',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// init --global / init (projet)
+// ---------------------------------------------------------------------------
+
+async function runInitGlobal(root: string, options: InitOptions, io: Io): Promise<number> {
+  const loaded = await loadConfig(root);
+  // Sans --force, une couche globale déjà présente n'est plus un refus : la
+  // commande réussit, laisse `defaultConfig()` intact (l'utilisateur peut
+  // avoir édité ce "preset"), et se contente de rafraîchir les assets — même
+  // contrat de refresh que côté projet, voir l'en-tête du module.
+  const refresh = loaded.sources.global !== undefined && !options.force;
+  if (!refresh) {
+    await saveLayer("global", root, defaultConfig());
+  }
+
+  const assets = options.skills === false ? null : await depositAssets(root, "global", options);
 
   const configPath = configPathFor("global", root);
   if (options.json) {
-    printJson(io, { scope: "global", config_path: configPath });
+    printJson(io, {
+      scope: "global",
+      config_path: configPath,
+      assets: assets ? { targets: assets.targets, files: assets.install.files, stale: assets.install.stale } : null,
+    });
   } else {
-    printDone(io, `Configuration globale créée : ${homePath(configPath)}`);
+    printDone(
+      io,
+      refresh
+        ? `Configuration globale laissée telle quelle : ${homePath(configPath)} (--force pour la réinitialiser).`
+        : `Configuration globale créée : ${homePath(configPath)}`,
+    );
+    if (assets) printAssetsOutcome(io, assets);
   }
   return EXIT_OK;
 }
 
 async function runInitProject(root: string, options: InitOptions, io: Io): Promise<number> {
   const loaded = await loadConfig(root);
-  if (loaded.sources.project && !options.force) {
-    printError(io, `Configuration déjà présente : ${loaded.sources.project} (utilisez --force pour l'écraser).`);
-    return EXIT_USAGE;
-  }
+  // Sans --force, un projet déjà initialisé n'est plus un refus : c'est un
+  // refresh (voir l'en-tête du module) — `.orch/config.toml` et
+  // `.orch/roles/*.md` restent strictement intacts, seuls les assets
+  // agentiques sont réécrits/rafraîchis.
+  const refresh = loaded.sources.project !== undefined && !options.force;
 
   const rolesDir = join(root, ".orch", "roles");
-  await mkdir(rolesDir, { recursive: true });
-
-  // Les rôles par défaut portent déjà leur `system_prompt_file` (voir
-  // `defaultConfig()`) : il ne reste qu'à matérialiser le fichier lui-même,
-  // pas à déclarer le rôle dans la couche projet — voir l'en-tête de ce
-  // module.
   const roleFiles: string[] = [];
-  for (const role of defaultConfig().roles) {
-    if (!role.system_prompt_file) continue;
-    const absPath = join(root, ".orch", role.system_prompt_file);
-    await writeFile(absPath, defaultRolePrompt(role.name) + "\n", "utf8");
-    roleFiles.push(absPath);
-  }
+  let worktree: WorktreeConfig | null = null;
 
-  // La couche projet ne déclare rien de plus qu'elle-même à l'initialisation
-  // : écrire ici la politique et les rôles par défaut referait exactement le
-  // défaut I11 que cette tâche corrige (la couche figerait les valeurs par
-  // défaut, masquant toute configuration globale). Ce fichier vide marque
-  // simplement l'initialisation du projet (garde-fou --force ci-dessus).
-  //
-  // `[worktree]` fait exception, et pour une raison précise : ce n'est pas une
-  // valeur par défaut mais un **fait de ce projet-ci** — ce que son worktree
-  // doit emporter pour qu'on puisse y travailler. Sans cette section, un
-  // worktree ne contient que les fichiers suivis, l'isolation devient
-  // inexploitable, et la contourner par `isolation = "inplace"` reste la seule
-  // issue praticable : le défaut d'origine. Rien n'est écrit quand rien n'est
-  // détecté — une section vide ferait croire à un réglage.
-  const worktree = await detectUntrackedNeeds(root);
-  await saveLayer("project", root, worktree ? { worktree } : {});
+  if (!refresh) {
+    await mkdir(rolesDir, { recursive: true });
+
+    // Les rôles par défaut portent déjà leur `system_prompt_file` (voir
+    // `defaultConfig()`) : il ne reste qu'à matérialiser le fichier lui-même,
+    // pas à déclarer le rôle dans la couche projet — voir l'en-tête de ce
+    // module.
+    for (const role of defaultConfig().roles) {
+      if (!role.system_prompt_file) continue;
+      const absPath = join(root, ".orch", role.system_prompt_file);
+      await writeFile(absPath, defaultRolePrompt(role.name) + "\n", "utf8");
+      roleFiles.push(absPath);
+    }
+
+    // La couche projet ne déclare rien de plus qu'elle-même à l'initialisation
+    // : écrire ici la politique et les rôles par défaut referait exactement le
+    // défaut I11 que cette tâche corrige (la couche figerait les valeurs par
+    // défaut, masquant toute configuration globale). Ce fichier vide marque
+    // simplement l'initialisation du projet (garde-fou --force ci-dessus).
+    //
+    // `[worktree]` fait exception, et pour une raison précise : ce n'est pas une
+    // valeur par défaut mais un **fait de ce projet-ci** — ce que son worktree
+    // doit emporter pour qu'on puisse y travailler. Sans cette section, un
+    // worktree ne contient que les fichiers suivis, l'isolation devient
+    // inexploitable, et la contourner par `isolation = "inplace"` reste la seule
+    // issue praticable : le défaut d'origine. Rien n'est écrit quand rien n'est
+    // détecté — une section vide ferait croire à un réglage.
+    worktree = await detectUntrackedNeeds(root);
+    await saveLayer("project", root, worktree ? { worktree } : {});
+  }
 
   const warnings: string[] = [];
   const isGitRepo = (await repoRoot(root)) !== null;
@@ -183,6 +350,13 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
   }
   const gitignore = await completeGitignore(root, isGitRepo);
 
+  const assets = options.skills === false ? null : await depositAssets(root, "project", options);
+  if (!isGitRepo && assets) {
+    warnings.push(
+      `Hors dépôt git, les fichiers de connaissance agentique déposés (skill, commandes) ne seront pas versionnés : lancez "git init" dans ce répertoire pour les partager avec l'équipe.`,
+    );
+  }
+
   const configPath = projectConfigPath(root);
   if (options.json) {
     printJson(io, {
@@ -191,8 +365,9 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
       roles_dir: rolesDir,
       role_files: roleFiles,
       gitignore: gitignore ? { path: gitignore.path, added: gitignore.added } : null,
-      worktree: worktree ?? null,
+      worktree,
       warnings,
+      assets: assets ? { targets: assets.targets, files: assets.install.files, stale: assets.install.stale } : null,
     });
   } else {
     // Le logotype ouvre `orch init` et rien d'autre : c'est la seule commande
@@ -200,8 +375,12 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
     // serait du bruit à chaque invocation.
     for (const line of bannerLines(io.stdout, `orchestrateur de sous-agents · v${VERSION}`)) writeLine(io.stdout, line);
     writeLine(io.stdout);
-    printDone(io, `Configuration créée : ${homePath(configPath)}`);
-    printDone(io, `Prompts système par défaut : ${homePath(rolesDir)}`);
+    if (refresh) {
+      printDone(io, `Configuration et prompts système laissés tels quels : ${homePath(configPath)} (--force pour les réinitialiser).`);
+    } else {
+      printDone(io, `Configuration créée : ${homePath(configPath)}`);
+      printDone(io, `Prompts système par défaut : ${homePath(rolesDir)}`);
+    }
     if (gitignore) {
       writeLine(
         io.stdout,
@@ -222,11 +401,25 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
       ].filter(Boolean);
       printDone(io, `Atelier des sous-agents ([worktree]) : ${parts.join(" puis ")}`);
     }
+    if (assets) printAssetsOutcome(io, assets);
     for (const warning of warnings) printWarning(io, warning);
   }
   return EXIT_OK;
 }
 
 export async function runInit(root: string, options: InitOptions, io: Io): Promise<number> {
+  // Validé une seule fois, avant toute écriture et avant le choix
+  // projet/global : un `--agent` inconnu est une erreur d'usage pure,
+  // indépendante de l'état du projet ou de la portée visée.
+  if (options.agent && options.agent.length > 0) {
+    const invalid = options.agent.filter((id) => !isMcpClient(id));
+    if (invalid.length > 0) {
+      printError(
+        io,
+        `Agent(s) inconnu(s) pour --agent : ${invalid.map((id) => `"${id}"`).join(", ")} (attendu l'un de : ${MCP_CLIENTS.join(", ")}).`,
+      );
+      return EXIT_USAGE;
+    }
+  }
   return options.global ? runInitGlobal(root, options, io) : runInitProject(root, options, io);
 }

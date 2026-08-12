@@ -151,14 +151,22 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   // ---------------------------------------------------------------------
 
   withCommonOptions(program.command("init"))
-    .description("Crée <root>/.orch/config.toml et les prompts système par défaut de chaque rôle (--global : ~/.config/orch/config.toml).")
-    .option("--force", "Écrase une configuration existante.")
-    .option("--global", "Crée la couche globale (~/.config/orch/config.toml) plutôt que la couche projet.")
-    .action(async (options: GlobalOptions & { force?: boolean; global?: boolean }, command: Command) => {
-      const opts = command.optsWithGlobals<GlobalOptions & { force?: boolean; global?: boolean }>();
+    .description(
+      'Crée <root>/.orch/config.toml et les prompts système par défaut de chaque rôle, et dépose la connaissance agentique (skill + commandes) pour les runtimes détectés. Sur un projet déjà initialisé, rafraîchit les assets sans toucher à la configuration ni aux rôles (--force pour tout réinitialiser). --global : ~/.config/orch/config.toml, jamais versionné — le niveau projet, lui, l\'est, donc partagé avec l\'équipe.',
+    )
+    .option("--force", "Réinitialise complètement : réécrit la configuration et les prompts système existants (les assets, eux, sont de toute façon toujours rafraîchis).")
+    .option("--global", "Crée/rafraîchit la couche globale (~/.config/orch/config.toml) plutôt que la couche projet — jamais versionnée, propre à ce poste.")
+    .option(
+      "--agent <id>",
+      'Force le dépôt pour ce runtime plutôt que la détection automatique (répétable) : claude, codex, copilot, opencode ou antigravity — le runtime qui LIT la skill (donneur d\'ordre), pas l\'exécutant choisi par "orch run --agent".',
+      (value: string, previous: string[] = []) => [...previous, value],
+    )
+    .option("--no-skills", 'Ne dépose ni ne rafraîchit la skill ou les commandes agentiques. Non mémorisé : à repasser à chaque "init".')
+    .action(async (_options: GlobalOptions, command: Command) => {
+      const opts = command.optsWithGlobals<GlobalOptions & { force?: boolean; global?: boolean; agent?: string[]; skills?: boolean }>();
       await run(async () => {
         const root = await resolveRoot(opts.root);
-        return runInit(root, { force: opts.force, json: opts.json, global: opts.global }, io);
+        return runInit(root, { force: opts.force, json: opts.json, global: opts.global, agent: opts.agent, skills: opts.skills }, io);
       });
     });
 
