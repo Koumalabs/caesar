@@ -6,9 +6,11 @@
  * Toute la décision vit ici, et non dans le CLI : les autres façades peuvent
  * ainsi présenter exactement les mêmes suppressions et conservations. Une
  * tâche active est protégée avant même l'inspection Git ; une tâche terminée
- * n'est supprimée que si son worktree est propre, sauf demande explicite avec
- * `force`. Les répertoires sous `.orch/wt` qui ne correspondent à aucun
- * enregistrement worktree encore présent sont traités comme orphelins.
+ * n'est supprimée que si son worktree est propre ou si son patch a été
+ * appliqué et n'a pas bougé depuis (`applied_at` + empreinte, posés par
+ * `applyRecordedWorktree`), sauf demande explicite avec `force`. Les
+ * répertoires sous `.orch/wt` qui ne correspondent à aucun enregistrement
+ * worktree encore présent sont traités comme orphelins.
  *
  * Les deux nettoyages sont dans le même fichier parce que le premier
  * conditionne le second : un enregistrement bloqué « running » protège son
@@ -25,14 +27,14 @@ import type { TaskRecord, TaskStatus, TaskStore } from "../store.js";
 import { fileTaskStore } from "../store.js";
 import { acquireLease, inspectLease, purgeLease, releaseLease } from "./lock.js";
 import type { Lease, LeaseInspection } from "./lock.js";
-import { listGitWorktrees, removeWorktree, repoRoot } from "./worktree.js";
+import { diffWorktree, listGitWorktrees, loadWorktreeHandle, patchDigest, removeWorktree, repoRoot } from "./worktree.js";
 import type { WorktreeHandle } from "./worktree.js";
 
 const execFileAsync = promisify(execFile);
 const WORKTREES_IN_USE_DIR = join(".orch", "state", "worktrees-in-use");
 
 export type WorktreeGcAction = "removed" | "would_remove" | "kept";
-export type WorktreeGcReason = "clean" | "modified" | "active" | "inspection_failed";
+export type WorktreeGcReason = "clean" | "modified" | "applied" | "active" | "inspection_failed";
 
 export interface WorktreeGcEntry {
   id: string;
@@ -40,6 +42,12 @@ export interface WorktreeGcEntry {
   branch: string;
   orphan: boolean;
   status?: TaskStatus;
+  /**
+   * L'instant de la dernière application (`orch apply`) porté par
+   * l'enregistrement, restitué tel quel : c'est lui qui distingue, parmi les
+   * conservés `modified`, ceux qui ont été appliqués puis retouchés.
+   */
+  applied_at?: string;
   action: WorktreeGcAction;
   reason: WorktreeGcReason;
   error?: string;
@@ -72,6 +80,8 @@ interface Candidate {
   handle: WorktreeHandle;
   orphan: boolean;
   status?: TaskStatus;
+  /** Absent pour un orphelin : aucun enregistrement du store ne le réclame. */
+  record?: TaskRecord;
 }
 
 /**
@@ -264,6 +274,7 @@ async function recordedCandidates(root: string): Promise<Candidate[]> {
           },
           orphan: false,
           status: record.status,
+          record,
         };
       }),
   );
@@ -372,6 +383,34 @@ async function canonical(path: string): Promise<string> {
 }
 
 /**
+ * Le worktree d'une tâche appliquée porte-t-il exactement ce qui a été
+ * appliqué ? Vrai seulement quand l'enregistrement témoigne d'une
+ * application (`applied_at` + empreinte) et que le patch recalculé — par le
+ * même `diffWorktree` que l'application, seule façon de rendre les
+ * empreintes comparables — porte encore la même empreinte. Tout échec de la
+ * vérification (task.json disparu, git en échec) répond non : on ne
+ * supprime jamais sur un doute.
+ *
+ * `diffWorktree` pose un `add --intent-to-add` dans l'index du worktree
+ * candidat, y compris en `--dry-run` : c'est l'index d'un worktree jetable,
+ * déjà traversé par l'application elle-même, et le geste est nécessaire —
+ * sans lui, les fichiers non suivis manqueraient au patch et l'empreinte ne
+ * correspondrait jamais. Le workspace réel et le store, eux, restent
+ * intouchés en `--dry-run`.
+ */
+async function appliedAndUnchanged(record: TaskRecord | undefined): Promise<boolean> {
+  if (!record?.applied_at || !record.applied_patch_digest) return false;
+  try {
+    const handle = await loadWorktreeHandle(record);
+    if (!handle) return false;
+    const diff = await diffWorktree(handle);
+    return patchDigest(diff.patch) === record.applied_patch_digest;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Nettoie les worktrees admissibles et rend une entrée pour chaque worktree
  * encore présent au début de l'opération. Avec `dryRun`, la même décision est
  * calculée mais aucune suppression n'est effectuée.
@@ -408,6 +447,7 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
       branch: candidate.handle.branch,
       orphan: candidate.orphan,
       status: candidate.status,
+      ...(candidate.record?.applied_at ? { applied_at: candidate.record.applied_at } : {}),
     };
 
     // Relecture au dernier moment : le worktree peut être apparu après le
@@ -453,9 +493,18 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
       continue;
     }
 
-    if (modified && !options.force) {
-      entries.push({ ...common, action: "kept", reason: "modified" });
-      continue;
+    let reason: WorktreeGcReason = "clean";
+    if (modified) {
+      if (await appliedAndUnchanged(candidate.record)) {
+        // Le patch courant est celui qui a été appliqué : le worktree ne
+        // porte plus rien d'unique, il est collectable comme un propre.
+        reason = "applied";
+      } else if (!options.force) {
+        entries.push({ ...common, action: "kept", reason: "modified" });
+        continue;
+      } else {
+        reason = "modified";
+      }
     }
 
     const action: WorktreeGcAction = options.dryRun ? "would_remove" : "removed";
@@ -475,7 +524,7 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
         continue;
       }
     }
-    entries.push({ ...common, action, reason: modified ? "modified" : "clean" });
+    entries.push({ ...common, action, reason });
   }
 
   return {

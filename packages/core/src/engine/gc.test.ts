@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { REPORT_PROTOCOL, readReport, taskPaths, writeReport } from "@orch/protocol";
+import { REPORT_PROTOCOL, TASK_PROTOCOL, TaskSchema, readReport, taskPaths, writeReport, writeTask } from "@orch/protocol";
 import type { TaskRecord, TaskStatus } from "../store.js";
 import { fileTaskStore } from "../store.js";
-import { createWorktree } from "./worktree.js";
+import { applyRecordedWorktree, createWorktree } from "./worktree.js";
 import {
   clearWorktreeInUse,
   detectAbandonedTasks,
@@ -87,6 +87,79 @@ describe("garbageCollectWorktrees", () => {
     await fileTaskStore(root).create(record);
     return record;
   }
+
+  /** Une tâche terminée dont le travail a été appliqué par le chemin officiel. */
+  async function appliedRecordedWorktree(id: string): Promise<TaskRecord> {
+    const record = await createRecordedWorktree(id, "succeeded");
+    await writeFile(join(record.workspace, `${id}.txt`), "travail\n", "utf8");
+    const paths = taskPaths(record.task_dir);
+    const baseRef = (await git(record.workspace, ["rev-parse", "HEAD"])).trim();
+    await writeTask(paths, TaskSchema.parse({
+      protocol: TASK_PROTOCOL,
+      id,
+      created_at: record.created_at,
+      agent: record.agent,
+      objective: record.objective,
+      mode: "write",
+      isolation: "worktree",
+      workspace: record.workspace,
+      base_ref: baseRef,
+      deadline_ms: 60_000,
+      report_path: paths.reportPath,
+      events_path: paths.eventsPath,
+    }));
+    const applied = await applyRecordedWorktree(root, fileTaskStore(root), record);
+    expect(applied.outcome).toBe("applied");
+    return (await fileTaskStore(root).get(id))!;
+  }
+
+  it("supprime le worktree d'une tâche appliquée dont rien n'a bougé depuis", async () => {
+    const record = await appliedRecordedWorktree("t_appliquee");
+
+    const result = await garbageCollectWorktrees(root);
+
+    expect(result.entries).toEqual([
+      expect.objectContaining({ id: record.id, action: "removed", reason: "applied", applied_at: record.applied_at }),
+    ]);
+    expect(await pathExists(record.workspace)).toBe(false);
+    expect((await git(root, ["branch", "--list", record.branch!])).trim()).toBe("");
+  });
+
+  it("--dry-run annonce la collecte d'une tâche appliquée sans supprimer ni réécrire", async () => {
+    const record = await appliedRecordedWorktree("t_appliquee_dry");
+
+    const result = await garbageCollectWorktrees(root, { dryRun: true });
+
+    expect(result.entries).toEqual([
+      expect.objectContaining({ id: record.id, action: "would_remove", reason: "applied" }),
+    ]);
+    expect(await pathExists(record.workspace)).toBe(true);
+    expect((await fileTaskStore(root).get(record.id))?.applied_patch_digest).toBe(record.applied_patch_digest);
+  });
+
+  it("conserve un worktree modifié depuis son application, applied_at exposé", async () => {
+    const record = await appliedRecordedWorktree("t_retouchee");
+    await writeFile(join(record.workspace, "t_retouchee.txt"), "retouche postérieure à l'application\n", "utf8");
+
+    const result = await garbageCollectWorktrees(root);
+
+    expect(result.entries).toEqual([
+      expect.objectContaining({ id: record.id, action: "kept", reason: "modified", applied_at: record.applied_at }),
+    ]);
+    expect(await pathExists(record.workspace)).toBe(true);
+  });
+
+  it("vérification impossible (task.json disparu) : conservé, jamais supprimé sur un doute", async () => {
+    const record = await appliedRecordedWorktree("t_sans_task_json");
+    await rm(taskPaths(record.task_dir).taskFile, { force: true });
+
+    const result = await garbageCollectWorktrees(root);
+
+    expect(result.entries).toEqual([
+      expect.objectContaining({ id: record.id, action: "kept", reason: "modified" }),
+    ]);
+    expect(await pathExists(record.workspace)).toBe(true);
+  });
 
   it("--dry-run annonce un worktree terminé propre sans supprimer le worktree ni la branche", async () => {
     const record = await createRecordedWorktree("t_propre", "succeeded");
