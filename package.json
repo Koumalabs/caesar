@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "orch": "node packages/cli/dist/bin.js",
-    "build:binary": "bash scripts/build-binary.sh"
+    "build:binary": "bash scripts/build-binary.sh",
+    "assets:sync": "node scripts/generate-agent-assets.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
