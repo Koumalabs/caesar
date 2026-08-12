@@ -40,8 +40,11 @@ function reasonLabel(entry: WorktreeGcEntry): string {
   switch (entry.reason) {
     case "clean":
       return entry.orphan ? "orphelin, aucune modification" : "tâche terminée, aucune modification";
+    case "applied":
+      return "appliqué au workspace, rien de nouveau depuis";
     case "modified":
-      return entry.action === "kept" ? "modifications non intégrées" : "modifications non intégrées, suppression forcée";
+      if (entry.action !== "kept") return "modifications non intégrées, suppression forcée";
+      return entry.applied_at ? "modifié depuis son application" : "modifications non intégrées";
     case "active":
       return entry.status === "pending" ? "tâche en attente" : "tâche en cours";
     case "inspection_failed":
@@ -59,9 +62,13 @@ function reasonLabel(entry: WorktreeGcEntry): string {
  */
 function keptAdvice(entry: WorktreeGcEntry): string | null {
   if (entry.reason !== "modified" || entry.action !== "kept") return null;
-  return entry.orphan
-    ? `"${entry.id}" : orphelin porteur de modifications, inconnu du store — à inspecter à la main : ${entry.path}`
-    : `"${entry.id}" : "orch diff ${entry.id}" pour voir ce qui n'a pas été intégré, "orch apply ${entry.id}" pour l'intégrer.`;
+  if (entry.orphan) {
+    return `"${entry.id}" : orphelin porteur de modifications, inconnu du store — à inspecter à la main : ${entry.path}`;
+  }
+  if (entry.applied_at) {
+    return `"${entry.id}" : appliqué puis modifié — "orch diff ${entry.id}" pour voir ce qui a bougé depuis l'application, "orch apply ${entry.id}" pour ré-appliquer.`;
+  }
+  return `"${entry.id}" : "orch diff ${entry.id}" pour voir ce qui n'a pas été intégré, "orch apply ${entry.id}" pour l'intégrer.`;
 }
 
 /**

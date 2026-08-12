@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TaskRecord } from "@orch/core";
-import { createWorktree, fileTaskStore, markWorktreeInUse } from "@orch/core";
+import { applyRecordedWorktree, createWorktree, fileTaskStore, markWorktreeInUse } from "@orch/core";
+import { TASK_PROTOCOL, TaskSchema, taskPaths, writeTask } from "@orch/protocol";
 import { makeIo, type CapturedIo } from "../../test/support.js";
 import { EXIT_OK } from "../output.js";
 import { runGc } from "./gc.js";
@@ -54,6 +55,39 @@ describe("orch gc", () => {
     };
     await fileTaskStore(root).create(record);
     return record;
+  }
+
+  /**
+   * Une tâche terminée dont le travail a été appliqué par le chemin officiel
+   * — mirror du helper de `packages/core/src/engine/gc.test.ts` : c'est là
+   * qu'`applyRecordedWorktree` est exercé en détail, ici on ne fabrique que
+   * la donnée nécessaire pour vérifier ce que la façade CLI en dit.
+   */
+  async function appliedRecordedWorktree(id: string): Promise<TaskRecord> {
+    const record = await createTask(id, "succeeded");
+    await writeFile(join(record.workspace, `${id}.txt`), "travail\n", "utf8");
+    const paths = taskPaths(record.task_dir);
+    const baseRef = (await git(record.workspace, ["rev-parse", "HEAD"])).trim();
+    await writeTask(
+      paths,
+      TaskSchema.parse({
+        protocol: TASK_PROTOCOL,
+        id,
+        created_at: record.created_at,
+        agent: record.agent,
+        objective: record.objective,
+        mode: "write",
+        isolation: "worktree",
+        workspace: record.workspace,
+        base_ref: baseRef,
+        deadline_ms: 60_000,
+        report_path: paths.reportPath,
+        events_path: paths.eventsPath,
+      }),
+    );
+    const applied = await applyRecordedWorktree(root, fileTaskStore(root), record);
+    expect(applied.outcome).toBe("applied");
+    return (await fileTaskStore(root).get(id))!;
   }
 
   it("--dry-run --json décrit exactement les suppressions et conservations", async () => {
@@ -141,5 +175,35 @@ describe("orch gc", () => {
     expect(io.stdoutText()).toContain(orphan.path);
     expect(io.stdoutText()).not.toContain("orch diff");
     expect(io.stdoutText()).not.toContain("orch apply");
+  });
+
+  it("étiquette « appliqué » un worktree collecté après application", async () => {
+    await appliedRecordedWorktree("t_appliquee_cli");
+
+    const code = await runGc(root, {}, io);
+
+    expect(code).toBe(EXIT_OK);
+    expect(io.stdoutText()).toContain("supprimé");
+    // Sous-chaîne courte plutôt que le libellé complet : la colonne "raison"
+    // de `printTable` rogne à la largeur du terminal (80 par défaut hors
+    // tty), et ce libellé (45 caractères) dépasse le budget que lui laissent
+    // les autres colonnes de cette ligne — même motif que le test voisin
+    // "rappelle diff/apply", qui pour la même raison n'asserte jamais une
+    // phrase entière.
+    expect(io.stdoutText()).toContain("appliqué au workspace");
+  });
+
+  it("étiquette « modifié depuis son application » un worktree retouché après apply, avec le conseil adapté", async () => {
+    const record = await appliedRecordedWorktree("t_retouchee_cli");
+    await writeFile(join(record.workspace, "t_retouchee_cli.txt"), "retouche\n", "utf8");
+
+    const code = await runGc(root, {}, io);
+
+    expect(code).toBe(EXIT_OK);
+    expect(io.stdoutText()).toContain("modifié depuis son application");
+    // Idem : `wrapText` coupe cette phrase entre "pour" et "voir" à 80
+    // colonnes (le conseil dépasse la largeur d'une ligne) — la sous-chaîne
+    // testée reste à l'intérieur d'une seule ligne de l'habillage.
+    expect(io.stdoutText()).toContain("voir ce qui a bougé depuis l'application");
   });
 });
