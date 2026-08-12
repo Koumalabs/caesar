@@ -166,7 +166,8 @@ Look as hard at what the objective did *not* ask for: files touched outside the 
 weakened instead of satisfied, a dependency introduced, a `TODO` left as an exit. The reconciled
 file list tells you whether git confirmed it or the sub-agent merely claimed it; when the two levels
 of status disagree, the process outcome tells you the run completed, the report tells you whether
-the mission did.
+the mission did. An empty diff, a stuck task, a refusal: `references/troubleshooting.md` names the
+cause and the remedy for each, and the remedy is almost never a retry.
 
 **Arbitrate a race; never merge one.** Keep exactly one proposal, or none. Two competing diffs were
 produced from the same base by processes that never saw each other: hand-combining them yields code
@@ -194,8 +195,8 @@ eventually proceeds on its own judgment, so silence is a decision too.
 **Applying is a decision, not a final step.** Nothing reaches the repository until it is applied.
 State what is being applied and which criterion it met; when it met none, say so and leave the
 worktree unapplied — `orch gc` collects the worktrees of finished tasks, keeping any that still
-carry changes unless `--force`. A diff nobody can defend is not cheaper for having been written
-elsewhere.
+carry changes unless `--force` (see `references/cli.md`). A diff nobody can defend is not cheaper
+for having been written elsewhere.
 
 ## What not to do
 
