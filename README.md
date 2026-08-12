@@ -4,7 +4,7 @@ Un orchestrateur qui permet à un agent de code — typiquement Claude Code — 
 
 Le problème qu'il résout : chaque CLI d'agent de code a sa propre façon de recevoir une mission, de rendre un compte rendu, de signaler qu'il a besoin d'une précision. Sans couche commune, comparer deux providers sur la même tâche, ou simplement fiabiliser un aller-retour avec l'un d'eux, veut dire réapprendre son format à chaque fois — et croire sur parole ce qu'il prétend avoir modifié. `agent-orchestrateur` normalise ce cycle : un standard de communication commun (`docs/protocol.md`), un moteur qui isole chaque tâche sur un worktree git jetable, et un recoupement systématique entre ce que l'agent déclare et ce que `git diff` constate — le diff fait foi, jamais la seule déclaration de l'agent.
 
-Ce dépôt livre un CLI (`orch`), un serveur MCP à dix tools pour piloter tout ça depuis Claude Code (ou tout autre client MCP), un TUI de configuration, et trois sous-agents Claude Code prêts à l'emploi dans `.claude/agents/`.
+Ce dépôt livre un CLI (`orch`), un serveur MCP à dix tools pour piloter tout ça depuis Claude Code (ou tout autre client MCP), un TUI de configuration, et une skill `orch` multi-runtime accompagnée de cinq commandes — ce que `orch init` dépose chez l'agent principal (Claude Code, Codex, Copilot CLI, OpenCode, Antigravity CLI) pour qu'il sache diriger `orch` plutôt que l'exécuter lui-même (voir « [Usage depuis Claude Code](#usage-depuis-claude-code) »).
 
 ## Agents pris en charge
 
@@ -44,7 +44,7 @@ Monorepo pnpm, Node 24. Pas encore publié sur npm : on l'utilise depuis une cop
 pnpm install
 pnpm exec tsc -b        # build de tous les packages
 
-pnpm run orch init   --root <chemin-vers-votre-projet>   # crée <projet>/.orch/config.toml + les prompts système des rôles par défaut
+pnpm run orch init   --root <chemin-vers-votre-projet>   # crée <projet>/.orch/config.toml + les prompts système + dépose la skill et les commandes des runtimes détectés
 pnpm run orch doctor --root <chemin-vers-votre-projet>   # quels agents sont installés, avec quelles capacités, autorisés ou non
 ```
 
@@ -241,13 +241,25 @@ orch mcp install claude --root <votre-projet>
 
 `orch mcp install` fonctionne aussi avec `codex`, `copilot`, `opencode` et `antigravity` (installation en sous-commande native pour `claude`/`codex`, en fichier de configuration fusionné pour les trois autres — `--dry-run` montre ce qui serait fait sans rien exécuter ni écrire). Une fois enregistré, Claude Code expose dix tools préfixés `mcp__orch__` (`orch_delegate`, `orch_await`, `orch_status`, `orch_logs`, `orch_cancel`, `orch_diff`, `orch_apply`, `orch_list_agents`, `orch_list_roles`, `orch_answer`) — le détail de chacun est dans `packages/mcp-server/src/tools/*.ts`.
 
-C'est ce qui rend une délégation aussi naturelle qu'invoquer un sous-agent natif : ce dépôt fournit trois sous-agents Claude Code prêts à l'emploi dans `.claude/agents/`, qui s'appuient sur ces tools :
+Ce qui rend une délégation aussi naturelle qu'invoquer un sous-agent natif, ce n'est pas ces tools pris isolément : c'est la skill `orch`, déposée par `orch init` chez l'agent principal, qui lui apprend à s'en servir.
 
-- **`orch-implementer`** — délègue une implémentation à un agent externe sur un worktree jetable, et rend le diff pour décision. N'applique jamais de son initiative.
-- **`orch-reviewer`** — délègue une relecture en lecture seule, rend les constats triés par sévérité. Ne modifie rien.
-- **`orch-race`** — lance la même tâche sur plusieurs providers en parallèle, attend l'ensemble, compare leurs diffs. C'est l'usage que l'asynchronisme de `orch_delegate`/`orch_await` rend possible et qu'aucun sous-agent natif ne sait faire seul.
+### La connaissance agentique : skill et commandes
 
-Dans Claude Code, il suffit de demander : *« délègue à Codex l'implémentation de X »* ou *« lance orch-race sur cette tâche avec codex et antigravity »* — le sous-agent adapté enchaîne lui-même `orch_delegate` → `orch_await` → présentation du rapport et du diff, sans bloquer la conversation principale pendant que le sous-agent externe tourne.
+**Diriger, pas exécuter.** La skill apprend à l'agent principal — Claude Code, Codex, Copilot CLI, OpenCode ou Antigravity CLI — à briefer un exécutant externe pour une tâche précise, à en lancer plusieurs de front sans attendre l'un pour démarrer l'autre, et à ne jamais croire sur parole ce qui revient : c'est le diff qui tranche, pas le résumé du sous-agent. Cinq commandes en découlent directement, une par geste : `/orch-delegate` (une implémentation, un provider), `/orch-fanout` (plusieurs objectifs indépendants, en parallèle), `/orch-race` (le même objectif sur plusieurs providers, comparés côte à côte), `/orch-review` (une relecture en lecture seule par un provider qui n'a pas écrit le diff), `/orch-tasks` (l'état de ce qui est délégué). Dans un runtime où la skill est déposée, il suffit de demander : *« délègue à Codex l'implémentation de X »* — elle guide alors l'agent principal lui-même dans l'enchaînement `orch_delegate` → `orch_await` → présentation du rapport et du diff, sans bloquer la conversation pendant que l'agent externe tourne ; sous Claude Code, les commandes donnent le même enchaînement de façon explicite, sans dépendre du déclenchement automatique de la skill.
+
+**Où elle s'installe** — un seul endroit gouverne cette table, `packages/core/src/agent-assets.ts`, vérifié contre chaque binaire réel :
+
+| Cible | Skill | Commandes |
+|---|---|---|
+| partagé (`codex`, `copilot`, `antigravity`) | `.agents/skills/orch/` | — |
+| `claude` | `.claude/skills/orch/` (copie dédiée) | `.claude/commands/` (`orch-*.md`) |
+| `opencode` | `.agents/skills/orch/` (partagé) | `.opencode/commands/` (`orch-*.md`) |
+
+Deux copies plutôt qu'une : Claude Code ne lit pas `.agents/skills/` — vérifié empiriquement sur le binaire, pas supposé depuis sa documentation — une skill posée uniquement là lui resterait invisible.
+
+**Comment.** `orch init` détecte les runtimes présents dans le `PATH` et leur dépose (ou rafraîchit) la skill et les commandes ; si aucun n'est détecté et qu'aucun `--agent` n'est donné, le socle partagé (`.agents/skills/orch/`) est déposé quand même, prêt pour le premier runtime installé ensuite. `--agent <id>`, répétable, force la liste des cibles plutôt que la détection ; `--no-skills` coupe entièrement ce dépôt (non mémorisé, à repasser à chaque `init`). Sur un projet déjà initialisé, relancer `orch init` **sans** `--force` est un refresh : `.orch/config.toml` et `.orch/roles/*.md` restent intacts, ce sont les fichiers que l'utilisateur édite — la skill et les commandes, elles, entièrement dérivées du catalogue et n'appartenant donc à personne, sont réécrites depuis celui-ci. C'est précisément ce qui fait qu'une skill améliorée atteint un projet déjà initialisé : un simple `orch init`, rien de plus à réinitialiser. Côté `claude`, `orch init` fusionne aussi `<projet>/.claude/settings.json` : les six tools MCP qui ne modifient aucun fichier de l'utilisateur (`orch_list_agents`, `orch_list_roles`, `orch_status`, `orch_await`, `orch_logs`, `orch_diff`) sont ajoutés à `permissions.allow` s'ils n'y sont pas déjà, sans toucher au reste du fichier. Dans tous les cas, la skill ne fait qu'appeler les tools du serveur MCP `orch` : ils n'existent pour un runtime qu'une fois `orch mcp install <client>` lancé pour lui (voir ci-dessus).
+
+**Pour les contributeurs.** Les sources de la skill et des commandes vivent en clair dans `.claude/skills/orch/` (+ 4 références) et `.claude/commands/` — le format Claude Code sert de source, les autres runtimes en reçoivent une adaptation. `pnpm run assets:sync` régénère depuis ces fichiers le catalogue embarqué (`packages/core/src/agent-assets.generated.ts`), et un test de dérive échoue si l'un des deux a été édité sans relancer l'autre : les sources et le catalogue ne peuvent pas diverger en silence. Le dépôt garde par ailleurs ses trois sous-agents Claude Code (`.claude/agents/`) pour son propre développement — ils ne sont pas déposés chez l'utilisateur et ne font pas partie de ce catalogue.
 
 ## Configuration en couches : global, projet, local
 
@@ -262,7 +274,7 @@ Trois niveaux, du plus général au plus spécifique — le plus spécifique l'e
 Poser sa politique, ses rôles et ses agents une fois dans le global fait que chaque nouveau projet en hérite sans rien faire :
 
 ```bash
-orch init --global                 # crée ~/.config/orch/config.toml à partir des réglages par défaut
+orch init --global                 # crée ~/.config/orch/config.toml + dépose skill et commandes en portée globale
 orch policy deny copilot --global  # s'applique désormais à tous les projets de ce poste
 ```
 
@@ -280,7 +292,7 @@ Attention : la liste "denied" n'était pas déclarée par la couche projet (.orc
 
 À l'issue de ce scénario, `.orch/config.toml` ne contient **que** `denied = ["copilot", "opencode"]` — aucun défaut recopié, aucun réglage global figé ; modifier ensuite `max_parallel` dans le fichier global continue de se répercuter dans ce projet. `orch policy show` indique la provenance de chaque valeur (`global`, `project`, `local`, ou `default`), et `orch role show`/`orch agents list` l'étendent aux rôles et aux agents.
 
-`orch init` crée la couche **projet** : les prompts système par défaut (`.orch/roles/*.md`) et complète le `.gitignore` du projet avec `.orch/config.local.toml`, `.orch/tasks/`, `.orch/wt/` et `.orch/state/` (n'ajoute que les lignes absentes, ne réécrit jamais le fichier depuis rien ; ne fait rien, en le disant, si le répertoire n'est pas un dépôt git). `orch init --global` crée la couche **globale**, intégralement à partir des réglages par défaut. Les deux refusent d'écraser une configuration existante sans `--force`.
+`orch init` crée la couche **projet** : les prompts système par défaut (`.orch/roles/*.md`), le dépôt de la skill et des commandes pour les runtimes détectés (voir « [Usage depuis Claude Code](#usage-depuis-claude-code) » ci-dessus), et complète le `.gitignore` du projet avec `.orch/config.local.toml`, `.orch/tasks/`, `.orch/wt/` et `.orch/state/` (n'ajoute que les lignes absentes, ne réécrit jamais le fichier depuis rien ; ne fait rien, en le disant, si le répertoire n'est pas un dépôt git). `orch init --global` crée la couche **globale**, intégralement à partir des réglages par défaut. Sans `--force`, relancer l'une ou l'autre sur une couche déjà initialisée n'est plus un refus : la commande réussit (code 0), laisse `config.toml` et les rôles intacts, et se contente de rafraîchir la skill et les commandes — `--force` réinitialise tout depuis zéro, prompts système compris.
 
 ## Le thème
 
