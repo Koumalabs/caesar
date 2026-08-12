@@ -411,6 +411,10 @@ describe("orch logs / cancel / diff / apply — sur un store peuplé par de vrai
       expect(applyCode).toBe(EXIT_OK);
       expect(JSON.parse(io2.stdoutText()).applied).toBe(true);
       expect(await readFile(join(root, "nouveau.txt"), "utf8")).toBe("contenu\n");
+
+      const record = await fileTaskStore(root).get(outcome.record.id);
+      expect(record?.applied_at).toBeDefined();
+      expect(record?.applied_patch_digest).toMatch(/^[0-9a-f]{64}$/);
     });
   }, 20_000);
 

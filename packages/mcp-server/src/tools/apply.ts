@@ -7,7 +7,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { applyWorktree, loadWorktreeHandle } from "@orch/core";
+import { applyRecordedWorktree } from "@orch/core";
 import type { McpSession } from "../session.js";
 import { errorResult, jsonResult } from "./result.js";
 
@@ -31,13 +31,13 @@ export async function orchApply(session: McpSession, input: OrchApplyInput): Pro
   const record = await session.store.get(input.task_id);
   if (!record) return errorResult(`Tâche inconnue : "${input.task_id}".`);
 
-  const handle = await loadWorktreeHandle(record);
-  if (!handle) {
-    return jsonResult({ task_id: input.task_id, applied: true, conflicts: [] });
+  const result = await applyRecordedWorktree(session.root, session.store, record);
+  if (result.outcome === "conflicts") {
+    return jsonResult({ task_id: input.task_id, applied: false, conflicts: result.conflicts });
   }
-
-  const result = await applyWorktree(session.root, handle);
-  return jsonResult({ task_id: input.task_id, applied: result.applied, conflicts: result.conflicts });
+  // "no_worktree" reste applied: true — le contrat existant de l'outil pour
+  // les tâches inplace ou sans changement, décrit dans sa description.
+  return jsonResult({ task_id: input.task_id, applied: true, conflicts: [] });
 }
 
 export function registerOrchApply(server: McpServer, session: McpSession): void {

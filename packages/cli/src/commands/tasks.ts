@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import type { OrchEvent } from "@orch/protocol";
 import { EventSchema, readEvents, taskPaths } from "@orch/protocol";
 import type { TaskRecord, TaskStatus, TaskStore } from "@orch/core";
-import { applyWorktree, diffWorktree, fileTaskStore, formatDuration, loadWorktreeHandle, sweepAbandonedTasks } from "@orch/core";
+import { applyRecordedWorktree, diffWorktree, fileTaskStore, formatDuration, loadWorktreeHandle, sweepAbandonedTasks } from "@orch/core";
 import type { Cell, Io, ThemeToken } from "../output.js";
 import {
   EXIT_OK,
@@ -379,16 +379,15 @@ export async function runApply(root: string, id: string, options: ApplyOptions, 
     return EXIT_USAGE;
   }
 
-  const handle = await loadWorktreeHandle(record);
-  if (!handle) {
+  const result = await applyRecordedWorktree(root, store, record);
+  if (result.outcome === "no_worktree") {
     const message = `Tâche "${id}" : isolation "${record.isolation}", rien à appliquer.`;
     if (options.json) printJson(io, { id, applied: false, conflicts: [], message });
     else writeLine(io.stdout, message);
     return EXIT_OK;
   }
 
-  const result = await applyWorktree(root, handle);
-  if (!result.applied) {
+  if (result.outcome === "conflicts") {
     const message = `Conflits en appliquant la tâche "${id}" : ${result.conflicts.join(", ")}.`;
     if (options.json) printJson(io, { id, applied: false, conflicts: result.conflicts });
     else printError(io, message);

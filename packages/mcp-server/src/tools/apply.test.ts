@@ -43,6 +43,10 @@ describe("orch_apply", () => {
 
         const content = await readFile(join(root, "nouveau.txt"), "utf8");
         expect(content).toBe("contenu\n");
+
+        const record = await session.store.get(taskId);
+        expect(record?.applied_at).toBeDefined();
+        expect(record?.applied_patch_digest).toMatch(/^[0-9a-f]{64}$/);
       }),
     );
   }, 20_000);
@@ -60,6 +64,9 @@ describe("orch_apply", () => {
         const data = result.structuredContent as { applied: boolean; conflicts: string[] };
         expect(data.applied).toBe(true);
         expect(data.conflicts).toEqual([]);
+
+        const record = await session.store.get(taskId);
+        expect(record?.applied_at).toBeUndefined();
       }),
     );
   }, 20_000);
