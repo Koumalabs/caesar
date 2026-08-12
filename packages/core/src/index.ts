@@ -13,6 +13,8 @@ export * from "./isolation.js";
 export * from "./roles.js";
 export * from "./delegation.js";
 export * from "./mcp-registration.js";
+export * from "./agent-assets.js";
+export * from "./agent-assets.generated.js";
 export * from "./engine/worktree.js";
 export * from "./engine/materialize.js";
 export * from "./engine/gc.js";
