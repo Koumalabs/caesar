@@ -11,8 +11,10 @@ repository being protected, and offers a remedy.
 
 **Cause.** A write task in `inplace` isolation would write straight into the working tree, on the
 current branch: its changes would mix with the user's and with those of other tasks, beyond what a
-diff can attribute. Refused unless all four conditions fail — `inplace` requested, write mode, usable
-git repository, and no `allow_inplace_write` opt-in.
+diff can attribute. Refused **if and only if all four** of these hold: `inplace` requested, write
+mode, usable git repository, and no `allow_inplace_write` opt-in. Any one of them failing means no
+refusal — a read-only task in `inplace` (the shipped `reviewer` role's default) is fine, and so is
+a write task in a workspace where no worktree is possible.
 
 **Remedy.** Leave isolation on `worktree` or `auto`. If the worktree is unusable because untracked
 files are missing, declare them under `[worktree]` — see the next entry. `allow_inplace_write = true`
