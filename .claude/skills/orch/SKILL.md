@@ -154,9 +154,9 @@ already produced. Stop waiting on it, `orch_cancel` it rather than leaving it ru
 tasks that finished, and name the one that did not and what is known about it. A partial report
 delivered now beats a complete one delivered too late to act on.
 
-**Follow the set** with `orch ps` (state of every task in the store) or `orch watch --once` (one
-snapshot, then exit). `orch watch` *without* `--once` is an interactive view for a human at a
-terminal: it redraws and never terminates on its own — never call it.
+**Follow the set** with `orch ps` (active tasks plus the most recently finished) or `orch watch
+--once` (one snapshot, then exit). `orch watch` *without* `--once` is an interactive view for a
+human at a terminal: it redraws and never terminates on its own — never call it.
 
 ## Controlling what comes back
 

@@ -130,6 +130,25 @@ describe("orch init", () => {
     });
   });
 
+  it("--json distingue un premier init d'un refresh via `refreshed` (constat I3)", async () => {
+    await withFakeHome(async () => {
+      const code = await runInit(root, { json: true }, io);
+      expect(code).toBe(EXIT_OK);
+      expect(JSON.parse(io.stdoutText()).refreshed).toBe(false);
+
+      // Même projet, second passage sans --force : un refresh, où
+      // `role_files: []` et `worktree: null` ne doivent pas se lire comme
+      // « ce projet n'a ni rôles ni worktree ».
+      const io2 = makeIo();
+      const code2 = await runInit(root, { json: true }, io2);
+      expect(code2).toBe(EXIT_OK);
+      const parsed2 = JSON.parse(io2.stdoutText());
+      expect(parsed2.refreshed).toBe(true);
+      expect(parsed2.role_files).toEqual([]);
+      expect(parsed2.worktree).toBeNull();
+    });
+  });
+
   it("ne signale plus l'avertissement git une fois le répertoire initialisé en dépôt", async () => {
     await withFakeHome(async () => {
       await execFileAsync("git", ["init", "-q"], { cwd: root });
@@ -205,6 +224,19 @@ describe("orch init --global", () => {
       expect(parsed.scope).toBe("global");
       expect(parsed.config_path).toBe(join(home, ".config", "orch", "config.toml"));
       expect(io.stdoutText()).not.toMatch(/\x1b\[/);
+    });
+  });
+
+  it("--json distingue un premier init d'un refresh via `refreshed` (constat I3)", async () => {
+    await withFakeHome(async () => {
+      const code = await runInit(root, { global: true, json: true }, io);
+      expect(code).toBe(EXIT_OK);
+      expect(JSON.parse(io.stdoutText()).refreshed).toBe(false);
+
+      const io2 = makeIo();
+      const code2 = await runInit(root, { global: true, json: true }, io2);
+      expect(code2).toBe(EXIT_OK);
+      expect(JSON.parse(io2.stdoutText()).refreshed).toBe(true);
     });
   });
 });

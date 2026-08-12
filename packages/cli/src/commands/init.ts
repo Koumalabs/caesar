@@ -288,6 +288,12 @@ async function runInitGlobal(root: string, options: InitOptions, io: Io): Promis
     printJson(io, {
       scope: "global",
       config_path: configPath,
+      // `true` sur un refresh (voir l'en-tête du module) : sans ce marqueur,
+      // un consommateur JSON ne distingue pas « rien à réécrire cette fois »
+      // de « ce champ n'a jamais rien eu à dire » (constat I3 de la revue
+      // finale) — l'ambiguïté pousse vers `--force`, le seul chemin
+      // destructeur.
+      refreshed: refresh,
       assets: assets ? { targets: assets.targets, files: assets.install.files, stale: assets.install.stale } : null,
     });
   } else {
@@ -340,7 +346,7 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
     // : écrire ici la politique et les rôles par défaut referait exactement le
     // défaut I11 que cette tâche corrige (la couche figerait les valeurs par
     // défaut, masquant toute configuration globale). Ce fichier vide marque
-    // simplement l'initialisation du projet (garde-fou --force ci-dessus).
+    // simplement l'initialisation du projet.
     //
     // `[worktree]` fait exception, et pour une raison précise : ce n'est pas une
     // valeur par défaut mais un **fait de ce projet-ci** — ce que son worktree
@@ -387,6 +393,14 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
       role_files: roleFiles,
       gitignore: gitignore ? { path: gitignore.path, added: gitignore.added } : null,
       worktree,
+      // `true` sur un refresh (voir l'en-tête du module) : sur un refresh,
+      // `role_files` est `[]` et `worktree` est `null` sans qu'aucun rôle ni
+      // atelier n'ait disparu — sans ce marqueur, un consommateur JSON ne
+      // distingue pas « rien à réécrire cette fois » de « ce projet n'a ni
+      // rôles ni [worktree] » (constat I3 de la revue finale), et la
+      // réaction plausible à cette dernière lecture est `--force`, le seul
+      // chemin destructeur.
+      refreshed: refresh,
       warnings,
       assets: assets ? { targets: assets.targets, files: assets.install.files, stale: assets.install.stale } : null,
     });

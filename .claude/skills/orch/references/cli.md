@@ -16,9 +16,10 @@ worktrees, and passing raw arguments through to a provider.
 | `orch config` | none — launches the interactive configuration TUI |
 
 `orch init` creates `<root>/.orch/config.toml` and the default system prompt of every role, and
-deposits the Agent Skills skill plus provider-specific commands (`installAgentAssets`) for every
-`claude`/`codex`/`copilot`/`opencode`/`antigravity` binary found on the PATH — `--agent` overrides
-that detection with an explicit list instead (validated against the same five ids); with none
+deposits the skill for every `claude`/`codex`/`copilot`/`opencode`/`antigravity` binary found on
+the PATH, plus slash-commands for the two runtimes that support them (`claude`, `opencode`) —
+`--agent` overrides that detection with an explicit list instead (validated against the same five
+ids); with none
 detected and no `--agent`, the shared `.agents/skills/orch/` location is still deposited, ready for
 whichever of the four non-`claude` runtimes gets installed next. On a project already initialized,
 re-running `orch init` **without** `--force` refreshes only the assets: `.orch/config.toml` and

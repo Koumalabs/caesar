@@ -107,6 +107,12 @@ const HEADER = `/**
  * et \`.claude/commands/orch-*.md\`. NE PAS ÉDITER À LA MAIN : relancer
  * \`pnpm run assets:sync\` pour le régénérer.
  *
+ * Attention en éditant ces sources, dans CE dépôt : ce sont exactement les
+ * chemins qu'\`orch init\` dépose/rafraîchit pour la cible \`claude\` —
+ * lancer \`orch init\` pendant que vous les modifiez écrase vos éditions non
+ * encore synchronisées dans ce catalogue. Lancez \`pnpm run assets:sync\`
+ * avant, ou passez \`orch init --no-skills\` le temps de l'édition.
+ *
  * Pourquoi passer par un fichier \`.ts\` généré plutôt que de lire les
  * sources \`.md\` au runtime :
  *
