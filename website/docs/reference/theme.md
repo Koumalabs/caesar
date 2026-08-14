@@ -4,15 +4,16 @@ sidebar_position: 5
 description: The caesar palette — accent gold, semantic colors, the two rules that govern them, and how a terminal's capabilities are detected automatically.
 ---
 
-{/* Source: README.md §The theme, packages/theme/src/palette.ts, packages/theme/src/ansi.ts — manual resync */}
+{/* Source: README.md §The theme, packages/theme/src/palette.ts, packages/theme/src/ansi.ts, packages/theme/src/wordmark.ts — manual resync */}
 
 # Theme
 
-A single palette for the command line **and** the TUI, defined once in `packages/theme`. It used to live in the TUI alone, while the CLI picked its colors case by case among seven basic ANSI codes — the two halves of the same tool did not look alike on screen.
+Both the CLI and the TUI draw from one palette, defined in a single place: `packages/theme`. That consolidation is recent — the CLI used to reach for whichever of seven basic ANSI codes seemed to fit at each call site, independently of the TUI's own colors, so the two interfaces of the same tool ended up looking unrelated on screen.
 
 ## The palette
 
 - **Accent** — `#EAA52E`, the brand gold: focus, selection, the active tab. Saturated enough to cut through, light enough to carry a dark ink (`#1A1206`) wherever it becomes a background.
+- **Ramp** — a six-shade gradient, one entry per line of the wordmark (the ASCII logo), each stop darkening from the brand gold: `#EAA52E`, `#DB9A2B`, `#CC8F28`, `#BD8425`, `#AE7922`, `#9F6E1F`. It only ever darkens, never lightens toward white — a gradient trending toward white would vanish on a light-background terminal, and plenty of users run one.
 - **Secondary (`DIM`)** — `#9E9284`: column headers, default values, explanations.
 - **Tertiary (`FAINT`)** — `#6B6252`: inactive borders, inheritance marks, what should be read only when looked for.
 - **Semantic** — `OK` `#7DCE82`, `WARN` `#E0AF68`, `BAD` `#E88388`: `allowed`/`denied`, task statuses, report statuses.

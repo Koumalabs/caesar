@@ -12,103 +12,103 @@ Most of what you will run into here is a refusal or a finding that already names
 
 ### `inplace` refused for a write task
 
-**Symptom.** The delegation fails before anything runs. The refusal says isolation `inplace` was requested — explicitly, or inherited from a role or from the policy default — for a write task, names the repository being protected, and offers a remedy.
+**Symptom.** Nothing runs — the delegation is refused up front. The message names `inplace` as the isolation in play (whether it was asked for directly or inherited from a role or the policy default), points at the repository it is protecting, and suggests what to do instead.
 
-**Cause.** A write task run `inplace` would write straight into the working tree, on the current branch: its changes would mix with the user's and with those of other tasks, beyond what a diff can attribute. The refusal fires if and only if all four hold at once: `inplace` requested, write mode, a usable git repository, and no `allow_inplace_write` opt-in. Any one of them absent means no refusal — a read-only task `inplace` (the shipped `reviewer` role's default) is fine, and so is a write task in a workspace where no worktree is possible at all.
+**Cause.** Running a write task `inplace` means writing straight onto the current branch of the working tree, where its edits would blend with the user's own and with any other task's, past the point where a diff could untangle who did what. The refusal only fires when every one of four conditions holds together: `inplace` was requested, the task writes, the repository is a usable git one, and `allow_inplace_write` was not opted into. Drop any single one and there is nothing to refuse — a read-only `inplace` task (how the shipped `reviewer` role runs by default) is unaffected, and so is a write task in a workspace that cannot offer a worktree at all.
 
-**Remedy.** Leave isolation on `worktree` or `auto`. If the worktree turns out unusable because untracked files are missing, declare them under `[worktree]` — see the next entry. `allow_inplace_write = true` under `[policy]` exists for repositories where the mixing is accepted knowingly; it is not the fix for an incomplete worktree.
+**Remedy.** Keep isolation at `worktree` or `auto`. When the worktree itself turns out unusable because untracked files are missing, the fix is declaring them under `[worktree]` — covered in the next entry — not switching isolation. `[policy] allow_inplace_write = true` exists for repositories that accept the mixing on purpose; it does not paper over an incomplete worktree.
 
 See [The workshop: worktrees](./guides/worktrees.md) for why isolation defaults this way.
 
 ### The worktree looks empty; nothing installs or runs there
 
-**Symptom.** A low-severity finding titled along the lines of *worktree without a workshop*, listing the paths the project appears to need — or a task that fails for no visible reason, with the sub-agent reporting a missing dependency.
+**Symptom.** Either a low-severity finding — something like *worktree without a workshop* — listing the paths the project seems to need, or a task that fails without an obvious reason, its own report blaming a missing dependency.
 
-**Cause.** A git worktree contains only tracked files: `node_modules`, `.venv`, `target`, `.env` and every ignored directory are simply absent from it.
+**Cause.** Only tracked files make it into a git worktree. `node_modules`, `.venv`, `target`, `.env`, and any other ignored directory simply are not there.
 
-**Remedy.** Declare them under `[worktree] copy` (and `setup` for the install command) in `.caesar/config.toml`, or re-run `caesar init --force`, which detects them. Never fall back to `inplace`.
+**Remedy.** List the missing paths under `[worktree] copy` in `.caesar/config.toml` (add the install command to `setup` too), or let `caesar init --force` detect them for you. Switching to `inplace` is never the answer.
 
-A path declared under `[worktree]` that cannot be placed produces a finding naming which of four reasons applies (absent, tracked by git, neither tracked nor ignored, already present) and the key to fix. A path placed with `link` produces an informational finding instead: it is shared with the workspace, so it is not isolated. Separately, a finding about `.caesar/wt/` not being ignored by git means the project's `.gitignore` was rewritten without that line — not fatal, but `caesar init --force` restores it.
+Three related findings are worth recognizing on sight: a `[worktree]` path that cannot be placed names one of four reasons (absent, tracked by git, neither tracked nor ignored, or already present) plus the key to fix; a path placed via `link` gets an informational note instead, since sharing the directory with the workspace means it is not truly isolated; and a warning about `.caesar/wt/` missing from `.gitignore` means that file was rewritten without it — harmless, and `caesar init --force` puts the line back.
 
 ### The diff is empty although the agent says it wrote files
 
-**Symptom.** `caesar_diff` returns `is_empty: true` with no patch, while the report claims files were changed.
+**Symptom.** The report insists files were changed, yet `caesar_diff` comes back `is_empty: true` with no patch.
 
 **Causes, in order of likelihood.**
 
-1. **The task ran `inplace`, not in a worktree.** There is no worktree to diff, so the diff is empty by construction — the changes are in the working tree itself. Check the isolation actually used: the task's status reports it, and it can differ from what was requested — a read-only task on a provider with no native read-only mode is forced into a worktree, and a worktree can be declined when git cannot provide one.
-2. **The paths are ones the orchestrator itself placed.** Everything materialized from `[worktree] copy`/`link` is excluded from the diff, with prefix semantics. If the sub-agent edited something inside `node_modules`, it will not appear.
-3. **The agent did not actually write anything.** The declared file list is only the agent's own claim; the diff is what actually happened. Inside a git repository the two are reconciled and any discrepancy is added as a finding — read the findings.
+1. **No worktree exists to diff — the task ran `inplace`.** By construction there is nothing to compare against; whatever changed is sitting in the working tree itself. The task's recorded status shows which isolation actually applied, and it is not always the one requested: a provider with no native read-only mode gets forced into a worktree even for a read-only task, and a worktree gets declined outright when git cannot supply one.
+2. **The changed paths belong to the orchestrator, not the agent.** Anything materialized from `[worktree] copy`/`link` is stripped from the diff, prefix and all — an edit made inside `node_modules`, say, simply will not show up.
+3. **Nothing was actually written.** The file list in the report is only the sub-agent's own claim; the diff records what really happened. Inside a git repository the two get compared, and any mismatch turns into a finding worth reading.
 
-An agent that *commits* inside its worktree is not a cause by itself: the diff is taken against the base commit frozen at creation, never against `HEAD`, so the result is the same whether it committed or not.
+Committing inside the worktree does not, on its own, explain an empty diff: the comparison is always against the commit frozen when the worktree was created, never against `HEAD`, so committed or not, the result is identical.
 
 ### The agent is refused
 
-**Symptom.** The delegation returns an error naming the agent and the rule applied, instead of a task id.
+**Symptom.** Instead of a task id, the delegation call comes back with an error that names both the agent and the rule that stopped it.
 
-**Cause and remedy.** One of four rules, checked in order — see [Configuration](./reference/configuration.md#the-four-refusal-rules) for the full table. In short: `denied` needs `caesar agents enable <id>`; an `allowlist` refusal needs `caesar policy allow <id>`; `recursion` (the default refusal of `claude`) needs `allow_recursion` set by hand; `depth` is not about the agent at all — the delegation chain is already `max_depth` deep.
+**Cause and remedy.** Four rules are checked, in a fixed order, and each has its own fix — see [Configuration](./reference/configuration.md#the-four-refusal-rules) for the complete table. `denied` clears with `caesar agents enable <id>`; an `allowlist` miss clears with `caesar policy allow <id>`; `recursion` — the default block on `claude` — only lifts once `allow_recursion` is set by hand; `depth` has nothing to do with the agent at all, it means the delegation chain has already reached `max_depth`.
 
-**Target the right layer.** `caesar policy show` reports the provenance of each value. A refusal declared by the global layer is not lifted by writing to the project layer — that write would materialize the effective list there, refusal included. Use `--global` or `--local` to match the layer that actually declares the rule.
+**Target the right layer.** Run `caesar policy show` to see where each value actually comes from. Writing to the project layer will not lift a refusal declared globally — it would instead copy the effective, still-refusing list down into the project file. Point `--global` or `--local` at whichever layer actually declares the rule.
 
 ### Network not guaranteed
 
-**Symptom.** An informational finding titled *network not guaranteed*, or a `network_warning` on the delegation result.
+**Symptom.** An informational finding called *network not guaranteed*, or a `network_warning` field riding along on the delegation result.
 
-**Causes.** Three distinct ones, and the wording distinguishes them:
+**Causes.** Three different situations produce it, and the wording tells them apart:
 
-- the provider can only open the network in write mode — `codex`, whose sandbox cuts it in read-only mode with no recourse; under `auto` the task runs anyway, without network;
-- the network was asked to be closed and the orchestrator does not know how to close it for that provider — it says so instead of promising a closure that did not happen;
-- the network was demanded (`on`) on a provider whose confinement the orchestrator does not control — declare `network_args` on that agent so it knows how to open it explicitly.
+- the provider only opens the network in write mode — `codex`'s sandbox cuts it off in read-only mode with no way around that; under `auto`, the task simply proceeds without network;
+- closing the network was requested, but caesar has no known way to close it for that particular provider, so it says so rather than claim a closure that never happened;
+- the network was required (`on`) on a provider whose confinement caesar cannot verify — declaring `network_args` for that agent is what teaches it how to open the network deliberately.
 
-**Remedy.** If the objective genuinely needs the network, pass `network: "on"` — the delegation then fails outright, before launch, rather than burning a budget on an install that cannot succeed. If it does not, declaring `network = "off"` on the role makes the intent explicit and silences the warning.
+**Remedy.** When the objective truly cannot proceed offline, request `network: "on"` explicitly: the delegation then refuses outright before it even starts, instead of spending its whole budget on an install that was never going to work. When it can proceed offline, setting `network = "off"` on the role states that intent plainly and the warning stops appearing.
 
 ### A task stays `running` forever after a `kill -9`
 
-**Symptom.** `caesar ps` keeps showing a task as running; `caesar watch` follows it endlessly; its worktree is never collected.
+**Symptom.** `caesar ps` never stops calling a task `running`; `caesar watch` follows it forever; its worktree sits there, never collected.
 
-**Cause.** A task's final status is written by the process conducting it, in its own cleanup path. Killed outright — `kill -9`, a closed session, a halted machine — it never gets to write it, and the record stays `running` forever; a running task's worktree is protected from collection.
+**Cause.** Writing a task's final status is the job of the process running it, done as part of its own cleanup. A process killed outright — `kill -9`, a session closed mid-run, a machine going down — never reaches that step, so the record stays stuck at `running` indefinitely, and a worktree attached to a `running` task is exempt from collection.
 
-**Remedy.** Reconciliation is automatic on read: `caesar ps` and the status/wait tools sweep abandoned tasks first. A task whose marker names a process that no longer exists is marked `failed`, with a report saying what happened, and its worktree becomes collectable. `caesar gc` does the same sweep and then collects. The proof is always positive — a pid that can no longer be found — never inferred from an absence: a task with no marker at all is never concluded on its own. `caesar cancel <id>` remains the manual exit.
+**Remedy.** Reading a task's state triggers a sweep first, automatically: `caesar ps` and the status/await tools all check for abandoned tasks before answering. Once a task's recorded process can no longer be found, it gets marked `failed` (with a report explaining what happened) and its worktree is freed for collection; `caesar gc` runs the same sweep before it collects. This only ever fires on positive proof — a pid that has genuinely vanished — never on a mere absence of activity, so a task with no process marker at all stays untouched by it. `caesar cancel <id>` is still there for the manual case.
 
 ### Waiting for a `max_parallel` slot
 
-**Symptom.** A delegation that does not start; `caesar run` prints how many tasks are already in flight, the limit, and who holds each slot.
+**Symptom.** The delegation just does not start; `caesar run` prints how many tasks are already running, the current limit, and who is holding each slot.
 
-**Cause.** `policy.max_parallel` (4 by default) is enforced across processes, through slot files under `.caesar/state/slots/`. Everything delegating under the same project root shares them.
+**Cause.** `policy.max_parallel` — 4 unless configured otherwise — is not a per-process limit but a shared one, enforced through slot files under `.caesar/state/slots/` that every delegation against the same project root draws from.
 
-**Remedy.** Wait, cut the batch down to the limit, or raise `max_parallel` in the layer that suits. A killed process leaves its slot file behind, but the first caller that finds everything taken checks each holder and reclaims the ones whose process is gone — a stale slot is not a permanent block.
+**Remedy.** Wait it out, shrink the batch to fit under the limit, or raise `max_parallel` at whichever layer makes sense. A process that gets killed leaves its slot file orphaned, but that is not a permanent jam: the next caller to find every slot taken checks each holder in turn and reclaims any whose process is actually gone.
 
 ### `workspace_warning` on a delegation
 
-**Symptom.** The delegation succeeds and carries a warning saying the orchestrator delegates on one root while the current directory belongs to a different repository.
+**Symptom.** The delegation still succeeds, but a warning comes with it: the root caesar is delegating against does not match the repository the current directory belongs to.
 
-**Cause.** The MCP registration freezes `--root` once and for all. If the working directory has since moved to another repository (or another worktree), sub-agents work in a tree nobody is looking at.
+**Cause.** `--root` gets fixed once, at MCP registration time. Move the working directory to a different repository — or a different worktree — afterward, and sub-agents keep working in a tree that nothing is watching anymore.
 
-**Remedy.** Re-run `caesar mcp install` from the intended repository, or serve with `caesar mcp serve --root <repo>`. It is a warning rather than a refusal — the server's current directory is not proof of intent, and failing the delegation on that basis would cost more than it saves. But do not ignore it: a diff produced in the wrong tree is a diff nobody will find.
+**Remedy.** Register again from the repository actually intended (`caesar mcp install`), or start the server pointed at it directly (`caesar mcp serve --root <repo>`). This stays a warning rather than a refusal, since the server's own current directory proves nothing about intent and blocking the delegation over it would cost more than it protects — but it is not one to shrug off either: a diff produced in the wrong tree is a diff that will never get found.
 
 ### `status: succeeded` with a report that says `failed`
 
-**Symptom.** The task's process status is `succeeded` while the report's own status is `failed`, `partial` or `blocked`.
+**Symptom.** The process side of the task reads `succeeded`, but the report it produced says `failed`, `partial`, or `blocked`.
 
-**Cause.** They are two different facts, deliberately not merged: the process status says the CLI exited cleanly; the report status is the sub-agent's own verdict on its mission. A sub-agent that writes `{"status":"failed"}` and still exits `0` produces exactly this.
+**Cause.** These track two separate things on purpose, and caesar never collapses them into one: the process status only says the CLI exited without error, while the report status is the sub-agent's own judgment of whether it actually accomplished the mission. A sub-agent that exits `0` after writing `{"status":"failed"}` is exactly this case.
 
-**Remedy.** Check both before concluding anything: the report status is the verdict on the mission, the diff is the record of what happened. `caesar run` already crosses the two before returning exit code `0`.
+**Remedy.** Look at both before drawing a conclusion — the report status is what judges the mission, the diff is the record of what actually happened. `caesar run` itself already requires both to agree before it returns exit code `0`.
 
 ### `npx caesar` fails: could not determine executable to run
 
-**Symptom.** Any `npx caesar …` invocation fails immediately with npm's `could not determine executable to run`.
+**Symptom.** Every `npx caesar …` call fails right away with npm's own `could not determine executable to run`.
 
-**Cause.** `caesar` is a standalone binary installed on the PATH, never an npm dependency of the project: there is nothing under `node_modules/.bin` for npx to find, whatever the project.
+**Cause.** `npx` looks for something under `node_modules/.bin`, and there is nothing there to find: `caesar` lives on the PATH as a standalone binary, never as an npm dependency of any project.
 
-**Remedy.** Call `caesar` directly. `command -v caesar` tells where the binary lives; `caesar doctor` confirms what it can reach. If the shell finds nothing, the installation itself is missing — not the project's `package.json`.
+**Remedy.** Invoke `caesar` on its own. `command -v caesar` shows where the binary sits; `caesar doctor` confirms what it can reach from there. An empty result from the shell points at a missing installation, not at anything wrong with the project's `package.json`.
 
 ### `caesar gc` keeps a worktree whose diff was already applied
 
-**Symptom.** `caesar gc` reports a finished task's worktree as kept — "unintegrated changes", or "modified since its application" — even though its diff has landed in the workspace.
+**Symptom.** `caesar gc` keeps a finished task's worktree around — "unintegrated changes", or "modified since its application" — even though the work is clearly already in the workspace.
 
-**Cause.** Three possibilities: the diff entered the workspace by another path than `caesar apply` (manual copy, re-implementation), so the application was never recorded and gc will not deduce it from content alone; or the worktree changed after the application, and what changed is precisely what was never applied; or the application predates the version of caesar that records it.
+**Cause.** Three things can explain it: the diff reached the workspace some other way than `caesar apply` (a manual copy, a hand re-implementation), so there was never an application to record and gc has no way to infer one from content alone; or the worktree kept changing after `caesar apply` ran, and it is exactly that later change gc is protecting; or the application happened under an older version of caesar, before this tracking existed.
 
-**Remedy.** `caesar diff <id>` shows what the worktree still carries. Re-run `caesar apply <id>` if it should land; once settled — or when the work is known to be integrated — `caesar gc --force` removes what gc could not prove applied.
+**Remedy.** `caesar diff <id>` shows exactly what the worktree is still holding. If it belongs in the workspace, re-run `caesar apply <id>`; once settled — or once the work is known to be integrated by other means — `caesar gc --force` clears out what gc could not confirm on its own.
 
 ## Next steps
 

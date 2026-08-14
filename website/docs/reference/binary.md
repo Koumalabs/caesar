@@ -8,7 +8,7 @@ description: caesar also builds into a single ~70 MB executable with no Node, no
 
 # Standalone binary
 
-`caesar` also builds into a single binary, with no Node, no Bun, and no `node_modules` required on the target machine: `bun build --compile` embeds the Bun runtime, the CLI and the TUI (OpenTUI and its native core included) into a single file.
+Beyond the everyday Node-based setup, `caesar` also compiles down to one self-contained binary that needs nothing else installed on the machine running it — no Node, no Bun, no `node_modules`. `bun build --compile` is what produces it: it bundles the Bun runtime itself alongside the CLI and the TUI, native OpenTUI core included, into that single file.
 
 ```bash
 pnpm run build:binary   # equivalent to scripts/build-binary.sh — builds dist-bin/caesar
@@ -22,10 +22,10 @@ dist-bin/caesar mcp serve --root <project>
 dist-bin/caesar config --root <project>
 ```
 
-This binary embeds Bun: the project's initial trade-off ("Node everywhere, Bun for the TUI alone", justified by the MCP server having to run without Bun) no longer applies to it — `caesar config` there mounts the TUI directly in the current process rather than looking for an external `bun`, and `caesar run --channel` self-invokes (`caesar channel serve --task-dir <dir>`, an internal subcommand hidden from the help) rather than resolving `@caesar/mcp-channel` through `node_modules`, absent from a compiled binary. The Node path used elsewhere in this documentation (`pnpm run caesar`, `pnpm exec tsc -b`) remains the everyday development path in this monorepo, and keeps working identically — these two behaviors only activate in the binary, never under Node.
+Because the binary carries its own Bun runtime, one constraint that shapes the rest of the project quietly disappears inside it. Elsewhere the design is deliberately "Node everywhere, Bun only for the TUI" — the MCP server specifically has to run without Bun — but a compiled binary has no such split to respect: `caesar config` mounts the TUI straight into the running process instead of shelling out to an external `bun`, and `caesar run --channel` launches itself through a hidden internal subcommand (`caesar channel serve --task-dir <dir>`) rather than resolving `@caesar/mcp-channel` from `node_modules`, which a compiled binary does not have. Neither behavior touches the regular Node workflow this monorepo uses day to day (`pnpm run caesar`, `pnpm exec tsc -b`, and so on) — both are specific to running the compiled binary.
 
 :::note Cross-compilation fails today
-`--target=bun-linux-x64` and friends (via `scripts/build-binary.sh --target=bun-linux-x64`) fail: OpenTUI depends on a package of per-platform native binaries (`@opentui/core-<platform>`), of which pnpm installs only the current machine's. Producing a binary for another platform means re-running the pnpm install on that platform (or in an environment targeting it) before compiling.
+Targeting another platform — `scripts/build-binary.sh --target=bun-linux-x64` and its siblings — does not currently work. The reason is OpenTUI itself: it ships as a set of per-platform native binaries (`@opentui/core-<platform>`), and pnpm only ever installs the one matching the machine it runs on. Building for a different platform means running that pnpm install on (or targeting) the platform in question first, then compiling there.
 :::
 
 ## Next steps

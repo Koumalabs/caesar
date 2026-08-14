@@ -139,6 +139,8 @@ A role is a fallback chain plus a set of defaults. Three ship by default:
 | `implementer` | `codex`, `antigravity`, `opencode` | `write` | `worktree` |
 | `investigator` | `antigravity`, `codex`, `opencode` | `read-only` | `auto` |
 
+A role's full field set is `name`, `purpose`, `agents`, `mode`, `isolation`, `network`, `timeout`, `system_prompt_file`, and an optional `model`. `purpose` is a one-line statement of intent, reproduced as-is by `caesar role list` and `caesar_list_roles` — the thing that tells a caller which of several roles actually fits before delegating through one.
+
 All three default to `network = "auto"` and a `10m` timeout, and each points at a system prompt file under `.caesar/roles/<name>.md` — written by `caesar init`, and tolerated as absent (the role still works, with no system prompt).
 
 A role's system prompt is prepended to the task's `context`, separated by a horizontal rule. Its `mode`, `isolation`, `network`, optional `model` and `timeout` fill in whatever the delegation did not state explicitly. The chain is walked in declaration order, skipping agents whose binary is not installed and agents the policy refuses; `caesar role list` and `caesar_list_roles` both show which one would be picked right now and why the earlier candidates were skipped.

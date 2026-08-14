@@ -8,7 +8,7 @@ description: caesar config, the interactive configuration TUI — navigation, ed
 
 # TUI
 
-`caesar config` launches an interactive TUI (OpenTUI + React) to edit policy, roles, agents and MCP integrations. It has one requirement of its own: it runs under Bun, not Node — OpenTUI renders through Bun's FFI, unavailable on Node 24.
+Editing policy, roles, agents and MCP integrations interactively is what `caesar config` is for — an OpenTUI-and-React interface with a single hard requirement: Bun, not Node. OpenTUI's rendering goes through Bun's FFI, and Node 24 has no equivalent to offer it.
 
 :::warning Requires Bun
 Without `bun` on the PATH, `caesar config` explains the situation and points to the equivalent subcommands rather than failing dryly:
@@ -23,7 +23,7 @@ Install Bun (https://bun.sh), or use the equivalent subcommands:
 ```
 :::
 
-`@caesar/core` remains in every case the single source of truth for the configuration — the three layers described in [Configuration](./configuration.md), merged: the TUI, these subcommands and the MCP server are different facades over it, and none re-reads or rewrites it on its own account.
+None of these entry points — the TUI, the subcommands mentioned above, or the MCP server — reads or writes configuration on its own account. They are all facades over the same `@caesar/core`, which alone merges the three layers described in [Configuration](./configuration.md) and stays the single source of truth throughout.
 
 ## Navigation
 
