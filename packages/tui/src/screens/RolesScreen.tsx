@@ -69,8 +69,8 @@ export interface RolesScreenProps {
   notify: (message: string, isError?: boolean) => void;
 }
 
-type Field_ = "name" | "purpose" | "agents" | "mode" | "isolation" | "network" | "timeout" | "prompt";
-const FIELDS: Field_[] = ["name", "purpose", "agents", "mode", "isolation", "network", "timeout", "prompt"];
+type Field_ = "name" | "purpose" | "agents" | "mode" | "isolation" | "network" | "model" | "timeout" | "prompt";
+const FIELDS: Field_[] = ["name", "purpose", "agents", "mode", "isolation", "network", "model", "timeout", "prompt"];
 const FIELD_LABELS: Record<Field_, string> = {
   name: "Name",
   purpose: "Purpose",
@@ -78,6 +78,7 @@ const FIELD_LABELS: Record<Field_, string> = {
   mode: "Mode",
   isolation: "Isolation",
   network: "Network",
+  model: "Model",
   timeout: "Timeout",
   prompt: "System prompt",
 };
@@ -91,6 +92,8 @@ const FIELD_HINTS: Record<Field_, string> = {
   isolation: "worktree: disposable working copy. inplace: the repository itself. auto: worktree for writes, and for any read-only task without a native mode.",
   network:
     "auto: open wherever the agent allows it. on: refuses the delegation if the agent cannot open it — codex only knows how in write mode. off: closed where possible.",
+  model:
+    "Model requested from whichever agent gets picked. Overrides the per-agent [models] default; an explicit --model still wins. Empty: agent default.",
   timeout: 'Beyond this, the task is interrupted. Accepted forms: "10m", "90s", "1h".',
   prompt: "The text placed at the head of the agent's context, before the objective. Enter: edit it.",
 };
@@ -106,7 +109,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
   const [focus, setFocus] = useState<"roles" | "fields" | "agents">("roles");
   const [fieldIndex, setFieldIndex] = useState(0);
   const [agentIndex, setAgentIndex] = useState(0);
-  const [editing, setEditing] = useState<{ kind: "name" | "purpose" | "timeout" | "prompt-file" | "new-role"; buffer: string } | null>(null);
+  const [editing, setEditing] = useState<{ kind: "name" | "purpose" | "model" | "timeout" | "prompt-file" | "new-role"; buffer: string } | null>(null);
   const [promptOpen, setPromptOpen] = useState(false);
   const [preview, setPreview] = useState<{ lines: string[]; bytes: number; exists: boolean } | null>(null);
 
@@ -207,6 +210,11 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
       notify(`Role renamed "${name}".`);
     } else if (editing.kind === "purpose") {
       onChange(updateRole(state, role.name, { purpose: editing.buffer }));
+    } else if (editing.kind === "model") {
+      // Empty means "back to the agent's default" — same convention as the
+      // prompt file just below, and the shape `fromRoleConfig` expects.
+      const value = editing.buffer.trim();
+      onChange(updateRole(state, role.name, { model: value.length === 0 ? undefined : value }));
     } else if (editing.kind === "prompt-file") {
       const value = editing.buffer.trim();
       if (value.length === 0) {
@@ -278,6 +286,8 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
           setEditingAndNotifyApp({ kind: "name", buffer: role.name });
         } else if (field === "purpose") {
           setEditingAndNotifyApp({ kind: "purpose", buffer: role.purpose });
+        } else if (field === "model") {
+          setEditingAndNotifyApp({ kind: "model", buffer: role.model ?? "" });
         } else if (field === "timeout") {
           setEditingAndNotifyApp({ kind: "timeout", buffer: formatMs(role.timeout_ms) });
         } else if (field === "prompt") {
@@ -457,6 +467,25 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
                 if (field === "mode") return <Field key={field} {...common} value={role.mode} />;
                 if (field === "isolation") return <Field key={field} {...common} value={role.isolation} />;
                 if (field === "network") return <Field key={field} {...common} value={role.network} />;
+
+                if (field === "model") {
+                  return editing?.kind === "model" ? (
+                    <Field key={field} {...common}>
+                      <input
+                        focused
+                        value={editing.buffer}
+                        placeholder="(empty — agent default)"
+                        onInput={(value) => setEditing({ kind: "model", buffer: value })}
+                        onSubmit={commitEdit}
+                        onKeyDown={(key) => {
+                          if (key.name === "escape") setEditingAndNotifyApp(null);
+                        }}
+                      />
+                    </Field>
+                  ) : (
+                    <Field key={field} {...common} value={role.model ?? "(none — agent default)"} valueFg={role.model ? undefined : DIM} />
+                  );
+                }
 
                 if (field === "timeout") {
                   return editing?.kind === "timeout" ? (

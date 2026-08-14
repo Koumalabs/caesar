@@ -103,11 +103,44 @@ describe("RolesScreen", () => {
     setup.renderer.destroy();
   });
 
+  it("shows the role's model, and its absence explicitly", async () => {
+    const state = makeState();
+    state.layers[0] = {
+      ...state.layers[0]!,
+      override: {
+        roles: [
+          { name: "reviewer", purpose: "", agents: ["codex"], mode: "read-only", isolation: "inplace", network: "auto", timeout_ms: 600_000, model: "gpt-6" },
+        ],
+      },
+    };
+    const setup = await mount(state);
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("Model");
+    expect(frame).toContain("gpt-6");
+    setup.renderer.destroy();
+  });
+
+  it("a role without a model says the agent's default applies", async () => {
+    const setup = await mount();
+    expect(setup.captureCharFrame()).toContain("(none — agent default)");
+    setup.renderer.destroy();
+  });
+
+  it("explains the model field when it is reached", async () => {
+    const setup = await mount();
+    await act(async () => setup.mockInput.pressEnter());
+    // name, purpose, agents, mode, isolation, network, model: six notches down.
+    for (let i = 0; i < 6; i++) await act(async () => setup.mockInput.pressKey("j"));
+    await act(async () => setup.renderOnce());
+    expect(setup.captureCharFrame()).toContain("per-agent [models] default");
+    setup.renderer.destroy();
+  });
+
   it("offers to open the editor when the prompt field is reached", async () => {
     const setup = await mount();
     await act(async () => setup.mockInput.pressEnter());
-    // name, purpose, agents, mode, isolation, network, timeout, prompt: seven notches.
-    for (let i = 0; i < 7; i++) await act(async () => setup.mockInput.pressKey("j"));
+    // name, purpose, agents, mode, isolation, network, model, timeout, prompt: eight notches.
+    for (let i = 0; i < 8; i++) await act(async () => setup.mockInput.pressKey("j"));
     await act(async () => setup.renderOnce());
     const frame = setup.captureCharFrame();
     expect(frame).toContain("edit the prompt");
