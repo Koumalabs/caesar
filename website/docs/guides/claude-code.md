@@ -4,7 +4,7 @@ sidebar_position: 5
 description: Register caesar as an MCP server for Claude Code and let the deposited skill and commands direct delegations for you.
 ---
 
-{/* Source: README.md — manual resync */}
+{/* Source: README.md, .claude/skills/caesar/SKILL.md, .claude/commands/caesar-delegate.md, .claude/commands/caesar-fanout.md, .claude/commands/caesar-race.md, .claude/commands/caesar-review.md, .claude/commands/caesar-tasks.md — manual resync */}
 
 # Using from Claude Code
 

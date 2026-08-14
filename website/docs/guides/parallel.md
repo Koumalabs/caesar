@@ -4,7 +4,7 @@ sidebar_position: 3
 description: How caesar caps and shares concurrent delegations across processes, and how it reclaims slots left behind by killed processes.
 ---
 
-{/* Source: README.md — manual resync */}
+{/* Source: README.md, .claude/skills/caesar/SKILL.md — manual resync */}
 
 # Parallel tasks
 
