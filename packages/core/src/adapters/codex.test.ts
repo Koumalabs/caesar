@@ -50,15 +50,15 @@ describe("codexAgent.build", () => {
   });
 
   it("branche le canal MCP par des -c au palier channel", () => {
-    const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: ["server.js"], server_name: "orch" } });
+    const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: ["server.js"], server_name: "caesar" } });
     const plan = codexAgent.build(sampleContext({ task, reportVia: "channel" }));
     expect(plan.args).toContain("-c");
-    expect(plan.args).toContain('mcp_servers.orch.command="node"');
-    expect(plan.args).toContain('mcp_servers.orch.args=["server.js"]');
+    expect(plan.args).toContain('mcp_servers.caesar.command="node"');
+    expect(plan.args).toContain('mcp_servers.caesar.args=["server.js"]');
   });
 
   it("ne déclare aucun serveur MCP quand le palier n'est pas channel, même si un canal existe", () => {
-    const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: [], server_name: "orch" } });
+    const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: [], server_name: "caesar" } });
     const plan = codexAgent.build(sampleContext({ task, reportVia: "file" }));
     // L'assertion portait sur l'absence de tout "-c" — un raccourci qui n'est
     // plus valable depuis que le réseau emprunte le même drapeau. C'est le
@@ -164,7 +164,7 @@ describe("codexAgent.translate", () => {
     // traduire aussi ferait apparaître chaque fichier en double.
     expect(codexAgent.translate(started as string).events).toEqual([]);
     expect(codexAgent.translate(completed as string).events).toEqual([
-      { type: "file_changed", path: "/tmp/orch-capture/note.txt", action: "created" },
+      { type: "file_changed", path: "/tmp/caesar-capture/note.txt", action: "created" },
     ]);
   });
 

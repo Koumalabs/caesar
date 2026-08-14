@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TASK_PROTOCOL, TaskSchema, taskPaths, writeTask } from "@orch/protocol";
-import type { Task } from "@orch/protocol";
+import { TASK_PROTOCOL, TaskSchema, taskPaths, writeTask } from "@caesar/protocol";
+import type { Task } from "@caesar/protocol";
 import { fileTaskStore } from "../store.js";
 import type { TaskRecord } from "../store.js";
 import {
@@ -30,8 +30,8 @@ async function git(cwd: string, args: string[]): Promise<string> {
 
 async function initRepo(root: string): Promise<void> {
   await git(root, ["init", "-q"]);
-  await git(root, ["config", "user.email", "orch-test@example.com"]);
-  await git(root, ["config", "user.name", "Orch Test"]);
+  await git(root, ["config", "user.email", "caesar-test@example.com"]);
+  await git(root, ["config", "user.name", "Caesar Test"]);
   await writeFile(join(root, "a.txt"), "hello\n", "utf8");
   await git(root, ["add", "a.txt"]);
   await git(root, ["commit", "-q", "-m", "init"]);
@@ -41,7 +41,7 @@ describe("worktree", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-worktree-repo-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-worktree-repo-"));
     await initRepo(root);
   });
 
@@ -57,7 +57,7 @@ describe("worktree", () => {
     });
 
     it("renvoie null hors d'un dépôt git", async () => {
-      const outside = await mkdtemp(join(tmpdir(), "orch-not-a-repo-"));
+      const outside = await mkdtemp(join(tmpdir(), "caesar-not-a-repo-"));
       try {
         expect(await repoRoot(outside)).toBeNull();
       } finally {
@@ -67,10 +67,10 @@ describe("worktree", () => {
   });
 
   describe("createWorktree / diffWorktree", () => {
-    it("crée le worktree sous <root>/.orch/wt/<taskId> sur la branche orch/<taskId>", async () => {
+    it("crée le worktree sous <root>/.caesar/wt/<taskId> sur la branche caesar/<taskId>", async () => {
       const handle = await createWorktree(root, "task-1");
-      expect(handle.path).toBe(join(root, ".orch", "wt", "task-1"));
-      expect(handle.branch).toBe("orch/task-1");
+      expect(handle.path).toBe(join(root, ".caesar", "wt", "task-1"));
+      expect(handle.branch).toBe("caesar/task-1");
       // Un SHA, jamais la chaîne "HEAD" : c'est ce qui rend le diff insensible
       // aux commits que l'agent fait dans son atelier.
       expect(handle.baseRef).toMatch(/^[0-9a-f]{40}$/);
@@ -79,8 +79,8 @@ describe("worktree", () => {
       const content = await readFile(join(handle.path, "a.txt"), "utf8");
       expect(content).toBe("hello\n");
 
-      const branches = await git(root, ["branch", "--list", "orch/task-1"]);
-      expect(branches).toContain("orch/task-1");
+      const branches = await git(root, ["branch", "--list", "caesar/task-1"]);
+      expect(branches).toContain("caesar/task-1");
     });
 
     it("voit un fichier créé sans commit, grâce à --intent-to-add", async () => {
@@ -131,8 +131,8 @@ describe("worktree", () => {
 
       it("voit son travail dans le diff, exactement comme s'il n'avait pas commité", async () => {
         // Diffé contre `HEAD`, ce diff serait vide : `HEAD` désignerait le
-        // commit de l'agent lui-même. `orch` aurait conclu « aucun
-        // changement », `orch apply` n'aurait rien appliqué, et tout le
+        // commit de l'agent lui-même. `caesar` aurait conclu « aucun
+        // changement », `caesar apply` n'aurait rien appliqué, et tout le
         // travail se serait évaporé en silence.
         const handle = await createWorktree(root, "task-commit");
         await writeFile(join(handle.path, "nouveau.txt"), "contenu\n", "utf8");
@@ -184,7 +184,7 @@ describe("worktree", () => {
       const worktrees = await git(root, ["worktree", "list"]);
       expect(worktrees).not.toContain("task-remove");
 
-      const branches = await git(root, ["branch", "--list", "orch/task-remove"]);
+      const branches = await git(root, ["branch", "--list", "caesar/task-remove"]);
       expect(branches.trim()).toBe("");
     });
 
@@ -231,13 +231,13 @@ describe("worktree", () => {
         objective: "tâche",
         status: "succeeded",
         created_at: new Date().toISOString(),
-        task_dir: join(root, ".orch", "tasks", "task-handle"),
-        workspace: join(root, ".orch", "wt", "task-handle"),
+        task_dir: join(root, ".caesar", "tasks", "task-handle"),
+        workspace: join(root, ".caesar", "wt", "task-handle"),
         isolation: "worktree",
         mode: "write",
         report_via: "file",
         depth: 0,
-        branch: "orch/task-handle",
+        branch: "caesar/task-handle",
         ...overrides,
       };
     }
@@ -256,7 +256,7 @@ describe("worktree", () => {
       const rec = record();
       const paths = taskPaths(rec.task_dir);
       const task: Task = {
-        protocol: "orch.task/v1",
+        protocol: "caesar.task/v1",
         id: rec.id,
         created_at: rec.created_at,
         agent: rec.agent,
@@ -276,14 +276,14 @@ describe("worktree", () => {
       await writeTask(paths, task);
 
       const handle = await loadWorktreeHandle(rec);
-      expect(handle).toEqual({ path: rec.workspace, branch: "orch/task-handle", baseRef: "deadbeef" });
+      expect(handle).toEqual({ path: rec.workspace, branch: "caesar/task-handle", baseRef: "deadbeef" });
     });
 
     it("base_ref absent de task.json : replie sur \"HEAD\"", async () => {
-      const rec = record({ id: "task-handle-2", task_dir: join(root, ".orch", "tasks", "task-handle-2") });
+      const rec = record({ id: "task-handle-2", task_dir: join(root, ".caesar", "tasks", "task-handle-2") });
       const paths = taskPaths(rec.task_dir);
       const task: Task = {
-        protocol: "orch.task/v1",
+        protocol: "caesar.task/v1",
         id: rec.id,
         created_at: rec.created_at,
         agent: rec.agent,
@@ -309,7 +309,7 @@ describe("worktree", () => {
 
 /**
  * L'étape 0 du skill `superpowers:using-git-worktrees`, que ce projet
- * supposait acquise : détecter avant de créer. Deux angles morts qu'`orch`
+ * supposait acquise : détecter avant de créer. Deux angles morts que `caesar`
  * n'avait nulle part — l'état du `.gitignore`, et le décalage entre la racine
  * sur laquelle il délègue et celle où l'on travaille.
  */
@@ -317,7 +317,7 @@ describe("étape 0 — détecter avant de créer", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), "orch-etape0-")));
+    root = await realpath(await mkdtemp(join(tmpdir(), "caesar-etape0-")));
     await initRepo(root);
   });
 
@@ -326,26 +326,26 @@ describe("étape 0 — détecter avant de créer", () => {
   });
 
   describe("worktreesDirIgnored", () => {
-    it("faux quand rien n'ignore .orch/wt/", async () => {
+    it("faux quand rien n'ignore .caesar/wt/", async () => {
       expect(await worktreesDirIgnored(root, "t_1")).toBe(false);
     });
 
-    it("vrai avec la ligne qu'orch init écrit — motif terminé par un slash", async () => {
+    it("vrai avec la ligne que caesar init écrit — motif terminé par un slash", async () => {
       // Le cas qui a demandé de reformuler la question : un motif de
-      // répertoire ne s'applique à `.orch/wt` qu'à la condition que ce
+      // répertoire ne s'applique à `.caesar/wt` qu'à la condition que ce
       // répertoire existe déjà. Interroger le chemin qu'on va occuper
-      // (`.orch/wt/<taskId>`) répond dans tous les cas.
-      await writeFile(join(root, ".gitignore"), ".orch/wt/\n", "utf8");
+      // (`.caesar/wt/<taskId>`) répond dans tous les cas.
+      await writeFile(join(root, ".gitignore"), ".caesar/wt/\n", "utf8");
       expect(await worktreesDirIgnored(root, "t_1")).toBe(true);
     });
 
-    it("vrai aussi quand tout .orch/ est ignoré", async () => {
-      await writeFile(join(root, ".gitignore"), ".orch/\n", "utf8");
+    it("vrai aussi quand tout .caesar/ est ignoré", async () => {
+      await writeFile(join(root, ".gitignore"), ".caesar/\n", "utf8");
       expect(await worktreesDirIgnored(root, "t_1")).toBe(true);
     });
 
     it("faux quand le .gitignore parle d'autre chose", async () => {
-      await writeFile(join(root, ".gitignore"), "node_modules/\n.orch/tasks/\n", "utf8");
+      await writeFile(join(root, ".gitignore"), "node_modules/\n.caesar/tasks/\n", "utf8");
       expect(await worktreesDirIgnored(root, "t_1")).toBe(false);
     });
   });
@@ -360,11 +360,11 @@ describe("étape 0 — détecter avant de créer", () => {
       // La branche vient de git, jamais d'une déduction sur le nom du
       // répertoire : c'est ce qui permet au gc de nettoyer une branche dont le
       // nom ne se devine pas.
-      expect(found!.branch).toBe("orch/t_liste");
+      expect(found!.branch).toBe("caesar/t_liste");
     });
 
     it("rend une liste vide hors d'un dépôt git, plutôt que de lever", async () => {
-      const outside = await mkdtemp(join(tmpdir(), "orch-pas-un-depot-"));
+      const outside = await mkdtemp(join(tmpdir(), "caesar-pas-un-depot-"));
       try {
         expect(await listGitWorktrees(outside)).toEqual([]);
       } finally {
@@ -382,7 +382,7 @@ describe("étape 0 — détecter avant de créer", () => {
       // Le répertoire courant du serveur MCP n'est pas une preuve d'intention :
       // hors dépôt, il n'y a aucune raison de croire qu'il désigne un lieu de
       // travail.
-      const outside = await mkdtemp(join(tmpdir(), "orch-hors-depot-"));
+      const outside = await mkdtemp(join(tmpdir(), "caesar-hors-depot-"));
       try {
         expect(await describeWorkspaceMismatch(root, outside)).toBeNull();
       } finally {
@@ -390,14 +390,14 @@ describe("étape 0 — détecter avant de créer", () => {
       }
     });
 
-    it("signale le cas Superpowers : on travaille dans un worktree, orch délègue sur le dépôt d'origine", async () => {
-      // `orch mcp install` fige `--root` une fois pour toutes. Que l'agent
+    it("signale le cas Superpowers : on travaille dans un worktree, caesar délègue sur le dépôt d'origine", async () => {
+      // `caesar mcp install` fige `--root` une fois pour toutes. Que l'agent
       // principal passe dans un worktree — ce que le skill lui recommande — et
       // les sous-agents travaillent dans un arbre que plus personne ne regarde.
       const handle = await createWorktree(root, "t_ailleurs");
       const message = await describeWorkspaceMismatch(root, handle.path);
       expect(message).toContain(root);
-      expect(message).toContain("orch mcp install");
+      expect(message).toContain("caesar mcp install");
     });
   });
 });
@@ -406,7 +406,7 @@ describe("applyRecordedWorktree", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-apply-record-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-apply-record-"));
     await initRepo(root);
   });
 
@@ -424,7 +424,7 @@ describe("applyRecordedWorktree", () => {
       status: "succeeded",
       created_at: "2026-08-12T09:00:00.000Z",
       ended_at: "2026-08-12T09:01:00.000Z",
-      task_dir: join(root, ".orch", "tasks", id),
+      task_dir: join(root, ".caesar", "tasks", id),
       workspace: handle.path,
       isolation: "worktree",
       mode: "write",
@@ -495,7 +495,7 @@ describe("applyRecordedWorktree", () => {
       objective: "tâche sur place",
       status: "succeeded",
       created_at: "2026-08-12T09:00:00.000Z",
-      task_dir: join(root, ".orch", "tasks", "t_inplace"),
+      task_dir: join(root, ".caesar", "tasks", "t_inplace"),
       workspace: root,
       isolation: "inplace",
       mode: "write",

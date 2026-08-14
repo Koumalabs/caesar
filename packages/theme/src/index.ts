@@ -1,5 +1,5 @@
 /**
- * `@orch/theme` — l'apparence de l'outil, en un seul endroit.
+ * `@caesar/theme` — l'apparence de l'outil, en un seul endroit.
  *
  * Ce paquet existe pour qu'il y ait **une** palette et non deux. Elle vivait
  * dans le TUI ; la ligne de commande, elle, choisissait ses couleurs au cas

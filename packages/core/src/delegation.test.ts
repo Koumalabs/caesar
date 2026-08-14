@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ENV } from "@orch/protocol";
+import { ENV } from "@caesar/protocol";
 import { defaultConfig } from "./config.js";
-import type { OrchConfig, RoleConfig } from "./config.js";
+import type { CaesarConfig, RoleConfig } from "./config.js";
 import { nextDelegationDepth, resolveDelegation } from "./delegation.js";
 
 function role(overrides: Partial<RoleConfig> = {}): RoleConfig {
@@ -24,7 +24,7 @@ describe("resolveDelegation", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-delegation-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-delegation-"));
   });
 
   afterEach(async () => {
@@ -37,7 +37,7 @@ describe("resolveDelegation", () => {
   });
 
   it("--agent l'emporte sur le choix issu du rôle", async () => {
-    const config: OrchConfig = { ...defaultConfig(), roles: [role()] };
+    const config: CaesarConfig = { ...defaultConfig(), roles: [role()] };
     const result = await resolveDelegation(config, root, { role: "reviewer", agent: "copilot" });
     expect("error" in result).toBe(false);
     if (!("error" in result)) {
@@ -62,7 +62,7 @@ describe("resolveDelegation", () => {
   });
 
   it("agent refusé par la politique : motif exact de checkDelegation", async () => {
-    const config: OrchConfig = { ...defaultConfig(), policy: { ...defaultConfig().policy, denied: ["codex"] } };
+    const config: CaesarConfig = { ...defaultConfig(), policy: { ...defaultConfig().policy, denied: ["codex"] } };
     const result = await resolveDelegation(config, root, { agent: "codex" });
     expect("error" in result).toBe(true);
     if ("error" in result) {
@@ -71,7 +71,7 @@ describe("resolveDelegation", () => {
   });
 
   it("mode/isolation/timeout explicites l'emportent sur ceux du rôle", async () => {
-    const config: OrchConfig = { ...defaultConfig(), roles: [role({ mode: "read-only", isolation: "inplace", timeout_ms: 60_000 })] };
+    const config: CaesarConfig = { ...defaultConfig(), roles: [role({ mode: "read-only", isolation: "inplace", timeout_ms: 60_000 })] };
     const result = await resolveDelegation(config, root, { role: "reviewer", agent: "copilot", mode: "write", isolation: "worktree", timeout: "5m" });
     expect("error" in result).toBe(false);
     if (!("error" in result)) {
@@ -98,9 +98,9 @@ describe("resolveDelegation", () => {
   });
 
   it("fusionne le contexte donné avec le prompt système du rôle", async () => {
-    await mkdir(join(root, ".orch"), { recursive: true });
-    await writeFile(join(root, ".orch", "system.md"), "Tu es un relecteur strict.", "utf8");
-    const config: OrchConfig = { ...defaultConfig(), roles: [role({ system_prompt_file: "system.md" })] };
+    await mkdir(join(root, ".caesar"), { recursive: true });
+    await writeFile(join(root, ".caesar", "system.md"), "Tu es un relecteur strict.", "utf8");
+    const config: CaesarConfig = { ...defaultConfig(), roles: [role({ system_prompt_file: "system.md" })] };
 
     const result = await resolveDelegation(config, root, { role: "reviewer", agent: "copilot", context: "Contexte additionnel." });
     expect("error" in result).toBe(false);
@@ -115,18 +115,18 @@ describe("resolveDelegation", () => {
     if (!("error" in result)) expect(result.context).toBeUndefined();
   });
 
-  it("rôle sans agent choisi explicitement : la résolution passe bien par pickAgentForRole (@orch/core)", async () => {
+  it("rôle sans agent choisi explicitement : la résolution passe bien par pickAgentForRole (@caesar/core)", async () => {
     // PATH réduit à un répertoire vide : aucun agent du catalogue n'y est
     // "installé", quelle que soit la machine de développement — le mécanisme
     // de repli lui-même (ordre des candidats, formulation du motif) est déjà
     // couvert en détail par `roles.test.ts` ; ce test vérifie seulement que
     // `resolveDelegation` délègue bien à `pickAgentForRole` plutôt que de
     // choisir un agent par un autre chemin.
-    const emptyPathDir = await mkdtemp(join(tmpdir(), "orch-delegation-emptypath-"));
+    const emptyPathDir = await mkdtemp(join(tmpdir(), "caesar-delegation-emptypath-"));
     const previousPath = process.env["PATH"];
     process.env["PATH"] = emptyPathDir;
     try {
-      const config: OrchConfig = { ...defaultConfig(), roles: [role({ agents: ["codex", "antigravity"] })] };
+      const config: CaesarConfig = { ...defaultConfig(), roles: [role({ agents: ["codex", "antigravity"] })] };
       const result = await resolveDelegation(config, root, { role: "reviewer" });
       expect("error" in result).toBe(true);
       if ("error" in result) {
@@ -145,7 +145,7 @@ describe("resolveDelegation — réseau", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-network-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-network-"));
   });
 
   afterEach(async () => {
@@ -195,12 +195,12 @@ describe("resolveDelegation — réseau", () => {
   });
 
   it("hérite du rôle, puis de la politique", async () => {
-    const config: OrchConfig = { ...defaultConfig(), roles: [role({ agents: ["codex"], network: "on" })] };
+    const config: CaesarConfig = { ...defaultConfig(), roles: [role({ agents: ["codex"], network: "on" })] };
     const parRole = await resolveDelegation(config, root, { role: "reviewer", mode: "write", depth: 0 });
     if ("error" in parRole) throw new Error(parRole.error);
     expect(parRole.network).toBe(true);
 
-    const parPolitique: OrchConfig = {
+    const parPolitique: CaesarConfig = {
       ...defaultConfig(),
       policy: { ...defaultConfig().policy, default_network: "off" },
     };
@@ -210,7 +210,7 @@ describe("resolveDelegation — réseau", () => {
   });
 
   it("la demande explicite l'emporte sur le rôle", async () => {
-    const config: OrchConfig = { ...defaultConfig(), roles: [role({ agents: ["codex"], network: "on" })] };
+    const config: CaesarConfig = { ...defaultConfig(), roles: [role({ agents: ["codex"], network: "on" })] };
     const result = await resolveDelegation(config, root, {
       role: "reviewer",
       mode: "write",
@@ -246,7 +246,7 @@ describe("resolveDelegation — écriture en place", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-delegation-inplace-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-delegation-inplace-"));
   });
 
   afterEach(async () => {
@@ -258,8 +258,8 @@ describe("resolveDelegation — écriture en place", () => {
     const { promisify } = await import("node:util");
     const run = promisify(execFile);
     await run("git", ["init", "-q"], { cwd: dir });
-    await run("git", ["config", "user.email", "orch-test@example.com"], { cwd: dir });
-    await run("git", ["config", "user.name", "Orch Test"], { cwd: dir });
+    await run("git", ["config", "user.email", "caesar-test@example.com"], { cwd: dir });
+    await run("git", ["config", "user.name", "Caesar Test"], { cwd: dir });
     await writeFile(join(dir, "a.txt"), "hello\n", "utf8");
     await run("git", ["add", "a.txt"], { cwd: dir });
     await run("git", ["commit", "-q", "-m", "init"], { cwd: dir });
@@ -284,7 +284,7 @@ describe("resolveDelegation — écriture en place", () => {
     // Le cas réel : un rôle `implementer` mal configuré en `inplace`. Un motif
     // disant « demandée explicitement » enverrait corriger le mauvais endroit.
     await initGitRepo(root);
-    const config: OrchConfig = {
+    const config: CaesarConfig = {
       ...defaultConfig(),
       roles: [role({ name: "implementer", mode: "write", isolation: "inplace" })],
     };
@@ -295,7 +295,7 @@ describe("resolveDelegation — écriture en place", () => {
 
   it("nomme la politique quand l'isolation vient de son défaut", async () => {
     await initGitRepo(root);
-    const config: OrchConfig = {
+    const config: CaesarConfig = {
       ...defaultConfig(),
       policy: { ...defaultConfig().policy, default_isolation: "inplace" },
     };
@@ -306,7 +306,7 @@ describe("resolveDelegation — écriture en place", () => {
 
   it("accepte sous opt-in, et rend la permission à transmettre au moteur", async () => {
     await initGitRepo(root);
-    const config: OrchConfig = {
+    const config: CaesarConfig = {
       ...defaultConfig(),
       policy: { ...defaultConfig().policy, allow_inplace_write: true },
     };
@@ -352,12 +352,12 @@ describe("resolveDelegation — écriture en place", () => {
 });
 
 /**
- * `nextDelegationDepth` — voir C4 de la revue finale : `$ORCH_DEPTH` était
- * bien exporté vers les sous-processus (`taskEnv`, `@orch/protocol`) mais
+ * `nextDelegationDepth` — voir C4 de la revue finale : `$CAESAR_DEPTH` était
+ * bien exporté vers les sous-processus (`taskEnv`, `@caesar/protocol`) mais
  * jamais relu par personne, ce qui rendait `max_depth` inapplicable dès
  * qu'un agent délégant tournait lui-même comme sous-agent. Testée
  * directement plutôt que via l'environnement réel du process de test (voir
- * les tests d'intégration de `run.test.ts`, `@orch/cli`, qui couvrent le
+ * les tests d'intégration de `run.test.ts`, `@caesar/cli`, qui couvrent le
  * câblage bout en bout) : ici, seule la fonction de calcul.
  */
 describe("nextDelegationDepth", () => {

@@ -1,7 +1,7 @@
 /**
- * `orch agents list|enable|disable|test`.
+ * `caesar agents list|enable|disable|test`.
  *
- * `describeAgentCapabilities`/`describeAgentPolicy` vivent dans `@orch/core`
+ * `describeAgentCapabilities`/`describeAgentPolicy` vivent dans `@caesar/core`
  * (`registry/index.ts`, `policy.ts`) depuis le rapport de correction de la
  * tâche 8 — `packages/tui` en avait besoin pour son écran Agents, et les y
  * dupliquer ou faire dépendre le TUI du CLI pour deux fonctions pures était
@@ -9,11 +9,11 @@
  * contente désormais de les appeler, comme `doctor.ts`.
  *
  * `enable`/`disable` écrivent une seule couche (`--global`/`--local`, projet
- * par défaut) via `materializePolicyList` (`@orch/core`, même mécanisme que
- * `orch policy allow|deny` — "denied" est le même champ) : jamais la fusion,
+ * par défaut) via `materializePolicyList` (`@caesar/core`, même mécanisme que
+ * `caesar policy allow|deny` — "denied" est le même champ) : jamais la fusion,
  * voir le brief de la tâche 13.
  */
-import type { ConfigScope, GenericAgentSpec } from "@orch/core";
+import type { ConfigScope, GenericAgentSpec } from "@caesar/core";
 import {
   AGENT_DEFINITIONS,
   GENERIC_ARG_TOKENS,
@@ -34,7 +34,7 @@ import {
   saveLayer,
   splitArgTemplate,
   validateGenericAgentSpec,
-} from "@orch/core";
+} from "@caesar/core";
 import type { Cell, Io } from "../output.js";
 import {
   EXIT_OK,
@@ -63,7 +63,7 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
   const { config, layers } = await loadConfig(root);
   // Catalogue natif étendu des agents de configuration ([[agent]]) : voir C1
   // de la revue finale — sans quoi un agent déclaré en TOML restait invisible
-  // de "orch agents list".
+  // de "caesar agents list".
   const defs = listAgentDefinitions(config.agents);
 
   const rows = await Promise.all(
@@ -96,7 +96,7 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
   // La raison d'un refus est une phrase entière : dans une cellule, elle
   // rognait la colonne « politique » à « refusé (Agent "c… » — donc à rien.
   // Elle descend sous le tableau, où elle a la place de se lire, comme le
-  // fait déjà `orch doctor`.
+  // fait déjà `caesar doctor`.
   const tableRows: Cell[][] = rows.map((r) => [
     r.id,
     r.installed ? homePath(r.path ?? "trouvé") : { text: "absent", token: "bad" },
@@ -119,7 +119,7 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
   }
   writeLine(io.stdout);
   for (const line of wrapText(
-    'Capacités en toutes lettres : "orch doctor --verbose", ou "orch agents list --json".',
+    'Capacités en toutes lettres : "caesar doctor --verbose", ou "caesar agents list --json".',
     terminalWidth(io.stdout),
   )) {
     printNote(io, line);
@@ -254,7 +254,7 @@ export async function runAgentsAdd(root: string, id: string, options: AgentsAddO
 
   // Vérification d'installation *après* l'écriture, et jamais bloquante :
   // déclarer un agent pas encore installé est légitime (une machine, un
-  // fichier de configuration partagé), mais l'apprendre au premier `orch run`
+  // fichier de configuration partagé), mais l'apprendre au premier `caesar run`
   // ne l'est pas.
   const binPath = await findBinaryInPath(bin);
 
@@ -268,7 +268,7 @@ export async function runAgentsAdd(root: string, id: string, options: AgentsAddO
   if (NATIVE_IDS.has(id)) {
     writeLine(
       io.stdout,
-      `Attention : "${id}" est un agent du catalogue natif. Cette déclaration le remplace — son adaptateur, ses capacités et sa traduction d'événements ne s'appliquent plus. Pour seulement l'autoriser ou le refuser, "orch agents disable ${id}".`,
+      `Attention : "${id}" est un agent du catalogue natif. Cette déclaration le remplace — son adaptateur, ses capacités et sa traduction d'événements ne s'appliquent plus. Pour seulement l'autoriser ou le refuser, "caesar agents disable ${id}".`,
     );
   }
   if (binPath === null) {
@@ -296,7 +296,7 @@ export async function runAgentsRemove(root: string, id: string, options: AgentsR
 
   const layer = await loadLayer(scope, root);
   if (!layer.agents?.some((agent) => agent.id === id)) {
-    // Même limite que `orch role remove` : la fusion par clé (`mergeConfig`)
+    // Même limite que `caesar role remove` : la fusion par clé (`mergeConfig`)
     // remplace, elle ne supprime jamais par absence. Retirer une entrée d'une
     // couche qui ne la déclare pas ne la ferait pas disparaître de la fusion —
     // un EXIT_OK mentirait sur ce qui vient de se passer.
@@ -304,8 +304,8 @@ export async function runAgentsRemove(root: string, id: string, options: AgentsR
     const actual = agentProvenance(layers, id);
     if (actual === "default") {
       const hint = NATIVE_IDS.has(id)
-        ? `il fait partie du catalogue natif : aucune couche ne le déclare, et rien ne le supprime. Pour l'écarter des délégations, "orch agents disable ${id}".`
-        : `aucune couche ne le déclare : vérifiez l'identifiant avec "orch agents list".`;
+        ? `il fait partie du catalogue natif : aucune couche ne le déclare, et rien ne le supprime. Pour l'écarter des délégations, "caesar agents disable ${id}".`
+        : `aucune couche ne le déclare : vérifiez l'identifiant avec "caesar agents list".`;
       printError(io, `Rien à supprimer pour l'agent "${id}" : ${hint}`);
     } else {
       printError(
@@ -345,7 +345,7 @@ export async function runAgentsTest(root: string, id: string, options: AgentsTes
   if (!options.yes) {
     printError(
       io,
-      `"orch agents test" lance une vraie tâche et consomme le quota réel de l'agent "${id}". Ajoutez --yes pour confirmer.`,
+      `"caesar agents test" lance une vraie tâche et consomme le quota réel de l'agent "${id}". Ajoutez --yes pour confirmer.`,
     );
     return EXIT_USAGE;
   }
@@ -357,9 +357,9 @@ export async function runAgentsTest(root: string, id: string, options: AgentsTes
   }
 
   const store = fileTaskStore(root);
-  // Même verrou que `orch run` : cette sonde lance un vrai agent, elle compte
+  // Même verrou que `caesar run` : cette sonde lance un vrai agent, elle compte
   // donc dans `max_parallel` comme n'importe quelle délégation.
-  const queue = createSlotQueue({ root, limit: config.policy.max_parallel, label: `orch agents test ${id}` });
+  const queue = createSlotQueue({ root, limit: config.policy.max_parallel, label: `caesar agents test ${id}` });
   const startedAt = Date.now();
   const outcome = await runTask(
     { store, root, queue },

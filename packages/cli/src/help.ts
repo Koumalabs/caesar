@@ -1,5 +1,5 @@
 /**
- * L'aide de `orch`, mise en forme.
+ * L'aide de `caesar`, mise en forme.
  *
  * C'est la porte d'entrée, et c'était la surface la moins soignée : commander
  * rendait sa présentation par défaut, avec ses libellés anglais au milieu du
@@ -67,8 +67,8 @@ function title(text: string, io: Io): string {
 
 /**
  * La mise en forme de l'aide, pour la commande racine comme pour chaque
- * sous-commande — une seule présentation, sinon `orch --help` et
- * `orch run --help` se répondraient dans deux langues.
+ * sous-commande — une seule présentation, sinon `caesar --help` et
+ * `caesar run --help` se répondraient dans deux langues.
  */
 export function formatHelp(cmd: Command, helper: Help, io: Io): string {
   const width = terminalWidth(io.stdout);
@@ -90,7 +90,7 @@ export function formatHelp(cmd: Command, helper: Help, io: Io): string {
 
   if (racine) {
     lines.push(title("usage", io));
-    lines.push(...entry("orch <commande> [options]", "", width, io, "strong"));
+    lines.push(...entry("caesar <commande> [options]", "", width, io, "strong"));
     lines.push("");
   }
 
@@ -108,7 +108,7 @@ export function formatHelp(cmd: Command, helper: Help, io: Io): string {
     const restantes = new Map(commands.map((sub) => [sub.name(), sub]));
     // À la racine, le nom seul : `[options]` figure sur chacune des seize
     // commandes, donc n'en distingue aucune, et les arguments sont détaillés
-    // par `orch <commande> --help`. Dans un sous-groupe (`orch agents
+    // par `caesar <commande> --help`. Dans un sous-groupe (`caesar agents
     // --help`), le terme complet reprend sa place — il y a alors trois
     // entrées, et leur forme est ce qu'on vient lire.
     const terme = (sub: Command): string => (racine ? sub.name() : helper.subcommandTerm(sub));
@@ -154,7 +154,7 @@ export function formatHelp(cmd: Command, helper: Help, io: Io): string {
   }
 
   if (racine) {
-    lines.push(colorize('  "orch <commande> --help" pour le détail d\'une commande.', "dim", io.stdout));
+    lines.push(colorize('  "caesar <commande> --help" pour le détail d\'une commande.', "dim", io.stdout));
     lines.push("");
   }
 

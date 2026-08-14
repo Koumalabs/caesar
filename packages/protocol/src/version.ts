@@ -2,9 +2,9 @@
  * Identifiants de version du standard. Chaque document échangé les porte, afin
  * qu'un lecteur puisse refuser proprement ce qu'il ne sait pas interpréter.
  */
-export const TASK_PROTOCOL = "orch.task/v1" as const;
-export const REPORT_PROTOCOL = "orch.report/v1" as const;
-export const EVENT_PROTOCOL = "orch.event/v1" as const;
+export const TASK_PROTOCOL = "caesar.task/v1" as const;
+export const REPORT_PROTOCOL = "caesar.report/v1" as const;
+export const EVENT_PROTOCOL = "caesar.event/v1" as const;
 
 /** Version globale du standard, à des fins d'affichage et de diagnostic. */
 export const PROTOCOL_VERSION = "1" as const;
@@ -15,19 +15,19 @@ export const PROTOCOL_VERSION = "1" as const;
  */
 export const ENV = {
   /** Répertoire de la tâche, contenant task.json / report.json / events.jsonl. */
-  taskDir: "ORCH_TASK_DIR",
+  taskDir: "CAESAR_TASK_DIR",
   /** Chemin direct de la mission. */
-  taskFile: "ORCH_TASK_FILE",
+  taskFile: "CAESAR_TASK_FILE",
   /** Chemin où déposer le rapport. */
-  reportPath: "ORCH_REPORT_PATH",
+  reportPath: "CAESAR_REPORT_PATH",
   /** Chemin du journal d'événements, en append-only. */
-  eventsPath: "ORCH_EVENTS_PATH",
+  eventsPath: "CAESAR_EVENTS_PATH",
   /** Identifiant de la tâche. */
-  taskId: "ORCH_TASK_ID",
+  taskId: "CAESAR_TASK_ID",
   /** Identifiant de l'agent qui exécute. */
-  agent: "ORCH_AGENT",
+  agent: "CAESAR_AGENT",
   /** Profondeur de délégation, pour le garde-fou anti-récursion. */
-  depth: "ORCH_DEPTH",
+  depth: "CAESAR_DEPTH",
   /** Version du standard en vigueur. */
-  protocolVersion: "ORCH_PROTOCOL_VERSION",
+  protocolVersion: "CAESAR_PROTOCOL_VERSION",
 } as const;

@@ -4,14 +4,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initGitRepo, withFakeAgentAsBin, withFakeHome } from "../../test/support.js";
 import { createSession } from "../session.js";
-import { orchDelegate } from "./delegate.js";
-import { orchDiff } from "./diff.js";
+import { caesarDelegate } from "./delegate.js";
+import { caesarDiff } from "./diff.js";
 
-describe("orch_diff", () => {
+describe("caesar_diff", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-diff-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-diff-"));
   });
 
   afterEach(async () => {
@@ -24,7 +24,7 @@ describe("orch_diff", () => {
         await initGitRepo(root);
         const session = await createSession(root);
 
-        const delegated = await orchDelegate(session, {
+        const delegated = await caesarDelegate(session, {
           objective: "écrire un fichier",
           agent: "codex",
           mode: "write",
@@ -35,7 +35,7 @@ describe("orch_diff", () => {
         const entry = session.tasks.get(taskId);
         await entry?.promise;
 
-        const result = await orchDiff(session, { task_id: taskId });
+        const result = await caesarDiff(session, { task_id: taskId });
         expect(result.isError).toBeFalsy();
         const data = result.structuredContent as { is_empty: boolean; files: Array<{ path: string; action: string }>; patch: string };
         expect(data.is_empty).toBe(false);
@@ -49,12 +49,12 @@ describe("orch_diff", () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await orchDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
+        const delegated = await caesarDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
         const entry = session.tasks.get(taskId);
         await entry?.promise;
 
-        const result = await orchDiff(session, { task_id: taskId });
+        const result = await caesarDiff(session, { task_id: taskId });
         const data = result.structuredContent as { is_empty: boolean; files: unknown[] };
         expect(data.is_empty).toBe(true);
         expect(data.files).toEqual([]);
@@ -65,7 +65,7 @@ describe("orch_diff", () => {
   it("tâche inconnue : erreur claire", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await orchDiff(session, { task_id: "t_inexistant" });
+      const result = await caesarDiff(session, { task_id: "t_inexistant" });
       expect(result.isError).toBe(true);
     });
   });

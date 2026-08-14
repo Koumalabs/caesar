@@ -11,7 +11,7 @@ Race this objective across several providers: **$ARGUMENTS**
    sub-agent is a separate process that sees only this brief.
 
 2. **Pick the providers.** Two by default — a third rarely adds information and costs a third more.
-   Call `orch_list_agents` and race only providers that are both installed and allowed by the current
+   Call `caesar_list_agents` and race only providers that are both installed and allowed by the current
    policy. If a requested provider is unusable, say so and skip it rather than launching a delegation
    already known to fail. If only one is usable, stop: that is a single delegation, not a race.
 

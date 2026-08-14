@@ -2,11 +2,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { OrchEventInput } from "@orch/protocol";
-import { EventSchema, taskPaths } from "@orch/protocol";
-import { writeQuestion } from "@orch/mcp-channel";
-import type { TaskRecord } from "@orch/core";
-import { fileTaskStore } from "@orch/core";
+import type { CaesarEventInput } from "@caesar/protocol";
+import { EventSchema, taskPaths } from "@caesar/protocol";
+import { writeQuestion } from "@caesar/mcp-channel";
+import type { TaskRecord } from "@caesar/core";
+import { fileTaskStore } from "@caesar/core";
 import { makeIo, type CapturedIo } from "../../test/support.js";
 import { runWatch } from "./watch.js";
 import { EXIT_OK, EXIT_USAGE } from "../output.js";
@@ -15,7 +15,7 @@ let root: string;
 let io: CapturedIo;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "orch-cli-watch-"));
+  root = await mkdtemp(join(tmpdir(), "caesar-cli-watch-"));
   io = makeIo();
 });
 
@@ -32,7 +32,7 @@ function record(overrides: Partial<TaskRecord> = {}): TaskRecord {
     status: "running",
     created_at: "2026-08-11T10:00:00.000Z",
     started_at: new Date(Date.now() - 5_000).toISOString(),
-    task_dir: join(root, ".orch", "tasks", id),
+    task_dir: join(root, ".caesar", "tasks", id),
     workspace: root,
     isolation: "worktree",
     mode: "read-only",
@@ -45,7 +45,7 @@ function record(overrides: Partial<TaskRecord> = {}): TaskRecord {
 /** Dépose une tâche dans le store et écrit son journal d'événements. */
 async function plant(
   overrides: Partial<TaskRecord>,
-  events: Omit<OrchEventInput, "protocol" | "seq" | "at" | "task_id">[],
+  events: Omit<CaesarEventInput, "protocol" | "seq" | "at" | "task_id">[],
 ): Promise<TaskRecord> {
   const rec = record(overrides);
   await fileTaskStore(root).create(rec);
@@ -54,7 +54,7 @@ async function plant(
   const lines = events.map((partial, seq) =>
     JSON.stringify(
       EventSchema.parse({
-        protocol: "orch.event/v1",
+        protocol: "caesar.event/v1",
         seq,
         at: new Date(Date.now() - (events.length - seq) * 1_000).toISOString(),
         task_id: rec.id,
@@ -66,7 +66,7 @@ async function plant(
   return rec;
 }
 
-describe("orch watch --once", () => {
+describe("caesar watch --once", () => {
   it("montre ce que chaque tâche fait à l'instant", async () => {
     await plant({ id: "t_a", agent: "codex", role: "reviewer" }, [
       { type: "started", agent: "codex", command: "codex exec" },
@@ -112,7 +112,7 @@ describe("orch watch --once", () => {
     // sous-agent qui attend une réponse paraît figé.
     const rec = await plant({ id: "t_q" }, [{ type: "started", agent: "codex", command: "codex exec" }]);
     // Déposée par la fonction du canal plutôt qu'à la main : la disposition
-    // exacte (`<taskDir>/questions/<id>.json`) appartient à `@orch/mcp-channel`,
+    // exacte (`<taskDir>/questions/<id>.json`) appartient à `@caesar/mcp-channel`,
     // et un test qui la recopie de mémoire vérifie sa propre supposition.
     await writeQuestion(taskPaths(rec.task_dir).dir, {
       id: "q1",
@@ -125,11 +125,11 @@ describe("orch watch --once", () => {
     const out = io.stdoutText();
     expect(out).toContain("Dois-je supprimer le fichier obsolète ?");
     // Le rappel nomme l'outil MCP, seul moyen de répondre aujourd'hui — il
-    // n'existe aucune commande `orch answer`, et l'inventer ici enverrait
+    // n'existe aucune commande `caesar answer`, et l'inventer ici enverrait
     // l'utilisateur droit dans le mur.
-    expect(out).toContain("orch_answer");
+    expect(out).toContain("caesar_answer");
     expect(out).toContain("q1");
-    expect(out).not.toMatch(/orch answer\b/);
+    expect(out).not.toMatch(/caesar answer\b/);
   });
 
   it("garde les tâches terminées à l'écran, avec leur statut de rapport", async () => {
@@ -193,7 +193,7 @@ describe("orch watch --once", () => {
       paths.eventsPath,
       JSON.stringify(
         EventSchema.parse({
-          protocol: "orch.event/v1",
+          protocol: "caesar.event/v1",
           seq: 0,
           at: new Date(Date.now() - 120_000).toISOString(),
           task_id: "t_mute",
@@ -208,7 +208,7 @@ describe("orch watch --once", () => {
   });
 });
 
-describe("orch watch --json", () => {
+describe("caesar watch --json", () => {
   it("rend du NDJSON : un événement par ligne, relisible tel quel", async () => {
     await plant({ id: "t_a" }, [
       { type: "started", agent: "codex", command: "codex exec" },

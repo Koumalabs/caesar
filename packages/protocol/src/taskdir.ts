@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { ENV, PROTOCOL_VERSION, REPORT_PROTOCOL } from "./version.js";
 import { TaskSchema, type Task } from "./task.js";
 import { ReportSchema, type Report } from "./report.js";
-import { EventSchema, type OrchEvent } from "./event.js";
+import { EventSchema, type CaesarEvent } from "./event.js";
 
 export interface TaskPaths {
   dir: string;
@@ -26,7 +26,7 @@ export function taskPaths(taskDir: string): TaskPaths {
 
 /**
  * Les variables d'environnement d'un sous-agent. C'est le contrat minimal :
- * un agent extérieur qui sait lire `$ORCH_TASK_FILE` et écrire `$ORCH_REPORT_PATH`
+ * un agent extérieur qui sait lire `$CAESAR_TASK_FILE` et écrire `$CAESAR_REPORT_PATH`
  * est orchestrable, sans rien connaître de cette implémentation.
  */
 export function taskEnv(task: Task, paths: TaskPaths): Record<string, string> {
@@ -52,7 +52,7 @@ export async function readTask(paths: TaskPaths): Promise<Task> {
   return TaskSchema.parse(JSON.parse(raw));
 }
 
-export async function appendEvent(paths: TaskPaths, event: OrchEvent): Promise<void> {
+export async function appendEvent(paths: TaskPaths, event: CaesarEvent): Promise<void> {
   await mkdir(dirname(paths.eventsPath), { recursive: true });
   await appendFile(paths.eventsPath, JSON.stringify(event) + "\n", "utf8");
 }
@@ -61,14 +61,14 @@ export async function appendEvent(paths: TaskPaths, event: OrchEvent): Promise<v
  * Relit le journal en ignorant les lignes illisibles : un journal partiellement
  * corrompu reste plus utile qu'une erreur.
  */
-export async function readEvents(paths: TaskPaths): Promise<OrchEvent[]> {
+export async function readEvents(paths: TaskPaths): Promise<CaesarEvent[]> {
   let raw: string;
   try {
     raw = await readFile(paths.eventsPath, "utf8");
   } catch {
     return [];
   }
-  const events: OrchEvent[] = [];
+  const events: CaesarEvent[] = [];
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;
     const parsed = EventSchema.safeParse(safeJsonParse(line));
@@ -134,8 +134,8 @@ export async function writeReport(paths: TaskPaths, report: Report): Promise<voi
 export function extractReportFromText(text: string): Report | null {
   const candidates: string[] = [];
 
-  // Blocs de code balisés : ```json orch:report, ```orch:report, ```json …
-  const fence = /```[ \t]*(?:json)?[ \t]*(?:orch:report)?[ \t]*\r?\n([\s\S]*?)```/g;
+  // Blocs de code balisés : ```json caesar:report, ```caesar:report, ```json …
+  const fence = /```[ \t]*(?:json)?[ \t]*(?:caesar:report)?[ \t]*\r?\n([\s\S]*?)```/g;
   for (const match of text.matchAll(fence)) {
     const body = match[1];
     if (body && body.includes(REPORT_PROTOCOL)) candidates.push(body);

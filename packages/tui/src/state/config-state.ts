@@ -3,7 +3,7 @@
  * de la configuration — le cœur du TUI, volontairement sans aucun rendu :
  * chaque écran ne fait qu'appeler ces fonctions et afficher le résultat.
  *
- * `@orch/core` reste la seule source de vérité (`loadConfig`, `loadLayer`,
+ * `@caesar/core` reste la seule source de vérité (`loadConfig`, `loadLayer`,
  * `saveLayer`, `materializeListEdit`) : ce module ne relit ni ne réécrit le
  * TOML lui-même, et ne réimplémente aucune règle de fusion ou de
  * matérialisation — voir le brief de la tâche 15, qui remplace le correctif
@@ -18,10 +18,10 @@
  *  - `activeScope` : la couche qu'on édite, celle que "s" enregistrera.
  *  - `draft` : la copie de travail de la couche active — exactement ce que
  *    cette couche déclarera si on enregistre maintenant, jamais un
- *    `OrchConfig` complet.
+ *    `CaesarConfig` complet.
  *
  * L'affichage ne lit jamais `draft` directement : `effectiveConfig` recalcule
- * la fusion (`mergeConfig`, `@orch/core`) en substituant `draft` à la couche
+ * la fusion (`mergeConfig`, `@caesar/core`) en substituant `draft` à la couche
  * active dans `layers`, exactement la fusion qu'un enregistrement produirait.
  * C'est ce qui permet à un champ non encore surchargé par la couche active de
  * continuer à afficher sa valeur héritée tant qu'on ne l'a pas modifié.
@@ -37,11 +37,11 @@ import type {
   ConfigOverride,
   ConfigScope,
   GenericAgentSpec,
-  OrchConfig,
+  CaesarConfig,
   PolicyConfig,
   ProvenanceSource,
   RoleConfig,
-} from "@orch/core";
+} from "@caesar/core";
 import {
   agentProvenance,
   configPathFor,
@@ -53,10 +53,10 @@ import {
   roleProvenance,
   defaultConfig as coreDefaultConfig,
   saveLayer,
-} from "@orch/core";
-import type { AgentPick } from "@orch/core";
+} from "@caesar/core";
+import type { AgentPick } from "@caesar/core";
 
-/** Les trois couches, du plus général au plus spécifique — même ordre que `@orch/core` (`loadConfig`). */
+/** Les trois couches, du plus général au plus spécifique — même ordre que `@caesar/core` (`loadConfig`). */
 export const CONFIG_SCOPES: readonly ConfigScope[] = ["global", "project", "local"];
 
 export interface ConfigState {
@@ -64,7 +64,7 @@ export interface ConfigState {
   layers: ConfigLayer[];
   /** La couche éditée : celle que `draft` porte, et que `saveConfigState` enregistrera. */
   activeScope: ConfigScope;
-  /** Copie de travail de la couche active — jamais un `OrchConfig` complet, voir l'en-tête de ce fichier. */
+  /** Copie de travail de la couche active — jamais un `CaesarConfig` complet, voir l'en-tête de ce fichier. */
   draft: ConfigOverride;
 }
 
@@ -86,13 +86,13 @@ function layersWithDraft(state: ConfigState): ConfigLayer[] {
 
 /**
  * La fusion effective à afficher : `defaultConfig()` fusionnée couche par
- * couche (`mergeConfig`, `@orch/core`), la couche active portant `draft`
+ * couche (`mergeConfig`, `@caesar/core`), la couche active portant `draft`
  * plutôt que sa dernière version enregistrée. Seule source de vérité pour
  * l'affichage — aucun écran ne doit lire `state.draft` pour afficher une
  * valeur, seulement pour savoir si un champ est en propre à la couche active
  * (marques d'héritage, permission de suppression).
  */
-export function effectiveConfig(state: ConfigState): OrchConfig {
+export function effectiveConfig(state: ConfigState): CaesarConfig {
   return layersWithDraft(state).reduce((config, layer) => mergeConfig(config, layer.override), coreDefaultConfig());
 }
 
@@ -107,7 +107,7 @@ export async function loadConfigState(root: string, activeScope: ConfigScope = "
 }
 
 /**
- * Enregistre `draft` sur la couche active (`saveLayer`, `@orch/core`) — la
+ * Enregistre `draft` sur la couche active (`saveLayer`, `@caesar/core`) — la
  * seule couche que ce module écrit jamais dans le même geste — puis fait de
  * `draft` la nouvelle version connue de cette couche : `isDirty` redevient
  * faux, `layers` reste la source pour les deux autres couches (inchangées).
@@ -153,7 +153,7 @@ function rankOf(source: ProvenanceSource): number {
 }
 
 /**
- * `source` (une provenance rendue par `@orch/core`) si elle vient d'une
+ * `source` (une provenance rendue par `@caesar/core`) si elle vient d'une
  * couche moins spécifique que la couche active de `state` — donc d'une
  * valeur qu'éditer ce champ maintenant surchargerait —, sinon `null`. C'est
  * la marque d'héritage (`← global`) que le brief demande : elle disparaît
@@ -184,7 +184,7 @@ export function roleMark(state: ConfigState, name: string): ProvenanceSource | n
   return inheritedMark(state, roleProvenanceOf(state, name));
 }
 
-/** Vrai si la couche active déclare ce rôle en propre — condition pour pouvoir le supprimer (voir `removeRole`, et `orch role remove`). */
+/** Vrai si la couche active déclare ce rôle en propre — condition pour pouvoir le supprimer (voir `removeRole`, et `caesar role remove`). */
 export function roleDeclaredByActiveLayer(state: ConfigState, name: string): boolean {
   return (state.draft.roles ?? []).some((role) => role.name === name);
 }
@@ -198,8 +198,8 @@ export type PolicyListField = "allowed" | "denied";
 /**
  * Ajoute ou retire `agentId` de `allowed`/`denied`, sur la couche active. Le
  * calcul (base = liste **effective**, pas seulement ce que `draft` porte
- * déjà) est celui de `materializeListEdit` (`@orch/core`) — la même règle
- * que `orch policy allow|deny`/`orch agents enable|disable`, jamais
+ * déjà) est celui de `materializeListEdit` (`@caesar/core`) — la même règle
+ * que `caesar policy allow|deny`/`caesar agents enable|disable`, jamais
  * réimplémentée ici (voir l'en-tête de ce fichier).
  */
 export function setPolicyListEntry(state: ConfigState, field: PolicyListField, agentId: string, present: boolean): ConfigState {
@@ -209,7 +209,7 @@ export function setPolicyListEntry(state: ConfigState, field: PolicyListField, a
   return withDraft(state, { ...state.draft, policy: { ...state.draft.policy, [field]: next } });
 }
 
-/** Bascule l'autorisation d'un agent — présent dans "denied" ⇔ refusé, exactement la règle d'`isAgentAllowed` (`@orch/core`). */
+/** Bascule l'autorisation d'un agent — présent dans "denied" ⇔ refusé, exactement la règle d'`isAgentAllowed` (`@caesar/core`). */
 export function toggleAgentDenied(state: ConfigState, agentId: string): ConfigState {
   const currentlyDenied = effectiveConfig(state).policy.denied.includes(agentId);
   return setPolicyListEntry(state, "denied", agentId, !currentlyDenied);
@@ -242,7 +242,7 @@ export function agentMark(state: ConfigState, id: string): ProvenanceSource | nu
   return inheritedMark(state, agentProvenanceOf(state, id));
 }
 
-/** Vrai si la couche active déclare cet agent en propre — condition pour pouvoir le retirer (voir `removeAgentSpec`, et `orch agents remove`). */
+/** Vrai si la couche active déclare cet agent en propre — condition pour pouvoir le retirer (voir `removeAgentSpec`, et `caesar agents remove`). */
 export function agentDeclaredByActiveLayer(state: ConfigState, id: string): boolean {
   return (state.draft.agents ?? []).some((agent) => agent.id === id);
 }
@@ -267,7 +267,7 @@ export function updateAgentSpec(state: ConfigState, id: string, patch: Partial<G
 
 /**
  * Retire une déclaration — seulement si la couche active la porte
- * elle-même. Même limite que `removeRole` et `orch agents remove` : la fusion
+ * elle-même. Même limite que `removeRole` et `caesar agents remove` : la fusion
  * par clé ne sait pas exprimer la suppression d'une entrée héritée. Sans
  * effet sinon : à l'appelant de vérifier `agentDeclaredByActiveLayer` au
  * préalable pour l'expliquer plutôt que de laisser la touche ne rien faire.
@@ -282,7 +282,7 @@ export function removeAgentSpec(state: ConfigState, id: string): ConfigState {
 // ---------------------------------------------------------------------------
 
 /**
- * `policy` se fusionne champ par champ (voir `mergeConfig`, `@orch/core`) :
+ * `policy` se fusionne champ par champ (voir `mergeConfig`, `@caesar/core`) :
  * contrairement aux listes, un champ scalaire s'écrit directement dans
  * `draft.policy`, sans base "effective" à recalculer — l'écrire suffit à le
  * faire prendre la main sur ce champ précis, sans toucher aux autres.
@@ -305,7 +305,7 @@ export function findRole(state: ConfigState, name: string): RoleConfig | undefin
  * existante de même `name` s'il y en a une — exactement la fusion par clé de
  * `mergeConfig` (un rôle n'a pas de "champs" qui se matérialisent séparément
  * comme `policy` : toute l'entrée bascule sur la couche active dès qu'on en
- * change un champ, la même règle que `orch role add` applique déjà). Une
+ * change un champ, la même règle que `caesar role add` applique déjà). Une
  * couche qui ne déclarait pas encore ce rôle (hérité) le prend désormais en
  * charge en entier.
  */
@@ -314,7 +314,7 @@ function putRoleInDraft(state: ConfigState, role: RoleConfig): ConfigState {
   return withDraft(state, { ...state.draft, roles });
 }
 
-/** Crée un rôle (si `role.name` est nouveau) ou le remplace entièrement sur la couche active (s'il existe déjà, y compris hérité) — même sémantique que `orch role add`. */
+/** Crée un rôle (si `role.name` est nouveau) ou le remplace entièrement sur la couche active (s'il existe déjà, y compris hérité) — même sémantique que `caesar role add`. */
 export function upsertRole(state: ConfigState, role: RoleConfig): ConfigState {
   return putRoleInDraft(state, role);
 }
@@ -323,7 +323,7 @@ export function upsertRole(state: ConfigState, role: RoleConfig): ConfigState {
  * Retire un rôle — seulement s'il est déclaré par la couche active elle-même
  * (`roleDeclaredByActiveLayer`) : la fusion par clé ne sait pas exprimer une
  * suppression d'un rôle hérité d'une couche moins spécifique, exactement la
- * limite déjà posée par `orch role remove` (`packages/cli/src/commands/role.ts`).
+ * limite déjà posée par `caesar role remove` (`packages/cli/src/commands/role.ts`).
  * Sans effet si le rôle n'est pas déclaré ici — à l'appelant de vérifier
  * `roleDeclaredByActiveLayer` au préalable pour prévenir l'utilisateur
  * plutôt que de laisser la touche "x" ne rien faire sans explication.
@@ -387,7 +387,7 @@ export function removeRoleAgentAt(state: ConfigState, roleName: string, index: n
  * Quel agent serait retenu aujourd'hui pour ce rôle, `installed` déjà
  * détecté par l'appelant (`App`, une seule fois au démarrage — voir le
  * brief : "n'appelle pas la détection à chaque frappe"). S'appuie sur
- * `pickAgentForRole` (`@orch/core`) — c'est la seule règle de repli, elle ne
+ * `pickAgentForRole` (`@caesar/core`) — c'est la seule règle de repli, elle ne
  * se réécrit pas ici (voir le brief : "il doit... s'appuyer sur
  * pickAgentForRole"). `null` si le rôle n'existe pas (plus dans la fusion
  * effective, p. ex. après suppression).

@@ -7,7 +7,7 @@
  * dernière option lue l'emporter en silence (`commander` ne le fait pas pour
  * nous : les deux flags sont indépendants de son point de vue).
  */
-import type { ConfigScope } from "@orch/core";
+import type { ConfigScope } from "@caesar/core";
 
 export interface ScopeOptions {
   global?: boolean;
@@ -28,11 +28,11 @@ export function resolveScope(options: ScopeOptions): ConfigScope | { error: stri
 export function scopeLabel(scope: ConfigScope): string {
   switch (scope) {
     case "global":
-      return "globale (~/.config/orch/config.toml)";
+      return "globale (~/.config/caesar/config.toml)";
     case "project":
-      return "projet (.orch/config.toml)";
+      return "projet (.caesar/config.toml)";
     case "local":
-      return "locale (.orch/config.local.toml)";
+      return "locale (.caesar/config.local.toml)";
   }
 }
 
@@ -51,7 +51,7 @@ export function scopeFlagHint(scope: ConfigScope): string {
 /**
  * Message affiché quand une liste (`allowed`/`denied`) n'était pas déclarée
  * par la couche qu'on vient d'éditer : elle en prend désormais la main sur
- * la liste entière (voir `materializePolicyList`, `@orch/core`) — modifier
+ * la liste entière (voir `materializePolicyList`, `@caesar/core`) — modifier
  * ensuite une couche moins spécifique n'aura plus d'effet sur ce champ ici.
  * Même précédent que l'avertissement déjà en place quand une liste "allowed"
  * vide bascule en liste restrictive (`packages/cli/src/commands/policy.ts`).

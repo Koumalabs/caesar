@@ -12,7 +12,7 @@ import {
   type Report,
   type Task,
   type TaskPaths,
-} from "@orch/protocol";
+} from "@caesar/protocol";
 import { reconcileChanges, resolveReport } from "./report.js";
 import type { RunResult } from "./spawn.js";
 import type { WorktreeDiff } from "./worktree.js";
@@ -64,7 +64,7 @@ describe("resolveReport", () => {
   let paths: TaskPaths;
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), "orch-report-"));
+    dir = await mkdtemp(join(tmpdir(), "caesar-report-"));
     paths = taskPaths(join(dir, "task"));
   });
 
@@ -82,7 +82,7 @@ describe("resolveReport", () => {
   it("palier 1, source \"channel\" : report.json présent, un canal était configuré", async () => {
     await writeReport(paths, minimalReport());
     const task = sampleTask({
-      channel: { transport: "mcp-stdio", command: "orch-channel", args: [], server_name: "orch" },
+      channel: { transport: "mcp-stdio", command: "caesar-channel", args: [], server_name: "caesar" },
     });
     const resolved = await resolveReport({ task, paths, run: sampleRun() });
     expect(resolved.source).toBe("channel");

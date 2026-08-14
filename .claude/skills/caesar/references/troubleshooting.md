@@ -34,20 +34,20 @@ reporting a missing dependency.
 every ignored directory are absent.
 
 **Remedy.** Declare them under `[worktree] copy` (and `setup` for the install command) in
-`.orch/config.toml`, or re-run `orch init --force`, which detects them. Never fall back to `inplace`.
+`.caesar/config.toml`, or re-run `caesar init --force`, which detects them. Never fall back to `inplace`.
 
 **Related.** A path declared under `[worktree]` that cannot be placed produces a finding naming which
 of the four reasons applies — absent, tracked, neither tracked nor ignored, already present — and the
 key to fix. A path placed with `link` produces an informational finding: it is shared with the
 workspace, so it is not isolated.
 
-**Related.** A finding about `.orch/wt/` not being ignored by git means the project's `.gitignore` was
+**Related.** A finding about `.caesar/wt/` not being ignored by git means the project's `.gitignore` was
 rewritten without it. Not fatal — git treats the worktree as a nested repository and warns on its own
-— but `orch init --force` restores the line.
+— but `caesar init --force` restores the line.
 
 ## The diff is empty although the agent says it wrote files
 
-**Symptom.** `orch_diff` returns `is_empty: true` with no patch, while the report claims files were
+**Symptom.** `caesar_diff` returns `is_empty: true` with no patch, while the report claims files were
 changed.
 
 **Causes, in order of likelihood.**
@@ -73,11 +73,11 @@ frozen at creation, never against `HEAD`, so the result is the same whether it c
 id.
 
 **Cause and remedy.** One of four rules, checked in that order — see `references/config.md` for the
-full table. In short: `denied` needs `orch agents enable <id>`; an `allowlist` needs
-`orch policy allow <id>`; `recursion` (the default refusal of `claude`) needs `allow_recursion` set by
+full table. In short: `denied` needs `caesar agents enable <id>`; an `allowlist` needs
+`caesar policy allow <id>`; `recursion` (the default refusal of `claude`) needs `allow_recursion` set by
 hand; `depth` is not about the agent at all — the delegation chain is already `max_depth` deep.
 
-**Target the right layer.** `orch policy show` reports the provenance of each value. A refusal
+**Target the right layer.** `caesar policy show` reports the provenance of each value. A refusal
 declared by the global layer is not lifted by writing to the project layer: the write would
 materialize the effective list there, refusal included. Use `--global` or `--local` to match the
 layer that declares the rule.
@@ -102,28 +102,28 @@ does not, declaring `network = "off"` on the role makes the intent explicit and 
 
 ## A task stays `running` forever after a `kill -9`
 
-**Symptom.** `orch ps` keeps showing a task as running; `orch watch` follows it endlessly; its
+**Symptom.** `caesar ps` keeps showing a task as running; `caesar watch` follows it endlessly; its
 worktree is never collected.
 
 **Cause.** A task's final status is written by the process conducting it, in its cleanup path. Killed
 outright — `kill -9`, a closed session, a halted machine — it never writes it. The record stays
 `running` forever, and a running task's worktree is protected from collection.
 
-**Remedy.** Reconciliation is automatic on read: `orch ps` and the status/wait tools sweep abandoned
+**Remedy.** Reconciliation is automatic on read: `caesar ps` and the status/wait tools sweep abandoned
 tasks first. A task whose marker names a process that no longer exists is marked `failed`, with a
-report saying what happened, and its worktree becomes collectable. `orch gc` does the same sweep and
+report saying what happened, and its worktree becomes collectable. `caesar gc` does the same sweep and
 then collects.
 
 The proof is positive — a pid that can no longer be found — never inferred from an absence: a task
-with no marker at all is never concluded on its own. `orch cancel <id>` remains the manual exit.
+with no marker at all is never concluded on its own. `caesar cancel <id>` remains the manual exit.
 
 ## Waiting for a `max_parallel` slot
 
-**Symptom.** A delegation that does not start; `orch run` prints how many tasks are already in flight,
+**Symptom.** A delegation that does not start; `caesar run` prints how many tasks are already in flight,
 the limit, and who holds each slot.
 
 **Cause.** `policy.max_parallel` (4 by default) is enforced across processes, through slot files under
-`.orch/state/slots/`. Everything delegating under the same project root shares them.
+`.caesar/state/slots/`. Everything delegating under the same project root shares them.
 
 **Remedy.** Wait, cut the batch to the limit, or raise `max_parallel` in the layer that suits. A
 killed process leaves its slot file behind, but the first caller that finds everything taken checks
@@ -137,8 +137,8 @@ root while the current directory belongs to a different repository.
 **Cause.** The MCP registration freezes `--root` once and for all. If the working directory has since
 moved to another repository (or another worktree), sub-agents work in a tree nobody is looking at.
 
-**Remedy.** Re-run `orch mcp install` from the intended repository, or serve with
-`orch mcp serve --root <repo>`. It is a warning rather than a refusal: the server's current directory
+**Remedy.** Re-run `caesar mcp install` from the intended repository, or serve with
+`caesar mcp serve --root <repo>`. It is a warning rather than a refusal: the server's current directory
 is not proof of intent, and failing the delegation on that basis would cost more than it saves. But
 do not ignore it — a diff produced in the wrong tree is a diff nobody will find.
 
@@ -152,31 +152,31 @@ process status says the CLI exited cleanly; the report status is the sub-agent's
 mission. A sub-agent that writes `{"status":"failed"}` and exits `0` produces exactly this.
 
 **Remedy.** Check both before concluding anything. Treat the report status as the verdict on the
-mission and the diff as the record of what happened. `orch run` already crosses the two before
+mission and the diff as the record of what happened. `caesar run` already crosses the two before
 returning exit code `0`.
 
-## `npx orch` fails: could not determine executable to run
+## `npx caesar` fails: could not determine executable to run
 
-**Symptom.** Any `npx orch …` invocation fails immediately with npm's
+**Symptom.** Any `npx caesar …` invocation fails immediately with npm's
 `could not determine executable to run`.
 
-**Cause.** `orch` is a standalone binary installed on the PATH, never an npm dependency of the
+**Cause.** `caesar` is a standalone binary installed on the PATH, never an npm dependency of the
 project: there is nothing under `node_modules/.bin` for npx to find, whatever the project.
 
-**Remedy.** Call `orch` directly. `command -v orch` tells where the binary lives; `orch doctor`
+**Remedy.** Call `caesar` directly. `command -v caesar` tells where the binary lives; `caesar doctor`
 confirms what it can reach. If the shell finds nothing, the installation is missing — not the
 project's `package.json`.
 
-## `orch gc` keeps a worktree whose diff was already applied
+## `caesar gc` keeps a worktree whose diff was already applied
 
-**Symptom.** `orch gc` reports a finished task's worktree as kept — "unintegrated changes", or
+**Symptom.** `caesar gc` reports a finished task's worktree as kept — "unintegrated changes", or
 "modified since its application" — even though its diff has landed in the workspace.
 
-**Cause.** Three possibilities. The diff entered the workspace by another path than `orch apply`
+**Cause.** Three possibilities. The diff entered the workspace by another path than `caesar apply`
 (manual copy, re-implementation): the application was never recorded, and gc will not deduce it
 from content. Or the worktree changed after the application: what changed is precisely what was
-never applied. Or the application predates the version of orch that records it.
+never applied. Or the application predates the version of caesar that records it.
 
-**Remedy.** `orch diff <id>` shows what the worktree still carries. Re-run `orch apply <id>` if it
-should land; once settled — or when the work is known to be integrated — `orch gc --force` removes
+**Remedy.** `caesar diff <id>` shows what the worktree still carries. Re-run `caesar apply <id>` if it
+should land; once settled — or when the work is known to be integrated — `caesar gc --force` removes
 what gc could not prove applied.

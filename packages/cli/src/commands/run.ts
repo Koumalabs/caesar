@@ -1,11 +1,11 @@
 /**
- * `orch run` : résout la racine → charge la config → résout la délégation
+ * `caesar run` : résout la racine → charge la config → résout la délégation
  * (rôle/agent/mode/isolation/politique/timeout/contexte, via
- * `resolveDelegation` d'`@orch/core`) → `runTask`. Voir le brief pour
+ * `resolveDelegation` d'`@caesar/core`) → `runTask`. Voir le brief pour
  * l'enchaînement d'origine.
  *
  * La résolution rôle → agent → politique elle-même n'est plus dupliquée ici :
- * `resolveDelegation` est le point d'assemblage partagé avec `orch_delegate`
+ * `resolveDelegation` est le point d'assemblage partagé avec `caesar_delegate`
  * (serveur MCP), voir son en-tête (`packages/core/src/delegation.ts`) et le
  * rapport de correction de la tâche 7. Ce qui reste propre à ce fichier :
  * valider la *forme* de `--mode`/`--isolation` (chaînes brutes issues de
@@ -22,16 +22,16 @@
  * `taskId` est généré ici (plutôt que par le moteur) pour que le répertoire
  * de la tâche soit connu dès l'appel — pas strictement nécessaire à
  * l'affichage en direct (qui passe par `onEvent`), mais c'est le même
- * contrat que celui dont le serveur MCP a besoin (`orch_delegate`
+ * contrat que celui dont le serveur MCP a besoin (`caesar_delegate`
  * asynchrone, rendant un identifiant immédiatement).
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { Isolation, OrchEvent, TaskMode } from "@orch/protocol";
-import type { NetworkRequest, TaskOutcome } from "@orch/core";
-import { createSlotQueue, fileTaskStore, generateTaskId, loadConfig, nextDelegationDepth, readableMessage, resolveDelegation, runTask } from "@orch/core";
+import type { Isolation, CaesarEvent, TaskMode } from "@caesar/protocol";
+import type { NetworkRequest, TaskOutcome } from "@caesar/core";
+import { createSlotQueue, fileTaskStore, generateTaskId, loadConfig, nextDelegationDepth, readableMessage, resolveDelegation, runTask } from "@caesar/core";
 import { ISOLATIONS, NETWORK_REQUEST_VALUES, TASK_MODES } from "../flags.js";
-import type { Glyphs } from "@orch/theme";
+import type { Glyphs } from "@caesar/theme";
 import type { Io, ThemeToken } from "../output.js";
 import {
   EXIT_OK,
@@ -59,10 +59,10 @@ export interface RunOptions {
   channel?: boolean;
   /**
    * Arguments bruts transmis tels quels au CLI de l'agent, saisis après
-   * « -- ». Échappatoire assumée pour ce qu'orch n'expose pas encore : le
+   * « -- ». Échappatoire assumée pour ce que caesar n'expose pas encore : le
    * moteur les portait déjà de bout en bout, aucune façade ne les ouvrait.
    *
-   * Volontairement absent du tool MCP `orch_delegate` : c'est un geste que
+   * Volontairement absent du tool MCP `caesar_delegate` : c'est un geste que
    * l'utilisateur tape, pas une latitude qu'on laisse à l'orchestrateur, qui
    * pourrait sinon élever seul les privilèges d'un sous-agent.
    */
@@ -115,7 +115,7 @@ const LABEL_WIDTH = 10;
  * pas de lignes au format d'un CLI réel, aucun test de bout en bout ne
  * passerait donc par ces branches.
  */
-export function describeEvent(event: OrchEvent, glyphs: Glyphs = activeGlyphs()): EventLine | undefined {
+export function describeEvent(event: CaesarEvent, glyphs: Glyphs = activeGlyphs()): EventLine | undefined {
   const g = glyphs.status;
   switch (event.type) {
     case "started":
@@ -211,8 +211,8 @@ export async function runRun(root: string, objective: string, options: RunOption
     return EXIT_USAGE;
   }
 
-  // Profondeur héritée de `$ORCH_DEPTH` (+1) : voir C4 de la revue finale.
-  // `orch run` peut lui-même tourner comme sous-agent d'une délégation
+  // Profondeur héritée de `$CAESAR_DEPTH` (+1) : voir C4 de la revue finale.
+  // `caesar run` peut lui-même tourner comme sous-agent d'une délégation
   // précédente — c'est le seul moyen pour `max_depth`/le garde-fou anti-
   // récursion de s'appliquer au-delà du premier niveau.
   const depth = nextDelegationDepth();
@@ -244,7 +244,7 @@ export async function runRun(root: string, objective: string, options: RunOption
   // pas seulement la tâche une fois lancée.
   const controller = new AbortController();
 
-  // Créneaux sur disque plutôt que sémaphore en mémoire : chaque `orch run`
+  // Créneaux sur disque plutôt que sémaphore en mémoire : chaque `caesar run`
   // est un processus distinct, et une file par processus laissait six
   // terminaux lancer six agents quel que soit `max_parallel`. Les créneaux
   // sont partagés par tout ce qui délègue sous cette racine, session MCP
@@ -252,7 +252,7 @@ export async function runRun(root: string, objective: string, options: RunOption
   const queue = createSlotQueue({
     root,
     limit: config.policy.max_parallel,
-    label: `orch run — ${objective.slice(0, 60)}`,
+    label: `caesar run — ${objective.slice(0, 60)}`,
     signal: controller.signal,
     onWait: (holders) => {
       // Une attente muette se lit comme un blocage. Nommer qui occupe la
@@ -281,7 +281,7 @@ export async function runRun(root: string, objective: string, options: RunOption
   const glyphs = activeGlyphs();
   const onEvent = options.json
     ? undefined
-    : (event: OrchEvent): void => {
+    : (event: CaesarEvent): void => {
         const line = describeEvent(event, glyphs);
         if (line) writeLine(io.stdout, formatEventLine(line, io));
       };
@@ -368,7 +368,7 @@ export async function runRun(root: string, objective: string, options: RunOption
     writeLine(
       io.stdout,
       colorize(
-        `Isolée dans un worktree : "orch diff ${outcome.record.id}" pour voir le diff, "orch apply ${outcome.record.id}" pour l'intégrer.`,
+        `Isolée dans un worktree : "caesar diff ${outcome.record.id}" pour voir le diff, "caesar apply ${outcome.record.id}" pour l'intégrer.`,
         "dim",
         io.stdout,
       ),
@@ -384,7 +384,7 @@ export async function runRun(root: string, objective: string, options: RunOption
  * `record.status === "succeeded"` seul ne dit que "le processus est sorti
  * en code 0", pas "l'agent a réussi sa mission". Un agent qui écrit
  * `{"status":"failed"}` puis sort en code 0 rendait jusqu'ici un exit code
- * 0 à une automatisation qui enchaîne sur `orch run` — conclusion de succès
+ * 0 à une automatisation qui enchaîne sur `caesar run` — conclusion de succès
  * sur une tâche que l'agent lui-même déclare `failed`/`partial`/`blocked`.
  */
 function exitCodeFor(outcome: TaskOutcome): number {

@@ -10,7 +10,7 @@
 import { describe, expect, it } from "bun:test";
 import { act } from "react";
 import { testRender } from "@opentui/react/test-utils";
-import type { AgentInstallStatus } from "@orch/core";
+import type { AgentInstallStatus } from "@caesar/core";
 import { emptyConfigState as makeState } from "../state/test-helpers";
 import { AgentsScreen } from "./AgentsScreen";
 
@@ -71,7 +71,7 @@ describe("AgentsScreen — le détail de l'agent sélectionné", () => {
     ]);
     const setup = await mount(makeState(), installed);
     const frame = setup.captureCharFrame();
-    // Le chemin a quitté le tableau — même leçon qu'`orch doctor` — pour le
+    // Le chemin a quitté le tableau — même leçon que `caesar doctor` — pour le
     // détail, où il ne dispute plus sa place aux colonnes utiles au survol.
     expect(frame).toContain("/opt/toolchain/bin/codex");
     expect(frame).toContain("lecture-seule native");

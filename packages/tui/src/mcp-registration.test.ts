@@ -1,7 +1,7 @@
 /**
  * Vérifie, sous le vrai runtime **Bun** — le seul où le défaut se manifeste
  * (voir `packages/core/src/config.ts`, `homeDirectory`) — que
- * `checkMcpStatus`/`buildPlan` (`@orch/core`, `mcp-registration.ts`) lisent
+ * `checkMcpStatus`/`buildPlan` (`@caesar/core`, `mcp-registration.ts`) lisent
  * effectivement sous le `$HOME` neutralisé de ce test, jamais sous le vrai
  * répertoire personnel de la machine.
  *
@@ -35,15 +35,15 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildPlan, checkMcpStatus } from "@orch/core";
+import { buildPlan, checkMcpStatus } from "@caesar/core";
 
 let home: string;
 let root: string;
 let previousHome: string | undefined;
 
 beforeEach(async () => {
-  home = await mkdtemp(join(tmpdir(), "orch-tui-mcp-home-"));
-  root = await mkdtemp(join(tmpdir(), "orch-tui-mcp-root-"));
+  home = await mkdtemp(join(tmpdir(), "caesar-tui-mcp-home-"));
+  root = await mkdtemp(join(tmpdir(), "caesar-tui-mcp-root-"));
   previousHome = process.env["HOME"];
   process.env["HOME"] = home;
 });
@@ -62,13 +62,13 @@ const FILE_CLIENTS = [
   { client: "opencode" as const, relDir: [".config", "opencode"], file: "opencode.json", mergeKey: "mcp" },
 ];
 
-describe("mcp-registration (@orch/core) sous Bun : lit sous $HOME neutralisé, pas sous le vrai répertoire personnel", () => {
+describe("mcp-registration (@caesar/core) sous Bun : lit sous $HOME neutralisé, pas sous le vrai répertoire personnel", () => {
   for (const { client, relDir, file, mergeKey } of FILE_CLIENTS) {
     it(`${client} : checkMcpStatus trouve un fichier écrit sous le $HOME neutralisé de ce test`, async () => {
       const dir = join(home, ...relDir);
       const path = join(dir, file);
       await mkdir(dir, { recursive: true });
-      await writeFile(path, JSON.stringify({ [mergeKey]: { orch: { command: "orch" } } }), "utf8");
+      await writeFile(path, JSON.stringify({ [mergeKey]: { caesar: { command: "caesar" } } }), "utf8");
 
       const status = await checkMcpStatus(client, root);
       expect(status.registered).toBe("registered");

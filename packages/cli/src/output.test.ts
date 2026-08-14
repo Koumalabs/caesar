@@ -101,7 +101,7 @@ describe("sectionHeader", () => {
     const io = ttyIo(80);
     sectionHeader(io, "doctor");
     const [rule, blank] = io.stdoutText().split("\n");
-    expect((rule ?? "").replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/orch · doctor/);
+    expect((rule ?? "").replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/caesar · doctor/);
     expect(visibleLength(rule ?? "")).toBe(80);
     expect(blank).toBe("");
   });
@@ -111,7 +111,7 @@ describe("sectionHeader", () => {
     sectionHeader(io, "ps");
     expect(io.stdoutText()).not.toMatch(/\x1b\[/);
     // La structure, elle, reste : c'est ce qu'un fichier ou un test doit voir.
-    expect(io.stdoutText()).toMatch(/^▞▚ orch · ps ─+\n\n$/);
+    expect(io.stdoutText()).toMatch(/^▞▚ caesar · ps ─+\n\n$/);
   });
 });
 

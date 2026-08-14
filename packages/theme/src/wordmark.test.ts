@@ -29,7 +29,7 @@ describe("logotype", () => {
 
   it("sans Unicode, rend le nom sur une ligne plutôt qu'un dessin grossier", () => {
     expect(renderWordmark(ASCII_GLYPHS, "truecolor")).toHaveLength(1);
-    expect(renderWordmark(ASCII_GLYPHS, "none")).toEqual(["ORCH"]);
+    expect(renderWordmark(ASCII_GLYPHS, "none")).toEqual(["CAESAR"]);
   });
 
   it("l'accroche s'ajoute en dernière ligne", () => {
@@ -58,10 +58,10 @@ describe("bandeau de commande", () => {
 
   it("garde la même largeur avec le jeu ASCII", () => {
     expect(visibleLength(renderSectionRule("ps", 80, ASCII_GLYPHS, "none"))).toBe(80);
-    expect(renderSectionRule("ps", 80, ASCII_GLYPHS, "none")).toMatch(/^:: orch - ps -+$/);
+    expect(renderSectionRule("ps", 80, ASCII_GLYPHS, "none")).toMatch(/^:: caesar - ps -+$/);
   });
 
   it("nomme la commande", () => {
-    expect(renderSectionRule("doctor", 80, UNICODE_GLYPHS, "none")).toMatch(/orch · doctor/);
+    expect(renderSectionRule("doctor", 80, UNICODE_GLYPHS, "none")).toMatch(/caesar · doctor/);
   });
 });

@@ -2,12 +2,12 @@
  * Point d'entrée du TUI de configuration. `runTui` monte le renderer sur la
  * racine donnée dans le processus courant ; exportée pour être importée
  * statiquement par `packages/cli/src/bun-entry.ts` (tâche 12, le point
- * d'entrée du binaire `orch` autonome) — c'est cet import statique qui fait
- * embarquer le TUI dans le binaire compilé par Bun. `@orch/tui` déclare ce
+ * d'entrée du binaire `caesar` autonome) — c'est cet import statique qui fait
+ * embarquer le TUI dans le binaire compilé par Bun. `@caesar/tui` déclare ce
  * fichier comme `"main"` de son `package.json` : `import { runTui } from
- * "@orch/tui"` s'y résout sans détour.
+ * "@caesar/tui"` s'y résout sans détour.
  *
- * Lancé directement (`bun main.tsx <root>` — le chemin que `orch config`
+ * Lancé directement (`bun main.tsx <root>` — le chemin que `caesar config`
  * spawn en sous-processus quand Bun est sur le `PATH`, voir
  * `packages/cli/src/commands/config.ts`), ce fichier s'auto-invoque via
  * `import.meta.main`, l'équivalent Bun natif du garde `isMain` que

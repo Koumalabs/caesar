@@ -1,5 +1,5 @@
 {
-  "name": "agent-orchestrateur",
+  "name": "caesar",
   "version": "0.1.0",
   "private": true,
   "description": "Orchestrateur de sous-agents de code multi-providers (Antigravity, Codex, OpenCode, Copilot, Claude)",
@@ -14,7 +14,7 @@
     "typecheck": "tsc -b --noEmit false --dry 2>/dev/null || tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "orch": "node packages/cli/dist/bin.js",
+    "caesar": "node packages/cli/dist/bin.js",
     "build:binary": "bash scripts/build-binary.sh",
     "assets:sync": "node scripts/generate-agent-assets.mjs"
   },

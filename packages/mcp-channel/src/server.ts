@@ -1,9 +1,9 @@
 /**
- * Le serveur MCP exposé au sous-agent par `orch-channel` : quatre tools qui
+ * Le serveur MCP exposé au sous-agent par `caesar-channel` : quatre tools qui
  * transforment la délégation en dialogue — voir le brief de la tâche 9.
  *
  * Chaque tool lit ou écrit exclusivement sous `taskDir`, le répertoire de la
- * tâche transmis en argument à `orch-channel` (voir `bin.ts`) : ce processus
+ * tâche transmis en argument à `caesar-channel` (voir `bin.ts`) : ce processus
  * ne partage aucune mémoire avec l'agent principal, tout passe par le
  * système de fichiers, exactement comme le reste du standard.
  *
@@ -16,12 +16,12 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import type { Report } from "@orch/protocol";
-import { ReportSchema, appendEvent, makeEvent, readEvents, readTask, taskPaths, writeReport } from "@orch/protocol";
-import type { TaskPaths } from "@orch/protocol";
+import type { Report } from "@caesar/protocol";
+import { ReportSchema, appendEvent, makeEvent, readEvents, readTask, taskPaths, writeReport } from "@caesar/protocol";
+import type { TaskPaths } from "@caesar/protocol";
 import { waitForAnswer, writeQuestion } from "./mailbox.js";
 
-const SERVER_NAME = "orch-channel";
+const SERVER_NAME = "caesar-channel";
 const SERVER_VERSION = "0.1.0";
 
 export const GET_TASK = "get_task";
@@ -47,13 +47,13 @@ function jsonResult(data: Record<string, unknown>): CallToolResult {
 
 /**
  * Prochain numéro d'ordre pour un événement émis par ce processus. `seq` ne
- * sert qu'à l'affichage (`orch logs`) — jamais à trier ni à dédupliquer,
+ * sert qu'à l'affichage (`caesar logs`) — jamais à trier ni à dédupliquer,
  * voir `packages/protocol/src/event.ts` et les usages de `event.seq` dans
  * `packages/cli/src/commands/tasks.ts` — donc relire le journal existant à
  * chaque appel (peu fréquent, journal court) suffit, sans coordination avec
  * le compteur du processus principal qui écrit par ailleurs sur le même
  * fichier. Même méthode, dupliquée faute d'un point d'export commun, côté
- * `orch_answer` (`@orch/mcp-server`), qui écrit sur ce même journal depuis
+ * `caesar_answer` (`@caesar/mcp-server`), qui écrit sur ce même journal depuis
  * l'autre bout du canal.
  */
 async function nextSeq(paths: TaskPaths): Promise<number> {
@@ -98,7 +98,7 @@ function registerReportProgress(server: McpServer, taskDir: string): void {
     {
       description:
         "Report progress on the current task without ending it. Appends a progress event to this task's event " +
-        "log, visible to the orchestrator via orch_status/orch_logs.",
+        "log, visible to the orchestrator via caesar_status/caesar_logs.",
       inputSchema: reportProgressInputShape,
     },
     (args) => reportProgress(taskDir, args),
@@ -154,7 +154,7 @@ function registerAskOrchestrator(server: McpServer, taskDir: string, serverOptio
       description:
         "Ask the orchestrator — the main agent that delegated this task — a question, and wait for its answer. " +
         "The question (and optional multiple-choice `options`) is recorded immediately, so the orchestrator can " +
-        "discover it via orch_status/orch_await; this call then blocks until an answer arrives or a timeout " +
+        "discover it via caesar_status/caesar_await; this call then blocks until an answer arrives or a timeout " +
         `elapses (default ${Math.round(DEFAULT_ASK_TIMEOUT_MS / 60_000)} minutes, never longer than what is left ` +
         "of this task's own deadline). If nobody answers in time, this returns normally (not an error) with an " +
         "instruction to proceed using your own best judgment.",

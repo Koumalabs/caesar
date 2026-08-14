@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { REPORT_PROTOCOL, TASK_PROTOCOL, TaskSchema, readReport, taskPaths, writeReport, writeTask } from "@orch/protocol";
+import { REPORT_PROTOCOL, TASK_PROTOCOL, TaskSchema, readReport, taskPaths, writeReport, writeTask } from "@caesar/protocol";
 import type { TaskRecord, TaskStatus } from "../store.js";
 import { fileTaskStore } from "../store.js";
 import { applyRecordedWorktree, createWorktree } from "./worktree.js";
@@ -25,8 +25,8 @@ async function git(cwd: string, args: string[]): Promise<string> {
 
 async function initRepo(root: string): Promise<void> {
   await git(root, ["init", "-q"]);
-  await git(root, ["config", "user.email", "orch-test@example.com"]);
-  await git(root, ["config", "user.name", "Orch Test"]);
+  await git(root, ["config", "user.email", "caesar-test@example.com"]);
+  await git(root, ["config", "user.name", "Caesar Test"]);
   await writeFile(join(root, "a.txt"), "hello\n", "utf8");
   await git(root, ["add", "a.txt"]);
   await git(root, ["commit", "-q", "-m", "init"]);
@@ -59,7 +59,7 @@ describe("garbageCollectWorktrees", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-gc-repo-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-gc-repo-"));
     await initRepo(root);
   });
 
@@ -76,7 +76,7 @@ describe("garbageCollectWorktrees", () => {
       status,
       created_at: "2026-08-11T10:00:00.000Z",
       ended_at: status === "pending" || status === "running" ? undefined : "2026-08-11T10:01:00.000Z",
-      task_dir: join(root, ".orch", "tasks", id),
+      task_dir: join(root, ".caesar", "tasks", id),
       workspace: handle.path,
       isolation: "worktree",
       mode: "write",
@@ -352,21 +352,21 @@ describe("garbageCollectWorktrees", () => {
 });
 
 /**
- * Le décalage entre la racine *orch* et la racine *git*. `resolveRoot` (CLI)
- * s'arrête au premier `.orch/` **ou** `.git/` : quand `.orch/` vit dans un
+ * Le décalage entre la racine *caesar* et la racine *git*. `resolveRoot` (CLI)
+ * s'arrête au premier `.caesar/` **ou** `.git/` : quand `.caesar/` vit dans un
  * sous-répertoire d'un dépôt, les deux divergent. `createWorktree` crée sous la
- * racine git ; le gc balayait `<root>/.orch/wt`, c'est-à-dire un répertoire où
+ * racine git ; le gc balayait `<root>/.caesar/wt`, c'est-à-dire un répertoire où
  * rien n'est jamais créé — les orphelins y étaient purement invisibles.
  */
-describe("garbageCollectWorktrees — racine orch distincte de la racine git", () => {
+describe("garbageCollectWorktrees — racine caesar distincte de la racine git", () => {
   let repo: string;
-  let orchRoot: string;
+  let caesarRoot: string;
 
   beforeEach(async () => {
-    repo = await mkdtemp(join(tmpdir(), "orch-gc-split-"));
+    repo = await mkdtemp(join(tmpdir(), "caesar-gc-split-"));
     await initRepo(repo);
-    orchRoot = join(repo, "sous-projet");
-    await execFileAsync("mkdir", ["-p", join(orchRoot, ".orch")]);
+    caesarRoot = join(repo, "sous-projet");
+    await execFileAsync("mkdir", ["-p", join(caesarRoot, ".caesar")]);
   });
 
   afterEach(async () => {
@@ -376,7 +376,7 @@ describe("garbageCollectWorktrees — racine orch distincte de la racine git", (
   it("trouve et nettoie un orphelin créé sous la racine git", async () => {
     const handle = await createWorktree(repo, "t_sous_projet");
 
-    const result = await garbageCollectWorktrees(orchRoot);
+    const result = await garbageCollectWorktrees(caesarRoot);
 
     expect(result.entries).toEqual([
       expect.objectContaining({ id: "t_sous_projet", action: "removed", orphan: true }),
@@ -388,7 +388,7 @@ describe("garbageCollectWorktrees — racine orch distincte de la racine git", (
 
 /**
  * La branche vient de `git worktree list --porcelain`, jamais d'une déduction
- * sur le nom du répertoire (`orch/<dirname>`) : cette coïncidence de
+ * sur le nom du répertoire (`caesar/<dirname>`) : cette coïncidence de
  * construction laisserait des branches derrière elle dès que les deux
  * cesseraient d'être fabriqués ensemble — ce que le nommage lisible des
  * branches fait précisément.
@@ -397,7 +397,7 @@ describe("garbageCollectWorktrees — la branche vient de git", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-gc-branch-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-gc-branch-"));
     await initRepo(root);
   });
 
@@ -406,16 +406,16 @@ describe("garbageCollectWorktrees — la branche vient de git", () => {
   });
 
   it("nettoie la branche réelle d'un orphelin dont le nom ne se déduit pas du répertoire", async () => {
-    const path = join(root, ".orch", "wt", "t_libre");
-    await execFileAsync("mkdir", ["-p", join(root, ".orch", "wt")]);
-    await git(root, ["worktree", "add", "-q", "-b", "orch/implementer/refonte-du-cache-t_libre", path]);
+    const path = join(root, ".caesar", "wt", "t_libre");
+    await execFileAsync("mkdir", ["-p", join(root, ".caesar", "wt")]);
+    await git(root, ["worktree", "add", "-q", "-b", "caesar/implementer/refonte-du-cache-t_libre", path]);
 
     const result = await garbageCollectWorktrees(root);
 
     expect(result.entries).toEqual([
-      expect.objectContaining({ id: "t_libre", branch: "orch/implementer/refonte-du-cache-t_libre", action: "removed" }),
+      expect.objectContaining({ id: "t_libre", branch: "caesar/implementer/refonte-du-cache-t_libre", action: "removed" }),
     ]);
-    expect((await git(root, ["branch", "--list", "orch/implementer/refonte-du-cache-t_libre"])).trim()).toBe("");
+    expect((await git(root, ["branch", "--list", "caesar/implementer/refonte-du-cache-t_libre"])).trim()).toBe("");
   });
 });
 
@@ -423,15 +423,15 @@ describe("garbageCollectWorktrees — la branche vient de git", () => {
  * Le statut d'une tâche est écrit par le processus qui la conduit, dans son
  * `finally`. Tué — `kill -9`, fermeture de la session MCP qui l'hébergeait,
  * arrêt de la machine — il ne l'écrit jamais, et l'enregistrement reste
- * « running » à vie : `orch ps` l'affiche indéfiniment en tête, `orch watch`
- * la suit sans fin, et `orch gc` protège son worktree comme celui d'une tâche
+ * « running » à vie : `caesar ps` l'affiche indéfiniment en tête, `caesar watch`
+ * la suit sans fin, et `caesar gc` protège son worktree comme celui d'une tâche
  * bien vivante. Rien ne réconciliait cet état.
  */
 describe("sweepAbandonedTasks", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-gc-abandon-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-gc-abandon-"));
   });
 
   afterEach(async () => {
@@ -446,7 +446,7 @@ describe("sweepAbandonedTasks", () => {
       status,
       created_at: "2026-08-11T10:00:00.000Z",
       started_at: "2026-08-11T10:00:00.000Z",
-      task_dir: join(root, ".orch", "tasks", id),
+      task_dir: join(root, ".caesar", "tasks", id),
       workspace: root,
       isolation: "inplace",
       mode: "write",
@@ -521,7 +521,7 @@ describe("sweepAbandonedTasks", () => {
   /**
    * L'absence n'est pas une preuve de mort : un enregistrement écrit par autre
    * chose que le moteur n'a jamais pris de marqueur, et ne doit pas être
-   * déclaré mort pour autant. `orch cancel` reste la sortie manuelle.
+   * déclaré mort pour autant. `caesar cancel` reste la sortie manuelle.
    */
   it("ne conclut rien d'une tâche sans marqueur", async () => {
     const task = await record("t_sans_marqueur", "running");

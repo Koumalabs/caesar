@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { REPORT_PROTOCOL, TASK_PROTOCOL, TaskSchema, readEvents, readReport, taskPaths, writeTask } from "@orch/protocol";
-import type { Task } from "@orch/protocol";
+import { REPORT_PROTOCOL, TASK_PROTOCOL, TaskSchema, readEvents, readReport, taskPaths, writeTask } from "@caesar/protocol";
+import type { Task } from "@caesar/protocol";
 import { writeAnswer } from "./mailbox.js";
 import { askOrchestrator, buildChannelServer, getTask, reportProgress, submitReport } from "./server.js";
 
@@ -32,7 +32,7 @@ describe("tools du canal — appel direct", () => {
   let taskDir: string;
 
   beforeEach(async () => {
-    taskDir = await mkdtemp(join(tmpdir(), "orch-channel-"));
+    taskDir = await mkdtemp(join(tmpdir(), "caesar-channel-"));
   });
 
   afterEach(async () => {
@@ -85,7 +85,7 @@ describe("tools du canal — appel direct", () => {
       { askTimeoutMs: 5_000, pollIntervalMs: 20 },
     );
 
-    // Simule `orch_answer`, qui tournerait dans un autre processus en pratique :
+    // Simule `caesar_answer`, qui tournerait dans un autre processus en pratique :
     // attend que la question soit déposée, puis y répond.
     let questionId: string | undefined;
     for (let i = 0; i < 100 && !questionId; i++) {
@@ -130,7 +130,7 @@ describe("buildChannelServer sur le transport stdio", () => {
   let taskDir: string;
 
   beforeEach(async () => {
-    taskDir = await mkdtemp(join(tmpdir(), "orch-channel-transport-"));
+    taskDir = await mkdtemp(join(tmpdir(), "caesar-channel-transport-"));
     await writeSampleTask(taskDir);
   });
 

@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { makeEvent, taskPaths } from "@orch/protocol";
-import type { TaskRecord } from "@orch/core";
-import { clearWorktreeInUse, fileTaskStore, markWorktreeInUse, runTask } from "@orch/core";
+import { makeEvent, taskPaths } from "@caesar/protocol";
+import type { TaskRecord } from "@caesar/core";
+import { clearWorktreeInUse, fileTaskStore, markWorktreeInUse, runTask } from "@caesar/core";
 import { makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
 import { runApply, runCancel, runDiff, runLogs, runPs } from "./tasks.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE } from "../output.js";
@@ -20,19 +20,19 @@ async function git(cwd: string, args: string[]): Promise<string> {
 
 async function initGitRepo(root: string): Promise<void> {
   await git(root, ["init", "-q"]);
-  await git(root, ["config", "user.email", "orch-test@example.com"]);
-  await git(root, ["config", "user.name", "Orch Test"]);
+  await git(root, ["config", "user.email", "caesar-test@example.com"]);
+  await git(root, ["config", "user.name", "Caesar Test"]);
   await writeFile(join(root, "a.txt"), "hello\n", "utf8");
   await git(root, ["add", "a.txt"]);
   await git(root, ["commit", "-q", "-m", "init"]);
 }
 
-describe("orch ps", () => {
+describe("caesar ps", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-ps-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-ps-"));
     io = makeIo();
   });
 
@@ -47,7 +47,7 @@ describe("orch ps", () => {
       objective: "objectif",
       status: "pending",
       created_at: "2026-08-09T10:00:00.000Z",
-      task_dir: join(root, ".orch", "tasks", "t_1"),
+      task_dir: join(root, ".caesar", "tasks", "t_1"),
       workspace: root,
       isolation: "inplace",
       mode: "write",
@@ -126,12 +126,12 @@ describe("orch ps", () => {
   });
 });
 
-describe("orch logs / cancel / diff / apply — sur un store peuplé par de vraies tâches", () => {
+describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vraies tâches", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-tasks-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-tasks-"));
     io = makeIo();
   });
 
@@ -209,7 +209,7 @@ describe("orch logs / cancel / diff / apply — sur un store peuplé par de vrai
 
   it("logs --follow : une ligne malformée ou hors schéma est signalée sur stderr, sans interrompre le suivi ni polluer stdout", async () => {
     const id = "t_bad_line";
-    const taskDir = join(root, ".orch", "tasks", id);
+    const taskDir = join(root, ".caesar", "tasks", id);
     const paths = taskPaths(taskDir);
     await mkdir(dirname(paths.eventsPath), { recursive: true });
 
@@ -266,7 +266,7 @@ describe("orch logs / cancel / diff / apply — sur un store peuplé par de vrai
       objective: "déjà finie",
       status: "succeeded",
       created_at: new Date().toISOString(),
-      task_dir: join(root, ".orch", "tasks", "t_done"),
+      task_dir: join(root, ".caesar", "tasks", "t_done"),
       workspace: root,
       isolation: "inplace",
       mode: "write",
@@ -288,7 +288,7 @@ describe("orch logs / cancel / diff / apply — sur un store peuplé par de vrai
       objective: "sans pid",
       status: "running",
       created_at: new Date().toISOString(),
-      task_dir: join(root, ".orch", "tasks", "t_no_pid"),
+      task_dir: join(root, ".caesar", "tasks", "t_no_pid"),
       workspace: root,
       isolation: "inplace",
       mode: "write",
@@ -314,7 +314,7 @@ describe("orch logs / cancel / diff / apply — sur un store peuplé par de vrai
       objective: "pid mort",
       status: "running",
       created_at: new Date().toISOString(),
-      task_dir: join(root, ".orch", "tasks", "t_dead_pid"),
+      task_dir: join(root, ".caesar", "tasks", "t_dead_pid"),
       workspace: root,
       isolation: "inplace",
       mode: "write",

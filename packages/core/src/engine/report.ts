@@ -14,8 +14,8 @@
  * fichier.
  */
 import { readFile } from "node:fs/promises";
-import type { Finding, Report, ReportChannel, ReportStatus, Task, TaskPaths } from "@orch/protocol";
-import { REPORT_PROTOCOL, ReportSchema, extractReportFromText, readReport } from "@orch/protocol";
+import type { Finding, Report, ReportChannel, ReportStatus, Task, TaskPaths } from "@caesar/protocol";
+import { REPORT_PROTOCOL, ReportSchema, extractReportFromText, readReport } from "@caesar/protocol";
 import type { ReportSource } from "../store.js";
 import type { RunResult } from "./spawn.js";
 import type { WorktreeDiff } from "./worktree.js";

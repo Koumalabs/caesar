@@ -1,8 +1,8 @@
 /**
  * Suivi d'un fichier qui grossit, par décalage.
  *
- * Extrait de `commands/tasks.ts`, où il ne servait qu'à `orch logs --follow`
- * sur une tâche : `orch watch` en suit plusieurs à la fois, et relire chaque
+ * Extrait de `commands/tasks.ts`, où il ne servait qu'à `caesar logs --follow`
+ * sur une tâche : `caesar watch` en suit plusieurs à la fois, et relire chaque
  * `events.jsonl` en entier à chaque image reparserait, pour une tâche bavarde
  * suivie dix minutes, des milliers de lignes cinq fois par seconde.
  *

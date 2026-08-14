@@ -27,7 +27,7 @@
  * Pour éprouver les couleurs elles-mêmes, il pose `isTTY = true` sur le flux
  * capturé.
  */
-import type { ColorDepth, Glyphs } from "@orch/theme";
+import type { ColorDepth, Glyphs } from "@caesar/theme";
 import {
   ACCENT,
   BAD,
@@ -41,7 +41,7 @@ import {
   paint,
   renderSectionRule,
   renderWordmark,
-} from "@orch/theme";
+} from "@caesar/theme";
 import { homedir } from "node:os";
 import type { Writable } from "node:stream";
 
@@ -170,7 +170,7 @@ export function printNote(io: Io, message: string): void {
 
 /**
  * L'intertitre d'une rubrique, dans le même dessin que les sections de
- * `orch --help` : capitale et demi-ton, jamais de ponctuation finale.
+ * `caesar --help` : capitale et demi-ton, jamais de ponctuation finale.
  *
  * Ce qui expliquait la rubrique passe en note dessous. Les deux étaient
  * jusqu'ici fondus dans une seule phrase — « Refusés par la politique — état
@@ -188,8 +188,8 @@ export function printField(io: Io, label: string, value: string, width: number):
 }
 
 /**
- * Le logotype, réservé à la porte d'entrée : `orch --help` et la fin de
- * `orch init`. Nulle part ailleurs — un logotype réimprimé à chaque
+ * Le logotype, réservé à la porte d'entrée : `caesar --help` et la fin de
+ * `caesar init`. Nulle part ailleurs — un logotype réimprimé à chaque
  * invocation cesse d'être une identité pour devenir du bruit.
  */
 export function bannerLines(stream: Writable, tagline?: string): string[] {
@@ -199,7 +199,7 @@ export function bannerLines(stream: Writable, tagline?: string): string[] {
 /**
  * Remplace le répertoire personnel par `~`.
  *
- * Dix caractères rendus à la colonne « binaire » d'`orch agents list`, qui
+ * Dix caractères rendus à la colonne « binaire » de `caesar agents list`, qui
  * affichait jusqu'ici `/Users/prénom/.…` — un chemin tronqué à dix-sept
  * caractères, donc inutilisable. Le préfixe est ce que toutes les lignes ont
  * en commun : c'est exactement ce qui n'apprend rien.

@@ -1,4 +1,4 @@
-import type { ReportChannel, Task } from "@orch/protocol";
+import type { ReportChannel, Task } from "@caesar/protocol";
 import type { AgentCapabilities, AgentDefinition, BuildContext, SpawnPlan, Translation } from "./types.js";
 import { defaultPreferredReportChannel } from "./types.js";
 
@@ -38,7 +38,7 @@ const NEUTRAL_CAPABILITIES: AgentCapabilities = {
 /**
  * Les jetons que `substitute` sait remplacer — donc les seuls qu'un gabarit
  * d'arguments puisse porter. Exportés parce que ce sont eux que valide
- * `validateGenericAgentSpec` et qu'affichent l'aide de `orch agents add` et
+ * `validateGenericAgentSpec` et qu'affichent l'aide de `caesar agents add` et
  * l'écran Agents du TUI : une liste unique, plutôt que trois recopies qui
  * divergeraient au premier jeton ajouté.
  */
@@ -119,7 +119,7 @@ function buildGeneric(spec: GenericAgentSpec, cwdMode: "process" | "flag", ctx: 
 /**
  * Découpe une ligne de gabarit d'arguments en arguments, en respectant les
  * guillemets simples et doubles : `--system "tu es {{prompt}}"` fait deux
- * arguments, pas trois. Les interfaces qui déclarent un agent (`orch agents
+ * arguments, pas trois. Les interfaces qui déclarent un agent (`caesar agents
  * add --args`, le champ « arguments » du TUI) saisissent une ligne unique —
  * c'est la forme sous laquelle on lit une ligne de commande — alors que
  * `GenericAgentSpec.args` est une liste : cette fonction et
@@ -194,7 +194,7 @@ const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
  *    entier* de la ligne de commande (voir `substitute`) ;
  *  - un gabarit sans `{{prompt}}` lance l'agent sans jamais lui transmettre
  *    l'objectif de la tâche — il répond, mais à côté ;
- *  - un identifiant exotique casse la résolution par nom (`orch run --agent`)
+ *  - un identifiant exotique casse la résolution par nom (`caesar run --agent`)
  *    et les listes de rôles.
  *
  * Rend `null` quand tout va bien. Ne vérifie pas la présence du binaire :
@@ -247,13 +247,13 @@ export function createGenericAgent(spec: GenericAgentSpec): AgentDefinition {
     // `{{model}}` dans les arguments *est* tout le support du choix de modèle
     // pour un agent générique : rien d'autre ne le porte. La capacité s'en
     // déduit donc, au lieu de se déclarer séparément — où elle finirait par
-    // contredire les arguments et annoncer, dans `orch agents list`, un choix
+    // contredire les arguments et annoncer, dans `caesar agents list`, un choix
     // de modèle que la ligne de commande ne transmet nulle part.
     model: spec.args.some((arg) => arg.includes(tokenLiteral("model"))),
     // Même raisonnement que pour `model` : ce sont les `networkArgs` qui
     // *constituent* la capacité d'ouvrir le réseau, rien d'autre ne la porte.
     // La déduire ici plutôt que de la laisser déclarer séparément évite qu'un
-    // agent annonce « réseau pilotable » dans `orch doctor` alors qu'aucun
+    // agent annonce « réseau pilotable » dans `caesar doctor` alors qu'aucun
     // argument ne l'ouvrirait.
     network: (spec.networkArgs?.length ?? 0) > 0 ? "toggle" : "unknown",
     ...spec.capabilities,

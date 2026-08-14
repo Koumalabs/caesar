@@ -10,7 +10,7 @@ import { RolesScreen } from "./RolesScreen";
 let root: string;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "orch-tui-roles-"));
+  root = await mkdtemp(join(tmpdir(), "caesar-tui-roles-"));
 });
 
 afterEach(async () => {
@@ -70,8 +70,8 @@ describe("RolesScreen", () => {
     // Le défaut central que cet écran corrige : le prompt n'existait à
     // l'écran que sous forme de chemin, alors que ce fichier *est* ce que
     // l'agent reçoit en tête de contexte.
-    await mkdir(join(root, ".orch", "roles"), { recursive: true });
-    await writeFile(join(root, ".orch", "roles", "reviewer.md"), "Tu es un relecteur strict.\nNe corrige rien toi-même.\n", "utf8");
+    await mkdir(join(root, ".caesar", "roles"), { recursive: true });
+    await writeFile(join(root, ".caesar", "roles", "reviewer.md"), "Tu es un relecteur strict.\nNe corrige rien toi-même.\n", "utf8");
 
     const setup = await mount();
     await settle(setup);
@@ -99,7 +99,7 @@ describe("RolesScreen", () => {
     const frame = setup.captureCharFrame();
     expect(frame).toContain("revenir aux rôles");
     // …et le champ sélectionné s'explique.
-    expect(frame).toContain("orch run --role");
+    expect(frame).toContain("caesar run --role");
     setup.renderer.destroy();
   });
 

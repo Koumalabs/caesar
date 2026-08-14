@@ -4,19 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig } from "@orch/core";
+import { loadConfig } from "@caesar/core";
 import { makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
 import { runAgentsAdd, runAgentsDisable, runAgentsEnable, runAgentsList, runAgentsRemove, runAgentsTest } from "./agents.js";
 import { EXIT_OK, EXIT_USAGE } from "../output.js";
 
 const execFileAsync = promisify(execFile);
 
-describe("orch agents list", () => {
+describe("caesar agents list", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-agents-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-agents-"));
     io = makeIo();
   });
 
@@ -35,12 +35,12 @@ describe("orch agents list", () => {
   });
 });
 
-describe("orch agents enable / disable", () => {
+describe("caesar agents enable / disable", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-agents-toggle-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-agents-toggle-"));
     io = makeIo();
   });
 
@@ -71,12 +71,12 @@ describe("orch agents enable / disable", () => {
   });
 });
 
-describe("orch agents add / remove", () => {
+describe("caesar agents add / remove", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-agents-declare-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-agents-declare-"));
     io = makeIo();
   });
 
@@ -94,7 +94,7 @@ describe("orch agents add / remove", () => {
         { id: "aider", bin: "aider", args: ["--message", "{{prompt}}", "--yes"], cwdMode: "process" },
       ]);
 
-      // Ce qui compte vraiment : `orch agents list` le voit, donc `orch run
+      // Ce qui compte vraiment : `caesar agents list` le voit, donc `caesar run
       // --agent aider` peut le résoudre.
       const listIo = makeIo();
       await runAgentsList(root, { json: true }, listIo);
@@ -137,7 +137,7 @@ describe("orch agents add / remove", () => {
 
   it("signale que le binaire est absent du PATH, sans refuser la déclaration", async () => {
     await withFakeHome(async () => {
-      const code = await runAgentsAdd(root, "absent", { bin: "binaire-qui-n-existe-pas-orch", args: "{{prompt}}" }, io);
+      const code = await runAgentsAdd(root, "absent", { bin: "binaire-qui-n-existe-pas-caesar", args: "{{prompt}}" }, io);
       expect(code).toBe(EXIT_OK);
       expect(io.stdoutText()).toMatch(/introuvable dans le PATH/);
       expect((await loadConfig(root)).config.agents).toHaveLength(1);
@@ -224,12 +224,12 @@ describe("orch agents add / remove", () => {
   });
 });
 
-describe("orch agents test", () => {
+describe("caesar agents test", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-agents-test-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-agents-test-"));
     io = makeIo();
   });
 
@@ -266,8 +266,8 @@ describe("orch agents test", () => {
         // explicite n'a pas besoin d'un dépôt git, mais un dépôt réel écarte
         // toute ambiguïté sur le comportement observé.
         await execFileAsync("git", ["init", "-q"], { cwd: root });
-        await execFileAsync("git", ["config", "user.email", "orch-test@example.com"], { cwd: root });
-        await execFileAsync("git", ["config", "user.name", "Orch Test"], { cwd: root });
+        await execFileAsync("git", ["config", "user.email", "caesar-test@example.com"], { cwd: root });
+        await execFileAsync("git", ["config", "user.name", "Caesar Test"], { cwd: root });
 
         const code = await runAgentsTest(root, "codex", { yes: true, json: true }, io);
         const parsed = JSON.parse(io.stdoutText());

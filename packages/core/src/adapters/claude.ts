@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { ReportChannel, Task } from "@orch/protocol";
+import type { ReportChannel, Task } from "@caesar/protocol";
 import type {
   AgentCapabilities,
   AgentDefinition,
@@ -57,8 +57,8 @@ function build(ctx: BuildContext): SpawnPlan {
     ctx.prompt,
     // `stream-json` et non `json` : ce dernier n'émet qu'un seul objet, à la
     // toute fin. Un sous-agent claude était donc muet du début à la fin de son
-    // exécution — rien à afficher dans `orch run`, rien à suivre dans `orch
-    // logs --follow`, rien dans `orch watch`. Le mode flux rend chaque message
+    // exécution — rien à afficher dans `caesar run`, rien à suivre dans `caesar
+    // logs --follow`, rien dans `caesar watch`. Le mode flux rend chaque message
     // de l'assistant dès qu'il est complet.
     //
     // `--verbose` accompagne obligatoirement `stream-json` sous `--print`.
@@ -152,7 +152,7 @@ function lastText(content: readonly unknown[]): string | undefined {
  *
  * Ce que la bascule depuis `--output-format json` change : ce mode n'émettait
  * qu'un seul objet, à la toute fin. Un sous-agent claude était donc muet du
- * début à la fin — rien à suivre, ni dans `orch run`, ni dans `orch watch`.
+ * début à la fin — rien à suivre, ni dans `caesar run`, ni dans `caesar watch`.
  *
  * Ce qu'elle ne change pas, et c'est ce qui rendait la bascule sûre : la ligne
  * finale porte toujours `type: "result"`, `result` (le texte) et `is_error` au
@@ -163,7 +163,7 @@ function lastText(content: readonly unknown[]): string | undefined {
  * Les blocs `tool_result` ne portent que `tool_use_id`, jamais le nom de
  * l'outil, et `translate` est sans état par contrat : l'événement de
  * fermeture arrive avec `tool` vide et l'identifiant seul, à charge du
- * consommateur de le rapprocher de son ouverture (voir `OrchEvent.id` et
+ * consommateur de le rapprocher de son ouverture (voir `CaesarEvent.id` et
  * `foldActivity`).
  */
 function translate(line: string): Translation {

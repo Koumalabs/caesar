@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Channel } from "@orch/protocol";
-import { REPORT_PROTOCOL, readTask, taskPaths } from "@orch/protocol";
+import type { Channel } from "@caesar/protocol";
+import { REPORT_PROTOCOL, readTask, taskPaths } from "@caesar/protocol";
 import { fileTaskStore, type TaskStore } from "../store.js";
 import { garbageCollectWorktrees } from "./gc.js";
 import { createQueue } from "./queue.js";
@@ -83,7 +83,7 @@ const channelResolutionFailure = vi.hoisted(() => ({ active: false }));
 /**
  * Simule l'échec de résolution du binaire du canal retour (`resolveChannelEntry`,
  * `runner.ts`) sans toucher au vrai système de modules ni à l'installation
- * réelle de `@orch/mcp-channel` : seule `require.resolve("@orch/mcp-channel")`
+ * réelle de `@caesar/mcp-channel` : seule `require.resolve("@caesar/mcp-channel")`
  * est interceptée, et seulement quand `channelResolutionFailure.active` est
  * vrai (activé le temps d'un seul test ci-dessous) — tout le reste de ce
  * fichier continue de résoudre normalement, y compris les tests "canal
@@ -99,7 +99,7 @@ vi.mock("node:module", async (importOriginal) => {
         get(target, prop, receiver) {
           if (prop === "resolve") {
             return (id: string, options?: { paths?: string[] | null }) => {
-              if (id === "@orch/mcp-channel" && channelResolutionFailure.active) {
+              if (id === "@caesar/mcp-channel" && channelResolutionFailure.active) {
                 throw new Error("résolution simulée en échec, pour le test de dégradation (tâche 9)");
               }
               return target.resolve(id, options);
@@ -121,23 +121,23 @@ async function git(cwd: string, args: string[]): Promise<string> {
 
 async function initGitRepo(root: string): Promise<void> {
   await git(root, ["init", "-q"]);
-  await git(root, ["config", "user.email", "orch-test@example.com"]);
-  await git(root, ["config", "user.name", "Orch Test"]);
-  // Ce qu'`orch init` inscrit dans tout projet réel. Sans cette ligne, chaque
+  await git(root, ["config", "user.email", "caesar-test@example.com"]);
+  await git(root, ["config", "user.name", "Caesar Test"]);
+  // Ce que `caesar init` inscrit dans tout projet réel. Sans cette ligne, chaque
   // tâche isolée porterait le constat « Worktrees non ignorés par git » —
   // vrai, mais hors sujet pour les tests qui suivent. Le constat lui-même est
   // vérifié par `initGitRepoWithoutIgnore`, plus bas.
-  await writeFile(join(root, ".gitignore"), ".orch/wt/\n", "utf8");
+  await writeFile(join(root, ".gitignore"), ".caesar/wt/\n", "utf8");
   await writeFile(join(root, "a.txt"), "hello\n", "utf8");
   await git(root, ["add", "-A"]);
   await git(root, ["commit", "-q", "-m", "init"]);
 }
 
-/** Le même dépôt, mais sans la ligne qu'`orch init` pose — pour le constat d'étape 0. */
+/** Le même dépôt, mais sans la ligne que `caesar init` pose — pour le constat d'étape 0. */
 async function initGitRepoWithoutIgnore(root: string): Promise<void> {
   await git(root, ["init", "-q"]);
-  await git(root, ["config", "user.email", "orch-test@example.com"]);
-  await git(root, ["config", "user.name", "Orch Test"]);
+  await git(root, ["config", "user.email", "caesar-test@example.com"]);
+  await git(root, ["config", "user.name", "Caesar Test"]);
   await writeFile(join(root, "a.txt"), "hello\n", "utf8");
   await git(root, ["add", "a.txt"]);
   await git(root, ["commit", "-q", "-m", "init"]);
@@ -151,8 +151,8 @@ async function initGitRepoWithoutIgnore(root: string): Promise<void> {
  */
 async function initGitRepoWithoutCommit(root: string): Promise<void> {
   await git(root, ["init", "-q"]);
-  await git(root, ["config", "user.email", "orch-test@example.com"]);
-  await git(root, ["config", "user.name", "Orch Test"]);
+  await git(root, ["config", "user.email", "caesar-test@example.com"]);
+  await git(root, ["config", "user.name", "Caesar Test"]);
 }
 
 describe("runTask", () => {
@@ -160,7 +160,7 @@ describe("runTask", () => {
   let store: TaskStore;
 
   beforeEach(async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), "orch-runner-")));
+    root = await realpath(await mkdtemp(join(tmpdir(), "caesar-runner-")));
     store = fileTaskStore(root);
   });
 
@@ -179,9 +179,9 @@ describe("runTask", () => {
       expect(outcome.record.isolation).toBe("worktree");
       // Nommée pour être lue : rôle ou agent, objectif, puis les huit
       // premiers caractères de l'identifiant pour l'unicité. Le répertoire,
-      // lui, reste `.orch/wt/<taskId>` — c'est la clé du store.
-      expect(outcome.record.branch).toBe(`orch/fake-agent/ecrire-${outcome.record.id.replace("t_", "").slice(0, 8)}`);
-      expect(outcome.record.workspace).toBe(join(root, ".orch", "wt", outcome.record.id));
+      // lui, reste `.caesar/wt/<taskId>` — c'est la clé du store.
+      expect(outcome.record.branch).toBe(`caesar/fake-agent/ecrire-${outcome.record.id.replace("t_", "").slice(0, 8)}`);
+      expect(outcome.record.workspace).toBe(join(root, ".caesar", "wt", outcome.record.id));
       expect(outcome.record.status).toBe("succeeded");
       expect(outcome.report.status).toBe("success");
       expect(outcome.report.findings).toEqual([]);
@@ -355,7 +355,7 @@ describe("runTask", () => {
    * fichiers suivis, et c'est ce qui rendait l'isolation inexploitable sur un
    * projet réel — donc contournée. Ces tests vérifient qu'un sous-agent y
    * trouve ce dont il a besoin, et que ce que l'orchestrateur y a posé ne
-   * ressort ni dans le diff, ni dans `orch apply`.
+   * ressort ni dans le diff, ni dans `caesar apply`.
    */
   describe("l'atelier ([worktree])", () => {
     async function seedIgnored(): Promise<void> {
@@ -390,7 +390,7 @@ describe("runTask", () => {
 
     it("ce que l'orchestrateur a posé ne ressort pas comme travail de l'agent", async () => {
       // Sans exclusion, un `.env` recopié redeviendrait applicable au dépôt
-      // principal par `orch apply` — l'orchestrateur reprocherait à l'agent ce
+      // principal par `caesar apply` — l'orchestrateur reprocherait à l'agent ce
       // qu'il a lui-même déposé.
       await initGitRepo(root);
       await seedIgnored();
@@ -503,7 +503,7 @@ describe("runTask", () => {
       );
     });
 
-    it("signale — sans refuser — que .orch/wt/ n'est pas ignoré par git", async () => {
+    it("signale — sans refuser — que .caesar/wt/ n'est pas ignoré par git", async () => {
       // L'étape 0 du skill `superpowers:using-git-worktrees`, adaptée : un
       // constat, pas un refus. Vérifié plutôt que supposé, git n'aspire pas le
       // contenu d'un worktree non ignoré — il le reconnaît comme dépôt
@@ -577,7 +577,7 @@ describe("runTask", () => {
 
     it("ne refuse pas hors dépôt utilisable : un projet non versionné reste accessible", async () => {
       // Sans dépôt, aucun worktree n'est créable : refuser n'offrirait aucune
-      // issue et mettrait `orch` hors service là où il fonctionnait.
+      // issue et mettrait `caesar` hors service là où il fonctionnait.
       const outcome = await runTask(
         { store, root },
         { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "inplace" },
@@ -650,7 +650,7 @@ describe("runTask", () => {
       // Hors dépôt git, `inplace` n'est pas un choix mais la seule option.
       // Verrouiller sérialiserait toute délégation en écriture sur un projet
       // non versionné, sans offrir d'alternative — et c'est justement la
-      // promesse de parallélisme d'`orch_delegate` qui en paierait le prix.
+      // promesse de parallélisme de `caesar_delegate` qui en paierait le prix.
       const commun = { agentId: "fake-agent", mode: "write" as const, workspace: root };
       const [a, b] = await Promise.all([
         runTask({ store, root }, { ...commun, objective: "a" }),
@@ -672,7 +672,7 @@ describe("runTask", () => {
       ).rejects.toThrow();
 
       const { stdout } = await execFileAsync("git", ["-C", root, "worktree", "list", "--porcelain"]);
-      expect(stdout).not.toContain(".orch/wt");
+      expect(stdout).not.toContain(".caesar/wt");
       expect(await store.list()).toHaveLength(0);
     });
   });
@@ -699,8 +699,8 @@ describe("runTask", () => {
   /**
    * Les quatre tests de couture demandés par la revue finale : ils auraient
    * attrapé C1 à C4 avant fusion. C1 (un agent déclaré en `[[agent]]` tourne
-   * de bout en bout via `orch run`) vit dans `packages/cli/src/commands/run.test.ts`,
-   * seul niveau où le CLI/`.orch/config.toml` a un sens ; les trois autres
+   * de bout en bout via `caesar run`) vit dans `packages/cli/src/commands/run.test.ts`,
+   * seul niveau où le CLI/`.caesar/config.toml` a un sens ; les trois autres
    * sont ici, au niveau du moteur qu'ils exercent directement.
    */
   describe("tests de couture — revue finale", () => {
@@ -863,9 +863,9 @@ describe("runTask", () => {
       // mais c'est la commande git concurrente qui devait être éprouvée.
       const workspaces = outcomes.map((o) => o.record.workspace);
       expect(new Set(workspaces).size).toBe(4);
-      for (const workspace of workspaces) expect(workspace).toContain(join(".orch", "wt"));
+      for (const workspace of workspaces) expect(workspace).toContain(join(".caesar", "wt"));
 
-      const { stdout } = await execFileAsync("git", ["branch", "--list", "orch/*"], { cwd: root });
+      const { stdout } = await execFileAsync("git", ["branch", "--list", "caesar/*"], { cwd: root });
       expect(stdout.split("\n").filter((line) => line.trim() !== "")).toHaveLength(4);
     }, 30_000);
 
@@ -980,7 +980,7 @@ describe("runTask", () => {
     );
 
     expect(outcome.record.id).toBe("t_imposed");
-    expect(outcome.record.task_dir).toBe(join(root, ".orch", "tasks", "t_imposed"));
+    expect(outcome.record.task_dir).toBe(join(root, ".caesar", "tasks", "t_imposed"));
     expect(await store.get("t_imposed")).not.toBeNull();
   });
 
@@ -1006,7 +1006,7 @@ describe("runTask", () => {
     expect(outcome.record.branch).toBeUndefined();
     expect(outcome.diff).toBeUndefined();
     expect(outcome.report.status).toBe("failed");
-    await expect(access(join(root, ".orch", "wt"))).rejects.toThrow();
+    await expect(access(join(root, ".caesar", "wt"))).rejects.toThrow();
   });
 
   it("onEvent reçoit les événements au fil de l'eau, avant que runTask ne résolve", async () => {
@@ -1103,7 +1103,7 @@ describe("runTask", () => {
         transport: "mcp-stdio",
         command: process.execPath,
         args: [expect.stringMatching(/bin\.js$/), outcome.record.task_dir],
-        server_name: "orch",
+        server_name: "caesar",
       });
     });
 
@@ -1162,9 +1162,9 @@ describe("runTask", () => {
       // que `bun-entry.ts` fait réellement en production.
       configureChannelLauncher((taskDir): Channel => ({
         transport: "mcp-stdio",
-        command: "orch",
+        command: "caesar",
         args: ["channel", "serve", "--task-dir", taskDir],
-        server_name: "orch",
+        server_name: "caesar",
       }));
       try {
         const outcome = await runTask(
@@ -1176,9 +1176,9 @@ describe("runTask", () => {
         const task = await readTask(taskPaths(outcome.record.task_dir));
         expect(task.channel).toEqual({
           transport: "mcp-stdio",
-          command: "orch",
+          command: "caesar",
           args: ["channel", "serve", "--task-dir", outcome.record.task_dir],
-          server_name: "orch",
+          server_name: "caesar",
         });
       } finally {
         configureChannelLauncher(defaultChannelLauncher);

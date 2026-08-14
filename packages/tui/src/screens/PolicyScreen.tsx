@@ -12,7 +12,7 @@
  *
  * La règle qui surprend — "denied" l'emporte toujours sur "allowed" — est
  * rappelée en permanence à l'écran ; elle n'est pas réimplémentée ici, c'est
- * `isAgentAllowed` (`@orch/core`) qui la fait vivre partout ailleurs.
+ * `isAgentAllowed` (`@caesar/core`) qui la fait vivre partout ailleurs.
  *
  * Chaque champ affiche sa valeur **effective** (`effectiveConfig`) — jamais
  * `state.draft` directement, qui ne porte que ce que la couche active
@@ -22,8 +22,8 @@
  */
 import { useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import type { PolicyConfig } from "@orch/core";
-import { parseDuration } from "@orch/core";
+import type { PolicyConfig } from "@caesar/core";
+import { parseDuration } from "@caesar/core";
 import { catalogIds, ISOLATION_OPTIONS, MODE_OPTIONS, NETWORK_OPTIONS, cycle, formatMs } from "./shared";
 import {
   effectiveConfig,
@@ -101,7 +101,7 @@ const FIELD_HINTS: Record<Field_, string> = {
   max_depth: "Un agent délégataire ne peut plus déléguer une fois cette profondeur atteinte.",
   allow_recursion: 'Désactivé, l\'agent "claude" est refusé : déléguer à Claude depuis Claude Code serait une récursion.',
   allow_inplace_write:
-    'Désactivé, une tâche en écriture ne peut pas demander "inplace" dans un dépôt git : elle travaille sur une branche jetable, dont "orch diff" montre le résultat. Activé, le sous-agent écrit dans votre arbre de travail, sur votre branche courante, mêlé à vos propres modifications.',
+    'Désactivé, une tâche en écriture ne peut pas demander "inplace" dans un dépôt git : elle travaille sur une branche jetable, dont "caesar diff" montre le résultat. Activé, le sous-agent écrit dans votre arbre de travail, sur votre branche courante, mêlé à vos propres modifications.',
   allowed: "Liste blanche. Vide : tout agent non refusé passe. Non vide : seuls les agents listés passent.",
   denied: "Liste noire — elle l'emporte toujours sur la liste blanche.",
 };

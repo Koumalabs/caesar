@@ -24,7 +24,7 @@ import {
 import { MCP_CLIENTS } from "./mcp-registration.js";
 
 async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
-  const home = await mkdtemp(join(tmpdir(), "orch-assets-home-"));
+  const home = await mkdtemp(join(tmpdir(), "caesar-assets-home-"));
   const previous = process.env["HOME"];
   process.env["HOME"] = home;
   try {
@@ -36,23 +36,23 @@ async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
   }
 }
 
-const SKILL_ONLY_CATALOG: AgentAsset[] = [{ kind: "skill", id: "orch", path: "SKILL.md", content: "# Orch\nContenu de la skill.\n" }];
+const SKILL_ONLY_CATALOG: AgentAsset[] = [{ kind: "skill", id: "caesar", path: "SKILL.md", content: "# Caesar\nContenu de la skill.\n" }];
 
-const COMMAND_SOURCE = "---\ndescription: Liste les agents.\nallowed-tools: Bash(orch:*)\nargument-hint: [filtre]\n---\nContenu de la commande.\n";
+const COMMAND_SOURCE = "---\ndescription: Liste les agents.\nallowed-tools: Bash(caesar:*)\nargument-hint: [filtre]\n---\nContenu de la commande.\n";
 
 const FULL_CATALOG: AgentAsset[] = [
-  { kind: "skill", id: "orch", path: "SKILL.md", content: "# Orch\nContenu de la skill.\n" },
-  { kind: "skill", id: "orch", path: "references/cli.md", content: "# CLI\nRéférence.\n" },
+  { kind: "skill", id: "caesar", path: "SKILL.md", content: "# Caesar\nContenu de la skill.\n" },
+  { kind: "skill", id: "caesar", path: "references/cli.md", content: "# CLI\nRéférence.\n" },
   { kind: "command", id: "list-agents", path: "list-agents.md", content: COMMAND_SOURCE },
 ];
 
 const SIX_TOOLS = [
-  "mcp__orch__orch_list_agents",
-  "mcp__orch__orch_list_roles",
-  "mcp__orch__orch_status",
-  "mcp__orch__orch_await",
-  "mcp__orch__orch_logs",
-  "mcp__orch__orch_diff",
+  "mcp__caesar__caesar_list_agents",
+  "mcp__caesar__caesar_list_roles",
+  "mcp__caesar__caesar_status",
+  "mcp__caesar__caesar_await",
+  "mcp__caesar__caesar_logs",
+  "mcp__caesar__caesar_diff",
 ];
 
 describe("ASSET_TARGETS", () => {
@@ -75,11 +75,11 @@ describe("ASSET_TARGETS", () => {
   });
 
   it("les chemins littéraux correspondent exactement à la table vérifiée du brief", () => {
-    expect(ASSET_TARGETS.find((t) => t.client === "claude")).toMatchObject({ skillDir: ".claude/skills/orch", commandsDir: ".claude/commands" });
-    expect(ASSET_TARGETS.find((t) => t.client === "codex")).toMatchObject({ skillDir: ".agents/skills/orch" });
-    expect(ASSET_TARGETS.find((t) => t.client === "copilot")).toMatchObject({ skillDir: ".agents/skills/orch" });
-    expect(ASSET_TARGETS.find((t) => t.client === "opencode")).toMatchObject({ skillDir: ".agents/skills/orch", commandsDir: ".opencode/commands" });
-    expect(ASSET_TARGETS.find((t) => t.client === "antigravity")).toMatchObject({ skillDir: ".agents/skills/orch" });
+    expect(ASSET_TARGETS.find((t) => t.client === "claude")).toMatchObject({ skillDir: ".claude/skills/caesar", commandsDir: ".claude/commands" });
+    expect(ASSET_TARGETS.find((t) => t.client === "codex")).toMatchObject({ skillDir: ".agents/skills/caesar" });
+    expect(ASSET_TARGETS.find((t) => t.client === "copilot")).toMatchObject({ skillDir: ".agents/skills/caesar" });
+    expect(ASSET_TARGETS.find((t) => t.client === "opencode")).toMatchObject({ skillDir: ".agents/skills/caesar", commandsDir: ".opencode/commands" });
+    expect(ASSET_TARGETS.find((t) => t.client === "antigravity")).toMatchObject({ skillDir: ".agents/skills/caesar" });
   });
 });
 
@@ -87,7 +87,7 @@ describe("planAgentAssets", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-assets-root-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-assets-root-"));
   });
 
   afterEach(async () => {
@@ -96,12 +96,12 @@ describe("planAgentAssets", () => {
 
   it("le partagé est produit une seule fois même quand plusieurs cibles le désignent", () => {
     const plan = planAgentAssets({ root, scope: "project", clients: ["codex", "antigravity", "copilot"], catalog: SKILL_ONLY_CATALOG });
-    expect(plan.files.map((f) => f.path)).toEqual([join(root, ".agents/skills/orch/SKILL.md")]);
+    expect(plan.files.map((f) => f.path)).toEqual([join(root, ".agents/skills/caesar/SKILL.md")]);
   });
 
   it("claude reçoit sa copie dédiée, jamais mêlée au partagé", () => {
     const plan = planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: SKILL_ONLY_CATALOG });
-    expect(plan.files.map((f) => f.path)).toEqual([join(root, ".claude/skills/orch/SKILL.md")]);
+    expect(plan.files.map((f) => f.path)).toEqual([join(root, ".claude/skills/caesar/SKILL.md")]);
   });
 
   it("aucune destination ne sort de la racine visée", () => {
@@ -111,7 +111,7 @@ describe("planAgentAssets", () => {
   });
 
   it('chemin d\'asset invalide (".." absolu, segment vide) : erreur claire, pas d\'écriture ailleurs', () => {
-    const withPath = (path: string): AgentAsset[] => [{ kind: "skill", id: "orch", path, content: "x" }];
+    const withPath = (path: string): AgentAsset[] => [{ kind: "skill", id: "caesar", path, content: "x" }];
     expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("../evil.md") })).toThrow(/\.\./);
     expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("/etc/passwd") })).toThrow(/absolu/);
     expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("a//b.md") })).toThrow(/vide/);
@@ -124,7 +124,7 @@ describe("planAgentAssets", () => {
     // segment opaque, ni ".." ni vide) alors qu'elle sort bel et bien de la
     // racine une fois recombinée par path.join sous Windows — défaut
     // signalé en revue.
-    const withPath = (path: string): AgentAsset[] => [{ kind: "skill", id: "orch", path, content: "x" }];
+    const withPath = (path: string): AgentAsset[] => [{ kind: "skill", id: "caesar", path, content: "x" }];
     expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("..\\..\\..\\..\\evil.md") })).toThrow(/antislash/);
     // Mélange "/" et "\" : la moitié POSIX du chemin ne doit pas suffire à le faire passer.
     expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("references/..\\..\\evil.md") })).toThrow(
@@ -140,22 +140,22 @@ describe("planAgentAssets", () => {
   });
 
   it("contenu CRLF sur disque vs LF au catalogue → unchanged", async () => {
-    const dest = join(root, ".agents", "skills", "orch", "SKILL.md");
+    const dest = join(root, ".agents", "skills", "caesar", "SKILL.md");
     await mkdir(dirname(dest), { recursive: true });
-    await writeFile(dest, "# Orch\r\nContenu de la skill.\r\n", "utf8");
+    await writeFile(dest, "# Caesar\r\nContenu de la skill.\r\n", "utf8");
 
     const plan = planAgentAssets({ root, scope: "project", clients: ["codex"], catalog: SKILL_ONLY_CATALOG });
     expect(plan.files).toHaveLength(1);
     expect(plan.files[0]!.action).toBe("unchanged");
   });
 
-  it("stale : nomme un orphelin orch sans le supprimer", async () => {
-    const orphan = join(root, ".agents", "skills", "orch", "references", "old.md");
+  it("stale : nomme un orphelin caesar sans le supprimer", async () => {
+    const orphan = join(root, ".agents", "skills", "caesar", "references", "old.md");
     await mkdir(dirname(orphan), { recursive: true });
     await writeFile(orphan, "obsolète\n", "utf8");
 
     const plan = planAgentAssets({ root, scope: "project", clients: ["codex"], catalog: SKILL_ONLY_CATALOG });
-    expect(plan.stale).toContainEqual({ kind: "skill", id: "orch", path: orphan });
+    expect(plan.stale).toContainEqual({ kind: "skill", id: "caesar", path: orphan });
     expect(existsSync(orphan)).toBe(true);
   });
 });
@@ -164,7 +164,7 @@ describe("installAgentAssets", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-assets-root-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-assets-root-"));
   });
 
   afterEach(async () => {
@@ -174,18 +174,18 @@ describe("installAgentAssets", () => {
   it("crée l'arborescence par cible (dédié, partagé, commandes)", async () => {
     await installAgentAssets({ root, scope: "project", clients: ["claude", "opencode"], catalog: FULL_CATALOG });
 
-    expect(await readFile(join(root, ".claude/skills/orch/SKILL.md"), "utf8")).toContain("# Orch");
-    expect(await readFile(join(root, ".claude/skills/orch/references/cli.md"), "utf8")).toContain("# CLI");
-    expect(await readFile(join(root, ".agents/skills/orch/SKILL.md"), "utf8")).toContain("# Orch");
-    expect(await readFile(join(root, ".claude/commands/orch-list-agents.md"), "utf8")).toContain("allowed-tools");
-    const opencodeCommand = await readFile(join(root, ".opencode/commands/orch-list-agents.md"), "utf8");
+    expect(await readFile(join(root, ".claude/skills/caesar/SKILL.md"), "utf8")).toContain("# Caesar");
+    expect(await readFile(join(root, ".claude/skills/caesar/references/cli.md"), "utf8")).toContain("# CLI");
+    expect(await readFile(join(root, ".agents/skills/caesar/SKILL.md"), "utf8")).toContain("# Caesar");
+    expect(await readFile(join(root, ".claude/commands/caesar-list-agents.md"), "utf8")).toContain("allowed-tools");
+    const opencodeCommand = await readFile(join(root, ".opencode/commands/caesar-list-agents.md"), "utf8");
     expect(opencodeCommand).toContain("description:");
     expect(opencodeCommand).not.toContain("allowed-tools");
   });
 
   it("idempotence : un second install identique ne touche pas mtimeMs, et rend \"unchanged\"", async () => {
     await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
-    const target = join(root, ".claude", "skills", "orch", "SKILL.md");
+    const target = join(root, ".claude", "skills", "caesar", "SKILL.md");
     const before = (await stat(target)).mtimeMs;
 
     const second = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
@@ -197,18 +197,18 @@ describe("installAgentAssets", () => {
 
   it("fichier divergent effectivement remplacé (update)", async () => {
     await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
-    const target = join(root, ".claude", "skills", "orch", "SKILL.md");
+    const target = join(root, ".claude", "skills", "caesar", "SKILL.md");
     await writeFile(target, "modifié à la main\n", "utf8");
 
     const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
 
     expect(result.files.find((f) => f.path === target)?.action).toBe("update");
-    expect(await readFile(target, "utf8")).toBe("# Orch\nContenu de la skill.\n");
+    expect(await readFile(target, "utf8")).toBe("# Caesar\nContenu de la skill.\n");
   });
 
   it("fichier supprimé recréé", async () => {
     await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
-    const target = join(root, ".claude", "skills", "orch", "SKILL.md");
+    const target = join(root, ".claude", "skills", "caesar", "SKILL.md");
     await rm(target);
 
     const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
@@ -223,14 +223,14 @@ describe("installAgentAssets", () => {
 
       expect(existsSync(join(root, ".claude"))).toBe(false);
       expect(existsSync(join(root, ".agents"))).toBe(false);
-      expect(await readFile(join(home, ".claude", "skills", "orch", "SKILL.md"), "utf8")).toContain("# Orch");
+      expect(await readFile(join(home, ".claude", "skills", "caesar", "SKILL.md"), "utf8")).toContain("# Caesar");
     });
   });
 
-  it("stale : orphelin orch-* nommé, jamais supprimé", async () => {
+  it("stale : orphelin caesar-* nommé, jamais supprimé", async () => {
     const commandsDir = join(root, ".claude", "commands");
     await mkdir(commandsDir, { recursive: true });
-    const orphan = join(commandsDir, "orch-obsolete.md");
+    const orphan = join(commandsDir, "caesar-obsolete.md");
     await writeFile(orphan, "# obsolète\n", "utf8");
 
     const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
@@ -260,7 +260,7 @@ describe("fusion de <root>/.claude/settings.json", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-assets-root-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-assets-root-"));
   });
 
   afterEach(async () => {
@@ -279,19 +279,19 @@ describe("fusion de <root>/.claude/settings.json", () => {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(
       path,
-      JSON.stringify({ permissions: { allow: ["mcp__orch__orch_status", "Bash(ls:*)"], deny: ["Bash(rm:*)"] }, unknownTopLevel: { keep: true } }),
+      JSON.stringify({ permissions: { allow: ["mcp__caesar__caesar_status", "Bash(ls:*)"], deny: ["Bash(rm:*)"] }, unknownTopLevel: { keep: true } }),
       "utf8",
     );
 
     const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: [] });
     expect(result.settings?.action).toBe("update");
-    expect([...result.settings!.added].sort()).toEqual(SIX_TOOLS.filter((t) => t !== "mcp__orch__orch_status").sort());
+    expect([...result.settings!.added].sort()).toEqual(SIX_TOOLS.filter((t) => t !== "mcp__caesar__caesar_status").sort());
 
     const written = JSON.parse(await readFile(path, "utf8"));
     expect(written.unknownTopLevel).toEqual({ keep: true });
     expect(written.permissions.deny).toEqual(["Bash(rm:*)"]);
     expect(written.permissions.allow).toContain("Bash(ls:*)");
-    expect(written.permissions.allow.filter((t: string) => t === "mcp__orch__orch_status")).toHaveLength(1);
+    expect(written.permissions.allow.filter((t: string) => t === "mcp__caesar__caesar_status")).toHaveLength(1);
     for (const tool of SIX_TOOLS) expect(written.permissions.allow).toContain(tool);
   });
 

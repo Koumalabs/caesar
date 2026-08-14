@@ -7,10 +7,10 @@
  * (`AgentAssetsOptions.catalog`) — c'est ce qui le rend testable sur des
  * fixtures fabriquées avant même que le générateur
  * (`scripts/generate-agent-assets.mjs`, tâche suivante, voir
- * `agent-assets.generated.ts`) n'existe. Dans `@orch/core` et non
+ * `agent-assets.generated.ts`) n'existe. Dans `@caesar/core` et non
  * `packages/cli`, même raison que `mcp-registration.ts` (voir son en-tête, et
  * `packages/cli/src/commands/mcp.ts:10-18`) : l'écran Intégrations du TUI en
- * aura besoin sans dépendre du CLI. Le câblage dans `orch init` est une tâche
+ * aura besoin sans dépendre du CLI. Le câblage dans `caesar init` est une tâche
  * ultérieure — aucune dépendance vers le CLI ici.
  *
  * ## La table des cibles — valeurs vérifiées empiriquement le 2026-08-12
@@ -24,20 +24,20 @@
  *
  * | Cible                       | Skill (relatif à la racine)    | Commandes (relatif à la racine)             |
  * |------------------------------|----------------------------------|-----------------------------------------------|
- * | partagé (tout sauf claude)   | `.agents/skills/orch/`           | —                                              |
- * | `claude`                     | `.claude/skills/orch/` (dédié)   | `.claude/commands/` (fichiers `orch-*.md`)    |
- * | `codex`                      | partagé (`.agents/skills/orch/`) | —                                              |
+ * | partagé (tout sauf claude)   | `.agents/skills/caesar/`           | —                                              |
+ * | `claude`                     | `.claude/skills/caesar/` (dédié)   | `.claude/commands/` (fichiers `caesar-*.md`)    |
+ * | `codex`                      | partagé (`.agents/skills/caesar/`) | —                                              |
  * | `copilot`                    | partagé                          | —                                              |
- * | `opencode`                   | partagé                          | `.opencode/commands/` (`orch-*.md`, pluriel)  |
+ * | `opencode`                   | partagé                          | `.opencode/commands/` (`caesar-*.md`, pluriel)  |
  * | `antigravity`                | partagé                          | —                                              |
  *
  * Pourquoi `claude` reçoit une copie DÉDIÉE plutôt que le partagé : claude
  * 2.1.228 ne lit PAS `.agents/skills/` — une skill posée uniquement là lui
  * resterait invisible. Pourquoi `codex` ne doit PAS recevoir, en plus, une
- * copie sous `.codex/skills/orch/` : codex 0.147.0 lit déjà `.agents/skills/`
+ * copie sous `.codex/skills/caesar/` : codex 0.147.0 lit déjà `.agents/skills/`
  * au niveau projet, et ne dédoublonne PAS par nom — la même skill présente
  * aux deux chemins apparaîtrait deux fois dans son listing. `copilot` de
- * même : `.github/skills/orch/` ne doit pas être livré, `copilot skill list`
+ * même : `.github/skills/caesar/` ne doit pas être livré, `copilot skill list`
  * confirme que le partagé suffit. Portée globale : mêmes chemins, composés
  * depuis `homeDirectory()` plutôt que depuis la racine du projet.
  *
@@ -47,14 +47,14 @@
  * qu'une seule fois même quand plusieurs cibles le désignent — déduplication
  * par chemin résolu identique, voir `computePlan`.
  *
- * ## Fichiers gérés par orch
+ * ## Fichiers gérés par caesar
  *
- * Namespace : la skill vit dans un dossier `orch/` (déjà inclus dans les
- * chemins ci-dessus), les commandes sont des fichiers préfixés `orch-`. Tout
+ * Namespace : la skill vit dans un dossier `caesar/` (déjà inclus dans les
+ * chemins ci-dessus), les commandes sont des fichiers préfixés `caesar-`. Tout
  * ce qui vit sous ce namespace, aux emplacements de la table, est réputé
- * généré par orch — donc réécrit sans ménagement quand il diffère du
- * catalogue (`update`, y compris un `orch/` ou un `orch-*.md` préexistant
- * qu'un utilisateur aurait créé lui-même : le contrat « géré par orch »
+ * généré par caesar — donc réécrit sans ménagement quand il diffère du
+ * catalogue (`update`, y compris un `caesar/` ou un `caesar-*.md` préexistant
+ * qu'un utilisateur aurait créé lui-même : le contrat « géré par caesar »
  * s'applique dès l'emplacement). Un fichier déjà identique au catalogue n'est
  * PAS réécrit (`unchanged`, comparaison après normalisation CRLF→LF,
  * écriture toujours en LF) : les runtimes surveillent ces répertoires, une
@@ -107,7 +107,7 @@ const OPENCODE_FRONTMATTER_KEYS = new Set(["description", "agent", "model"]);
  * Filtrage ligne à ligne plutôt qu'un vrai parseur YAML : les trois champs du
  * format source (`description`, `allowed-tools`, `argument-hint`, voir
  * `agent-assets.generated.ts`) sont chacun un scalaire sur une seule ligne,
- * et ce filtrage suffit sans faire dépendre `@orch/core` d'une librairie YAML
+ * et ce filtrage suffit sans faire dépendre `@caesar/core` d'une librairie YAML
  * pour ça seul.
  */
 export function renderOpencodeCommand(asset: AgentAsset): string {
@@ -129,33 +129,33 @@ export function renderOpencodeCommand(asset: AgentAsset): string {
 // La table des cibles
 // ---------------------------------------------------------------------------
 
-/** Un client de `MCP_CLIENTS`, tel qu'il lit la skill et les commandes d'orch. Voir la table de faits en en-tête. */
+/** Un client de `MCP_CLIENTS`, tel qu'il lit la skill et les commandes de caesar. Voir la table de faits en en-tête. */
 export interface AssetTarget {
   client: McpClient;
-  /** Répertoire (relatif à la racine, ou à HOME en portée globale) où ce client lit la skill "orch" — dédié ou partagé selon la cible, jamais les deux. */
+  /** Répertoire (relatif à la racine, ou à HOME en portée globale) où ce client lit la skill "caesar" — dédié ou partagé selon la cible, jamais les deux. */
   skillDir: string;
-  /** Répertoire des commandes de ce client (fichiers `orch-*.md`) ; absent si cette cible ne lit aucune commande. */
+  /** Répertoire des commandes de ce client (fichiers `caesar-*.md`) ; absent si cette cible ne lit aucune commande. */
   commandsDir?: string;
   /** Rendu appliqué au contenu source (format Claude Code) pour produire chaque commande de cette cible. Ignoré si `commandsDir` est absent. */
   renderCommand?: (asset: AgentAsset) => string;
 }
 
 /** Emplacement partagé : identique en valeur pour toute cible qui n'a pas de copie dédiée, ce qui suffit à en faire une seule production (déduplication par chemin résolu, `computePlan`). */
-const SHARED_SKILL_DIR = ".agents/skills/orch";
+const SHARED_SKILL_DIR = ".agents/skills/caesar";
 
 /** Le seul endroit où vit la connaissance des chemins par runtime. */
 export const ASSET_TARGETS: readonly AssetTarget[] = [
   {
     client: "claude",
     // Dédié — requis : claude 2.1.228 ne lit pas .agents/skills/ (voir l'en-tête).
-    skillDir: ".claude/skills/orch",
+    skillDir: ".claude/skills/caesar",
     commandsDir: ".claude/commands",
     renderCommand: renderClaudeCommand,
   },
   // codex lit .agents/skills/ au niveau projet et ne dédoublonne pas par nom :
-  // pas de copie sous .codex/skills/orch/ en plus (voir l'en-tête).
+  // pas de copie sous .codex/skills/caesar/ en plus (voir l'en-tête).
   { client: "codex", skillDir: SHARED_SKILL_DIR },
-  // copilot skill list confirme que le partagé suffit : pas de .github/skills/orch/.
+  // copilot skill list confirme que le partagé suffit : pas de .github/skills/caesar/.
   { client: "copilot", skillDir: SHARED_SKILL_DIR },
   { client: "opencode", skillDir: SHARED_SKILL_DIR, commandsDir: ".opencode/commands", renderCommand: renderOpencodeCommand },
   { client: "antigravity", skillDir: SHARED_SKILL_DIR },
@@ -181,7 +181,7 @@ export interface AgentAssetFile {
   action: AgentAssetAction;
 }
 
-/** Un artefact `orch`/`orch-*` présent sur disque à un emplacement géré mais absent du catalogue — nommé, jamais supprimé. */
+/** Un artefact `caesar`/`caesar-*` présent sur disque à un emplacement géré mais absent du catalogue — nommé, jamais supprimé. */
 export interface AgentAssetStale {
   kind: AgentAssetKind;
   id: string;
@@ -307,9 +307,9 @@ function scanStaleSkill(skillDir: string, plannedRelPaths: ReadonlySet<string>):
   return stale;
 }
 
-const COMMAND_PREFIX = "orch-";
+const COMMAND_PREFIX = "caesar-";
 
-/** Orphelins sous un répertoire de commandes géré : tout fichier `orch-*.md` qui n'est plus dans le catalogue. Les commandes d'autres origines (sans le préfixe) ne sont ni scannées ni rapportées. */
+/** Orphelins sous un répertoire de commandes géré : tout fichier `caesar-*.md` qui n'est plus dans le catalogue. Les commandes d'autres origines (sans le préfixe) ne sont ni scannées ni rapportées. */
 function scanStaleCommands(commandsDir: string, plannedNames: ReadonlySet<string>): AgentAssetStale[] {
   if (!existsSync(commandsDir)) return [];
   const stale: AgentAssetStale[] = [];
@@ -327,12 +327,12 @@ function scanStaleCommands(commandsDir: string, plannedNames: ReadonlySet<string
 
 /** Les six tools MCP qui ne modifient aucun fichier de l'utilisateur — seuls candidats à un ajout automatique dans `permissions.allow` (lecture seule : lister agents/rôles, statut, attendre, logs, diff). */
 const SETTINGS_MANAGED_TOOLS: readonly string[] = [
-  "mcp__orch__orch_list_agents",
-  "mcp__orch__orch_list_roles",
-  "mcp__orch__orch_status",
-  "mcp__orch__orch_await",
-  "mcp__orch__orch_logs",
-  "mcp__orch__orch_diff",
+  "mcp__caesar__caesar_list_agents",
+  "mcp__caesar__caesar_list_roles",
+  "mcp__caesar__caesar_status",
+  "mcp__caesar__caesar_await",
+  "mcp__caesar__caesar_logs",
+  "mcp__caesar__caesar_diff",
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -350,7 +350,7 @@ interface PlannedSettings extends AgentAssetSettingsMerge {
  * tout le reste du fichier préservé (clés inconnues comprises, y compris les
  * autres entrées de `permissions`), jamais de retrait d'une entrée
  * existante. `applyPlan` (`mcp-registration.ts`) n'est pas réutilisable ici :
- * il remplace un objet dont il est seul propriétaire (`mcpServers.orch`),
+ * il remplace un objet dont il est seul propriétaire (`mcpServers.caesar`),
  * quand `permissions.allow` appartient à l'utilisateur et ne doit être
  * qu'augmenté.
  *

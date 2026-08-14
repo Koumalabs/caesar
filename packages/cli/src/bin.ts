@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Point d'entrée Node du binaire `orch` (`package.json`, `"bin": { "orch":
+ * Point d'entrée Node du binaire `caesar` (`package.json`, `"bin": { "caesar":
  * "./dist/bin.js" }`) : ne fait que déléguer à `runCli` (`./program.js`) et
  * traduire son résultat en `process.exitCode`, derrière un garde
  * d'auto-invocation — voir `isMain` plus bas.

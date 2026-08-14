@@ -29,9 +29,9 @@ describe("resolveScope", () => {
 
 describe("scopeLabel", () => {
   it("nomme le fichier de chaque couche", () => {
-    expect(scopeLabel("global")).toContain("~/.config/orch/config.toml");
-    expect(scopeLabel("project")).toContain(".orch/config.toml");
-    expect(scopeLabel("local")).toContain(".orch/config.local.toml");
+    expect(scopeLabel("global")).toContain("~/.config/caesar/config.toml");
+    expect(scopeLabel("project")).toContain(".caesar/config.toml");
+    expect(scopeLabel("local")).toContain(".caesar/config.local.toml");
   });
 });
 

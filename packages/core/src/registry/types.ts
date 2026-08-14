@@ -1,6 +1,6 @@
-import type { ReportChannel, Task } from "@orch/protocol";
-import type { TaskPaths } from "@orch/protocol";
-import type { OrchEventInput } from "@orch/protocol";
+import type { ReportChannel, Task } from "@caesar/protocol";
+import type { TaskPaths } from "@caesar/protocol";
+import type { CaesarEventInput } from "@caesar/protocol";
 import type { NetworkControl } from "../network.js";
 
 /**
@@ -98,7 +98,7 @@ export interface SpawnPlan {
 
 /**
  * `Omit` ne se distribue pas sur les types union : appliqué tel quel à
- * `OrchEventInput` (une union discriminée sur `type`), il ne garderait que
+ * `CaesarEventInput` (une union discriminée sur `type`), il ne garderait que
  * les clés communes à toutes les variantes — soit uniquement `type`, en
  * perdant `text`, `tool`, `message`, etc. `DistributiveOmit` applique
  * `Omit` variante par variante pour préserver les champs propres à chacune,
@@ -107,7 +107,7 @@ export interface SpawnPlan {
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 /** Événement sans les champs communs, que le moteur complétera. */
-export type PartialEvent = DistributiveOmit<OrchEventInput, "protocol" | "seq" | "at" | "task_id">;
+export type PartialEvent = DistributiveOmit<CaesarEventInput, "protocol" | "seq" | "at" | "task_id">;
 
 export interface Translation {
   events: PartialEvent[];

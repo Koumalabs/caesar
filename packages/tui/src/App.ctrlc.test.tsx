@@ -33,7 +33,7 @@ import { join } from "node:path";
 import { act } from "react";
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing";
 import { createRoot } from "@opentui/react";
-import { configPathFor } from "@orch/core";
+import { configPathFor } from "@caesar/core";
 import { App } from "./App";
 
 let home: string;
@@ -43,9 +43,9 @@ let previousHome: string | undefined;
 let previousPath: string | undefined;
 
 beforeEach(async () => {
-  home = await mkdtemp(join(tmpdir(), "orch-tui-ctrlc-home-"));
-  root = await mkdtemp(join(tmpdir(), "orch-tui-ctrlc-root-"));
-  emptyPath = await mkdtemp(join(tmpdir(), "orch-tui-ctrlc-path-"));
+  home = await mkdtemp(join(tmpdir(), "caesar-tui-ctrlc-home-"));
+  root = await mkdtemp(join(tmpdir(), "caesar-tui-ctrlc-root-"));
+  emptyPath = await mkdtemp(join(tmpdir(), "caesar-tui-ctrlc-path-"));
   previousHome = process.env["HOME"];
   previousPath = process.env["PATH"];
   process.env["HOME"] = home;

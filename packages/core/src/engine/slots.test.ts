@@ -7,12 +7,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { countOccupiedSlots, createSlotQueue, describeSlotHolders } from "./slots.js";
 
 const execFileAsync = promisify(execFile);
-const SLOTS = join(".orch", "state", "slots");
+const SLOTS = join(".caesar", "state", "slots");
 
 let root: string;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "orch-slots-"));
+  root = await mkdtemp(join(tmpdir(), "caesar-slots-"));
 });
 
 afterEach(async () => {
@@ -143,7 +143,7 @@ describe("createSlotQueue — reprise après un processus mort", () => {
   });
 
   it("explique l'attente en nommant les détenteurs", async () => {
-    await plantSlot(0, { pid: process.pid, host: hostname(), token: "t", startedAt: new Date().toISOString(), label: "orch run — relire le parseur" });
+    await plantSlot(0, { pid: process.pid, host: hostname(), token: "t", startedAt: new Date().toISOString(), label: "caesar run — relire le parseur" });
     const controller = new AbortController();
     let announced: string | undefined;
     const waiting = createSlotQueue({
@@ -157,7 +157,7 @@ describe("createSlotQueue — reprise après un processus mort", () => {
     }).run(async () => "jamais");
 
     await new Promise((resolve) => setTimeout(resolve, 60));
-    expect(announced).toBe("orch run — relire le parseur");
+    expect(announced).toBe("caesar run — relire le parseur");
     controller.abort();
     await expect(waiting).rejects.toThrow();
   });
@@ -184,7 +184,7 @@ describe("createSlotQueue — entre processus", () => {
    * La seule preuve qui vaille pour ce module : le sémaphore en mémoire
    * (`createQueue`) passerait tous les tests ci-dessus. Deux processus Node
    * distincts, une limite de 1, et l'on constate qu'ils ne se chevauchent
-   * jamais — ce que six `orch run` dans six terminaux ne respectaient pas.
+   * jamais — ce que six `caesar run` dans six terminaux ne respectaient pas.
    */
   it("deux processus distincts se partagent la même limite", async () => {
     const script = join(root, "prend-un-creneau.mjs");
@@ -272,12 +272,12 @@ describe("createSlotQueue — hygiène", () => {
   });
 
   it("le fichier-créneau nomme son détenteur de façon exploitable", async () => {
-    const occupant = await occupy(createSlotQueue({ root, limit: 1, pollMs: 10, label: "orch run — objectif" }));
+    const occupant = await occupy(createSlotQueue({ root, limit: 1, pollMs: 10, label: "caesar run — objectif" }));
 
     const holder = JSON.parse(await readFile(join(root, SLOTS, "0.json"), "utf8")) as Record<string, unknown>;
     expect(holder["pid"]).toBe(process.pid);
     expect(holder["host"]).toBe(hostname());
-    expect(holder["label"]).toBe("orch run — objectif");
+    expect(holder["label"]).toBe("caesar run — objectif");
     expect(typeof holder["token"]).toBe("string");
 
     occupant.release();

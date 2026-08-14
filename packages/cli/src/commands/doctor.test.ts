@@ -2,19 +2,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { saveLayer } from "@orch/core";
+import { saveLayer } from "@caesar/core";
 import { makeIo, withFakeHome, withShimmedPath, writeVersionFailShim, writeVersionOkShim, type CapturedIo } from "../../test/support.js";
 import { runDoctor } from "./doctor.js";
 import { EXIT_OK, terminalWidth } from "../output.js";
 
-describe("orch doctor", () => {
+describe("caesar doctor", () => {
   let root: string;
   let shimDir: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-doctor-root-"));
-    shimDir = await mkdtemp(join(tmpdir(), "orch-cli-doctor-shim-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-doctor-root-"));
+    shimDir = await mkdtemp(join(tmpdir(), "caesar-cli-doctor-shim-"));
     io = makeIo();
   });
 

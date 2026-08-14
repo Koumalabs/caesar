@@ -1,4 +1,4 @@
-import type { ReportChannel, Task } from "@orch/protocol";
+import type { ReportChannel, Task } from "@caesar/protocol";
 import type {
   AgentCapabilities,
   AgentDefinition,

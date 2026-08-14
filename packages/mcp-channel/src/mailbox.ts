@@ -1,15 +1,15 @@
 /**
  * Questions et réponses du canal retour, sur le système de fichiers.
  *
- * Le sous-agent (via `orch-channel`, ce paquet) et l'agent principal (via
- * `orch_answer`, `@orch/mcp-server`) tournent dans deux processus qui ne
+ * Le sous-agent (via `caesar-channel`, ce paquet) et l'agent principal (via
+ * `caesar_answer`, `@caesar/mcp-server`) tournent dans deux processus qui ne
  * partagent aucune mémoire : ils se coordonnent en lisant et en écrivant les
  * mêmes fichiers sous le répertoire de la tâche, exactement comme le reste du
  * standard (`task.json`, `report.json`, `events.jsonl`) — voir le brief de la
  * tâche 9.
  *
  * `<taskDir>/questions/<id>.json` : déposée par `ask_orchestrator`.
- * `<taskDir>/answers/<id>.json`   : déposée par `orch_answer`.
+ * `<taskDir>/answers/<id>.json`   : déposée par `caesar_answer`.
  */
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -76,7 +76,7 @@ export type WriteAnswerResult = { ok: true } | { ok: false; reason: "unknown_que
  * Écrit la réponse à une question — jamais si la question est inconnue ou a
  * déjà reçu une réponse : voir le brief de la tâche 9 ("répondre à une
  * question inconnue ou déjà répondue doit le dire clairement plutôt que
- * d'écrire en silence"). C'est `orch_answer` (côté orchestrateur) qui
+ * d'écrire en silence"). C'est `caesar_answer` (côté orchestrateur) qui
  * transforme ce résultat discriminé en message pour l'agent principal.
  */
 export async function writeAnswer(taskDir: string, answer: MailboxAnswer): Promise<WriteAnswerResult> {
@@ -91,7 +91,7 @@ export async function writeAnswer(taskDir: string, answer: MailboxAnswer): Promi
 
 /**
  * Questions déposées mais encore sans réponse, les plus anciennes d'abord.
- * C'est ce qui permet à `orch_status`/`orch_await` de faire apparaître ce
+ * C'est ce qui permet à `caesar_status`/`caesar_await` de faire apparaître ce
  * qu'un sous-agent attend, sans que l'agent principal ait à deviner qu'on lui
  * demande quelque chose (voir le brief : « c'est la moitié qu'on oublie »).
  */

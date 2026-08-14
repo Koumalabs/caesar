@@ -6,16 +6,16 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { withFakeAgentAsBin, withFakeHome } from "../../test/support.js";
 import { createSession } from "../session.js";
-import { orchCancel } from "./cancel.js";
-import { orchDelegate } from "./delegate.js";
+import { caesarCancel } from "./cancel.js";
+import { caesarDelegate } from "./delegate.js";
 
 const execFileAsync = promisify(execFile);
 
-describe("orch_cancel", () => {
+describe("caesar_cancel", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-cancel-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-cancel-"));
   });
 
   afterEach(async () => {
@@ -28,7 +28,7 @@ describe("orch_cancel", () => {
         const session = await createSession(root);
         const shimPath = join(shimDir, "codex");
 
-        const delegated = await orchDelegate(session, {
+        const delegated = await caesarDelegate(session, {
           objective: "tâche longue",
           agent: "codex",
           mode: "write",
@@ -45,7 +45,7 @@ describe("orch_cancel", () => {
         }
         expect(record?.pid).toBeDefined();
 
-        const cancelled = await orchCancel(session, { task_id: taskId });
+        const cancelled = await caesarCancel(session, { task_id: taskId });
         expect(cancelled.isError).toBeFalsy();
         const data = cancelled.structuredContent as { cancelled: boolean; status: string };
         expect(data.cancelled).toBe(true);
@@ -68,13 +68,13 @@ describe("orch_cancel", () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await orchDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
+        const delegated = await caesarDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
         const entry = session.tasks.get(taskId);
         await entry?.promise;
 
-        const cancelled = await orchCancel(session, { task_id: taskId });
+        const cancelled = await caesarCancel(session, { task_id: taskId });
         const data = cancelled.structuredContent as { cancelled: boolean; status: string };
         expect(data.cancelled).toBe(false);
         expect(data.status).toBe("succeeded");
@@ -85,7 +85,7 @@ describe("orch_cancel", () => {
   it("une tâche inconnue rend une erreur", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await orchCancel(session, { task_id: "t_inexistant" });
+      const result = await caesarCancel(session, { task_id: "t_inexistant" });
       expect(result.isError).toBe(true);
       expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);
     });

@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig, resolveRole, saveLayer } from "@orch/core";
+import { loadConfig, resolveRole, saveLayer } from "@caesar/core";
 import { defaultPromptFileFor, readPromptFile, validatePromptFile, writePromptFile } from "./prompt-file";
 
 let root: string;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "orch-prompt-file-"));
+  root = await mkdtemp(join(tmpdir(), "caesar-prompt-file-"));
 });
 
 afterEach(async () => {
@@ -20,14 +20,14 @@ describe("lecture", () => {
     const file = await readPromptFile(root, "roles/reviewer.md");
     expect(file.exists).toBe(false);
     expect(file.content).toBe("");
-    expect(file.path).toBe(join(root, ".orch", "roles", "reviewer.md"));
+    expect(file.path).toBe(join(root, ".caesar", "roles", "reviewer.md"));
   });
 
   it("rend le contenu et le chemin absolu", async () => {
-    await mkdir(join(root, ".orch", "roles"), { recursive: true });
-    await writeFile(join(root, ".orch", "roles", "reviewer.md"), "Tu es strict.", "utf8");
+    await mkdir(join(root, ".caesar", "roles"), { recursive: true });
+    await writeFile(join(root, ".caesar", "roles", "reviewer.md"), "Tu es strict.", "utf8");
     const file = await readPromptFile(root, "roles/reviewer.md");
-    expect(file).toEqual({ path: join(root, ".orch", "roles", "reviewer.md"), content: "Tu es strict.", exists: true });
+    expect(file).toEqual({ path: join(root, ".caesar", "roles", "reviewer.md"), content: "Tu es strict.", exists: true });
   });
 });
 
@@ -40,7 +40,7 @@ describe("écriture", () => {
   it("ne laisse aucun fichier temporaire derrière elle", async () => {
     await writePromptFile(root, "roles/x.md", "un");
     await writePromptFile(root, "roles/x.md", "deux");
-    const entries = await readdir(join(root, ".orch", "roles"));
+    const entries = await readdir(join(root, ".caesar", "roles"));
     expect(entries).toEqual(["x.md"]);
   });
 
@@ -80,7 +80,7 @@ describe("validation du chemin", () => {
   });
 
   it("refuse un chemin absolu, qui deviendrait silencieusement relatif", () => {
-    // `join(root, ".orch", "/etc/prompt.md")` rend `<root>/.orch/etc/prompt.md` :
+    // `join(root, ".caesar", "/etc/prompt.md")` rend `<root>/.caesar/etc/prompt.md` :
     // on croit désigner un fichier du système, on en crée un autre.
     expect(validatePromptFile("/etc/prompt.md")).toMatch(/absolu/);
   });
@@ -91,7 +91,7 @@ describe("validation du chemin", () => {
 });
 
 describe("chemin par défaut", () => {
-  it("suit la convention qu'écrit déjà « orch init »", () => {
+  it("suit la convention qu'écrit déjà « caesar init »", () => {
     expect(defaultPromptFileFor("investigator")).toBe("roles/investigator.md");
   });
 });

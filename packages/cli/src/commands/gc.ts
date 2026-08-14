@@ -1,6 +1,6 @@
-/** Façade CLI de la décision de nettoyage portée par `@orch/core`. */
-import { garbageCollectWorktrees } from "@orch/core";
-import type { WorktreeGcEntry, WorktreeGcResult } from "@orch/core";
+/** Façade CLI de la décision de nettoyage portée par `@caesar/core`. */
+import { garbageCollectWorktrees } from "@caesar/core";
+import type { WorktreeGcEntry, WorktreeGcResult } from "@caesar/core";
 import type { Cell, Io } from "../output.js";
 import {
   EXIT_OK,
@@ -25,8 +25,8 @@ function jsonEntry(entry: WorktreeGcEntry): WorktreeGcEntry & { diff_command?: s
   if (entry.reason !== "modified" || entry.action !== "kept" || entry.orphan) return entry;
   return {
     ...entry,
-    diff_command: `orch diff ${entry.id}`,
-    apply_command: `orch apply ${entry.id}`,
+    diff_command: `caesar diff ${entry.id}`,
+    apply_command: `caesar apply ${entry.id}`,
   };
 }
 
@@ -66,9 +66,9 @@ function keptAdvice(entry: WorktreeGcEntry): string | null {
     return `"${entry.id}" : orphelin porteur de modifications, inconnu du store — à inspecter à la main : ${entry.path}`;
   }
   if (entry.applied_at) {
-    return `"${entry.id}" : appliqué puis modifié — "orch diff ${entry.id}" pour voir ce qui a bougé depuis l'application, "orch apply ${entry.id}" pour ré-appliquer.`;
+    return `"${entry.id}" : appliqué puis modifié — "caesar diff ${entry.id}" pour voir ce qui a bougé depuis l'application, "caesar apply ${entry.id}" pour ré-appliquer.`;
   }
-  return `"${entry.id}" : "orch diff ${entry.id}" pour voir ce qui n'a pas été intégré, "orch apply ${entry.id}" pour l'intégrer.`;
+  return `"${entry.id}" : "caesar diff ${entry.id}" pour voir ce qui n'a pas été intégré, "caesar apply ${entry.id}" pour l'intégrer.`;
 }
 
 /**

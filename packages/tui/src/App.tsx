@@ -31,8 +31,8 @@ import { useEffect, useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import type { CliRenderer } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import type { AgentInstallStatus, ConfigScope } from "@orch/core";
-import { detectAgentInstallation, listAgentDefinitions } from "@orch/core";
+import type { AgentInstallStatus, ConfigScope } from "@caesar/core";
+import { detectAgentInstallation, listAgentDefinitions } from "@caesar/core";
 import { AgentsScreen } from "./screens/AgentsScreen";
 import { IntegrationsScreen } from "./screens/IntegrationsScreen";
 import { PolicyScreen } from "./screens/PolicyScreen";
@@ -83,8 +83,8 @@ export function App({ root, renderer }: AppProps) {
 
   useEffect(() => {
     // Une seule détection, au montage — jamais relancée à chaque frappe.
-    // `detectAgentInstallation` (`@orch/core`) est la même détection
-    // qu'`orch doctor`/`orch agents list` font, pas une réécriture.
+    // `detectAgentInstallation` (`@caesar/core`) est la même détection
+    // que `caesar doctor`/`caesar agents list` font, pas une réécriture.
     void Promise.all(listAgentDefinitions().map(async (def) => [def.id, await detectAgentInstallation(def)] as const))
       .then((entries) => setInstalledStatus(new Map(entries)))
       .catch(() => {
@@ -180,11 +180,11 @@ export function App({ root, renderer }: AppProps) {
   return (
     <box flexDirection="column" width="100%" height="100%" paddingLeft={1} paddingRight={1}>
       <box flexDirection="row" flexShrink={0}>
-        <text attributes={TextAttributes.BOLD}>orch config</text>
+        <text attributes={TextAttributes.BOLD}>caesar config</text>
         {/* La racine est raccourcie par la gauche : sa fin — le nom du projet —
             est ce qui renseigne, et un chemin long repliait sinon le bandeau
             sur deux lignes. */}
-        <text fg={DIM}>{`  ${elideLeft(root, Math.max(12, contentWidth - "orch config  ".length))}`}</text>
+        <text fg={DIM}>{`  ${elideLeft(root, Math.max(12, contentWidth - "caesar config  ".length))}`}</text>
       </box>
 
       <box flexDirection="row" marginBottom={1} flexShrink={0}>

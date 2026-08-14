@@ -11,14 +11,14 @@
  * qu'un réglage laisserait croire qu'il suit la portée d'édition, ce qui est
  * faux : il n'y en a qu'un.
  *
- * Le chemin vient de `rolePromptPath` (`@orch/core`), la fonction qu'utilise
+ * Le chemin vient de `rolePromptPath` (`@caesar/core`), la fonction qu'utilise
  * `resolveRole` pour *lire* ce même prompt au lancement d'une tâche : ce qu'on
  * édite ici est exactement ce que l'agent recevra.
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { rolePromptPath } from "@orch/core";
+import { rolePromptPath } from "@caesar/core";
 
 export interface PromptFile {
   /** Chemin absolu réellement lu par le moteur — affiché tel quel, sans quoi on édite à l'aveugle. */
@@ -28,7 +28,7 @@ export interface PromptFile {
   exists: boolean;
 }
 
-/** Le chemin conventionnel d'un rôle, celui qu'`orch init` écrit déjà (`packages/cli/src/commands/init.ts`). */
+/** Le chemin conventionnel d'un rôle, celui que `caesar init` écrit déjà (`packages/cli/src/commands/init.ts`). */
 export function defaultPromptFileFor(roleName: string): string {
   return `roles/${roleName}.md`;
 }
@@ -37,8 +37,8 @@ export function defaultPromptFileFor(roleName: string): string {
  * Refuse les chemins que `rolePromptPath` ne saurait pas honorer, en
  * nommant la raison. Les deux cas échouent en silence sinon :
  *
- *  - un chemin absolu passé à `join(root, ".orch", "/etc/x")` devient
- *    `<root>/.orch/etc/x` — on croit désigner un fichier du système, on en
+ *  - un chemin absolu passé à `join(root, ".caesar", "/etc/x")` devient
+ *    `<root>/.caesar/etc/x` — on croit désigner un fichier du système, on en
  *    crée un autre, et le prompt lu n'est jamais celui qu'on a écrit ;
  *  - un `..` sort du répertoire de configuration, voire du projet, et écrit
  *    hors de ce que l'utilisateur croit modifier.
@@ -47,10 +47,10 @@ export function validatePromptFile(file: string): string | null {
   const value = file.trim();
   if (value.length === 0) return "Le chemin du prompt ne peut pas être vide.";
   if (value.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(value)) {
-    return `Chemin absolu refusé : "${value}". Le prompt est cherché sous "<projet>/.orch/" ; donnez un chemin relatif, par exemple "roles/${"<rôle>"}.md".`;
+    return `Chemin absolu refusé : "${value}". Le prompt est cherché sous "<projet>/.caesar/" ; donnez un chemin relatif, par exemple "roles/${"<rôle>"}.md".`;
   }
   if (value.split(/[\\/]/).includes("..")) {
-    return `Chemin refusé : "${value}". Un ".." sortirait de "<projet>/.orch/", où le moteur va chercher le prompt.`;
+    return `Chemin refusé : "${value}". Un ".." sortirait de "<projet>/.caesar/", où le moteur va chercher le prompt.`;
   }
   return null;
 }

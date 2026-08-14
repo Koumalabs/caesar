@@ -2,20 +2,20 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig } from "@orch/core";
+import { loadConfig } from "@caesar/core";
 import { makeIo, withFakeHome, withShimmedPath, writeVersionOkShim, type CapturedIo } from "../../test/support.js";
 import { runPolicyDeny } from "./policy.js";
 import { runRoleAdd, runRoleList, runRoleRemove, runRoleShow } from "./role.js";
 import { EXIT_OK, EXIT_USAGE } from "../output.js";
 
-describe("orch role list", () => {
+describe("caesar role list", () => {
   let root: string;
   let shimDir: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-role-list-"));
-    shimDir = await mkdtemp(join(tmpdir(), "orch-cli-role-list-shim-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-role-list-"));
+    shimDir = await mkdtemp(join(tmpdir(), "caesar-cli-role-list-shim-"));
     io = makeIo();
   });
 
@@ -78,12 +78,12 @@ describe("orch role list", () => {
   });
 });
 
-describe("orch role show / add / remove", () => {
+describe("caesar role show / add / remove", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-role-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-role-"));
     io = makeIo();
   });
 
@@ -161,11 +161,11 @@ describe("orch role show / add / remove", () => {
   });
 });
 
-describe("orch role add / remove — portée (--global/--local)", () => {
+describe("caesar role add / remove — portée (--global/--local)", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-role-scope-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-role-scope-"));
   });
 
   afterEach(async () => {

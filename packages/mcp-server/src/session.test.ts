@@ -1,6 +1,6 @@
 /**
  * `launchTask` porte la garantie centrale du point de vigilance de la
- * tâche 7 : une tâche lancée sans être attendue (`orch_delegate`) ne doit
+ * tâche 7 : une tâche lancée sans être attendue (`caesar_delegate`) ne doit
  * jamais produire un rejet de promesse non intercepté, quelle que soit la
  * façon dont `runTask` échoue — y compris quand le store lui-même, censé
  * recueillir la trace de repli, est indisponible.
@@ -17,7 +17,7 @@ describe("launchTask", () => {
   let onUnhandledRejection: (reason: unknown) => void;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-session-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-session-"));
     unhandled = [];
     onUnhandledRejection = (reason: unknown) => unhandled.push(reason);
     process.on("unhandledRejection", onUnhandledRejection);
@@ -64,9 +64,9 @@ describe("launchTask", () => {
 
   it("un échec même quand le store est indisponible retombe sur un TaskOutcome purement en mémoire, jamais un rejet", async () => {
     // Bloque l'écriture du store : un fichier occupe l'emplacement où le
-    // store voudrait créer son répertoire (`.orch/state/tasks/`).
-    await mkdir(join(root, ".orch", "state"), { recursive: true });
-    await writeFile(join(root, ".orch", "state", "tasks"), "occupé", "utf8");
+    // store voudrait créer son répertoire (`.caesar/state/tasks/`).
+    await mkdir(join(root, ".caesar", "state"), { recursive: true });
+    await writeFile(join(root, ".caesar", "state", "tasks"), "occupé", "utf8");
 
     const session = await createSession(root);
     const controller = new AbortController();

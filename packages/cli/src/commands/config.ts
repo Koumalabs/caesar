@@ -1,18 +1,18 @@
 /**
- * `orch config` : lance le TUI de configuration (OpenTUI, sous Bun — voir le
+ * `caesar config` : lance le TUI de configuration (OpenTUI, sous Bun — voir le
  * brief de la tâche 8).
  *
  * OpenTUI rend via le FFI de Bun ; Node 24 ne le permet pas (il faudrait
  * Node 26.4 avec `--experimental-ffi`, absent de cette machine). Cette
  * commande cherche donc `bun` dans le `PATH` — réutilise `findBinaryInPath`
- * de `@orch/core`, la même recherche que `orch doctor` fait pour chaque
+ * de `@caesar/core`, la même recherche que `caesar doctor` fait pour chaque
  * agent, plutôt que d'en écrire une seconde — et, s'il est absent, explique
  * la situation et renvoie vers les sous-commandes équivalentes au lieu
  * d'échouer sèchement.
  *
  * `packages/tui` n'est jamais importé statiquement ici : ce module est
  * compilé par `tsc`, qui ne doit jamais tenter de traiter le `.tsx` destiné
- * à Bun. Son chemin est résolu dynamiquement via `@orch/tui/package.json`,
+ * à Bun. Son chemin est résolu dynamiquement via `@caesar/tui/package.json`,
  * déclaré en dépendance dans `package.json` pour que la résolution Node le
  * trouve dans `node_modules`.
  *
@@ -21,7 +21,7 @@
  * défaut. Le binaire compilé (tâche 12) n'a plus de `node_modules` où
  * résoudre quoi que ce soit — `resolveTuiEntry` y échouerait toujours.
  * `configureInProcessTui`, appelée une seule fois par
- * `packages/cli/src/bun-entry.ts` (qui, lui, importe `@orch/tui`
+ * `packages/cli/src/bun-entry.ts` (qui, lui, importe `@caesar/tui`
  * statiquement — c'est ce qui l'embarque dans le binaire), fournit un
  * lanceur qui monte le TUI directement dans le processus courant plutôt que
  * dans un sous-processus : un seul binaire, aucune résolution de chemin, Bun
@@ -30,7 +30,7 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { findBinaryInPath } from "@orch/core";
+import { findBinaryInPath } from "@caesar/core";
 import type { Io } from "../output.js";
 import { EXIT_RUNTIME, printError, writeLine } from "../output.js";
 
@@ -49,10 +49,10 @@ export function configureInProcessTui(launcher: InProcessTuiLauncher | undefined
   inProcessTui = launcher;
 }
 
-/** `<...>/packages/tui/src/main.tsx`, à partir du `package.json` de `@orch/tui` tel que Node le résout. */
+/** `<...>/packages/tui/src/main.tsx`, à partir du `package.json` de `@caesar/tui` tel que Node le résout. */
 function resolveTuiEntry(): string {
   const require = createRequire(import.meta.url);
-  const packageJsonPath = require.resolve("@orch/tui/package.json");
+  const packageJsonPath = require.resolve("@caesar/tui/package.json");
   return join(dirname(packageJsonPath), "src", "main.tsx");
 }
 
@@ -62,9 +62,9 @@ function explainMissingBun(io: Io): void {
     'Le TUI de configuration exige Bun : OpenTUI rend via son FFI, que Node 24 ne permet pas (il faudrait Node 26.4 avec "--experimental-ffi"). "bun" est introuvable dans le PATH.',
   );
   writeLine(io.stderr, "Installez Bun (https://bun.sh), ou utilisez les sous-commandes équivalentes :");
-  writeLine(io.stderr, "  - orch policy show   Politique effective (allow/deny, provenance).");
-  writeLine(io.stderr, "  - orch role list     Rôles, agents de repli, agent retenu aujourd'hui.");
-  writeLine(io.stderr, "  - orch agents list   Catalogue des agents : présence, capacités, autorisation.");
+  writeLine(io.stderr, "  - caesar policy show   Politique effective (allow/deny, provenance).");
+  writeLine(io.stderr, "  - caesar role list     Rôles, agents de repli, agent retenu aujourd'hui.");
+  writeLine(io.stderr, "  - caesar agents list   Catalogue des agents : présence, capacités, autorisation.");
 }
 
 export async function runConfig(root: string, io: Io): Promise<number> {
@@ -84,7 +84,7 @@ export async function runConfig(root: string, io: Io): Promise<number> {
   } catch (error) {
     printError(
       io,
-      `Impossible de localiser le TUI ("@orch/tui" introuvable dans les dépendances) : ${error instanceof Error ? error.message : String(error)}`,
+      `Impossible de localiser le TUI ("@caesar/tui" introuvable dans les dépendances) : ${error instanceof Error ? error.message : String(error)}`,
     );
     return EXIT_RUNTIME;
   }

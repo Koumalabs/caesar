@@ -2,18 +2,18 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { globalConfigPath, loadConfig, projectConfigPath } from "@orch/core";
+import { globalConfigPath, loadConfig, projectConfigPath } from "@caesar/core";
 import { makeIo, withFakeHome, type CapturedIo } from "../../test/support.js";
 import { runInit } from "./init.js";
 import { runPolicyAllow, runPolicyDeny, runPolicyShow } from "./policy.js";
 import { EXIT_OK, EXIT_USAGE } from "../output.js";
 
-describe("orch policy allow / deny", () => {
+describe("caesar policy allow / deny", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-policy-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-policy-"));
     io = makeIo();
   });
 
@@ -37,12 +37,12 @@ describe("orch policy allow / deny", () => {
   });
 });
 
-describe("orch policy show", () => {
+describe("caesar policy show", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-policy-show-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-policy-show-"));
     io = makeIo();
   });
 
@@ -61,15 +61,15 @@ describe("orch policy show", () => {
   });
 
   it("distingue la provenance global / projet / défaut, champ par champ", async () => {
-    const home = await mkdtemp(join(tmpdir(), "orch-cli-policy-home-"));
+    const home = await mkdtemp(join(tmpdir(), "caesar-cli-policy-home-"));
     const previous = process.env["HOME"];
     process.env["HOME"] = home;
     try {
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
-      await writeFile(join(home, ".config", "orch", "config.toml"), "[policy]\nmax_parallel = 9\nallow_recursion = true\n", "utf8");
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
+      await writeFile(join(home, ".config", "caesar", "config.toml"), "[policy]\nmax_parallel = 9\nallow_recursion = true\n", "utf8");
 
-      await mkdir(join(root, ".orch"), { recursive: true });
-      await writeFile(join(root, ".orch", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
+      await mkdir(join(root, ".caesar"), { recursive: true });
+      await writeFile(join(root, ".caesar", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
 
       const code = await runPolicyShow(root, { json: true }, io);
       expect(code).toBe(EXIT_OK);
@@ -106,7 +106,7 @@ describe("orch policy show", () => {
 });
 
 /**
- * I11 (revue finale de branche) : un seul "orch policy deny" recopiait la
+ * I11 (revue finale de branche) : un seul "caesar policy deny" recopiait la
  * configuration fusionnée (défauts + global + projet) dans le fichier
  * projet, figeant tous les réglages globaux. Ce scénario passe par la
  * façade CLI (pas par `materializePolicyList` directement — c'est elle qui
@@ -117,7 +117,7 @@ describe("I11 fermé : la façade CLI n'aplatit plus la configuration fusionnée
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-i11-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-i11-"));
   });
 
   afterEach(async () => {
@@ -134,7 +134,7 @@ describe("I11 fermé : la façade CLI n'aplatit plus la configuration fusionnée
       // défaut est fermé — uniquement "denied", aucun défaut recopié (pas de max_parallel, pas de rôles).
       const raw = await readFile(projectConfigPath(root), "utf8");
       expect(raw).toBe(
-        "# Fichier généré par @orch/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n" +
+        "# Fichier généré par @caesar/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n" +
           "\n" +
           "[policy]\n" +
           'denied = [ "copilot", "opencode" ]\n',
@@ -145,15 +145,15 @@ describe("I11 fermé : la façade CLI n'aplatit plus la configuration fusionnée
     });
   });
 
-  it("modifier max_parallel dans le fichier global après coup se répercute dans le projet (orch policy show)", async () => {
+  it("modifier max_parallel dans le fichier global après coup se répercute dans le projet (caesar policy show)", async () => {
     await withFakeHome(async (home) => {
       expect(await runPolicyDeny(root, "copilot", { global: true }, makeIo())).toBe(EXIT_OK);
       expect(await runInit(root, {}, makeIo())).toBe(EXIT_OK);
       expect(await runPolicyDeny(root, "opencode", {}, makeIo())).toBe(EXIT_OK);
 
       // Modifie le fichier global directement, à la main — exactement le scénario du brief : "en modifiant
-      // max_parallel dans le fichier global, orch policy show dans le projet doit refléter la nouvelle valeur".
-      await writeFile(join(home, ".config", "orch", "config.toml"), '[policy]\ndenied = ["copilot"]\nmax_parallel = 11\n', "utf8");
+      // max_parallel dans le fichier global, caesar policy show dans le projet doit refléter la nouvelle valeur".
+      await writeFile(join(home, ".config", "caesar", "config.toml"), '[policy]\ndenied = ["copilot"]\nmax_parallel = 11\n', "utf8");
 
       const io = makeIo();
       expect(await runPolicyShow(root, { json: true }, io)).toBe(EXIT_OK);
@@ -166,11 +166,11 @@ describe("I11 fermé : la façade CLI n'aplatit plus la configuration fusionnée
   });
 });
 
-describe("orch policy allow / deny — portée (--global/--local)", () => {
+describe("caesar policy allow / deny — portée (--global/--local)", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-policy-scope-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-policy-scope-"));
   });
 
   afterEach(async () => {
@@ -183,7 +183,7 @@ describe("orch policy allow / deny — portée (--global/--local)", () => {
 
       const raw = await readFile(globalConfigPath(), "utf8");
       expect(raw).toBe(
-        "# Fichier généré par @orch/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n" +
+        "# Fichier généré par @caesar/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n" +
           "\n" +
           "[policy]\n" +
           'denied = [ "copilot" ]\n',
@@ -191,7 +191,7 @@ describe("orch policy allow / deny — portée (--global/--local)", () => {
 
       const { sources } = await loadConfig(root);
       expect(sources.project).toBeUndefined();
-      expect(sources.global).toBe(join(home, ".config", "orch", "config.toml"));
+      expect(sources.global).toBe(join(home, ".config", "caesar", "config.toml"));
     });
   });
 
@@ -199,9 +199,9 @@ describe("orch policy allow / deny — portée (--global/--local)", () => {
     await withFakeHome(async () => {
       expect(await runPolicyAllow(root, "codex", { local: true }, makeIo())).toBe(EXIT_OK);
 
-      const raw = await readFile(join(root, ".orch", "config.local.toml"), "utf8");
+      const raw = await readFile(join(root, ".caesar", "config.local.toml"), "utf8");
       expect(raw).toBe(
-        "# Fichier généré par @orch/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n" +
+        "# Fichier généré par @caesar/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n" +
           "\n" +
           "[policy]\n" +
           'allowed = [ "codex" ]\n',
@@ -209,7 +209,7 @@ describe("orch policy allow / deny — portée (--global/--local)", () => {
 
       const { sources } = await loadConfig(root);
       expect(sources.project).toBeUndefined();
-      expect(sources.local).toBe(join(root, ".orch", "config.local.toml"));
+      expect(sources.local).toBe(join(root, ".caesar", "config.local.toml"));
     });
   });
 
@@ -238,8 +238,8 @@ describe("orch policy allow / deny — portée (--global/--local)", () => {
 
   it("avertit quand la liste éditée n'était pas déclarée par la couche visée (matérialisation)", async () => {
     await withFakeHome(async (home) => {
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
-      await writeFile(join(home, ".config", "orch", "config.toml"), '[policy]\ndenied = ["copilot"]\n', "utf8");
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
+      await writeFile(join(home, ".config", "caesar", "config.toml"), '[policy]\ndenied = ["copilot"]\n', "utf8");
 
       const io = makeIo();
       expect(await runPolicyDeny(root, "opencode", {}, io)).toBe(EXIT_OK);

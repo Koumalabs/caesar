@@ -3,10 +3,10 @@
  *
  * Mêmes garde-fous que `packages/cli/test/support.ts` (dont ce fichier
  * reprend le motif, faute d'un point d'export commun entre les deux
- * packages de test) : aucun test ne doit toucher `~/.config/orch/` ni un
+ * packages de test) : aucun test ne doit toucher `~/.config/caesar/` ni un
  * autre fichier de configuration réel, ni invoquer un vrai CLI d'agent —
  * `withFakeHome` isole le premier, `withFakeAgentAsBin`/`withShimmedPath` le
- * second, en substituant l'agent factice de `@orch/core` au binaire réel
+ * second, en substituant l'agent factice de `@caesar/core` au binaire réel
  * d'un agent du catalogue, sur un `PATH` entièrement maîtrisé.
  */
 import { execFile } from "node:child_process";
@@ -19,7 +19,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 export async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
-  const home = await mkdtemp(join(tmpdir(), "orch-mcp-home-"));
+  const home = await mkdtemp(join(tmpdir(), "caesar-mcp-home-"));
   const previous = process.env["HOME"];
   process.env["HOME"] = home;
   try {
@@ -60,11 +60,11 @@ async function shimFrom(dir: string, bin: string, sourcePath: string): Promise<v
   await chmod(target, 0o755);
 }
 
-/** Chemin de l'agent factice partagé par `@orch/core` — réutilisé tel quel, jamais dupliqué (voir son brief). */
+/** Chemin de l'agent factice partagé par `@caesar/core` — réutilisé tel quel, jamais dupliqué (voir son brief). */
 export const FAKE_AGENT_PATH = fileURLToPath(new URL("../../core/test/fixtures/fake-agent.mjs", import.meta.url));
 
 export async function withFakeAgentAsBin<T>(bin: string, fn: (shimDir: string) => Promise<T>): Promise<T> {
-  const shimDir = await mkdtemp(join(tmpdir(), "orch-mcp-shim-"));
+  const shimDir = await mkdtemp(join(tmpdir(), "caesar-mcp-shim-"));
   try {
     await shimFrom(shimDir, bin, FAKE_AGENT_PATH);
     return await withShimmedPath(shimDir, () => fn(shimDir));
@@ -73,11 +73,11 @@ export async function withFakeAgentAsBin<T>(bin: string, fn: (shimDir: string) =
   }
 }
 
-/** Dépôt git minimal, pour les tests qui exercent l'isolation "worktree" (`orch_diff`/`orch_apply`). */
+/** Dépôt git minimal, pour les tests qui exercent l'isolation "worktree" (`caesar_diff`/`caesar_apply`). */
 export async function initGitRepo(root: string): Promise<void> {
   await execFileAsync("git", ["init", "-q"], { cwd: root });
-  await execFileAsync("git", ["config", "user.email", "orch-test@example.com"], { cwd: root });
-  await execFileAsync("git", ["config", "user.name", "Orch Test"], { cwd: root });
+  await execFileAsync("git", ["config", "user.email", "caesar-test@example.com"], { cwd: root });
+  await execFileAsync("git", ["config", "user.name", "Caesar Test"], { cwd: root });
   await writeFile(join(root, "a.txt"), "hello\n", "utf8");
   await execFileAsync("git", ["add", "a.txt"], { cwd: root });
   await execFileAsync("git", ["commit", "-q", "-m", "init"], { cwd: root });

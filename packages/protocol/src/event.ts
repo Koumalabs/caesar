@@ -90,17 +90,17 @@ export const EventSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-export type OrchEvent = z.infer<typeof EventSchema>;
-export type OrchEventInput = z.input<typeof EventSchema>;
-export type OrchEventType = OrchEvent["type"];
+export type CaesarEvent = z.infer<typeof EventSchema>;
+export type CaesarEventInput = z.input<typeof EventSchema>;
+export type CaesarEventType = CaesarEvent["type"];
 
 /** Construit un événement en remplissant les champs communs. */
-export function makeEvent<T extends OrchEventInput["type"]>(
+export function makeEvent<T extends CaesarEventInput["type"]>(
   taskId: string,
   seq: number,
   type: T,
-  fields: Omit<Extract<OrchEventInput, { type: T }>, "protocol" | "seq" | "at" | "task_id" | "type">,
-): OrchEvent {
+  fields: Omit<Extract<CaesarEventInput, { type: T }>, "protocol" | "seq" | "at" | "task_id" | "type">,
+): CaesarEvent {
   return EventSchema.parse({
     protocol: EVENT_PROTOCOL,
     seq,

@@ -1,7 +1,7 @@
 # The contract, condensed
 
-OACP — Orchestrator–Agent Contract Protocol, version `1`, documents `orch.task/v1`,
-`orch.report/v1`, `orch.event/v1`.
+OACP — Orchestrator–Agent Contract Protocol, version `1`, documents `caesar.task/v1`,
+`caesar.report/v1`, `caesar.event/v1`.
 
 The contract rests on the **file system**, not on an SDK. No library is required: any program that
 can read and write JSON can act as a sub-agent. That is deliberate — a standard that demands a
@@ -9,7 +9,7 @@ dependency is adopted only by the people who wrote it.
 
 ## The task directory
 
-One directory per task, its path passed as `$ORCH_TASK_DIR`:
+One directory per task, its path passed as `$CAESAR_TASK_DIR`:
 
 | File | Meaning | Written by |
 |---|---|---|
@@ -25,12 +25,12 @@ memory between the agent's process and the orchestrator's — the channel is the
 
 ## Environment
 
-The minimal contract is **two variables**: `ORCH_TASK_FILE` to read the mission, `ORCH_REPORT_PATH`
+The minimal contract is **two variables**: `CAESAR_TASK_FILE` to read the mission, `CAESAR_REPORT_PATH`
 to write the account. An agent that honours only those two is orchestrable.
 
-The rest are conveniences: `ORCH_TASK_DIR`, `ORCH_EVENTS_PATH`, `ORCH_TASK_ID`, `ORCH_AGENT`,
-`ORCH_DEPTH` (delegation depth — `0` for the top-level agent; this is what makes `max_depth` apply
-beyond the first level), `ORCH_PROTOCOL_VERSION`.
+The rest are conveniences: `CAESAR_TASK_DIR`, `CAESAR_EVENTS_PATH`, `CAESAR_TASK_ID`, `CAESAR_AGENT`,
+`CAESAR_DEPTH` (delegation depth — `0` for the top-level agent; this is what makes `max_depth` apply
+beyond the first level), `CAESAR_PROTOCOL_VERSION`.
 
 ## `task.json`
 
@@ -51,7 +51,7 @@ minimal report is valid.
 
 ```jsonc
 {
-  "protocol": "orch.report/v1",
+  "protocol": "caesar.report/v1",
   "status": "success",          // success | partial | failed | blocked
   "summary": "Two files fixed, tests pass."
 }
@@ -97,9 +97,9 @@ Four tiers are attempted, from most to least reliable; the best one the agent ca
 1. **MCP back-channel** — the agent calls the `submit_report` tool, validated on the spot.
 2. **Native schema** — the provider constrains its final answer (`codex --output-schema`,
    `agy --json-schema`).
-3. **File contract** — the agent writes `$ORCH_REPORT_PATH`. This is the universal tier, the one
+3. **File contract** — the agent writes `$CAESAR_REPORT_PATH`. This is the universal tier, the one
    outside agents use.
-4. **Degraded** — the orchestrator looks for a ```` ```json orch:report ```` block in the output,
+4. **Degraded** — the orchestrator looks for a ```` ```json caesar:report ```` block in the output,
    failing that any JSON object declaring itself a report, and as a last resort synthesizes an account
    from `raw.log` and the git diff.
 
@@ -120,18 +120,18 @@ silently.
 
 ```bash
 #!/usr/bin/env bash
-objective=$(jq -r .objective "$ORCH_TASK_FILE")
+objective=$(jq -r .objective "$CAESAR_TASK_FILE")
 
 # … do the work …
 
 jq -n --arg s "Handled: $objective" '{
-  protocol: "orch.report/v1",
+  protocol: "caesar.report/v1",
   status: "success",
   summary: $s
-}' > "$ORCH_REPORT_PATH"
+}' > "$CAESAR_REPORT_PATH"
 ```
 
-Declared under `[[agent]]` in `.orch/config.toml`, it is orchestrable on the same footing as any
+Declared under `[[agent]]` in `.caesar/config.toml`, it is orchestrable on the same footing as any
 catalogue provider:
 
 ```toml
@@ -152,10 +152,10 @@ by a token in `args`. See `references/config.md` for the other fields.
 The schemas are authoritative as code, and publishable as JSON Schema:
 
 ```bash
-orch protocol schema report          # JSON Schema of the report
-orch protocol schema report --strict # variant for native structured outputs
-orch protocol schema task
-orch protocol schema event
+caesar protocol schema report          # JSON Schema of the report
+caesar protocol schema report --strict # variant for native structured outputs
+caesar protocol schema task
+caesar protocol schema event
 ```
 
 The `protocol` field carries each document's version. A reader that meets an unknown version must

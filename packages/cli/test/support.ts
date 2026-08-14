@@ -2,7 +2,7 @@
  * Utilitaires partagés par les tests du CLI.
  *
  * Deux garde-fous du brief de la tâche 6 à respecter systématiquement :
- * aucun test ne doit toucher le `~/.config/orch/` réel, et aucun ne doit
+ * aucun test ne doit toucher le `~/.config/caesar/` réel, et aucun ne doit
  * invoquer un vrai CLI d'agent. `withFakeHome` isole le premier ;
  * `withShimmedPath` permet le second en substituant, sur un `PATH`
  * entièrement maîtrisé, un script factice au binaire d'un agent du
@@ -48,11 +48,11 @@ export function makeIo(): CapturedIo {
 
 /**
  * Exécute `fn` avec `HOME` pointé vers un répertoire temporaire fraîchement
- * créé, garantissant qu'aucun `~/.config/orch/config.toml` réel n'est lu ni
+ * créé, garantissant qu'aucun `~/.config/caesar/config.toml` réel n'est lu ni
  * écrit — même motif que `packages/core/src/config.test.ts`.
  */
 export async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
-  const home = await mkdtemp(join(tmpdir(), "orch-cli-home-"));
+  const home = await mkdtemp(join(tmpdir(), "caesar-cli-home-"));
   const previous = process.env["HOME"];
   process.env["HOME"] = home;
   try {
@@ -98,19 +98,19 @@ async function shimFrom(dir: string, bin: string, sourcePath: string): Promise<v
   await chmod(target, 0o755);
 }
 
-/** Chemin de l'agent factice partagé par `@orch/core` (voir son brief : réutilisé tel quel, jamais dupliqué). */
+/** Chemin de l'agent factice partagé par `@caesar/core` (voir son brief : réutilisé tel quel, jamais dupliqué). */
 export const FAKE_AGENT_PATH = fileURLToPath(new URL("../../core/test/fixtures/fake-agent.mjs", import.meta.url));
 
 /**
  * Crée un répertoire de shim temporaire où `bin` (p. ex. "codex") est en
- * réalité une copie de l'agent factice de `@orch/core`. Le vrai adaptateur du
+ * réalité une copie de l'agent factice de `@caesar/core`. Le vrai adaptateur du
  * registre construit ses arguments spécifiques (flags Codex, etc.), mais le
  * script factice les ignore et ne regarde que les variables d'environnement
- * du contrat minimal ($ORCH_TASK_FILE, $ORCH_REPORT_PATH…) — un aller-retour
+ * du contrat minimal ($CAESAR_TASK_FILE, $CAESAR_REPORT_PATH…) — un aller-retour
  * complet et réaliste, sans jamais toucher au vrai binaire de l'agent.
  */
 export async function withFakeAgentAsBin<T>(bin: string, fn: (shimDir: string) => Promise<T>): Promise<T> {
-  const shimDir = await mkdtemp(join(tmpdir(), "orch-cli-shim-"));
+  const shimDir = await mkdtemp(join(tmpdir(), "caesar-cli-shim-"));
   try {
     await shimFrom(shimDir, bin, FAKE_AGENT_PATH);
     return await withShimmedPath(shimDir, () => fn(shimDir));
@@ -124,7 +124,7 @@ export async function withFakeAgentAsBin<T>(bin: string, fn: (shimDir: string) =
  *
  * Une tâche en écriture demandant explicitement `isolation = "inplace"` dans un
  * dépôt git utilisable est refusée par défaut (voir `decideInplaceWrite`,
- * `@orch/core`) : c'est la correction du défaut qui laissait des délégations
+ * `@caesar/core`) : c'est la correction du défaut qui laissait des délégations
  * écrire sur la branche de travail de l'utilisateur en silence. Les tests qui
  * exercent *autre chose* que cette règle — un aller-retour complet, un timeout,
  * un code de sortie — n'ont pas à la subir, mais ils doivent l'assumer
@@ -135,7 +135,7 @@ export async function withFakeAgentAsBin<T>(bin: string, fn: (shimDir: string) =
  * deux tables `[policy]` dans un même TOML seraient une erreur de parsing.
  */
 export async function allowInplaceWrite(root: string): Promise<void> {
-  const path = join(root, ".orch", "config.toml");
+  const path = join(root, ".caesar", "config.toml");
   let existing = "";
   try {
     existing = await readFile(path, "utf8");
@@ -150,7 +150,7 @@ export async function allowInplaceWrite(root: string): Promise<void> {
   await writeFile(path, next, "utf8");
 }
 
-/** Dépose un script minimal répondant `--version` avec succès, pour les tests de `orch doctor`. */
+/** Dépose un script minimal répondant `--version` avec succès, pour les tests de `caesar doctor`. */
 export async function writeVersionOkShim(dir: string, bin: string, version: string): Promise<void> {
   const target = join(dir, bin);
   await writeFile(
@@ -161,7 +161,7 @@ export async function writeVersionOkShim(dir: string, bin: string, version: stri
   await chmod(target, 0o755);
 }
 
-/** Dépose un script minimal qui échoue systématiquement (y compris sur --version), pour les tests de `orch doctor`. */
+/** Dépose un script minimal qui échoue systématiquement (y compris sur --version), pour les tests de `caesar doctor`. */
 export async function writeVersionFailShim(dir: string, bin: string): Promise<void> {
   const target = join(dir, bin);
   await writeFile(target, `#!/usr/bin/env node\nprocess.exit(1);\n`, "utf8");

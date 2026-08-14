@@ -8,7 +8,7 @@ describe("mailbox", () => {
   let taskDir: string;
 
   beforeEach(async () => {
-    taskDir = await mkdtemp(join(tmpdir(), "orch-mailbox-"));
+    taskDir = await mkdtemp(join(tmpdir(), "caesar-mailbox-"));
   });
 
   afterEach(async () => {
@@ -27,7 +27,7 @@ describe("mailbox", () => {
 
     const waitPromise = waitForAnswer(taskDir, "q1", 5_000, 20);
     // Écrit la réponse pendant que l'attente est en cours, comme le ferait
-    // `orch_answer` dans un processus séparé.
+    // `caesar_answer` dans un processus séparé.
     await new Promise((resolve) => setTimeout(resolve, 60));
     await writeAnswer(taskDir, { id: "q1", answer: "oui", answered_at: new Date().toISOString() });
 

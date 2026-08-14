@@ -1,6 +1,6 @@
 /**
  * Test de dérive : re-marche les VRAIES sources sur disque
- * (`.claude/skills/orch/`, `.claude/commands/orch-*.md`) et compare le
+ * (`.claude/skills/caesar/`, `.claude/commands/caesar-*.md`) et compare le
  * résultat au catalogue importé (`AGENT_ASSETS`,
  * `agent-assets.generated.ts`).
  *
@@ -36,7 +36,7 @@ import type { AgentAsset } from "./agent-assets.js";
 const TEST_DIR = fileURLToPath(new URL(".", import.meta.url));
 const REPO_ROOT = join(TEST_DIR, "..", "..", "..");
 
-const SKILL_DIR = join(REPO_ROOT, ".claude", "skills", "orch");
+const SKILL_DIR = join(REPO_ROOT, ".claude", "skills", "caesar");
 const COMMANDS_DIR = join(REPO_ROOT, ".claude", "commands");
 // Les trois sous-agents du dépôt vivent ici — jamais dans le catalogue
 // livré. Utilisé uniquement par la garde dédiée plus bas, jamais par la
@@ -68,23 +68,23 @@ function walkSorted(dir: string, relPrefix = ""): string[] {
   return results;
 }
 
-/** La skill : un seul id fixe "orch" (le nom du dossier source, qui est aussi le nom du dossier d'installation — voir agent-assets.ts), un chemin par fichier trouvé sous SKILL_DIR. */
+/** La skill : un seul id fixe "caesar" (le nom du dossier source, qui est aussi le nom du dossier d'installation — voir agent-assets.ts), un chemin par fichier trouvé sous SKILL_DIR. */
 function deriveSkillAssets(): AgentAsset[] {
   if (!existsSync(SKILL_DIR)) {
     throw new Error(`Oracle de dérive : répertoire source introuvable "${SKILL_DIR}" — le dépôt semble incomplet ou la racine mal résolue.`);
   }
   return walkSorted(SKILL_DIR).map((rel) => ({
     kind: "skill",
-    id: "orch",
+    id: "caesar",
     path: rel,
     content: toLf(readFileSync(join(SKILL_DIR, rel), "utf8")),
   }));
 }
 
-const COMMAND_PREFIX = "orch-";
+const COMMAND_PREFIX = "caesar-";
 const COMMAND_SUFFIX = ".md";
 
-/** Les commandes : chaque `orch-<nom>.md` de COMMANDS_DIR devient `{ id: <nom>, path: "<nom>.md" }` — jamais un fichier sans ce préfixe (donc jamais rien sous .claude/agents/, qui n'a pas ce préfixe non plus). */
+/** Les commandes : chaque `caesar-<nom>.md` de COMMANDS_DIR devient `{ id: <nom>, path: "<nom>.md" }` — jamais un fichier sans ce préfixe (donc jamais rien sous .claude/agents/, qui n'a pas ce préfixe non plus). */
 function deriveCommandAssets(): AgentAsset[] {
   if (!existsSync(COMMANDS_DIR)) {
     throw new Error(`Oracle de dérive : répertoire source introuvable "${COMMANDS_DIR}" — le dépôt semble incomplet ou la racine mal résolue.`);
@@ -125,7 +125,7 @@ describe("catalogue d'assets agentiques — dérive contre les sources (oracle i
     // exactement le passage à vide que ce test doit interdire.
     expect(
       oracle.length,
-      "L'oracle de dérive n'a rien trouvé sous .claude/skills/orch/ et .claude/commands/orch-*.md : le dépôt semble incomplet, ou les chemins de la garde ont changé.",
+      "L'oracle de dérive n'a rien trouvé sous .claude/skills/caesar/ et .claude/commands/caesar-*.md : le dépôt semble incomplet, ou les chemins de la garde ont changé.",
     ).toBeGreaterThan(0);
     expect(
       AGENT_ASSETS.length,
@@ -138,7 +138,7 @@ describe("catalogue d'assets agentiques — dérive contre les sources (oracle i
     const sortedActual = [...AGENT_ASSETS].sort(bySortKey);
     expect(
       sortedActual,
-      'Le catalogue (agent-assets.generated.ts) a divergé des sources sur disque (.claude/skills/orch/, .claude/commands/orch-*.md). Relancer "pnpm run assets:sync" pour le régénérer.',
+      'Le catalogue (agent-assets.generated.ts) a divergé des sources sur disque (.claude/skills/caesar/, .claude/commands/caesar-*.md). Relancer "pnpm run assets:sync" pour le régénérer.',
     ).toEqual(sortedOracle);
   });
 
@@ -158,7 +158,7 @@ describe("catalogue d'assets agentiques — dérive contre les sources (oracle i
 
     for (const name of agentFiles) {
       // Nom de fichier complet sans l'extension, PAS la règle "sans préfixe
-      // orch-" des commandes : le sous-agent "orch-race.md" (agents) et la
+      // caesar-" des commandes : le sous-agent "caesar-race.md" (agents) et la
       // commande "race" (commandes, id="race") sont deux choses distinctes,
       // à ne surtout pas confondre dans cette garde.
       const bareName = name.slice(0, -".md".length);

@@ -1,6 +1,6 @@
 /**
  * Persistance de l'état des tâches : un fichier JSON par tâche, sous
- * `<root>/.orch/state/tasks/<id>.json`.
+ * `<root>/.caesar/state/tasks/<id>.json`.
  *
  * L'écriture passe toujours par un fichier temporaire, jamais directement
  * par la cible finale — le serveur MCP et le CLI liront cet état pendant
@@ -14,8 +14,8 @@ import { randomUUID } from "node:crypto";
 import { link, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { IsolationSchema, ReportStatusSchema, TaskModeSchema } from "@orch/protocol";
-import type { Isolation, ReportChannel, ReportStatus, TaskMode } from "@orch/protocol";
+import { IsolationSchema, ReportStatusSchema, TaskModeSchema } from "@caesar/protocol";
+import type { Isolation, ReportChannel, ReportStatus, TaskMode } from "@caesar/protocol";
 
 export type TaskStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
 
@@ -50,7 +50,7 @@ export interface TaskRecord {
    * Chemins que l'orchestrateur a posés dans le worktree (`[worktree]
    * copy`/`link`), à retirer du diff — voir `WorktreeHandle.excluded`.
    *
-   * Persisté ici parce que `orch diff` et `orch apply` recalculent le diff
+   * Persisté ici parce que `caesar diff` et `caesar apply` recalculent le diff
    * longtemps après la fin de la tâche, à partir du seul enregistrement : sans
    * cette trace, un `.env` recopié redeviendrait applicable au dépôt
    * principal. Absent pour toute tâche antérieure à `[worktree]`, ou sans
@@ -69,15 +69,15 @@ export interface TaskRecord {
    * que l'agent a déclaré dans son rapport. Un agent qui écrit
    * `{"status":"failed"}` puis sort en code 0 produit `status: "succeeded"`
    * et `report_status: "failed"` — les deux sont vrais, à des niveaux
-   * différents ; ni `orch ps`, ni le code de sortie de `orch run`, ni
-   * `orch_status` ne doivent en ignorer un des deux.
+   * différents ; ni `caesar ps`, ni le code de sortie de `caesar run`, ni
+   * `caesar_status` ne doivent en ignorer un des deux.
    */
   report_status?: ReportStatus;
   depth: number;
   /**
    * Identifiant du processus du sous-agent, le temps qu'il tourne. Renseigné
    * par le moteur au lancement, effacé à la fin (voir `runner.ts`) : c'est ce
-   * qui permet à `orch cancel` (tâche CLI) d'envoyer SIGTERM à une tâche
+   * qui permet à `caesar cancel` (tâche CLI) d'envoyer SIGTERM à une tâche
    * lancée par un autre processus (le serveur MCP, par exemple) sans autre
    * moyen de retrouver son PID.
    */
@@ -86,7 +86,7 @@ export interface TaskRecord {
    * Posés par `applyRecordedWorktree` (engine/worktree.ts) quand le diff du
    * worktree a été appliqué au dépôt principal : l'instant de l'application,
    * et le sha256 (hex) du texte du patch appliqué. Un nouvel apply réussi
-   * les écrase — c'est la dernière application qui fait foi. `orch gc` s'en
+   * les écrase — c'est la dernière application qui fait foi. `caesar gc` s'en
    * sert pour collecter un worktree dont le patch courant porte encore la
    * même empreinte : un fait daté et positif, jamais une déduction depuis le
    * contenu. Absents pour toute tâche jamais appliquée, appliquée à vide, ou
@@ -125,8 +125,8 @@ const SUFFIX = ".json";
  * ni validation, et `store.get("../../../secret")` rendait le contenu d'un
  * fichier arbitraire hors du store (`{"status":"top-secret-value",...}`).
  * `task_id` est déclaré `z.string().min(1)` dans sept tools MCP pilotés par
- * le modèle (`orch_logs`/`orch_status`/`orch_diff`/`orch_apply`/
- * `orch_cancel`/`orch_await`/`orch_answer`) : ce garde, unique et placé ici
+ * le modèle (`caesar_logs`/`caesar_status`/`caesar_diff`/`caesar_apply`/
+ * `caesar_cancel`/`caesar_await`/`caesar_answer`) : ce garde, unique et placé ici
  * plutôt que répété dans chacun, ferme la catégorie entière d'un geste.
  *
  * N'impose pas le format généré par `generateTaskId` (`t_` + 32 hex) : des
@@ -147,7 +147,7 @@ function assertSafeTaskId(id: string): void {
  * un fichier `.json` du store dont le contenu ne serait pas un vrai
  * `TaskRecord` (corruption, écriture partielle échappée à l'atomicité
  * habituelle, fichier déposé par autre chose) serait néanmoins interprété
- * comme tel — notamment son `status`/`pid`, que `orch_cancel` utilise pour
+ * comme tel — notamment son `status`/`pid`, que `caesar_cancel` utilise pour
  * envoyer un signal à un processus (`cancel.ts`, repli par pid).
  */
 const TaskRecordSchema = z.object({
@@ -177,7 +177,7 @@ const TaskRecordSchema = z.object({
 });
 
 export function fileTaskStore(root: string): TaskStore {
-  const dir = join(root, ".orch", "state", "tasks");
+  const dir = join(root, ".caesar", "state", "tasks");
 
   function fileFor(id: string): string {
     assertSafeTaskId(id);

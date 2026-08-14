@@ -10,7 +10,7 @@ export const ChannelSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).default([]),
   /** Nom sous lequel le serveur est déclaré côté agent. */
-  server_name: z.string().default("orch"),
+  server_name: z.string().default("caesar"),
 });
 
 export const TaskModeSchema = z.enum(["read-only", "write"]);
@@ -53,8 +53,8 @@ export const TaskSchema = z.object({
    * l'échec.
    *
    * Le défaut vaut `true` et n'est pas là par commodité : les `task.json`
-   * écrits dans `.orch/tasks/` avant l'existence de ce champ doivent continuer
-   * de se relire — `orch ps`, `orch logs` et `orch diff` les rouvrent tous.
+   * écrits dans `.caesar/tasks/` avant l'existence de ce champ doivent continuer
+   * de se relire — `caesar ps`, `caesar logs` et `caesar diff` les rouvrent tous.
    */
   network: z.boolean().default(true),
   /** Racine de travail de l'agent, en chemin absolu. */

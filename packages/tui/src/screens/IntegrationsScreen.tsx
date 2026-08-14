@@ -1,12 +1,12 @@
 /**
  * Écran Intégrations : pour chacun des cinq clients MCP, l'état
- * d'enregistrement du serveur "orch" et l'action qui l'installe.
+ * d'enregistrement du serveur "caesar" et l'action qui l'installe.
  *
  * Réutilise `checkMcpStatus`/`buildPlan`/`applyPlan`/`MCP_CLIENTS` de
- * `@orch/core` — la même logique qu'`orch mcp install`, jamais réécrite ici.
- * Appelés directement depuis `@orch/core` et non via `packages/cli` : ce
+ * `@caesar/core` — la même logique que `caesar mcp install`, jamais réécrite ici.
+ * Appelés directement depuis `@caesar/core` et non via `packages/cli` : ce
  * module n'a besoin ni de sa forme `Io` ni de ses codes de sortie, et en
- * dépendre créerait un cycle avec le sens `cli → tui` dont `orch config` a
+ * dépendre créerait un cycle avec le sens `cli → tui` dont `caesar config` a
  * besoin.
  *
  * `claude` et `codex` n'ont pas de lecture de statut fiable et sans effet de
@@ -21,7 +21,7 @@
  */
 import { useEffect, useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { applyPlan, buildPlan, checkMcpStatus, MCP_CLIENTS, type McpClient, type McpStatus } from "@orch/core";
+import { applyPlan, buildPlan, checkMcpStatus, MCP_CLIENTS, type McpClient, type McpStatus } from "@caesar/core";
 import { Field } from "../ui/Field";
 import { KeyHints } from "../ui/KeyHints";
 import { Panel } from "../ui/Panel";
@@ -100,7 +100,7 @@ export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
 
   return (
     <box flexDirection="column" flexGrow={1}>
-      <Panel title="Clients MCP" focused note={`Enregistrement du serveur "orch" pour le projet ${root}.`}>
+      <Panel title="Clients MCP" focused note={`Enregistrement du serveur "caesar" pour le projet ${root}.`}>
         <Table
           columns={columns}
           rows={MCP_CLIENTS}
@@ -123,7 +123,7 @@ export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
               label="Préserve"
               width={panelWidth}
               labelWidth={LABEL_WIDTH}
-              value="le reste du fichier — seule l'entrée « orch » est ajoutée ou remplacée."
+              value="le reste du fichier — seule l'entrée « caesar » est ajoutée ou remplacée."
               valueFg={DIM}
             />
           </>

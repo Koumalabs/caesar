@@ -12,7 +12,7 @@
  *    par le "s" global ni par la portée d'édition : un prompt est un fichier
  *    unique, pas un réglage à trois couches (voir `prompt-file.ts`).
  *  - **il désigne le fichier que le moteur lira**, chemin absolu affiché en
- *    tête, calculé par `rolePromptPath` (`@orch/core`) — celui-là même
+ *    tête, calculé par `rolePromptPath` (`@caesar/core`) — celui-là même
  *    qu'ouvre `resolveRole`. Un rôle venu de la couche globale résout son
  *    prompt dans le projet courant : le chemin le montre, plutôt que de
  *    laisser croire à un fichier partagé entre projets.

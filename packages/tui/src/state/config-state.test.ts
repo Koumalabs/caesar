@@ -13,8 +13,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { GenericAgentSpec, RoleConfig } from "@orch/core";
-import { configPathFor, listAgentDefinitions, saveLayer } from "@orch/core";
+import type { GenericAgentSpec, RoleConfig } from "@caesar/core";
+import { configPathFor, listAgentDefinitions, saveLayer } from "@caesar/core";
 import {
   activeScopePath,
   addRoleAgent,
@@ -49,9 +49,9 @@ import {
 import { NETWORK_OPTIONS, cycle } from "../screens/shared";
 import { emptyConfigState as emptyState } from "./test-helpers";
 
-/** Exécute `fn` avec `HOME` pointé vers un répertoire temporaire : aucun `~/.config/orch/config.toml` réel n'est lu. */
+/** Exécute `fn` avec `HOME` pointé vers un répertoire temporaire : aucun `~/.config/caesar/config.toml` réel n'est lu. */
 async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
-  const home = await mkdtemp(join(tmpdir(), "orch-tui-home-"));
+  const home = await mkdtemp(join(tmpdir(), "caesar-tui-home-"));
   const previous = process.env["HOME"];
   process.env["HOME"] = home;
   try {
@@ -77,7 +77,7 @@ describe("isDirty", () => {
   it("faux juste après le chargement, vrai dès la première modification, faux après enregistrement", async () => {
     let root: string;
     await withFakeHome(async () => {
-      root = await mkdtemp(join(tmpdir(), "orch-tui-dirty-"));
+      root = await mkdtemp(join(tmpdir(), "caesar-tui-dirty-"));
       try {
         const loaded = await loadConfigState(root);
         expect(isDirty(loaded)).toBe(false);
@@ -175,7 +175,7 @@ describe("créer et supprimer un rôle", () => {
 
   it("removeRole n'a aucun effet sur un rôle hérité (pas déclaré par la couche active)", async () => {
     await withFakeHome(async () => {
-      const root = await mkdtemp(join(tmpdir(), "orch-tui-role-inherited-"));
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-role-inherited-"));
       try {
         await saveLayer("global", root, { roles: [ROLE] });
         const state = await loadConfigState(root); // activeScope "project" par défaut
@@ -203,7 +203,7 @@ describe("créer et supprimer un rôle", () => {
 
   it("renameRole n'a aucun effet sur un rôle hérité — sinon l'ancien nom survivrait dans la couche du dessous", async () => {
     await withFakeHome(async () => {
-      const root = await mkdtemp(join(tmpdir(), "orch-tui-role-rename-"));
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-role-rename-"));
       try {
         await saveLayer("global", root, { roles: [ROLE] });
         const state = await loadConfigState(root); // couche active "project"
@@ -270,7 +270,7 @@ describe("déclarer et retirer un agent", () => {
 
   it("removeAgentSpec n'a aucun effet sur une déclaration héritée, et la marque le dit", async () => {
     await withFakeHome(async () => {
-      const root = await mkdtemp(join(tmpdir(), "orch-tui-agent-inherited-"));
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-agent-inherited-"));
       try {
         await saveLayer("global", root, { agents: [SPEC] });
         const state = await loadConfigState(root); // activeScope "project" par défaut
@@ -279,7 +279,7 @@ describe("déclarer et retirer un agent", () => {
         expect(findAgentSpec(state, "aider")).toEqual(SPEC); // hérité, visible dans la fusion
         expect(agentMark(state, "aider")).toBe("global");
 
-        // Même limite que `removeRole` et `orch agents remove` : la fusion par
+        // Même limite que `removeRole` et `caesar agents remove` : la fusion par
         // clé ne sait pas exprimer la suppression d'une entrée héritée.
         const attempted = removeAgentSpec(state, "aider");
         expect(findAgentSpec(attempted, "aider")).toEqual(SPEC);
@@ -292,7 +292,7 @@ describe("déclarer et retirer un agent", () => {
 
   it("une déclaration héritée modifiée bascule en entier sur la couche active", async () => {
     await withFakeHome(async () => {
-      const root = await mkdtemp(join(tmpdir(), "orch-tui-agent-override-"));
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-agent-override-"));
       try {
         await saveLayer("global", root, { agents: [SPEC] });
         const state = await loadConfigState(root);
@@ -310,7 +310,7 @@ describe("déclarer et retirer un agent", () => {
 
   it("survit à l'aller-retour disque, capacité comprise", async () => {
     await withFakeHome(async () => {
-      const root = await mkdtemp(join(tmpdir(), "orch-tui-agent-save-"));
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-agent-save-"));
       try {
         const state = upsertAgentSpec(await loadConfigState(root), { ...SPEC, capabilities: { nativeReadOnly: true } });
         await saveConfigState(root, state);
@@ -345,7 +345,7 @@ describe("modifier la politique", () => {
     expect(cycle(NETWORK_OPTIONS, "off")).toBe("auto");
   });
 
-  it("setPolicyListEntry : \"denied\" l'emporte, mais ce module ne fait qu'ajouter/retirer — la règle reste dans @orch/core", () => {
+  it("setPolicyListEntry : \"denied\" l'emporte, mais ce module ne fait qu'ajouter/retirer — la règle reste dans @caesar/core", () => {
     const state = emptyState();
     const withAllowed = setPolicyListEntry(state, "allowed", "codex", true);
     expect(effectiveConfig(withAllowed).policy.allowed).toContain("codex");
@@ -359,7 +359,7 @@ describe("modifier la politique", () => {
 
   it("matérialise la liste effective (héritée comprise), pas seulement l'id ajouté — même règle que materializePolicyList", async () => {
     await withFakeHome(async () => {
-      const root = await mkdtemp(join(tmpdir(), "orch-tui-materialize-"));
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-materialize-"));
       try {
         await saveLayer("global", root, { policy: { denied: ["copilot"] } });
         const state = await loadConfigState(root); // activeScope "project"
@@ -379,7 +379,7 @@ describe("modifier la politique", () => {
 describe("aller-retour save/load", () => {
   it("saveConfigState puis loadConfigState rendent exactement ce qui a été modifié", async () => {
     await withFakeHome(async () => {
-      const root = await mkdtemp(join(tmpdir(), "orch-tui-roundtrip-"));
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-roundtrip-"));
       try {
         const state = await loadConfigState(root);
         let edited = toggleAgentDenied(state, "codex");
@@ -433,7 +433,7 @@ describe("pickAgentForRoleName", () => {
 describe("portée d'édition", () => {
   it("loadConfigState porte la portée \"project\" par défaut", async () => {
     await withFakeHome(async () => {
-      const root = await mkdtemp(join(tmpdir(), "orch-tui-scope-default-"));
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-scope-default-"));
       try {
         const state = await loadConfigState(root);
         expect(state.activeScope).toBe("project");
@@ -451,7 +451,7 @@ describe("portée d'édition", () => {
 
   it("setScope repart de la dernière version enregistrée de la nouvelle couche, jamais du draft de l'ancienne", async () => {
     await withFakeHome(async () => {
-      const root = await mkdtemp(join(tmpdir(), "orch-tui-scope-switch-"));
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-scope-switch-"));
       try {
         await saveLayer("global", root, { policy: { max_parallel: 5 } });
         const state = await loadConfigState(root); // "project"
@@ -478,7 +478,7 @@ describe("portée d'édition", () => {
   describe("marques d'héritage", () => {
     it("policyFieldMark signale une couche moins spécifique que la couche active, jamais la couche active elle-même", async () => {
       await withFakeHome(async () => {
-        const root = await mkdtemp(join(tmpdir(), "orch-tui-mark-policy-"));
+        const root = await mkdtemp(join(tmpdir(), "caesar-tui-mark-policy-"));
         try {
           await saveLayer("global", root, { policy: { max_parallel: 9 } });
           const state = await loadConfigState(root); // "project" : n'a pas encore surchargé max_parallel
@@ -501,7 +501,7 @@ describe("portée d'édition", () => {
 
     it("roleMark et roleDeclaredByActiveLayer reflètent la provenance d'un rôle", async () => {
       await withFakeHome(async () => {
-        const root = await mkdtemp(join(tmpdir(), "orch-tui-mark-role-"));
+        const root = await mkdtemp(join(tmpdir(), "caesar-tui-mark-role-"));
         try {
           await saveLayer("global", root, { roles: [ROLE] });
           const state = await loadConfigState(root); // "project"
@@ -521,7 +521,7 @@ describe("portée d'édition", () => {
 
   it("le scénario qui compte : enregistrer en portée globale depuis un projet ne touche que le fichier global", async () => {
     await withFakeHome(async (home) => {
-      const root = await mkdtemp(join(tmpdir(), "orch-tui-scope-global-save-"));
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-scope-global-save-"));
       try {
         const projectPath = configPathFor("project", root);
         const globalPath = configPathFor("global", root);

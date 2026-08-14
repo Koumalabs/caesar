@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { OrchEvent, OrchEventInput } from "@orch/protocol";
-import { EventSchema } from "@orch/protocol";
+import type { CaesarEvent, CaesarEventInput } from "@caesar/protocol";
+import { EventSchema } from "@caesar/protocol";
 import { codexAgent } from "../adapters/codex.js";
 import { claudeAgent } from "../adapters/claude.js";
 import { describeActivity, emptyActivity, foldActivity, formatDuration, STALL_MS } from "./activity.js";
@@ -14,9 +14,9 @@ const FIXTURE_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..
 const T0 = Date.parse("2026-08-11T14:00:00.000Z");
 
 /** Un événement complet, daté à `T0 + offsetMs`. */
-function event(offsetMs: number, partial: Omit<OrchEventInput, "protocol" | "seq" | "at" | "task_id">): OrchEvent {
+function event(offsetMs: number, partial: Omit<CaesarEventInput, "protocol" | "seq" | "at" | "task_id">): CaesarEvent {
   return EventSchema.parse({
-    protocol: "orch.event/v1",
+    protocol: "caesar.event/v1",
     seq: 0,
     at: new Date(T0 + offsetMs).toISOString(),
     task_id: "t_test",
@@ -24,7 +24,7 @@ function event(offsetMs: number, partial: Omit<OrchEventInput, "protocol" | "seq
   });
 }
 
-function fold(...events: OrchEvent[]): ActivityState {
+function fold(...events: CaesarEvent[]): ActivityState {
   return events.reduce(foldActivity, emptyActivity());
 }
 
@@ -120,7 +120,7 @@ describe("foldActivity — parole", () => {
     // codex n'envoie pas de prose : chacun de ses `agent_message` est un
     // rapport sérialisé. Tel quel, c'est un mur de JSON là où l'on attend
     // une phrase.
-    const rapport = JSON.stringify({ protocol: "orch.report/v1", status: "partial", summary: "Je crée le fichier demandé." });
+    const rapport = JSON.stringify({ protocol: "caesar.report/v1", status: "partial", summary: "Je crée le fichier demandé." });
     expect(fold(event(0, { type: "message", text: rapport })).speech).toBe("Je crée le fichier demandé.");
   });
 
@@ -246,13 +246,13 @@ describe("foldActivity sur les captures réelles", () => {
 
   it("codex : les deux commandes et le fichier écrit sont restitués", () => {
     const state = foldFixture("codex.jsonl", codexAgent);
-    expect(state.filesTouched).toEqual(["/tmp/orch-capture/note.txt"]);
+    expect(state.filesTouched).toEqual(["/tmp/caesar-capture/note.txt"]);
     // Chaque commande a été ouverte puis refermée : rien ne reste en suspens.
     expect(state.runningTools).toEqual([]);
     expect(state.lastTool?.tool).toBe("shell");
     expect(state.finished).toBe("success");
     // La parole est le résumé du rapport, pas son JSON.
-    expect(state.speech).not.toContain("orch.report");
+    expect(state.speech).not.toContain("caesar.report");
   });
 
   it("claude : les outils s'apparient malgré une fermeture anonyme", () => {

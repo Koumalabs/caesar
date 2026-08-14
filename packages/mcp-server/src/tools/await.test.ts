@@ -2,29 +2,29 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { markWorktreeInUse } from "@orch/core";
-import { writeQuestion } from "@orch/mcp-channel";
+import { markWorktreeInUse } from "@caesar/core";
+import { writeQuestion } from "@caesar/mcp-channel";
 import { withFakeAgentAsBin, withFakeHome } from "../../test/support.js";
 import { createSession } from "../session.js";
-import { orchAwait } from "./await.js";
-import { orchDelegate } from "./delegate.js";
+import { caesarAwait } from "./await.js";
+import { caesarDelegate } from "./delegate.js";
 
-describe("orch_await", () => {
+describe("caesar_await", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-await-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-await-"));
   });
 
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("cycle complet orch_delegate puis orch_await, jusqu'au rapport", async () => {
+  it("cycle complet caesar_delegate puis caesar_await, jusqu'au rapport", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await orchDelegate(session, {
+        const delegated = await caesarDelegate(session, {
           objective: "écrire un fichier",
           agent: "codex",
           mode: "write",
@@ -33,7 +33,7 @@ describe("orch_await", () => {
         });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
-        const awaited = await orchAwait(session, { task_ids: [taskId] });
+        const awaited = await caesarAwait(session, { task_ids: [taskId] });
         expect(awaited.isError).toBeFalsy();
         const tasks = (awaited.structuredContent as { tasks: Record<string, { status: string; pending: boolean; report?: { status: string; summary: string } }> }).tasks;
         expect(tasks[taskId]?.status).toBe("succeeded");
@@ -58,14 +58,14 @@ describe("orch_await", () => {
         const delayMs = 1_000;
         const startedAt = Date.now();
         const [first, second] = await Promise.all([
-          orchDelegate(session, {
+          caesarDelegate(session, {
             objective: "première",
             agent: "codex",
             mode: "write",
             isolation: "inplace",
             context: JSON.stringify({ summary: "première faite.", sleepMs: delayMs }),
           }),
-          orchDelegate(session, {
+          caesarDelegate(session, {
             objective: "seconde",
             agent: "codex",
             mode: "write",
@@ -107,7 +107,7 @@ describe("orch_await", () => {
         // ci-dessous l'exclut franchement tout en laissant une marge large
         // au cas parallèle réel (mesuré entre ~1000 et ~1500 ms selon la
         // charge de la machine lors du calibrage de ce test).
-        const awaited = await orchAwait(session, { task_ids: [firstId, secondId], timeout_ms: 10_000 });
+        const awaited = await caesarAwait(session, { task_ids: [firstId, secondId], timeout_ms: 10_000 });
         const elapsedMs = Date.now() - startedAt;
 
         const tasks = (awaited.structuredContent as { tasks: Record<string, { status: string; report?: { summary: string } }> }).tasks;
@@ -124,7 +124,7 @@ describe("orch_await", () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await orchDelegate(session, {
+        const delegated = await caesarDelegate(session, {
           objective: "tâche longue",
           agent: "codex",
           mode: "write",
@@ -134,7 +134,7 @@ describe("orch_await", () => {
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
         const startedAt = Date.now();
-        const awaited = await orchAwait(session, { task_ids: [taskId], timeout_ms: 200 });
+        const awaited = await caesarAwait(session, { task_ids: [taskId], timeout_ms: 200 });
         const elapsedMs = Date.now() - startedAt;
 
         expect(elapsedMs).toBeLessThan(2_000);
@@ -155,7 +155,7 @@ describe("orch_await", () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await orchDelegate(session, {
+        const delegated = await caesarDelegate(session, {
           objective: "tâche",
           agent: "codex",
           mode: "write",
@@ -163,7 +163,7 @@ describe("orch_await", () => {
         });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
-        const awaited = await orchAwait(session, { task_ids: [taskId, "t_inexistant"] });
+        const awaited = await caesarAwait(session, { task_ids: [taskId, "t_inexistant"] });
         const tasks = (awaited.structuredContent as { tasks: Record<string, { status: string }> }).tasks;
         expect(tasks["t_inexistant"]?.status).toBe("unknown");
         expect(tasks[taskId]?.status).toBe("succeeded");
@@ -172,7 +172,7 @@ describe("orch_await", () => {
   }, 20_000);
 
   it("une tâche bloquée sur une question dit qu'elle attend, et quoi — pas juste \"en cours\"", async () => {
-    const taskDir = join(root, ".orch", "tasks", "t_q");
+    const taskDir = join(root, ".caesar", "tasks", "t_q");
     await mkdir(taskDir, { recursive: true });
     const session = await createSession(root);
     await session.store.create({
@@ -192,10 +192,10 @@ describe("orch_await", () => {
     await writeQuestion(taskDir, { id: "q1", question: "Quelle branche ?", options: [], asked_at: new Date().toISOString() });
 
     // `t_q` n'a jamais été lancée par cette session (pas d'entrée dans
-    // `session.tasks`) : `orchAwait` retombe sur le store/le système de
+    // `session.tasks`) : `caesarAwait` retombe sur le store/le système de
     // fichiers, exactement comme pour une tâche lancée par un autre
-    // processus (`orch run`, un précédent serveur MCP…) — voir `describeFromStore`.
-    const awaited = await orchAwait(session, { task_ids: ["t_q"] });
+    // processus (`caesar run`, un précédent serveur MCP…) — voir `describeFromStore`.
+    const awaited = await caesarAwait(session, { task_ids: ["t_q"] });
     const tasks = (
       awaited.structuredContent as {
         tasks: Record<string, { pending: boolean; pending_questions: Array<{ id: string; question: string }> }>;
@@ -212,7 +212,7 @@ describe("orch_await", () => {
    * d'attendre indéfiniment quelque chose que plus personne ne fait.
    */
   it("une tâche dont l'orchestrateur a disparu est conclue, pas rendue en attente", async () => {
-    const taskDir = join(root, ".orch", "tasks", "t_abandonnee");
+    const taskDir = join(root, ".caesar", "tasks", "t_abandonnee");
     await mkdir(taskDir, { recursive: true });
     const session = await createSession(root);
     await session.store.create({
@@ -233,7 +233,7 @@ describe("orch_await", () => {
     const lease = await markWorktreeInUse(root, "t_abandonnee");
     await writeFile(lease.path, JSON.stringify({ pid: 2_147_483_647, token: lease.token }) + "\n", "utf8");
 
-    const awaited = await orchAwait(session, { task_ids: ["t_abandonnee"] });
+    const awaited = await caesarAwait(session, { task_ids: ["t_abandonnee"] });
 
     const tasks = (
       awaited.structuredContent as { tasks: Record<string, { status: string; pending: boolean; report?: { status: string; summary: string } }> }

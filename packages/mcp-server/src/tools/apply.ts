@@ -1,5 +1,5 @@
 /**
- * `orch_apply` : applique au dépôt principal le diff du worktree d'une tâche
+ * `caesar_apply` : applique au dépôt principal le diff du worktree d'une tâche
  * isolée, par `git apply --3way` — sans jamais committer ni toucher aux
  * branches (voir `packages/core/src/engine/worktree.ts`). Voir le brief de
  * la tâche 7.
@@ -7,27 +7,27 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { applyRecordedWorktree } from "@orch/core";
+import { applyRecordedWorktree } from "@caesar/core";
 import type { McpSession } from "../session.js";
 import { errorResult, jsonResult } from "./result.js";
 
-export const ORCH_APPLY = "orch_apply";
+export const CAESAR_APPLY = "caesar_apply";
 
-export const orchApplyDescription =
+export const caesarApplyDescription =
   "Apply the diff of a task run with worktree isolation to the main repository (git apply --3way; never " +
   "commits, never touches branches). Use this once you have reviewed the task's result — typically via " +
-  "orch_diff, especially after comparing several providers — and decided to keep it. Reports conflicts instead " +
+  "caesar_diff, especially after comparing several providers — and decided to keep it. Reports conflicts instead " +
   "of a partial apply when the patch no longer applies cleanly. A no-op (applied: true, no conflicts) for tasks " +
   "that ran inplace or made no changes.";
 
-export const orchApplyInputShape = {
-  task_id: z.string().min(1).describe("The task_id returned by orch_delegate."),
+export const caesarApplyInputShape = {
+  task_id: z.string().min(1).describe("The task_id returned by caesar_delegate."),
 };
 
-const OrchApplyInputSchema = z.object(orchApplyInputShape);
-export type OrchApplyInput = z.infer<typeof OrchApplyInputSchema>;
+const CaesarApplyInputSchema = z.object(caesarApplyInputShape);
+export type CaesarApplyInput = z.infer<typeof CaesarApplyInputSchema>;
 
-export async function orchApply(session: McpSession, input: OrchApplyInput): Promise<CallToolResult> {
+export async function caesarApply(session: McpSession, input: CaesarApplyInput): Promise<CallToolResult> {
   const record = await session.store.get(input.task_id);
   if (!record) return errorResult(`Tâche inconnue : "${input.task_id}".`);
 
@@ -40,6 +40,6 @@ export async function orchApply(session: McpSession, input: OrchApplyInput): Pro
   return jsonResult({ task_id: input.task_id, applied: true, conflicts: [] });
 }
 
-export function registerOrchApply(server: McpServer, session: McpSession): void {
-  server.registerTool(ORCH_APPLY, { description: orchApplyDescription, inputSchema: orchApplyInputShape }, (args) => orchApply(session, args));
+export function registerCaesarApply(server: McpServer, session: McpSession): void {
+  server.registerTool(CAESAR_APPLY, { description: caesarApplyDescription, inputSchema: caesarApplyInputShape }, (args) => caesarApply(session, args));
 }

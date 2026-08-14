@@ -4,8 +4,8 @@
  * `mkdir` est atomique sur tous les systèmes de fichiers qui nous intéressent :
  * il réussit pour un seul appelant et échoue en `EEXIST` pour tous les autres,
  * sans fenêtre entre le test et la prise. C'est ce qui permet à plusieurs
- * processus `orch` — un `orch run` dans un terminal, une session MCP, un
- * `orch gc` — de se coordonner sans démon ni service.
+ * processus `caesar` — un `caesar run` dans un terminal, une session MCP, un
+ * `caesar gc` — de se coordonner sans démon ni service.
  *
  * Le mécanisme vivait dans `gc.ts`, où il protégeait les worktrees en cours de
  * création d'un ramasse-miettes concurrent. Il est ici parce qu'un second

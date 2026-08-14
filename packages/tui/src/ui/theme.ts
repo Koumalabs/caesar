@@ -4,7 +4,7 @@
  * Ces constantes vivaient ici, et n'étaient connues que d'ici : la ligne de
  * commande choisissait ses couleurs de son côté, parmi sept codes ANSI de
  * base. Les deux moitiés du même outil ne se ressemblaient donc pas à
- * l'écran. Elles ont été déplacées dans `@orch/theme`, **sans qu'aucune
+ * l'écran. Elles ont été déplacées dans `@caesar/theme`, **sans qu'aucune
  * valeur ne change**, et ce fichier les ré-exporte : les écrans du TUI
  * continuent d'importer `../ui/theme.js` et rendent exactement la même image.
  *
@@ -24,4 +24,4 @@ export {
   SELECTED_BG,
   SELECTED_BG_IDLE,
   WARN,
-} from "@orch/theme";
+} from "@caesar/theme";

@@ -6,9 +6,9 @@ dist/
 /dist-bin/
 
 # État runtime de l'orchestrateur : tâches, worktrees, logs
-.orch/tasks/
-.orch/wt/
-.orch/state/
+.caesar/tasks/
+.caesar/wt/
+.caesar/state/
 
 # Artefacts de pilotage du développement par sous-agents
 .superpowers/

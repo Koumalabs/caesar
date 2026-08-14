@@ -15,7 +15,7 @@
  * remonterait tel quel à l'agent principal via MCP, où il serait
  * inexploitable.
  */
-import type { TaskMode } from "@orch/protocol";
+import type { TaskMode } from "@caesar/protocol";
 
 /**
  * Ce que l'appelant demande — politique, rôle ou tâche. Même forme tri-état
@@ -76,7 +76,7 @@ export interface NetworkQuery {
 function writeOnlyRemedy(): string {
   return (
     `Relancez en écriture — "--mode write --isolation worktree" confine les modifications à une branche jetable, ` +
-    `inspectable ensuite par "orch diff" — ou choisissez un agent dont le réseau est déjà ouvert (antigravity, opencode).`
+    `inspectable ensuite par "caesar diff" — ou choisissez un agent dont le réseau est déjà ouvert (antigravity, opencode).`
   );
 }
 
@@ -158,7 +158,7 @@ export function decideNetwork(query: NetworkQuery): NetworkDecision {
   }
 }
 
-/** Libellé court d'une capacité réseau, pour `orch doctor` et l'écran Agents. */
+/** Libellé court d'une capacité réseau, pour `caesar doctor` et l'écran Agents. */
 export function describeNetworkControl(control: NetworkControl): string {
   switch (control) {
     case "open":

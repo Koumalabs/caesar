@@ -1,11 +1,11 @@
 /**
- * `orch ps|logs|cancel|diff|apply`.
+ * `caesar ps|logs|cancel|diff|apply`.
  */
 import { readFile } from "node:fs/promises";
-import type { OrchEvent } from "@orch/protocol";
-import { EventSchema, readEvents, taskPaths } from "@orch/protocol";
-import type { TaskRecord, TaskStatus, TaskStore } from "@orch/core";
-import { applyRecordedWorktree, diffWorktree, fileTaskStore, formatDuration, loadWorktreeHandle, sweepAbandonedTasks } from "@orch/core";
+import type { CaesarEvent } from "@caesar/protocol";
+import { EventSchema, readEvents, taskPaths } from "@caesar/protocol";
+import type { TaskRecord, TaskStatus, TaskStore } from "@caesar/core";
+import { applyRecordedWorktree, diffWorktree, fileTaskStore, formatDuration, loadWorktreeHandle, sweepAbandonedTasks } from "@caesar/core";
 import type { Cell, Io, ThemeToken } from "../output.js";
 import {
   EXIT_OK,
@@ -81,7 +81,7 @@ export async function runPs(root: string, options: PsOptions, io: Io): Promise<n
   // Une lecture qui écrit demande à être justifiée : le balayage n'agit que
   // sur une preuve positive — le marqueur de la tâche nomme un processus qui
   // n'existe plus — et n'inscrit qu'un fait déjà vrai. Il ne doit pour autant
-  // jamais empêcher la liste de s'afficher : un `.orch/state/` illisible est
+  // jamais empêcher la liste de s'afficher : un `.caesar/state/` illisible est
   // un ennui à signaler, pas une raison de ne plus rien montrer.
   try {
     await sweepAbandonedTasks(root, store);
@@ -166,7 +166,7 @@ async function readTextSafe(path: string): Promise<string> {
  * Transmet à `onChunk` chaque nouveau segment de `path`, jusqu'à ce que la
  * tâche `id` ne soit plus active.
  *
- * Le suivi par décalage lui-même vit dans `../tail.js` : `orch watch` en a
+ * Le suivi par décalage lui-même vit dans `../tail.js` : `caesar watch` en a
  * besoin aussi, avec une condition d'arrêt différente (plusieurs tâches, et
  * une fenêtre qui reste ouverte après leur fin).
  */
@@ -188,7 +188,7 @@ async function tailFile(store: TaskStore, id: string, path: string, onChunk: (ch
   }
 }
 
-function formatEvent(event: OrchEvent): string {
+function formatEvent(event: CaesarEvent): string {
   switch (event.type) {
     case "started":
       return `[${event.seq}] démarré — ${event.command}`;
@@ -332,8 +332,8 @@ export async function runCancel(root: string, id: string, options: CancelOptions
 // ---------------------------------------------------------------------------
 // diff / apply
 // ---------------------------------------------------------------------------
-// `loadWorktreeHandle` vit désormais dans `@orch/core` (`engine/worktree.ts`)
-// — partagée avec le serveur MCP (`orch_diff`/`orch_apply`), voir le rapport
+// `loadWorktreeHandle` vit désormais dans `@caesar/core` (`engine/worktree.ts`)
+// — partagée avec le serveur MCP (`caesar_diff`/`caesar_apply`), voir le rapport
 // de correction de la tâche 7.
 
 export interface DiffOptions {

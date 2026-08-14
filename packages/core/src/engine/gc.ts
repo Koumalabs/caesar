@@ -9,7 +9,7 @@
  * n'est supprimée que si son worktree est propre ou si son patch a été
  * appliqué et n'a pas bougé depuis (`applied_at` + empreinte, posés par
  * `applyRecordedWorktree`), sauf demande explicite avec `force`. Les
- * répertoires sous `.orch/wt` qui ne correspondent à aucun enregistrement
+ * répertoires sous `.caesar/wt` qui ne correspondent à aucun enregistrement
  * worktree encore présent sont traités comme orphelins.
  *
  * Les deux nettoyages sont dans le même fichier parce que le premier
@@ -22,7 +22,7 @@ import type { Dirent } from "node:fs";
 import { access, readdir, realpath } from "node:fs/promises";
 import { basename, isAbsolute, join, relative as relative_, resolve } from "node:path";
 import { promisify } from "node:util";
-import { REPORT_PROTOCOL, ReportSchema, readReport, taskPaths, writeReport } from "@orch/protocol";
+import { REPORT_PROTOCOL, ReportSchema, readReport, taskPaths, writeReport } from "@caesar/protocol";
 import type { TaskRecord, TaskStatus, TaskStore } from "../store.js";
 import { fileTaskStore } from "../store.js";
 import { acquireLease, inspectLease, purgeLease, releaseLease } from "./lock.js";
@@ -31,7 +31,7 @@ import { diffWorktree, listGitWorktrees, loadWorktreeHandle, patchDigest, remove
 import type { WorktreeHandle } from "./worktree.js";
 
 const execFileAsync = promisify(execFile);
-const WORKTREES_IN_USE_DIR = join(".orch", "state", "worktrees-in-use");
+const WORKTREES_IN_USE_DIR = join(".caesar", "state", "worktrees-in-use");
 
 export type WorktreeGcAction = "removed" | "would_remove" | "kept";
 export type WorktreeGcReason = "clean" | "modified" | "applied" | "active" | "inspection_failed";
@@ -43,7 +43,7 @@ export interface WorktreeGcEntry {
   orphan: boolean;
   status?: TaskStatus;
   /**
-   * L'instant de la dernière application (`orch apply`) porté par
+   * L'instant de la dernière application (`caesar apply`) porté par
    * l'enregistrement, restitué tel quel : c'est lui qui distingue, parmi les
    * conservés `modified`, ceux qui ont été appliqués puis retouchés.
    */
@@ -139,8 +139,8 @@ export interface AbandonedTask {
  * Le statut d'une tâche est écrit par le processus qui la conduit, dans son
  * `finally` : tué (`kill -9`, fermeture de la session MCP qui l'hébergeait,
  * arrêt de la machine), il ne l'écrit jamais. L'enregistrement reste
- * « running » pour toujours — `orch ps` l'affiche indéfiniment en tête,
- * `orch watch` la suit sans fin, et son worktree, protégé comme celui d'une
+ * « running » pour toujours — `caesar ps` l'affiche indéfiniment en tête,
+ * `caesar watch` la suit sans fin, et son worktree, protégé comme celui d'une
  * tâche active, n'est plus jamais collecté. Rien, jusqu'ici, ne réconciliait
  * cet état ; les autres verrous du dépôt, eux, se réparent tous à la lecture
  * (`reclaimDead` dans `slots.ts`, `purgeLease` dans `lock.ts`).
@@ -154,7 +154,7 @@ export interface AbandonedTask {
  * Un marqueur **absent** ne conclut rien, volontairement : l'absence n'est pas
  * une preuve de mort. Un enregistrement écrit par autre chose que le moteur —
  * une réparation à la main, un jeu d'essai — ne doit pas être déclaré mort
- * parce qu'il n'a jamais pris de marqueur. `orch cancel <id>` reste la sortie
+ * parce qu'il n'a jamais pris de marqueur. `caesar cancel <id>` reste la sortie
  * manuelle : il marque déjà « annulée » une tâche dont le pid a disparu.
  */
 export function detectAbandonedTasks(root: string, store: TaskStore = fileTaskStore(root)): Promise<AbandonedTask[]> {
@@ -267,7 +267,7 @@ async function recordedCandidates(root: string): Promise<Candidate[]> {
           id: record.id,
           handle: {
             path: record.workspace,
-            branch: record.branch ?? `orch/${record.id}`,
+            branch: record.branch ?? `caesar/${record.id}`,
             // Le nettoyage ne compare jamais à la base ; seule la forme du
             // handle partagé exige cette valeur.
             baseRef: "HEAD",
@@ -282,33 +282,33 @@ async function recordedCandidates(root: string): Promise<Candidate[]> {
 }
 
 /**
- * Les worktrees d'orch qu'aucun enregistrement du store ne réclame.
+ * Les worktrees de caesar qu'aucun enregistrement du store ne réclame.
  *
  * Deux sources, réunies, chacune couvrant l'angle mort de l'autre :
  *
  * - **`git worktree list --porcelain`**, la vérité sur ce que git tient pour
  *   un worktree, et la seule à donner la branche réellement associée. Le GC la
- *   déduisait du nom de répertoire (`orch/<dirname>`) : une coïncidence de
+ *   déduisait du nom de répertoire (`caesar/<dirname>`) : une coïncidence de
  *   construction, qui laisserait des branches derrière elle dès que les deux
  *   cesseraient d'être fabriqués ensemble. Elle rapporte aussi les worktrees
  *   dont l'arborescence a été effacée à la main, que le balayage de répertoire
  *   ne peut par construction pas voir.
- * - **le balayage de `.orch/wt/`**, pour les résidus que git ne connaît pas :
+ * - **le balayage de `.caesar/wt/`**, pour les résidus que git ne connaît pas :
  *   un répertoire laissé par une création interrompue avant que git ne
  *   l'enregistre. `removeWorktree` échouera dessus, et l'entrée dira
  *   `inspection_failed` plutôt que de laisser le répertoire invisible.
  *
  * Le dépôt est cherché **depuis `root`**, et les worktrees sont reconnus à
- * leur emplacement sous `<dépôt>/.orch/wt/`, jamais sous `<root>/.orch/wt/` :
+ * leur emplacement sous `<dépôt>/.caesar/wt/`, jamais sous `<root>/.caesar/wt/` :
  * `createWorktree` les crée sous la racine *git*, alors que `root` est la
- * racine *orch* — `resolveRoot` (CLI) s'arrête au premier `.orch/` **ou**
- * `.git/`. Quand `.orch/` vit dans un sous-répertoire d'un dépôt, les deux
+ * racine *caesar* — `resolveRoot` (CLI) s'arrête au premier `.caesar/` **ou**
+ * `.git/`. Quand `.caesar/` vit dans un sous-répertoire d'un dépôt, les deux
  * divergent, et le GC cherchait jusqu'ici là où rien n'est jamais créé : les
  * orphelins y étaient purement invisibles.
  */
 async function orphanCandidates(root: string, recorded: Candidate[]): Promise<Candidate[]> {
   const repo = (await repoRoot(root)) ?? root;
-  const worktreesDir = join(repo, ".orch", "wt");
+  const worktreesDir = join(repo, ".caesar", "wt");
   const byPath = new Map<string, Candidate>();
 
   const canonicalWorktreesDir = await canonical(worktreesDir);
@@ -319,7 +319,7 @@ async function orphanCandidates(root: string, recorded: Candidate[]): Promise<Ca
       id,
       handle: {
         path: entry.path,
-        branch: entry.branch ?? `orch/${id}`,
+        branch: entry.branch ?? `caesar/${id}`,
         // Le nettoyage ne compare jamais à la base ; seule la forme du handle
         // partagé exige cette valeur.
         baseRef: "HEAD",
@@ -341,7 +341,7 @@ async function orphanCandidates(root: string, recorded: Candidate[]): Promise<Ca
     if (byPath.has(key)) continue;
     byPath.set(key, {
       id: entry.name,
-      handle: { path, branch: `orch/${entry.name}`, baseRef: "HEAD" },
+      handle: { path, branch: `caesar/${entry.name}`, baseRef: "HEAD" },
       orphan: true,
     });
   }
@@ -417,7 +417,7 @@ async function appliedAndUnchanged(record: TaskRecord | undefined): Promise<bool
  */
 export async function garbageCollectWorktrees(root: string, options: WorktreeGcOptions = {}): Promise<WorktreeGcResult> {
   // Les commandes git s'exécutent depuis la racine du dépôt, pas depuis la
-  // racine orch : les deux divergent dès que `.orch/` vit dans un
+  // racine caesar : les deux divergent dès que `.caesar/` vit dans un
   // sous-répertoire d'un dépôt (voir `orphanCandidates`), et `git worktree
   // remove` lancé hors du dépôt échouerait sur chaque candidat.
   const repo = (await repoRoot(root)) ?? root;
@@ -428,7 +428,7 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
   // worktree — et sa branche, et le `node_modules` qu'on venait d'y cloner —
   // à ne plus jamais être collectés. C'est aussi ici, et nulle part ailleurs,
   // que le marqueur périmé d'une tâche sans worktree finit par être repris :
-  // le balayage des orphelins ne visite que ce que git ou `.orch/wt` connaît.
+  // le balayage des orphelins ne visite que ce que git ou `.caesar/wt` connaît.
   const abandoned = await collectAbandoned(root, fileTaskStore(root), !(options.dryRun ?? false));
   // En `dryRun`, le store n'a pas bougé : leurs enregistrements disent encore
   // "running" et les feraient conserver. L'aperçu doit montrer ce que le

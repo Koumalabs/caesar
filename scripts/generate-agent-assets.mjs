@@ -17,12 +17,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const SKILL_ROOT = join(ROOT, ".claude", "skills", "orch");
+const SKILL_ROOT = join(ROOT, ".claude", "skills", "caesar");
 const COMMANDS_DIR = join(ROOT, ".claude", "commands");
 const OUTPUT_PATH = join(ROOT, "packages", "core", "src", "agent-assets.generated.ts");
 
-/** Préfixe que porte chaque commande source sur disque. Retiré à l'`id`/au `path` du catalogue : c'est `agent-assets.ts` (`dest = join(dir, "orch-" + asset.path)`) qui le rajoute lui-même à l'installation — le catalogue ne doit JAMAIS le porter, sous peine d'installer "orch-orch-delegate.md". */
-const COMMAND_PREFIX = "orch-";
+/** Préfixe que porte chaque commande source sur disque. Retiré à l'`id`/au `path` du catalogue : c'est `agent-assets.ts` (`dest = join(dir, "caesar-" + asset.path)`) qui le rajoute lui-même à l'installation — le catalogue ne doit JAMAIS le porter, sous peine d'installer "caesar-caesar-delegate.md". */
+const COMMAND_PREFIX = "caesar-";
 
 function toLf(content) {
   return content.replace(/\r\n/g, "\n");
@@ -65,13 +65,13 @@ function walkSkillFiles(dir, relPrefix = "") {
   return files;
 }
 
-/** `.claude/skills/orch/**`, absent → catalogue vide sans erreur (les sources n'existent pas encore, une tâche ultérieure les rédigera). */
+/** `.claude/skills/caesar/**`, absent → catalogue vide sans erreur (les sources n'existent pas encore, une tâche ultérieure les rédigera). */
 function collectSkillAssets() {
   if (!existsSync(SKILL_ROOT)) return [];
-  return walkSkillFiles(SKILL_ROOT).map(({ path, content }) => ({ kind: "skill", id: "orch", path, content }));
+  return walkSkillFiles(SKILL_ROOT).map(({ path, content }) => ({ kind: "skill", id: "caesar", path, content }));
 }
 
-/** `.claude/commands/orch-*.md`, à plat (pas de récursion) et trié ; absent → catalogue vide sans erreur. */
+/** `.claude/commands/caesar-*.md`, à plat (pas de récursion) et trié ; absent → catalogue vide sans erreur. */
 function collectCommandAssets() {
   if (!existsSync(COMMANDS_DIR)) return [];
   const entries = readdirSync(COMMANDS_DIR, { withFileTypes: true })
@@ -103,21 +103,21 @@ function renderCatalog(assets) {
 
 const HEADER = `/**
  * Catalogue des assets agentiques (skill + commandes) — généré par
- * \`scripts/generate-agent-assets.mjs\` à partir de \`.claude/skills/orch/\`
- * et \`.claude/commands/orch-*.md\`. NE PAS ÉDITER À LA MAIN : relancer
+ * \`scripts/generate-agent-assets.mjs\` à partir de \`.claude/skills/caesar/\`
+ * et \`.claude/commands/caesar-*.md\`. NE PAS ÉDITER À LA MAIN : relancer
  * \`pnpm run assets:sync\` pour le régénérer.
  *
  * Attention en éditant ces sources, dans CE dépôt : ce sont exactement les
- * chemins qu'\`orch init\` dépose/rafraîchit pour la cible \`claude\` —
- * lancer \`orch init\` pendant que vous les modifiez écrase vos éditions non
+ * chemins que \`caesar init\` dépose/rafraîchit pour la cible \`claude\` —
+ * lancer \`caesar init\` pendant que vous les modifiez écrase vos éditions non
  * encore synchronisées dans ce catalogue. Lancez \`pnpm run assets:sync\`
- * avant, ou passez \`orch init --no-skills\` le temps de l'édition.
+ * avant, ou passez \`caesar init --no-skills\` le temps de l'édition.
  *
  * Pourquoi passer par un fichier \`.ts\` généré plutôt que de lire les
  * sources \`.md\` au runtime :
  *
  * - \`tsc\` ne copie pas les fichiers non-\`.ts\` dans \`dist/\` — un import
- *   relatif vers un \`.md\` serait introuvable une fois \`@orch/core\` compilé.
+ *   relatif vers un \`.md\` serait introuvable une fois \`@caesar/core\` compilé.
  * - \`bun build --compile\` (consommé par \`packages/tui\`) n'embarque dans le
  *   binaire unique que ce que le bundler voit statiquement suivre depuis les
  *   imports JS/TS ; un \`readFile\` relatif au source ne survit pas à cette

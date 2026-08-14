@@ -20,27 +20,27 @@ importers:
 
   packages/cli:
     dependencies:
+      '@caesar/core':
+        specifier: workspace:*
+        version: link:../core
+      '@caesar/mcp-channel':
+        specifier: workspace:*
+        version: link:../mcp-channel
+      '@caesar/mcp-server':
+        specifier: workspace:*
+        version: link:../mcp-server
+      '@caesar/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@caesar/theme':
+        specifier: workspace:*
+        version: link:../theme
+      '@caesar/tui':
+        specifier: workspace:*
+        version: link:../tui
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.4.3)
-      '@orch/core':
-        specifier: workspace:*
-        version: link:../core
-      '@orch/mcp-channel':
-        specifier: workspace:*
-        version: link:../mcp-channel
-      '@orch/mcp-server':
-        specifier: workspace:*
-        version: link:../mcp-server
-      '@orch/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      '@orch/theme':
-        specifier: workspace:*
-        version: link:../theme
-      '@orch/tui':
-        specifier: workspace:*
-        version: link:../tui
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -50,10 +50,10 @@ importers:
 
   packages/core:
     dependencies:
-      '@orch/mcp-channel':
+      '@caesar/mcp-channel':
         specifier: workspace:*
         version: link:../mcp-channel
-      '@orch/protocol':
+      '@caesar/protocol':
         specifier: workspace:*
         version: link:../protocol
       smol-toml:
@@ -69,30 +69,30 @@ importers:
 
   packages/mcp-channel:
     dependencies:
+      '@caesar/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.4.3)
-      '@orch/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       zod:
         specifier: ^4.4.3
         version: 4.4.3
 
   packages/mcp-server:
     dependencies:
+      '@caesar/core':
+        specifier: workspace:*
+        version: link:../core
+      '@caesar/mcp-channel':
+        specifier: workspace:*
+        version: link:../mcp-channel
+      '@caesar/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.4.3)
-      '@orch/core':
-        specifier: workspace:*
-        version: link:../core
-      '@orch/mcp-channel':
-        specifier: workspace:*
-        version: link:../mcp-channel
-      '@orch/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -107,21 +107,21 @@ importers:
 
   packages/tui:
     dependencies:
+      '@caesar/core':
+        specifier: workspace:*
+        version: link:../core
+      '@caesar/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@caesar/theme':
+        specifier: workspace:*
+        version: link:../theme
       '@opentui/core':
         specifier: 0.5.1
         version: 0.5.1(typescript@5.9.3)(web-tree-sitter@0.25.10)
       '@opentui/react':
         specifier: 0.5.1
         version: 0.5.1(react-devtools-core@7.0.1)(react@19.2.8)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.21.3)
-      '@orch/core':
-        specifier: workspace:*
-        version: link:../core
-      '@orch/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      '@orch/theme':
-        specifier: workspace:*
-        version: link:../theme
       react:
         specifier: ^19.2.0
         version: 19.2.8

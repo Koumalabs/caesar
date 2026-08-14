@@ -8,12 +8,12 @@
  *
  * **Un pli, pas une relecture.** L'appelant garde un `ActivityState` par
  * tâche et y pousse les événements au fur et à mesure qu'ils arrivent :
- * `orch watch` relit `events.jsonl` par décalage et n'analyse que les
+ * `caesar watch` relit `events.jsonl` par décalage et n'analyse que les
  * lignes neuves. Relire tout le journal à chaque image coûterait, pour une
  * tâche bavarde suivie pendant dix minutes, de reparser des milliers de
  * lignes cinq fois par seconde.
  */
-import type { OrchEvent, ReportStatus } from "@orch/protocol";
+import type { CaesarEvent, ReportStatus } from "@caesar/protocol";
 
 /** Au-delà, un silence mérite d'être signalé plutôt que simplement compté. */
 export const STALL_MS = 30_000;
@@ -73,11 +73,11 @@ export function emptyActivity(): ActivityState {
  * Le texte qu'un humain veut lire d'un `message`.
  *
  * codex n'envoie pas de prose : chacun de ses `agent_message` est un rapport
- * `orch.report/v1` sérialisé. Affiché tel quel, c'est un mur de JSON là où
+ * `caesar.report/v1` sérialisé. Affiché tel quel, c'est un mur de JSON là où
  * l'on attend une phrase. Quand le message est un objet JSON portant un
  * `summary`, c'est celui-ci qui parle.
  *
- * Exportée parce que `orch run` affiche les mêmes messages au fil de l'eau et
+ * Exportée parce que `caesar run` affiche les mêmes messages au fil de l'eau et
  * souffrait exactement du même mur de JSON : un seul traitement, pas deux qui
  * dériveraient.
  */
@@ -107,7 +107,7 @@ function clampSpeech(text: string): string {
  * Trois recoupements, du plus sûr au plus approximatif. L'identifiant
  * d'abord : c'est le seul qui distingue deux exécutions successives de la
  * même commande, et le seul disponible pour claude, dont la fermeture ne
- * porte pas le nom de l'outil (voir `OrchEvent.id`). À défaut, le couple
+ * porte pas le nom de l'outil (voir `CaesarEvent.id`). À défaut, le couple
  * (nom, résumé). À défaut encore, le plus ancien appel du même outil.
  */
 function closeTool(running: readonly RunningTool[], id: string, tool: string, summary: string): RunningTool[] {
@@ -123,7 +123,7 @@ function closeTool(running: readonly RunningTool[], id: string, tool: string, su
  * toujours un nouvel état, pour qu'un appelant puisse le comparer au
  * précédent (React, mémoïsation d'affichage) sans surprise.
  */
-export function foldActivity(state: ActivityState, event: OrchEvent): ActivityState {
+export function foldActivity(state: ActivityState, event: CaesarEvent): ActivityState {
   const next: ActivityState = { ...state, eventCount: state.eventCount + 1, lastAt: event.at };
 
   switch (event.type) {

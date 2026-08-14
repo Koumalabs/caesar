@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { TaskRecord } from "@orch/core";
-import { applyRecordedWorktree, createWorktree, fileTaskStore, markWorktreeInUse } from "@orch/core";
-import { TASK_PROTOCOL, TaskSchema, taskPaths, writeTask } from "@orch/protocol";
+import type { TaskRecord } from "@caesar/core";
+import { applyRecordedWorktree, createWorktree, fileTaskStore, markWorktreeInUse } from "@caesar/core";
+import { TASK_PROTOCOL, TaskSchema, taskPaths, writeTask } from "@caesar/protocol";
 import { makeIo, type CapturedIo } from "../../test/support.js";
 import { EXIT_OK } from "../output.js";
 import { runGc } from "./gc.js";
@@ -18,16 +18,16 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout;
 }
 
-describe("orch gc", () => {
+describe("caesar gc", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-gc-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-gc-"));
     io = makeIo();
     await git(root, ["init", "-q"]);
-    await git(root, ["config", "user.email", "orch-test@example.com"]);
-    await git(root, ["config", "user.name", "Orch Test"]);
+    await git(root, ["config", "user.email", "caesar-test@example.com"]);
+    await git(root, ["config", "user.name", "Caesar Test"]);
     await writeFile(join(root, "a.txt"), "hello\n", "utf8");
     await git(root, ["add", "a.txt"]);
     await git(root, ["commit", "-q", "-m", "init"]);
@@ -42,10 +42,10 @@ describe("orch gc", () => {
     const record: TaskRecord = {
       id,
       agent: "codex",
-      objective: "tester orch gc",
+      objective: "tester caesar gc",
       status,
       created_at: "2026-08-11T10:00:00.000Z",
-      task_dir: join(root, ".orch", "tasks", id),
+      task_dir: join(root, ".caesar", "tasks", id),
       workspace: handle.path,
       isolation: "worktree",
       mode: "write",
@@ -111,8 +111,8 @@ describe("orch gc", () => {
           action: "kept",
           reason: "modified",
           orphan: false,
-          diff_command: "orch diff t_modifiee",
-          apply_command: "orch apply t_modifiee",
+          diff_command: "caesar diff t_modifiee",
+          apply_command: "caesar apply t_modifiee",
         }),
         expect.objectContaining({ id: "t_active", action: "kept", reason: "active", orphan: false }),
         expect.objectContaining({ id: "t_orpheline", action: "would_remove", reason: "clean", orphan: true }),
@@ -128,13 +128,13 @@ describe("orch gc", () => {
 
     expect(code).toBe(EXIT_OK);
     expect(io.stdoutText()).toContain("t_a_appliquer");
-    expect(io.stdoutText()).toContain("orch diff t_a_appliquer");
-    expect(io.stdoutText()).toContain("orch apply t_a_appliquer");
+    expect(io.stdoutText()).toContain("caesar diff t_a_appliquer");
+    expect(io.stdoutText()).toContain("caesar apply t_a_appliquer");
   });
 
   /**
-   * Le cas qui a fait remonter le défaut : `orch gc` disait « Aucun worktree à
-   * nettoyer » pendant que `orch ps` affichait une tâche en cours depuis six
+   * Le cas qui a fait remonter le défaut : `caesar gc` disait « Aucun worktree à
+   * nettoyer » pendant que `caesar ps` affichait une tâche en cours depuis six
    * heures. La cause — une tâche que plus personne ne conduit — doit se lire
    * dans la sortie, même quand il n'y a par ailleurs rien à supprimer.
    */
@@ -146,7 +146,7 @@ describe("orch gc", () => {
       objective: "écrire en place",
       status: "running",
       created_at: "2026-08-11T10:00:00.000Z",
-      task_dir: join(root, ".orch", "tasks", "t_sans_worktree"),
+      task_dir: join(root, ".caesar", "tasks", "t_sans_worktree"),
       workspace: root,
       isolation: "inplace",
       mode: "write",
@@ -173,8 +173,8 @@ describe("orch gc", () => {
     expect(code).toBe(EXIT_OK);
     expect(io.stdoutText()).toContain("t_orpheline_modifiee");
     expect(io.stdoutText()).toContain(orphan.path);
-    expect(io.stdoutText()).not.toContain("orch diff");
-    expect(io.stdoutText()).not.toContain("orch apply");
+    expect(io.stdoutText()).not.toContain("caesar diff");
+    expect(io.stdoutText()).not.toContain("caesar apply");
   });
 
   it("étiquette « appliqué » un worktree collecté après application", async () => {

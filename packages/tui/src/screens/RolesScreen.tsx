@@ -11,7 +11,7 @@
  *
  * L'ordre des agents reste le cœur de l'écran : réordonnable, avec l'agent
  * retenu aujourd'hui calculé par `pickAgentForRoleName` (`config-state.ts`,
- * qui s'appuie sur `pickAgentForRole` de `@orch/core` — la seule règle de
+ * qui s'appuie sur `pickAgentForRole` de `@caesar/core` — la seule règle de
  * repli, jamais réécrite ici).
  *
  * Navigation à trois niveaux, et le panneau qui reçoit les touches est celui
@@ -31,8 +31,8 @@
  * l'ancien nom continuerait d'exister, venu de la couche du dessous.
  */
 import { useEffect, useState } from "react";
-import type { RoleConfig } from "@orch/core";
-import { parseDuration } from "@orch/core";
+import type { RoleConfig } from "@caesar/core";
+import { parseDuration } from "@caesar/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { catalogIds, ISOLATION_OPTIONS, MODE_OPTIONS, NETWORK_OPTIONS, cycle, formatMs } from "./shared";
 import { PromptEditor } from "./PromptEditor";
@@ -84,8 +84,8 @@ const FIELD_LABELS: Record<Field_, string> = {
 
 /** Ce que fait le champ, montré seulement quand on s'arrête dessus — la moitié de ces réglages n'était explicitée nulle part. */
 const FIELD_HINTS: Record<Field_, string> = {
-  name: 'Le nom écrit dans "orch run --role" et dans les sous-agents Claude Code.',
-  purpose: "À quoi sert ce rôle. Repris tel quel par « orch role list ».",
+  name: 'Le nom écrit dans "caesar run --role" et dans les sous-agents Claude Code.',
+  purpose: "À quoi sert ce rôle. Repris tel quel par « caesar role list ».",
   agents: "Ordre de repli : le premier agent installé et autorisé est retenu.",
   mode: 'read-only : l\'agent ne doit rien modifier. write : il peut écrire.',
   isolation: "worktree : copie de travail jetable. inplace : le dépôt lui-même. auto : worktree en écriture, et pour toute lecture seule sans mode natif.",
@@ -145,7 +145,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
     if (!role) return;
     if (!role.system_prompt_file) {
       // Un rôle sans prompt déclaré : plutôt que de refuser, on propose le
-      // chemin conventionnel (celui qu'`orch init` écrit) et on le pose comme
+      // chemin conventionnel (celui que `caesar init` écrit) et on le pose comme
       // modification en attente. Le fichier, lui, ne naîtra qu'à Ctrl+S.
       const file = defaultPromptFileFor(role.name);
       onChange(updateRole(state, role.name, { system_prompt_file: file }));
@@ -517,7 +517,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
                     <input
                       focused
                       value={editing.buffer}
-                      placeholder="(aucun — chemin relatif sous .orch/)"
+                      placeholder="(aucun — chemin relatif sous .caesar/)"
                       onInput={(value) => setEditing({ kind: "prompt-file", buffer: value })}
                       onSubmit={commitEdit}
                       onKeyDown={(key) => {

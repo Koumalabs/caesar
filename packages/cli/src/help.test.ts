@@ -16,11 +16,11 @@ function helpFor(args: readonly string[]): string {
   return io.stdoutText();
 }
 
-describe("orch --help", () => {
+describe("caesar --help", () => {
   const aide = (): string => helpFor([]);
 
   it("ouvre sur le logotype", () => {
-    expect(aide()).toMatch(/^▄▀▀▀▄ █▀▀▀▄ ▄▀▀▀▀ █   █\n/);
+    expect(aide()).toMatch(/^▄▀▀▀▀ ▄▀▀▀▄ █▀▀▀▀ ▄▀▀▀▀ ▄▀▀▀▄ █▀▀▀▄\n/);
   });
 
   it("dit ce qu'est l'outil et quels agents il pilote", () => {
@@ -77,7 +77,7 @@ describe("orch --help", () => {
   });
 });
 
-describe("orch <commande> --help", () => {
+describe("caesar <commande> --help", () => {
   it("emploie la même présentation que l'aide racine", () => {
     // La configuration d'aide est posée avant la création des sous-commandes :
     // réglée après, elle n'aurait touché que la racine et aurait laissé
@@ -91,7 +91,7 @@ describe("orch <commande> --help", () => {
 
   it("ouvre sur la ligne d'usage, sans logotype", () => {
     const out = helpFor(["run"]);
-    expect(out).toMatch(/^orch run \[options\] <objective> \[extra_args\.\.\.\]\n/);
+    expect(out).toMatch(/^caesar run \[options\] <objective> \[extra_args\.\.\.\]\n/);
     expect(out).not.toContain("▄▀▀▀▄");
   });
 

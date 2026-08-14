@@ -87,7 +87,7 @@ function reportingInstructions(task: Task, options: PromptOptions): string {
 
   switch (options.reportVia) {
     case "channel": {
-      const server = options.channelServerName ?? "orch";
+      const server = options.channelServerName ?? "caesar";
       return [
         `When you are done, call the \`submit_report\` tool of the \`${server}\` MCP server with your report.`,
         `You may call \`report_progress\` along the way, and \`ask_orchestrator\` if you are blocked on a decision.`,

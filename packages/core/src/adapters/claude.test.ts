@@ -55,13 +55,13 @@ describe("claudeAgent.build", () => {
   });
 
   it("dépose une config MCP au palier channel, référencée par --mcp-config", () => {
-    const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: ["server.js"], server_name: "orch" } });
+    const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: ["server.js"], server_name: "caesar" } });
     const plan = claudeAgent.build(sampleContext({ task, reportVia: "channel" }));
     expect(plan.files).toHaveLength(1);
     const file = plan.files[0];
     expect(file?.path).toBe(join(paths.dir, "claude-mcp-config.json"));
     const content = JSON.parse(file?.content ?? "{}");
-    expect(content.mcpServers.orch).toEqual({ type: "stdio", command: "node", args: ["server.js"] });
+    expect(content.mcpServers.caesar).toEqual({ type: "stdio", command: "node", args: ["server.js"] });
     const index = plan.args.indexOf("--mcp-config");
     expect(plan.args[index + 1]).toBe(file?.path);
   });

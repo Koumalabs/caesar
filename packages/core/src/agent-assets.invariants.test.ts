@@ -91,14 +91,14 @@ describe("invariants du catalogue — commandes", () => {
   });
 
   it.each(commands.map((command) => [command.id, command] as const))(
-    '"%s" : path === id + ".md", id non vide sans préfixe "orch-", ouvre sur "---\\n"',
+    '"%s" : path === id + ".md", id non vide sans préfixe "caesar-", ouvre sur "---\\n"',
     (_id, command: AgentAsset) => {
       expect(command.path).toBe(`${command.id}.md`);
       expect(command.id.length).toBeGreaterThan(0);
-      // Sans ce garde-fou, l'installation composerait `orch-${id}.md` à
+      // Sans ce garde-fou, l'installation composerait `caesar-${id}.md` à
       // partir d'un id qui porte déjà le préfixe, produisant
-      // "orch-orch-*.md" (voir agent-assets.ts, COMMAND_PREFIX).
-      expect(command.id.startsWith("orch-")).toBe(false);
+      // "caesar-caesar-*.md" (voir agent-assets.ts, COMMAND_PREFIX).
+      expect(command.id.startsWith("caesar-")).toBe(false);
       expect(command.content.startsWith("---\n")).toBe(true);
     },
   );
@@ -118,9 +118,9 @@ describe("invariants du catalogue — sécurité des chemins", () => {
 
 describe("invariants du catalogue — contenu multi-runtime", () => {
   it.each(AGENT_ASSETS.map((asset) => [`${asset.kind}:${asset.path}`, asset] as const))(
-    '%s : aucune occurrence de "mcp__orch__" (préfixe propre à un seul runtime, le catalogue est multi-runtime)',
+    '%s : aucune occurrence de "mcp__caesar__" (préfixe propre à un seul runtime, le catalogue est multi-runtime)',
     (_label, asset: AgentAsset) => {
-      expect(asset.content.includes("mcp__orch__")).toBe(false);
+      expect(asset.content.includes("mcp__caesar__")).toBe(false);
     },
   );
 

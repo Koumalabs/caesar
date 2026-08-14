@@ -1,6 +1,6 @@
 /**
  * Déplacé depuis `packages/cli/src/commands/mcp.test.ts` (tâche 8, rapport
- * de correction) : cette logique vit maintenant dans `@orch/core`, elle est
+ * de correction) : cette logique vit maintenant dans `@caesar/core`, elle est
  * donc testée ici — comme tout autre module du package (voir `policy.ts`,
  * `roles.ts`, `config.ts`). `packages/cli/src/commands/mcp.test.ts` continue
  * de vérifier l'habillage (`Io`, `--json`, codes de sortie) au-dessus, sans
@@ -15,7 +15,7 @@ import { applyPlan, buildPlan, checkMcpStatus, isMcpClient, MCP_CLIENTS } from "
 
 /** Même motif que `config.test.ts` : `buildPlan`/`checkMcpStatus` lisent `$HOME` (via `node:os#homedir`) pour les clients à fichier. */
 async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
-  const home = await mkdtemp(join(tmpdir(), "orch-mcp-home-"));
+  const home = await mkdtemp(join(tmpdir(), "caesar-mcp-home-"));
   const previous = process.env["HOME"];
   process.env["HOME"] = home;
   try {
@@ -42,7 +42,7 @@ describe("buildPlan", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-root-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-root-"));
   });
 
   afterEach(async () => {
@@ -52,7 +52,7 @@ describe("buildPlan", () => {
   it("claude et codex : plan \"command\", sous-commande native", async () => {
     await withFakeHome(async () => {
       const claude = buildPlan("claude", root);
-      expect(claude).toEqual({ client: "claude", kind: "command", bin: "claude", args: ["mcp", "add", "orch", "--", "orch", "mcp", "serve", "--root", root] });
+      expect(claude).toEqual({ client: "claude", kind: "command", bin: "claude", args: ["mcp", "add", "caesar", "--", "caesar", "mcp", "serve", "--root", root] });
 
       const codex = buildPlan("codex", root);
       expect(codex.kind).toBe("command");
@@ -68,7 +68,7 @@ describe("buildPlan", () => {
         kind: "file",
         path: join(home, ".copilot", "mcp-config.json"),
         mergeKey: "mcpServers",
-        entry: { type: "stdio", command: "orch", args: ["mcp", "serve", "--root", root] },
+        entry: { type: "stdio", command: "caesar", args: ["mcp", "serve", "--root", root] },
       });
 
       const antigravity = buildPlan("antigravity", root);
@@ -81,7 +81,7 @@ describe("buildPlan", () => {
     });
   });
 
-  it("les trois chemins \"file\" suivent homeDirectory() (@orch/core), jamais os.homedir() en clair (revue de la tâche 15)", async () => {
+  it("les trois chemins \"file\" suivent homeDirectory() (@caesar/core), jamais os.homedir() en clair (revue de la tâche 15)", async () => {
     // Passe trivialement sous Node (vitest, ce fichier) : os.homedir() y respecte déjà $HOME. La valeur de ce
     // test est de figer l'implémentation pour Bun (packages/tui, qui consomme ce module compilé et neutralise
     // $HOME dans IntegrationsScreen.render.test.tsx) : un homedir() direct régresserait silencieusement sous
@@ -106,7 +106,7 @@ describe("applyPlan", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-root-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-root-"));
   });
 
   afterEach(async () => {
@@ -123,7 +123,7 @@ describe("applyPlan", () => {
 
       const written = JSON.parse(await readFile(path, "utf8"));
       expect(written.mcpServers.autre).toEqual({ command: "autre-cli" });
-      expect(written.mcpServers.orch).toEqual({ type: "stdio", command: "orch", args: ["mcp", "serve", "--root", root] });
+      expect(written.mcpServers.caesar).toEqual({ type: "stdio", command: "caesar", args: ["mcp", "serve", "--root", root] });
     });
   });
 
@@ -131,13 +131,13 @@ describe("applyPlan", () => {
     await withFakeHome(async (home) => {
       await applyPlan(buildPlan("copilot", root));
       const written = JSON.parse(await readFile(join(home, ".copilot", "mcp-config.json"), "utf8"));
-      expect(written.mcpServers.orch.command).toBe("orch");
+      expect(written.mcpServers.caesar.command).toBe("caesar");
     });
   });
 
   it("plan \"command\" : exécute réellement le binaire (ici un faux \"claude\" sous un PATH maîtrisé)", async () => {
     await withFakeHome(async () => {
-      const shimDir = await mkdtemp(join(tmpdir(), "orch-mcp-shim-"));
+      const shimDir = await mkdtemp(join(tmpdir(), "caesar-mcp-shim-"));
       const captureFile = join(shimDir, "capture.json");
       const script = `#!/usr/bin/env node\nconst fs = require("fs");\nfs.writeFileSync(${JSON.stringify(captureFile)}, JSON.stringify(process.argv.slice(2)));\n`;
       const target = join(shimDir, "claude");
@@ -152,7 +152,7 @@ describe("applyPlan", () => {
       try {
         await applyPlan(buildPlan("claude", root));
         const captured = JSON.parse(await readFile(captureFile, "utf8"));
-        expect(captured).toEqual(["mcp", "add", "orch", "--", "orch", "mcp", "serve", "--root", root]);
+        expect(captured).toEqual(["mcp", "add", "caesar", "--", "caesar", "mcp", "serve", "--root", root]);
       } finally {
         if (previousPath === undefined) delete process.env["PATH"];
         else process.env["PATH"] = previousPath;
@@ -166,7 +166,7 @@ describe("checkMcpStatus", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-root-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-root-"));
   });
 
   afterEach(async () => {
@@ -184,7 +184,7 @@ describe("checkMcpStatus", () => {
     await withFakeHome(async (home) => {
       const path = join(home, ".copilot", "mcp-config.json");
       await mkdir(join(home, ".copilot"), { recursive: true });
-      await writeFile(path, JSON.stringify({ mcpServers: { orch: { command: "orch" } } }), "utf8");
+      await writeFile(path, JSON.stringify({ mcpServers: { caesar: { command: "caesar" } } }), "utf8");
 
       const status = await checkMcpStatus("copilot", root);
       expect(status.registered).toBe("registered");

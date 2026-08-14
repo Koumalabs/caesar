@@ -26,7 +26,7 @@ describe("fileTaskStore", () => {
   let store: TaskStore;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-store-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-store-"));
     store = fileTaskStore(root);
   });
 
@@ -70,10 +70,10 @@ describe("fileTaskStore", () => {
     expect(["premier", "second"]).toContain(persisted!.objective);
   });
 
-  it("écrit sous <root>/.orch/state/tasks/<id>.json", async () => {
+  it("écrit sous <root>/.caesar/state/tasks/<id>.json", async () => {
     const record = sampleRecord();
     await store.create(record);
-    const raw = await readFile(join(root, ".orch", "state", "tasks", "t_0001.json"), "utf8");
+    const raw = await readFile(join(root, ".caesar", "state", "tasks", "t_0001.json"), "utf8");
     expect(JSON.parse(raw)).toEqual(record);
   });
 
@@ -115,7 +115,7 @@ describe("fileTaskStore", () => {
 
     let sawTruncated = false;
     let sawComplete = false;
-    const path = join(root, ".orch", "state", "tasks", `${id}.json`);
+    const path = join(root, ".caesar", "state", "tasks", `${id}.json`);
 
     const readerLoop = (async () => {
       for (let i = 0; i < 50; i++) {
@@ -148,7 +148,7 @@ describe("fileTaskStore", () => {
       objective: "persister les champs d'application",
       status: "succeeded",
       created_at: "2026-08-12T09:00:00.000Z",
-      task_dir: join(root, ".orch", "tasks", "t_applique"),
+      task_dir: join(root, ".caesar", "tasks", "t_applique"),
       workspace: join(root, "ws"),
       isolation: "worktree",
       mode: "write",
@@ -200,13 +200,13 @@ describe("fileTaskStore", () => {
     });
 
     it("un fichier du store dont le contenu n'est pas un TaskRecord valide est ignoré plutôt qu'interprété tel quel (schéma, pas un cast)", async () => {
-      const tasksDir = join(root, ".orch", "state", "tasks");
+      const tasksDir = join(root, ".caesar", "state", "tasks");
       await mkdir(tasksDir, { recursive: true });
       // Un JSON syntaxiquement valide, mais dont la forme ne correspond à
       // aucun TaskRecord (status hors énumération, pid non numérique) :
       // avant le schéma zod, `JSON.parse(...) as TaskRecord` l'aurait rendu
       // tel quel, "status" et "pid" compris — c'est précisément ce que
-      // `orch_cancel` utiliserait pour signaler un pid arbitraire.
+      // `caesar_cancel` utiliserait pour signaler un pid arbitraire.
       await writeFile(
         join(tasksDir, "t_malformed.json"),
         JSON.stringify({ status: "top-secret-value", pid: "pas-un-pid" }),

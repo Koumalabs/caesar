@@ -2,10 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig, saveLayer } from "@orch/core";
+import { loadConfig, saveLayer } from "@caesar/core";
 import { withFakeHome } from "../../test/support.js";
 import { createSession } from "../session.js";
-import { orchListAgents } from "./list-agents.js";
+import { caesarListAgents } from "./list-agents.js";
 
 interface AgentRow {
   id: string;
@@ -16,7 +16,7 @@ interface AgentRow {
 /**
  * Un `PATH` réduit au strict répertoire donné : contrairement à
  * `withShimmedPath` (partagé avec les tests qui exécutent réellement un
- * script factice), aucun processus n'est lancé ici — `orchListAgents` ne
+ * script factice), aucun processus n'est lancé ici — `caesarListAgents` ne
  * fait que sonder la présence de binaires (`access`). Inclure le répertoire
  * de `node` lui-même, comme le fait `withShimmedPath`, exposerait sur cette
  * machine de développement de vrais binaires d'agents installés à côté de
@@ -33,11 +33,11 @@ async function withEmptyPath<T>(dir: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-describe("orch_list_agents", () => {
+describe("caesar_list_agents", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-list-agents-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-list-agents-"));
   });
 
   afterEach(async () => {
@@ -52,7 +52,7 @@ describe("orch_list_agents", () => {
         await saveLayer("project", root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
 
         const session = await createSession(root);
-        const result = await orchListAgents(session);
+        const result = await caesarListAgents(session);
         expect(result.isError).toBeFalsy();
 
         const agents = (result.structuredContent as { agents: AgentRow[] }).agents;

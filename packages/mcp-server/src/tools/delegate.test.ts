@@ -2,17 +2,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig, saveLayer } from "@orch/core";
-import { readTask, taskPaths } from "@orch/protocol";
+import { loadConfig, saveLayer } from "@caesar/core";
+import { readTask, taskPaths } from "@caesar/protocol";
 import { withFakeAgentAsBin, withFakeHome } from "../../test/support.js";
 import { createSession } from "../session.js";
-import { orchDelegate } from "./delegate.js";
+import { caesarDelegate } from "./delegate.js";
 
-describe("orch_delegate", () => {
+describe("caesar_delegate", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-delegate-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-delegate-"));
   });
 
   afterEach(async () => {
@@ -25,7 +25,7 @@ describe("orch_delegate", () => {
         const session = await createSession(root);
         const startedAt = Date.now();
 
-        const result = await orchDelegate(session, {
+        const result = await caesarDelegate(session, {
           objective: "tâche longue",
           agent: "codex",
           mode: "write",
@@ -41,11 +41,11 @@ describe("orch_delegate", () => {
         expect(data.agent).toBe("codex");
         expect(data.status).toBe("running");
 
-        // `orch_delegate` répond avant même que `runTask` n'ait atteint son
+        // `caesar_delegate` répond avant même que `runTask` n'ait atteint son
         // premier point d'attente interne (préparation de l'isolation) : le
         // store peut donc ne pas encore connaître la tâche à cet instant précis.
         // On attend qu'il la connaisse (elle est censée tourner pendant 5 s),
-        // ce qui prouve qu'elle a bien été lancée sans que `orch_delegate` ait eu
+        // ce qui prouve qu'elle a bien été lancée sans que `caesar_delegate` ait eu
         // à en attendre la fin.
         let record = await session.store.get(data.task_id);
         for (let i = 0; i < 200 && !record; i++) {
@@ -66,7 +66,7 @@ describe("orch_delegate", () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const result = await orchDelegate(session, {
+        const result = await caesarDelegate(session, {
           objective: "tâche avec canal",
           agent: "codex",
           mode: "write",
@@ -82,18 +82,18 @@ describe("orch_delegate", () => {
 
         const record = await session.store.get(taskId);
         const task = await readTask(taskPaths(record!.task_dir));
-        expect(task.channel).toEqual(expect.objectContaining({ transport: "mcp-stdio", server_name: "orch" }));
+        expect(task.channel).toEqual(expect.objectContaining({ transport: "mcp-stdio", server_name: "caesar" }));
       }),
     );
   }, 20_000);
 
-  it("un agent refusé par la politique rend une erreur portant le motif exact de @orch/core", async () => {
+  it("un agent refusé par la politique rend une erreur portant le motif exact de @caesar/core", async () => {
     await withFakeHome(async () => {
       const { config } = await loadConfig(root);
       await saveLayer("project", root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
 
       const session = await createSession(root);
-      const result = await orchDelegate(session, { objective: "tâche", agent: "codex" });
+      const result = await caesarDelegate(session, { objective: "tâche", agent: "codex" });
 
       expect(result.isError).toBe(true);
       expect((result.content?.[0] as { text: string }).text).toBe(
@@ -105,7 +105,7 @@ describe("orch_delegate", () => {
   it("un rôle inconnu est traité proprement, sans lancer quoi que ce soit", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await orchDelegate(session, { objective: "tâche", role: "inexistant" });
+      const result = await caesarDelegate(session, { objective: "tâche", role: "inexistant" });
 
       expect(result.isError).toBe(true);
       expect((result.content?.[0] as { text: string }).text).toMatch(/inexistant/);
@@ -116,7 +116,7 @@ describe("orch_delegate", () => {
   it("ni agent ni role : erreur d'usage", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await orchDelegate(session, { objective: "tâche" });
+      const result = await caesarDelegate(session, { objective: "tâche" });
       expect(result.isError).toBe(true);
     });
   });
@@ -124,7 +124,7 @@ describe("orch_delegate", () => {
   it("un agent inconnu du catalogue est traité proprement", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await orchDelegate(session, { objective: "tâche", agent: "agent-fantome" });
+      const result = await caesarDelegate(session, { objective: "tâche", agent: "agent-fantome" });
       expect(result.isError).toBe(true);
       expect((result.content?.[0] as { text: string }).text).toMatch(/inconnu/);
     });

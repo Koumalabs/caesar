@@ -1,9 +1,9 @@
 /**
- * `orch policy show|allow|deny`.
+ * `caesar policy show|allow|deny`.
  *
  * `policy show` indique, pour chaque valeur, de quelle couche elle vient
  * (global, projet, local, ou défaut) — directement à partir de `layers`
- * (`@orch/core`, `loadConfig`) : chaque couche expose exactement ce qu'elle
+ * (`@caesar/core`, `loadConfig`) : chaque couche expose exactement ce qu'elle
  * déclare, la provenance est donc la dernière couche qui déclare un champ,
  * sans avoir à recharger la configuration plusieurs fois pour le deviner par
  * différence (voir `policyFieldProvenance`, qui a remplacé l'ancien
@@ -12,11 +12,11 @@
  *
  * `policy allow|deny` écrivent une seule couche (`--global`/`--local`,
  * projet par défaut) — jamais la fusion : voir `materializePolicyList`
- * (`@orch/core`), qui porte toute la logique de matérialisation de liste.
+ * (`@caesar/core`), qui porte toute la logique de matérialisation de liste.
  * Cette façade ne fait que choisir la couche et mettre le résultat en forme.
  */
-import type { ConfigScope, PolicyConfig } from "@orch/core";
-import { loadConfig, materializePolicyList, policyFieldProvenance } from "@orch/core";
+import type { ConfigScope, PolicyConfig } from "@caesar/core";
+import { loadConfig, materializePolicyList, policyFieldProvenance } from "@caesar/core";
 import type { Cell, Io } from "../output.js";
 import {
   EXIT_OK,
@@ -109,7 +109,7 @@ export async function runPolicyAllow(root: string, id: string, options: PolicyEd
     // où tout agent non refusé passait — et la rend désormais restrictive.
     // Un utilisateur qui voulait "autoriser un agent de plus" vient d'en
     // interdire tous les autres sans le savoir ; ce message est le seul
-    // signal avant un futur "orch doctor".
+    // signal avant un futur "caesar doctor".
     if (wasEmptyAllowlist) {
       writeLine(
         io.stdout,
@@ -117,7 +117,7 @@ export async function runPolicyAllow(root: string, id: string, options: PolicyEd
           colorize("Attention", "warn", io.stdout) +
           ` : la liste "allowed" était vide (tous les agents non refusés passaient) ; elle ne contient ` +
           `désormais que "${id}" — les autres agents sont maintenant refusés. Pour autoriser un agent de plus sans ` +
-          `restreindre les autres, préférez "orch policy deny"/"orch agents disable" sur ce que vous voulez exclure.`,
+          `restreindre les autres, préférez "caesar policy deny"/"caesar agents disable" sur ce que vous voulez exclure.`,
       );
     }
     if (materialized) printNote(io, materializationNotice("allowed", scope, effective));

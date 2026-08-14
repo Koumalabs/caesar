@@ -1,5 +1,5 @@
 {
-  "name": "@orch/core",
+  "name": "@caesar/core",
   "version": "0.1.0",
   "description": "Runtime de l'orchestrateur : registre d'agents, adaptateurs, moteur d'exécution, politique et rôles",
   "type": "module",
@@ -10,8 +10,8 @@
   },
   "files": ["dist"],
   "dependencies": {
-    "@orch/mcp-channel": "workspace:*",
-    "@orch/protocol": "workspace:*",
+    "@caesar/mcp-channel": "workspace:*",
+    "@caesar/protocol": "workspace:*",
     "smol-toml": "^1.7.1",
     "zod": "^4.4.3"
   },

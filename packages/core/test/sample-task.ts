@@ -7,7 +7,7 @@
  * de l'agent testé) — `makeSampleFactory` le fixe une fois, le reste est
  * partagé tel quel.
  */
-import { taskPaths, TaskSchema, TASK_PROTOCOL, type Task, type TaskPaths } from "@orch/protocol";
+import { taskPaths, TaskSchema, TASK_PROTOCOL, type Task, type TaskPaths } from "@caesar/protocol";
 import type { BuildContext } from "../src/registry/types.js";
 
 /** `TaskPaths` de `sampleContext` — exporté séparément : plusieurs tests l'utilisent aussi directement (ex. `paths.dir`, `join(paths.dir, …)`). */

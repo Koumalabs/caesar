@@ -2,10 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig, saveLayer } from "@orch/core";
+import { loadConfig, saveLayer } from "@caesar/core";
 import { withFakeAgentAsBin, withFakeHome } from "../../test/support.js";
 import { createSession } from "../session.js";
-import { orchListRoles } from "./list-roles.js";
+import { caesarListRoles } from "./list-roles.js";
 
 interface RoleRow {
   name: string;
@@ -26,11 +26,11 @@ async function withEmptyPath<T>(dir: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-describe("orch_list_roles", () => {
+describe("caesar_list_roles", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-list-roles-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-list-roles-"));
   });
 
   afterEach(async () => {
@@ -41,7 +41,7 @@ describe("orch_list_roles", () => {
     await withFakeHome(() =>
       withEmptyPath(root, async () => {
         const session = await createSession(root);
-        const result = await orchListRoles(session);
+        const result = await caesarListRoles(session);
         expect(result.isError).toBeFalsy();
 
         const roles = (result.structuredContent as { roles: RoleRow[] }).roles;
@@ -68,11 +68,11 @@ describe("orch_list_roles", () => {
         await saveLayer("project", root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
 
         const session = await createSession(root);
-        const result = await orchListRoles(session);
+        const result = await caesarListRoles(session);
         const roles = (result.structuredContent as { roles: RoleRow[] }).roles;
         const reviewer = roles.find((r) => r.name === "reviewer");
 
-        // Aucun agent retenu : `pickAgentForRole` (@orch/core) ne rend alors
+        // Aucun agent retenu : `pickAgentForRole` (@caesar/core) ne rend alors
         // qu'un message unique concaténant chaque motif d'écart — pas de
         // tableau `skipped` structuré dans ce cas (voir `roles.ts`).
         expect(reviewer?.would_pick).toBeNull();

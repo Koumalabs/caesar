@@ -1,5 +1,5 @@
 {
-  "name": "@orch/tui",
+  "name": "@caesar/tui",
   "version": "0.1.0",
   "description": "TUI de configuration de l'orchestrateur (OpenTUI, exécuté sous Bun)",
   "type": "module",
@@ -13,9 +13,9 @@
   "dependencies": {
     "@opentui/core": "0.5.1",
     "@opentui/react": "0.5.1",
-    "@orch/core": "workspace:*",
-    "@orch/protocol": "workspace:*",
-    "@orch/theme": "workspace:*",
+    "@caesar/core": "workspace:*",
+    "@caesar/protocol": "workspace:*",
+    "@caesar/theme": "workspace:*",
     "react": "^19.2.0"
   },
   "devDependencies": {

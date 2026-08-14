@@ -11,8 +11,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { Change } from "@orch/protocol";
-import { readTask, taskPaths } from "@orch/protocol";
+import type { Change } from "@caesar/protocol";
+import { readTask, taskPaths } from "@caesar/protocol";
 import type { TaskRecord, TaskStore } from "../store.js";
 import { isUnderPath } from "./materialize.js";
 
@@ -69,14 +69,14 @@ export async function usableRepoRoot(dir: string): Promise<string | null> {
  * Vrai si git ignore le worktree que la tâche `taskId` va occuper.
  *
  * L'étape 0 du skill `superpowers:using-git-worktrees` — « MUST verify
- * directory is ignored before creating worktree ». `orch init` inscrit
- * `.orch/wt/` dans le `.gitignore` et plus personne ne revérifie ; un
+ * directory is ignored before creating worktree ». `caesar init` inscrit
+ * `.caesar/wt/` dans le `.gitignore` et plus personne ne revérifie ; un
  * `.gitignore` réécrit à la main, ou un projet initialisé par une version
  * antérieure, laisse le worktree visible du dépôt principal.
  *
  * La question est posée sur le **chemin exact à créer**, et non sur le
  * répertoire qui le contient : vérifié, un motif terminé par un slash
- * (`.orch/wt/`, celui qu'`orch init` écrit) ne s'applique à `.orch/wt` qu'à la
+ * (`.caesar/wt/`, celui que `caesar init` écrit) ne s'applique à `.caesar/wt` qu'à la
  * condition que ce répertoire existe déjà sur le disque — un motif de
  * répertoire ne peut pas s'appliquer à ce que git ne sait pas être un
  * répertoire. Interroger le chemin qu'on s'apprête à occuper évite entièrement
@@ -87,7 +87,7 @@ export async function usableRepoRoot(dir: string): Promise<string | null> {
  */
 export async function worktreesDirIgnored(repo: string, taskId: string): Promise<boolean> {
   try {
-    await execFileAsync("git", ["-C", repo, "check-ignore", "-q", "--no-index", "--", join(".orch", "wt", taskId)]);
+    await execFileAsync("git", ["-C", repo, "check-ignore", "-q", "--no-index", "--", join(".caesar", "wt", taskId)]);
     return true;
   } catch {
     return false;
@@ -99,8 +99,8 @@ export async function worktreesDirIgnored(repo: string, taskId: string): Promise
  * celle où l'appelant travaille réellement — `null` quand les deux coïncident,
  * ce qui est le cas ordinaire.
  *
- * `orch mcp install` enregistre `--root <chemin>` une fois pour toutes
- * (`mcp-registration.ts`), et `orch_delegate` impose ce chemin comme workspace
+ * `caesar mcp install` enregistre `--root <chemin>` une fois pour toutes
+ * (`mcp-registration.ts`), et `caesar_delegate` impose ce chemin comme workspace
  * de chaque tâche. Tant que l'agent principal travaille là où l'installation a
  * été faite, tout concorde. Mais qu'il passe lui-même dans un worktree — ce
  * que le skill `superpowers:using-git-worktrees` lui recommande justement de
@@ -120,13 +120,13 @@ export async function describeWorkspaceMismatch(sessionRoot: string, cwd: string
   return (
     `L'orchestrateur délègue sur "${sessionRoot}", mais le répertoire de travail courant relève du dépôt "${here}". ` +
     `Les sous-agents travailleront donc dans un arbre différent du vôtre, et leurs modifications n'apparaîtront pas ` +
-    `là où vous les attendez. Relancez "orch mcp install" depuis "${here}", ou lancez "orch mcp serve --root ${here}".`
+    `là où vous les attendez. Relancez "caesar mcp install" depuis "${here}", ou lancez "caesar mcp serve --root ${here}".`
   );
 }
 
 export interface GitWorktreeEntry {
   path: string;
-  /** Nom court de la branche (`orch/t_…`), absent pour un worktree en HEAD détaché. */
+  /** Nom court de la branche (`caesar/t_…`), absent pour un worktree en HEAD détaché. */
   branch?: string;
 }
 
@@ -135,8 +135,8 @@ export interface GitWorktreeEntry {
  * branche — `git worktree list --porcelain`, la seule source de vérité sur le
  * sujet.
  *
- * `orch gc` déduisait la branche d'un worktree orphelin de son nom de
- * répertoire (`orch/<dirname>`). C'était vrai tant que les deux étaient
+ * `caesar gc` déduisait la branche d'un worktree orphelin de son nom de
+ * répertoire (`caesar/<dirname>`). C'était vrai tant que les deux étaient
  * construits ensemble par `createWorktree` ; ça cesse de l'être dès que le nom
  * de branche gagne la moindre indépendance — et une supposition qui ne tient
  * que par coïncidence finit par laisser des branches derrière elle. Le
@@ -145,7 +145,7 @@ export interface GitWorktreeEntry {
  * c'est aussi ce qui permet de le nettoyer.
  *
  * Le premier worktree rendu par git est toujours le dépôt principal lui-même :
- * l'appelant doit le filtrer, ici par l'emplacement (`.orch/wt/`).
+ * l'appelant doit le filtrer, ici par l'emplacement (`.caesar/wt/`).
  */
 export async function listGitWorktrees(repo: string): Promise<GitWorktreeEntry[]> {
   let stdout: string;
@@ -162,7 +162,7 @@ export async function listGitWorktrees(repo: string): Promise<GitWorktreeEntry[]
       if (current) entries.push(current);
       current = { path: line.slice("worktree ".length).trim() };
     } else if (line.startsWith("branch ") && current) {
-      // `branch refs/heads/orch/t_x` → `orch/t_x`. Un worktree détaché n'a pas
+      // `branch refs/heads/caesar/t_x` → `caesar/t_x`. Un worktree détaché n'a pas
       // cette ligne du tout, d'où le champ optionnel.
       current.branch = line.slice("branch ".length).trim().replace(/^refs\/heads\//, "");
     } else if (line.trim() === "" && current) {
@@ -183,8 +183,8 @@ export interface WorktreeHandle {
    *
    * La distinction porte toute la fiabilité du diff : `HEAD` désigne le dernier
    * commit *du worktree*, qui bouge dès que l'agent commite. Un diff contre
-   * `HEAD` deviendrait alors vide, `orch` conclurait « aucun changement » et
-   * `orch apply` n'appliquerait rien — l'effacement silencieux de tout le
+   * `HEAD` deviendrait alors vide, `caesar` conclurait « aucun changement » et
+   * `caesar apply` n'appliquerait rien — l'effacement silencieux de tout le
    * travail. Un SHA, lui, ne bouge pas.
    *
    * Reste une chaîne libre pour la rétrocompatibilité : `loadWorktreeHandle`
@@ -196,10 +196,10 @@ export interface WorktreeHandle {
    * Chemins que l'orchestrateur a lui-même posés dans le worktree
    * (`[worktree] copy`/`link` — voir `materializeUntracked`), à retirer du
    * diff : ce n'est pas le travail de l'agent, et un `.env` recopié n'a rien
-   * à faire dans un `orch apply`.
+   * à faire dans un `caesar apply`.
    *
    * Porté par le handle plutôt qu'appliqué par le runner, pour que *tout*
-   * consommateur du diff en hérite — `orch diff` et `orch apply` le
+   * consommateur du diff en hérite — `caesar diff` et `caesar apply` le
    * recalculent chacun de leur côté, longtemps après la fin de la tâche.
    * Sémantique de préfixe : un répertoire exclu exclut ce qu'il contient.
    */
@@ -207,22 +207,22 @@ export interface WorktreeHandle {
 }
 
 /**
- * Crée un worktree jetable sous `<root>/.orch/wt/<taskId>`, sur une nouvelle
- * branche `orch/<taskId>` partant de `baseRef` (par défaut `HEAD`).
+ * Crée un worktree jetable sous `<root>/.caesar/wt/<taskId>`, sur une nouvelle
+ * branche `caesar/<taskId>` partant de `baseRef` (par défaut `HEAD`).
  *
  * `root` doit être la racine du dépôt (typiquement le résultat de
  * `repoRoot(workspace)`) : les commandes git s'y exécutent, et c'est là que
- * vit le répertoire administratif `.orch/wt`.
+ * vit le répertoire administratif `.caesar/wt`.
  */
 /**
- * Nom de branche d'un atelier : `orch/<rôle ou agent>/<objectif>-<8 car.>`.
+ * Nom de branche d'un atelier : `caesar/<rôle ou agent>/<objectif>-<8 car.>`.
  *
- * `orch/t_3f2a91c0…` est illisible dans un `git branch`, et le devient
+ * `caesar/t_3f2a91c0…` est illisible dans un `git branch`, et le devient
  * d'autant plus que la branche cesse d'être un détail d'implémentation : dans
  * un atelier, le sous-agent y commite, et l'utilisateur la relit. Le suffixe
  * porte l'unicité, le reste porte le sens.
  *
- * Le **répertoire**, lui, reste `.orch/wt/<taskId>` : c'est la clé du store,
+ * Le **répertoire**, lui, reste `.caesar/wt/<taskId>` : c'est la clé du store,
  * du bail anti-GC et des chemins de tâche. Les deux ont désormais des noms
  * indépendants — d'où le passage du GC à `git worktree list` pour connaître la
  * branche, plutôt que de la déduire du répertoire.
@@ -232,7 +232,7 @@ export interface WorktreeHandle {
  * Plutôt que d'énumérer les interdits, on n'autorise qu'un alphabet sûr.
  */
 export function worktreeBranchName(taskId: string, objective: string, label?: string): string {
-  const parts = ["orch"];
+  const parts = ["caesar"];
   const scope = slugForBranch(label ?? "");
   if (scope) parts.push(scope);
 
@@ -258,9 +258,9 @@ export async function createWorktree(
   baseRef = "HEAD",
   naming?: { objective: string; label?: string },
 ): Promise<WorktreeHandle> {
-  const branch = naming ? worktreeBranchName(taskId, naming.objective, naming.label) : `orch/${taskId}`;
-  const path = join(root, ".orch", "wt", taskId);
-  await mkdir(join(root, ".orch", "wt"), { recursive: true });
+  const branch = naming ? worktreeBranchName(taskId, naming.objective, naming.label) : `caesar/${taskId}`;
+  const path = join(root, ".caesar", "wt", taskId);
+  await mkdir(join(root, ".caesar", "wt"), { recursive: true });
   await execFileAsync("git", ["worktree", "add", "-b", branch, path, baseRef], { cwd: root });
   // Résolu en SHA plutôt que conservé tel quel : voir `WorktreeHandle.baseRef`.
   // Après `worktree add`, et non avant : c'est bien le commit que le worktree
@@ -304,7 +304,7 @@ export interface WorktreeDiff {
  * agents ne committent pas ». Elle ne l'est plus depuis que le worktree est un
  * atelier où le sous-agent installe, exécute et vérifie — un agent qui y
  * commite déplacerait `HEAD` sur son propre travail, et le diff rendrait vide.
- * `orch` conclurait « aucun changement », `orch apply` n'appliquerait rien, et
+ * `caesar` conclurait « aucun changement », `caesar apply` n'appliquerait rien, et
  * le recoupement qui fonde tout le système disparaîtrait sans un mot. Differ
  * contre le SHA de départ rend le résultat identique que l'agent commite ou
  * non.
@@ -367,7 +367,7 @@ export interface RecordedApplyResult {
  * `applied_at` et l'empreinte du patch appliqué. Rien n'est inscrit sur un
  * diff vide ni sur un conflit : l'enregistrement ne témoigne que d'une
  * application réellement advenue, et un nouvel apply réussi l'écrase (la
- * dernière application fait foi). Sans cette trace, `orch gc` ne pouvait
+ * dernière application fait foi). Sans cette trace, `caesar gc` ne pouvait
  * pas distinguer un worktree intégré d'un worktree porteur de travail
  * unique : il refusait les deux, même après un cycle parfaitement
  * discipliné (constaté sur deux tâches du projet `support`, 2026-08-12).
@@ -400,7 +400,7 @@ export async function applyRecordedWorktree(root: string, store: TaskStore, reco
  * messages humains de `git apply`.
  */
 async function applyPatch(root: string, patch: string): Promise<{ applied: boolean; conflicts: string[] }> {
-  const scratchDir = await mkdtemp(join(tmpdir(), "orch-patch-"));
+  const scratchDir = await mkdtemp(join(tmpdir(), "caesar-patch-"));
   const patchFile = join(scratchDir, "worktree.patch");
   try {
     await writeFile(patchFile, patch, "utf8");
@@ -424,20 +424,20 @@ async function applyPatch(root: string, patch: string): Promise<{ applied: boole
  * jamais `inplace`, où aucun recoupement n'avait lieu et où une écriture par
  * un agent en lecture seule n'était ni contenue, ni détectée.
  *
- * Le répertoire administratif `.orch/` (tâches, état, worktrees) est exclu
+ * Le répertoire administratif `.caesar/` (tâches, état, worktrees) est exclu
  * du pathspec : contrairement au worktree jetable — dont l'arborescence ne
- * contient structurellement jamais `.orch/tasks/<id>` (racine distincte,
+ * contient structurellement jamais `.caesar/tasks/<id>` (racine distincte,
  * `deps.root` plutôt que `workspace`) — le workspace réel EST `deps.root`
- * pour une tâche `inplace`, et `.orch/tasks/<id>` y est donc physiquement
+ * pour une tâche `inplace`, et `.caesar/tasks/<id>` y est donc physiquement
  * créé par l'orchestrateur lui-même pendant l'exécution. Sans cette
  * exclusion, la simple existence du répertoire de tâche ferait croire à une
  * écriture de l'agent sur toute tâche `inplace`, quel que soit son
  * comportement réel — un faux positif systématique bien pire que le faux
- * négatif, rare, d'un agent qui modifierait `.orch/config.toml` lui-même
- * (alors masqué par cette même exclusion, tout `.orch/` étant écarté en bloc
+ * négatif, rare, d'un agent qui modifierait `.caesar/config.toml` lui-même
+ * (alors masqué par cette même exclusion, tout `.caesar/` étant écarté en bloc
  * : `git status` réduit un répertoire entièrement non suivi à une seule
- * ligne `?? .orch/`, qui rend inopérant tout pathspec d'exclusion plus fin
- * que `.orch` entier — vérifié empiriquement).
+ * ligne `?? .caesar/`, qui rend inopérant tout pathspec d'exclusion plus fin
+ * que `.caesar` entier — vérifié empiriquement).
  *
  * Jamais de `git add` ici, à la différence de `diffWorktree` : le workspace
  * n'est pas jetable, et modifier l'index réel de l'utilisateur pour une
@@ -448,7 +448,7 @@ async function applyPatch(root: string, patch: string): Promise<{ applied: boole
  */
 export async function captureWorkspaceStatus(workspace: string): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync("git", ["-C", workspace, "status", "--porcelain", "--", ".", ":(exclude).orch"]);
+    const { stdout } = await execFileAsync("git", ["-C", workspace, "status", "--porcelain", "--", ".", ":(exclude).caesar"]);
     return stdout;
   } catch {
     return null;
@@ -503,7 +503,7 @@ export async function diffWorkspaceStatus(workspace: string, before: string): Pr
 /**
  * Reconstruit le `WorktreeHandle` d'une tâche à partir de son enregistrement
  * (`TaskRecord`) — `null` si la tâche n'a pas tourné en isolation worktree.
- * Partagé par `orch diff`/`orch apply` (CLI) et `orch_diff`/`orch_apply`
+ * Partagé par `caesar diff`/`caesar apply` (CLI) et `caesar_diff`/`caesar_apply`
  * (serveur MCP), qui en avaient chacun leur propre copie avant la revue de
  * la tâche 7 : voir son rapport de correction.
  */
@@ -514,7 +514,7 @@ export async function loadWorktreeHandle(record: TaskRecord): Promise<WorktreeHa
     path: record.workspace,
     branch: record.branch,
     baseRef: task.base_ref ?? "HEAD",
-    // Restitué au handle pour qu'`orch diff` et `orch apply`, qui recalculent
+    // Restitué au handle pour que `caesar diff` et `caesar apply`, qui recalculent
     // le diff bien après la fin de la tâche, excluent ce que l'orchestrateur
     // avait posé — sans quoi un `.env` recopié redeviendrait applicable.
     ...(record.excluded_paths ? { excluded: record.excluded_paths } : {}),

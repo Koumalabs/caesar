@@ -2,17 +2,17 @@
  * Le cycle complet du canal retour (tâche 9) : une délégation qui active le
  * canal, une question posée par le sous-agent (l'agent factice, en mode
  * "ask" — voir `packages/core/test/fixtures/fake-agent.mjs`) et remontée
- * (`orch_status` et `orch_await`), une réponse (`orch_answer`), l'agent qui
+ * (`caesar_status` et `caesar_await`), une réponse (`caesar_answer`), l'agent qui
  * reprend et rend son rapport via le canal (`submit_report`).
  *
- * Le premier test appelle `runTask` (`@orch/core`) directement : il isole le
- * mécanisme lui-même (`orch_status`/`orch_await`/`orch_answer` ne dépendent
- * pas d'avoir été lancées par `orch_delegate` — elles retombent sur le
+ * Le premier test appelle `runTask` (`@caesar/core`) directement : il isole le
+ * mécanisme lui-même (`caesar_status`/`caesar_await`/`caesar_answer` ne dépendent
+ * pas d'avoir été lancées par `caesar_delegate` — elles retombent sur le
  * store/le système de fichiers pour toute tâche connue du `root`, voir
  * `describeFromStore`) de la façade qui l'expose. Le second test rejoue
- * exactement le même scénario en passant par `orch_delegate`, la seule
+ * exactement le même scénario en passant par `caesar_delegate`, la seule
  * façade dont dispose l'agent principal en usage réel — voir le rapport de
- * correction : le premier jet ne le faisait pas, `orch_delegate` ne
+ * correction : le premier jet ne le faisait pas, `caesar_delegate` ne
  * transmettait `channel` nulle part, ce qui rendait le mécanisme prouvé mais
  * inaccessible au produit tel qu'il est exposé.
  */
@@ -20,26 +20,26 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runTask } from "@orch/core";
+import { runTask } from "@caesar/core";
 import { withFakeAgentAsBin, withFakeHome } from "../test/support.js";
 import { createSession } from "./session.js";
-import { orchAnswer } from "./tools/answer.js";
-import { orchAwait } from "./tools/await.js";
-import { orchDelegate } from "./tools/delegate.js";
-import { orchStatus } from "./tools/status.js";
+import { caesarAnswer } from "./tools/answer.js";
+import { caesarAwait } from "./tools/await.js";
+import { caesarDelegate } from "./tools/delegate.js";
+import { caesarStatus } from "./tools/status.js";
 
 describe("cycle complet du canal retour", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-channel-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-channel-"));
   });
 
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("délégation avec canal → question remontée par orch_status et orch_await → orch_answer → l'agent reprend et rapporte via submit_report", async () => {
+  it("délégation avec canal → question remontée par caesar_status et caesar_await → caesar_answer → l'agent reprend et rapporte via submit_report", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
@@ -57,20 +57,20 @@ describe("cycle complet du canal retour", () => {
           },
         );
 
-        // Attend que la question apparaisse, visible par orch_status — c'est
+        // Attend que la question apparaisse, visible par caesar_status — c'est
         // par là que l'agent principal apprend qu'on l'attend (voir le brief).
         let questionId: string | undefined;
         for (let i = 0; i < 400 && !questionId; i++) {
-          const status = await orchStatus(session, { task_id: "t_cycle" });
+          const status = await caesarStatus(session, { task_id: "t_cycle" });
           const data = status.structuredContent as { pending_questions?: Array<{ id: string; question: string }> } | undefined;
           questionId = data?.pending_questions?.[0]?.id;
           if (!questionId) await new Promise((resolve) => setTimeout(resolve, 20));
         }
         expect(questionId).toBeDefined();
 
-        // orch_await, appelé pendant que la tâche est encore bloquée sur la
+        // caesar_await, appelé pendant que la tâche est encore bloquée sur la
         // question, doit dire qu'elle attend — et quoi — pas juste "en cours".
-        const awaited = await orchAwait(session, { task_ids: ["t_cycle"], timeout_ms: 50 });
+        const awaited = await caesarAwait(session, { task_ids: ["t_cycle"], timeout_ms: 50 });
         const awaitedTasks = (
           awaited.structuredContent as {
             tasks: Record<string, { pending: boolean; pending_questions: Array<{ id: string; question: string }> }>;
@@ -80,7 +80,7 @@ describe("cycle complet du canal retour", () => {
         expect(awaitedTasks["t_cycle"]?.pending_questions).toEqual([expect.objectContaining({ id: questionId, question: "Quelle couleur ?" })]);
 
         // L'agent principal répond.
-        const answered = await orchAnswer(session, { task_id: "t_cycle", question_id: questionId!, answer: "bleu" });
+        const answered = await caesarAnswer(session, { task_id: "t_cycle", question_id: questionId!, answer: "bleu" });
         expect(answered.isError).toBeFalsy();
 
         // L'agent reprend et rend son rapport — via le canal (submit_report),
@@ -91,7 +91,7 @@ describe("cycle complet du canal retour", () => {
         expect(outcome.report.summary).toContain("bleu");
 
         // Plus aucune question en attente une fois répondue et la tâche terminée.
-        const finalStatus = await orchStatus(session, { task_id: "t_cycle" });
+        const finalStatus = await caesarStatus(session, { task_id: "t_cycle" });
         expect((finalStatus.structuredContent as { pending_questions: unknown[] }).pending_questions).toEqual([]);
       }),
     );
@@ -136,11 +136,11 @@ describe("cycle complet du canal retour", () => {
     );
   }, 20_000);
 
-  it("le même cycle, via orch_delegate — la seule façade dont dispose l'agent principal en usage réel", async () => {
+  it("le même cycle, via caesar_delegate — la seule façade dont dispose l'agent principal en usage réel", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await orchDelegate(session, {
+        const delegated = await caesarDelegate(session, {
           objective: "poser une question puis conclure",
           agent: "codex",
           mode: "write",
@@ -153,17 +153,17 @@ describe("cycle complet du canal retour", () => {
 
         let questionId: string | undefined;
         for (let i = 0; i < 400 && !questionId; i++) {
-          const status = await orchStatus(session, { task_id: taskId });
+          const status = await caesarStatus(session, { task_id: taskId });
           const data = status.structuredContent as { pending_questions?: Array<{ id: string; question: string }> } | undefined;
           questionId = data?.pending_questions?.[0]?.id;
           if (!questionId) await new Promise((resolve) => setTimeout(resolve, 20));
         }
         expect(questionId).toBeDefined();
 
-        const answered = await orchAnswer(session, { task_id: taskId, question_id: questionId!, answer: "bleu" });
+        const answered = await caesarAnswer(session, { task_id: taskId, question_id: questionId!, answer: "bleu" });
         expect(answered.isError).toBeFalsy();
 
-        const awaited = await orchAwait(session, { task_ids: [taskId], timeout_ms: 15_000 });
+        const awaited = await caesarAwait(session, { task_ids: [taskId], timeout_ms: 15_000 });
         const tasks = (awaited.structuredContent as { tasks: Record<string, { status: string; pending: boolean; report?: { summary: string } }> })
           .tasks;
         expect(tasks[taskId]?.pending).toBe(false);

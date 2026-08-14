@@ -63,13 +63,13 @@ describe("copilotAgent.build", () => {
   });
 
   it("dépose une config MCP additionnelle au palier channel, référencée par @<fichier>", () => {
-    const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: ["server.js"], server_name: "orch" } });
+    const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: ["server.js"], server_name: "caesar" } });
     const plan = copilotAgent.build(sampleContext({ task, reportVia: "channel" }));
     expect(plan.files).toHaveLength(1);
     const file = plan.files[0];
     expect(file?.path).toBe(join(paths.dir, "copilot-mcp-config.json"));
     const content = JSON.parse(file?.content ?? "{}");
-    expect(content.mcpServers.orch).toEqual({ type: "local", command: "node", args: ["server.js"] });
+    expect(content.mcpServers.caesar).toEqual({ type: "local", command: "node", args: ["server.js"] });
     const index = plan.args.indexOf("--additional-mcp-config");
     expect(plan.args[index + 1]).toBe(`@${file?.path}`);
   });

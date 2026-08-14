@@ -4,12 +4,12 @@
  *
  * Le défaut que ce module corrige : `createQueue` (queue.ts) est un sémaphore
  * en mémoire. Il tient sa promesse au sein d'une session MCP — toutes les
- * délégations y partagent une file — mais chaque `orch run` construit la
+ * délégations y partagent une file — mais chaque `caesar run` construit la
  * sienne. Six terminaux, c'était six agents en vol quel que soit le réglage,
- * et un `orch run` lancé pendant qu'une conversation Claude Code déléguait
+ * et un `caesar run` lancé pendant qu'une conversation Claude Code déléguait
  * déjà s'ajoutait aux quatre siennes sans rien en savoir.
  *
- * Le verrou : `limit` fichiers-créneaux sous `<root>/.orch/state/slots/`.
+ * Le verrou : `limit` fichiers-créneaux sous `<root>/.caesar/state/slots/`.
  * Prendre un créneau, c'est réussir à créer son fichier en exclusion mutuelle
  * (`flag: "wx"` — `O_CREAT|O_EXCL`, atomique : un seul appelant gagne, les
  * autres reçoivent EEXIST). Le rendre, c'est le supprimer.
@@ -37,7 +37,7 @@
  *    n'a d'importance que pour qui écrit un test supposant l'ordre.
  *  - **Distribué.** La reprise d'un créneau mort repose sur
  *    `process.kill(pid, 0)`, qui ne veut rien dire pour un pid d'une autre
- *    machine — un `.orch/` posé sur un partage réseau et utilisé depuis deux
+ *    machine — un `.caesar/` posé sur un partage réseau et utilisé depuis deux
  *    postes verrait les créneaux de l'autre comme vivants à jamais. Le nom de
  *    la machine est enregistré pour que ce cas se reconnaisse plutôt que de
  *    se deviner (`describeSlotHolders`).
@@ -48,8 +48,8 @@ import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promi
 import { join } from "node:path";
 import type { Queue } from "./queue.js";
 
-/** Sous-répertoire des créneaux, relatif à la racine du projet. Déjà couvert par le `.gitignore` posé par `orch init` (`.orch/state/`). */
-const SLOTS_DIR = join(".orch", "state", "slots");
+/** Sous-répertoire des créneaux, relatif à la racine du projet. Déjà couvert par le `.gitignore` posé par `caesar init` (`.caesar/state/`). */
+const SLOTS_DIR = join(".caesar", "state", "slots");
 
 /** Intervalle entre deux tentatives quand tous les créneaux sont pris. */
 const DEFAULT_POLL_MS = 250;

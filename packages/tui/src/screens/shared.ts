@@ -6,9 +6,9 @@
  * (tâche 10, B), avec le risque qu'une correction faite dans l'un ne soit
  * pas reportée dans l'autre.
  */
-import type { GenericAgentSpec } from "@orch/core";
-import { listAgentDefinitions, NETWORK_REQUESTS } from "@orch/core";
-import { IsolationSchema, TaskModeSchema } from "@orch/protocol";
+import type { GenericAgentSpec } from "@caesar/core";
+import { listAgentDefinitions, NETWORK_REQUESTS } from "@caesar/core";
+import { IsolationSchema, TaskModeSchema } from "@caesar/protocol";
 
 export const MODE_OPTIONS = TaskModeSchema.options;
 export const ISOLATION_OPTIONS = [...IsolationSchema.options, "auto"] as const;

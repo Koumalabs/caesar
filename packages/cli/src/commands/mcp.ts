@@ -1,7 +1,7 @@
 /**
- * `orch mcp serve` et `orch mcp install <client>`.
+ * `caesar mcp serve` et `caesar mcp install <client>`.
  *
- * `serve` démarre le serveur MCP construit par `@orch/mcp-server` sur le
+ * `serve` démarre le serveur MCP construit par `@caesar/mcp-server` sur le
  * transport stdio. Rien d'autre que le protocole ne doit toucher stdout —
  * l'erreur classique de ce genre de serveur, qui le casse de façon obscure
  * (voir le brief de la tâche 7) : tout diagnostic (le message d'accueil
@@ -10,22 +10,22 @@
  * `install` enregistre l'orchestrateur auprès d'un client MCP. Le plan par
  * client (sous-commande native ou fichier de configuration), son
  * application et la lecture de son état (`checkMcpStatus`, utilisé par
- * l'écran Intégrations du TUI) vivent dans `@orch/core`
+ * l'écran Intégrations du TUI) vivent dans `@caesar/core`
  * (`mcp-registration.ts`, déplacé depuis ce fichier au rapport de correction
  * de la tâche 8 — `packages/tui` en avait besoin sans dépendre de
  * `packages/cli`). Ce module ne garde que ce qui est propre au CLI :
  * `describePlan`/`planToJson` (le format d'affichage `--json`/texte) et la
- * forme `Io`/les codes de sortie d'`orch mcp install`.
+ * forme `Io`/les codes de sortie de `caesar mcp install`.
  */
 import type { Readable, Writable } from "node:stream";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { buildServer } from "@orch/mcp-server";
-import type { InstallPlan } from "@orch/core";
-import { SERVER_NAME, applyPlan, buildPlan, isMcpClient, MCP_CLIENTS } from "@orch/core";
+import { buildServer } from "@caesar/mcp-server";
+import type { InstallPlan } from "@caesar/core";
+import { SERVER_NAME, applyPlan, buildPlan, isMcpClient, MCP_CLIENTS } from "@caesar/core";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, printDone, printError, printJson, printNote, writeLine } from "../output.js";
 
-export { checkMcpStatus, MCP_CLIENTS, type McpClient, type McpRegistrationState, type McpStatus } from "@orch/core";
+export { checkMcpStatus, MCP_CLIENTS, type McpClient, type McpRegistrationState, type McpStatus } from "@caesar/core";
 
 // ---------------------------------------------------------------------------
 // serve

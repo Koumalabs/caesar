@@ -8,7 +8,7 @@ describe("writeFileAtomic", () => {
   let dir: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), "orch-fs-atomic-"));
+    dir = await mkdtemp(join(tmpdir(), "caesar-fs-atomic-"));
   });
 
   afterEach(async () => {

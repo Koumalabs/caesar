@@ -7,7 +7,7 @@
  * `packages/cli/src/commands/mcp.ts`), donc aucun vrai CLI d'agent n'est
  * invoqué ici.
  *
- * Cette garantie dépend de `buildPlan` (`@orch/core`, `mcp-registration.ts`)
+ * Cette garantie dépend de `buildPlan` (`@caesar/core`, `mcp-registration.ts`)
  * résolvant `$HOME` via `homeDirectory()`, pas `os.homedir()` directement :
  * Bun (le runtime de ce package) ignore silencieusement `$HOME` dans
  * `os.homedir()`, ce que Node ne fait pas — ce test neutralisait donc `HOME`
@@ -28,8 +28,8 @@ let home: string;
 let root: string;
 
 beforeEach(async () => {
-  home = await mkdtemp(join(tmpdir(), "orch-tui-integrations-home-"));
-  root = await mkdtemp(join(tmpdir(), "orch-tui-integrations-root-"));
+  home = await mkdtemp(join(tmpdir(), "caesar-tui-integrations-home-"));
+  root = await mkdtemp(join(tmpdir(), "caesar-tui-integrations-root-"));
   previousHome = process.env["HOME"];
   process.env["HOME"] = home;
 });

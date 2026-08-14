@@ -26,10 +26,10 @@ export const AGENT_DEFINITIONS: readonly AgentDefinition[] = [
 
 /**
  * Le catalogue natif, étendu des agents génériques déclarés en configuration
- * (`OrchConfig.agents`, section `[[agent]]` du TOML) — voir C1 de la revue
+ * (`CaesarConfig.agents`, section `[[agent]]` du TOML) — voir C1 de la revue
  * finale : jusqu'ici, `createGenericAgent` n'était jamais appelé en
  * production, et un agent déclaré en configuration restait invisible de
- * `orch run`, `orch agents list`, `orch doctor` et `orch_list_agents`.
+ * `caesar run`, `caesar agents list`, `caesar doctor` et `caesar_list_agents`.
  *
  * `extraAgents` gagne en cas de collision d'identifiant avec le catalogue
  * natif (même règle que `mergeConfig`/`mergeByKey`, `config.ts`) : une entrée
@@ -64,8 +64,8 @@ export async function findBinaryInPath(bin: string): Promise<string | null> {
   // celle que `spawn` applique déjà au lancement. Sans ce cas, `join(dir,
   // "/opt/mon-cli")` produisait "/usr/bin/opt/mon-cli" pour chaque répertoire
   // du PATH, donc toujours `null` — un agent déclaré par chemin absolu
-  // tournait parfaitement mais était rapporté "absent" par `orch doctor`,
-  // `orch agents list` et l'écran Agents du TUI.
+  // tournait parfaitement mais était rapporté "absent" par `caesar doctor`,
+  // `caesar agents list` et l'écran Agents du TUI.
   if (bin.includes("/")) {
     try {
       await access(bin, constants.X_OK);
@@ -114,7 +114,7 @@ async function probeVersion(bin: string): Promise<string | undefined> {
  * Détecte si le binaire d'un agent est installé, et relève sa version quand
  * l'appel est bon marché (`--version`, borné dans le temps). Ne fait pas
  * partie de cette détection : le lancement d'une vraie tâche, ni aucune
- * sous-commande CLI (`orch doctor` viendra avec le package `cli`).
+ * sous-commande CLI (`caesar doctor` viendra avec le package `cli`).
  */
 export async function detectAgentInstallation(def: AgentDefinition): Promise<AgentInstallStatus> {
   const path = await findBinaryInPath(def.bin);
@@ -162,7 +162,7 @@ export function describeAgentCapabilities(def: AgentDefinition): string[] {
  *
  * L'énumération en toutes lettres dépasse à elle seule la largeur d'un
  * terminal dès qu'un agent est bien pourvu : dans une vue d'ensemble comme
- * `orch doctor`, ce qu'on cherche est la présence ou l'absence de chaque
+ * `caesar doctor`, ce qu'on cherche est la présence ou l'absence de chaque
  * capacité, pas sa formulation. Les deux fonctions décrivent le même objet et
  * doivent rester alignées : une capacité ajoutée à l'une se traduit dans
  * l'autre (un test le vérifie).

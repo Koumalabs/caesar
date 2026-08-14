@@ -3,7 +3,7 @@ import { makeIo, type CapturedIo } from "../../test/support.js";
 import { runProtocolSchema } from "./protocol.js";
 import { EXIT_OK, EXIT_USAGE } from "../output.js";
 
-describe("orch protocol schema", () => {
+describe("caesar protocol schema", () => {
   it("sans argument : liste les trois documents disponibles", async () => {
     const io: CapturedIo = makeIo();
     const code = await runProtocolSchema(undefined, { json: true }, io);
@@ -39,7 +39,7 @@ describe("orch protocol schema", () => {
     // Codex, sur `commands_run.items.exit_code`). L'intention d'I2 — ne pas
     // faire fabriquer un `usage.cost_usd` mesuré ni une `findings[].line`
     // inventée — tient par la nullabilité de ces champs. La règle elle-même
-    // est vérifiée à toute profondeur côté `@orch/protocol` ; ici on vérifie
+    // est vérifiée à toute profondeur côté `@caesar/protocol` ; ici on vérifie
     // que la commande la publie sans la déformer.
     const io: CapturedIo = makeIo();
     const code = await runProtocolSchema("report", { strict: true }, io);

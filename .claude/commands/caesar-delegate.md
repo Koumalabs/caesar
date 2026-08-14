@@ -17,7 +17,7 @@ Delegate this implementation to an external coding agent: **$ARGUMENTS**
 
 3. **Delegate.** Use `role: "implementer"` unless a specific provider was named, in which case pass
    `agent` instead. Use `mode: "write"` and leave `isolation` alone — `auto` already puts the work on
-   a disposable worktree. Check `orch_list_agents` first only if unsure which providers are usable.
+   a disposable worktree. Check `caesar_list_agents` first only if unsure which providers are usable.
    The call returns a task id immediately; the task is still running.
 
 4. **Wait.** Call the wait tool with that task id. If it comes back pending, wait again rather than

@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TASK_PROTOCOL, TaskSchema, readEvents, taskEnv, taskPaths, writeTask } from "@orch/protocol";
-import type { OrchEvent, Task, TaskPaths } from "@orch/protocol";
+import { TASK_PROTOCOL, TaskSchema, readEvents, taskEnv, taskPaths, writeTask } from "@caesar/protocol";
+import type { CaesarEvent, Task, TaskPaths } from "@caesar/protocol";
 import { isRecord, parseJsonLine } from "../adapters/json-line.js";
 import type { AgentDefinition, SpawnPlan, Translation } from "../registry/types.js";
 import { runAgentProcess } from "./spawn.js";
@@ -123,7 +123,7 @@ describe("runAgentProcess", () => {
   let dir: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), "orch-spawn-"));
+    dir = await mkdtemp(join(tmpdir(), "caesar-spawn-"));
   });
 
   afterEach(async () => {
@@ -132,7 +132,7 @@ describe("runAgentProcess", () => {
 
   it("capture les événements d'un flux connu, avec started/finished et compteur croissant", async () => {
     const { task, paths } = await setupTask(dir, {});
-    const seen: OrchEvent[] = [];
+    const seen: CaesarEvent[] = [];
     const result = await runAgentProcess({
       agent: stubAgent,
       plan: planFor(task, paths),
@@ -173,7 +173,7 @@ describe("runAgentProcess", () => {
 
   it("relaie un code de sortie non nul", async () => {
     const { task, paths } = await setupTask(dir, { mode: "fail", exitCode: 7 });
-    const events: OrchEvent[] = [];
+    const events: CaesarEvent[] = [];
     const result = await runAgentProcess({
       agent: stubAgent,
       plan: planFor(task, paths),
@@ -191,7 +191,7 @@ describe("runAgentProcess", () => {
 
   it("le timeout déclenche SIGTERM et la terminaison du processus", async () => {
     const { task, paths } = await setupTask(dir, { mode: "hang" });
-    const events: OrchEvent[] = [];
+    const events: CaesarEvent[] = [];
     const result = await runAgentProcess({
       agent: stubAgent,
       plan: planFor(task, paths),

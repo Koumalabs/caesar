@@ -1,6 +1,6 @@
 /**
  * Lancement du processus d'un sous-agent et normalisation de son flux de
- * sortie vers le vocabulaire commun d'`@orch/protocol`.
+ * sortie vers le vocabulaire commun d'`@caesar/protocol`.
  *
  * C'est ici, et seulement ici, qu'un processus fils existe : le reste du
  * moteur ne connaît que des `SpawnPlan` en entrée et des `RunResult` en
@@ -11,8 +11,8 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline";
-import type { OrchEvent, TaskPaths } from "@orch/protocol";
-import { appendEvent, makeEvent } from "@orch/protocol";
+import type { CaesarEvent, TaskPaths } from "@caesar/protocol";
+import { appendEvent, makeEvent } from "@caesar/protocol";
 import type { AgentDefinition, PartialEvent, PreparedFile, SpawnPlan } from "../registry/types.js";
 
 /** Délai de grâce entre le SIGTERM et le SIGKILL, en cas d'absence de sortie. */
@@ -25,11 +25,11 @@ export interface RunOptions {
   taskId: string;
   timeoutMs: number;
   signal?: AbortSignal;
-  onEvent?: (event: OrchEvent) => void;
+  onEvent?: (event: CaesarEvent) => void;
   /**
    * Appelé dès que le pid du sous-processus est connu, avant tout traitement
    * de sa sortie. Sert uniquement à `runner.ts` pour renseigner `TaskRecord.pid`
-   * au plus tôt (voir le brief de la tâche 6, extension `orch cancel`) ; ignoré
+   * au plus tôt (voir le brief de la tâche 6, extension `caesar cancel`) ; ignoré
    * si le processus échoue à démarrer (pas de pid dans ce cas).
    */
   onSpawn?: (pid: number) => void | Promise<void>;
@@ -112,7 +112,7 @@ async function runWithFiles(options: RunOptions, startedAt: number): Promise<Run
   let eventCount = 0;
 
   async function emit(partial: PartialEvent): Promise<void> {
-    const event = toOrchEvent(taskId, seq++, partial);
+    const event = toCaesarEvent(taskId, seq++, partial);
     eventCount++;
     await appendEvent(paths, event);
     safeOnEvent(onEvent, event);
@@ -236,7 +236,7 @@ async function runWithFiles(options: RunOptions, startedAt: number): Promise<Run
  * un callback d'affichage qui casse à cet instant ne doit pas transformer un
  * problème de présentation en sous-processus orphelin.
  */
-function safeOnEvent(onEvent: RunOptions["onEvent"], event: OrchEvent): void {
+function safeOnEvent(onEvent: RunOptions["onEvent"], event: CaesarEvent): void {
   if (!onEvent) return;
   try {
     onEvent(event);
@@ -262,7 +262,7 @@ async function safeOnSpawn(onSpawn: RunOptions["onSpawn"], pid: number): Promise
 }
 
 /** Complète un événement partiel avec les champs communs (protocole, seq, horodatage, tâche). */
-function toOrchEvent(taskId: string, seq: number, partial: PartialEvent): OrchEvent {
+function toCaesarEvent(taskId: string, seq: number, partial: PartialEvent): CaesarEvent {
   const { type, ...fields } = partial;
   // `makeEvent` est générique sur un type précis de l'union ; `partial` porte
   // un type déjà restreint à cette même union sans les champs communs

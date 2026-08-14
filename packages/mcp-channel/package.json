@@ -1,12 +1,12 @@
 {
-  "name": "@orch/mcp-channel",
+  "name": "@caesar/mcp-channel",
   "version": "0.1.0",
   "description": "Canal retour MCP injecté dans les sous-agents : report_progress, ask_orchestrator, submit_report",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "orch-channel": "./dist/bin.js"
+    "caesar-channel": "./dist/bin.js"
   },
   "exports": {
     ".": "./dist/index.js"
@@ -14,7 +14,7 @@
   "files": ["dist"],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@orch/protocol": "workspace:*",
+    "@caesar/protocol": "workspace:*",
     "zod": "^4.4.3"
   }
 }

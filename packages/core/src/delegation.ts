@@ -3,8 +3,8 @@
  * isolation, réseau, timeout, contexte — en ce qu'il faut pour appeler
  * `runTask`, ou en un refus portant un motif prêt à afficher.
  *
- * Point d'assemblage partagé par `orch run` (`packages/cli/src/commands/run.ts`)
- * et `orch_delegate` (`packages/mcp-server/src/tools/delegate.ts`), qui
+ * Point d'assemblage partagé par `caesar run` (`packages/cli/src/commands/run.ts`)
+ * et `caesar_delegate` (`packages/mcp-server/src/tools/delegate.ts`), qui
  * appliquaient jusqu'ici cette même règle en deux endroits, avec le même
  * risque qu'une seule des deux copies dérive au fil d'une future
  * modification — voir le rapport de correction de la tâche 7. Ordre de
@@ -15,7 +15,7 @@
  * retenus).
  *
  * Ne dépend d'aucun contexte propre à une façade (pas d'`Io` du CLI, pas de
- * session MCP) : uniquement des types de `@orch/core`/`@orch/protocol`, pour
+ * session MCP) : uniquement des types de `@caesar/core`/`@caesar/protocol`, pour
  * rester réutilisable telle quelle par le TUI (tâche à venir).
  *
  * Ce que cette fonction ne fait pas, délibérément : elle ne valide pas la
@@ -26,9 +26,9 @@
  * `context` (le `@fichier` du CLI est résolu par son appelant) : elle ne fait
  * que fusionner le contexte déjà résolu avec le prompt système du rôle.
  */
-import { ENV } from "@orch/protocol";
-import type { Isolation, TaskMode } from "@orch/protocol";
-import type { OrchConfig } from "./config.js";
+import { ENV } from "@caesar/protocol";
+import type { Isolation, TaskMode } from "@caesar/protocol";
+import type { CaesarConfig } from "./config.js";
 import { parseDuration } from "./config.js";
 import { checkDelegation } from "./policy.js";
 import { decideNetwork } from "./network.js";
@@ -54,7 +54,7 @@ export interface DelegationParams {
    * voir C4 de la revue finale : un paramètre à valeur par défaut
    * (`params.depth ?? 0`) est ce qui a laissé `max_depth` inappliqué sans
    * qu'aucun test ni la compilation ne le remarque. 0 pour un appel de
-   * premier niveau (CLI, serveur MCP, sans `$ORCH_DEPTH` hérité) ; voir
+   * premier niveau (CLI, serveur MCP, sans `$CAESAR_DEPTH` hérité) ; voir
    * `nextDelegationDepth` pour le calcul attendu côté façade.
    */
   depth: number;
@@ -62,9 +62,9 @@ export interface DelegationParams {
 
 /**
  * Profondeur à assigner à la *prochaine* délégation, calculée depuis
- * `$ORCH_DEPTH` hérité du processus courant — voir C4 de la revue finale :
+ * `$CAESAR_DEPTH` hérité du processus courant — voir C4 de la revue finale :
  * cette variable était bien exportée vers les sous-processus (`taskEnv`,
- * `@orch/protocol`) mais jamais relue par personne, ce qui rendait
+ * `@caesar/protocol`) mais jamais relue par personne, ce qui rendait
  * `max_depth` inapplicable dès qu'un agent délégant tournait lui-même comme
  * sous-agent d'une délégation précédente. `Number(process.env[...])` invalide
  * ou absent retombe sur 0 plutôt que sur `NaN` — un `NaN >= max_depth` serait
@@ -111,10 +111,10 @@ export interface ResolvedDelegation {
 
 export type DelegationResult = ResolvedDelegation | { error: string };
 
-export async function resolveDelegation(config: OrchConfig, root: string, params: DelegationParams): Promise<DelegationResult> {
+export async function resolveDelegation(config: CaesarConfig, root: string, params: DelegationParams): Promise<DelegationResult> {
   // Motif générique, volontairement sans nom de flag ni de champ : cette
   // fonction ne sait pas depuis quelle façade elle est appelée. Le CLI
-  // (`orch run`) vérifie cette même condition en amont, avant d'appeler
+  // (`caesar run`) vérifie cette même condition en amont, avant d'appeler
   // `resolveDelegation`, pour rendre son propre message nommant les flags
   // exacts (`--agent`/`--role`) — voir `run.ts` et le rapport de correction
   // de la tâche 7. Pour le serveur MCP, dont les paramètres se nomment

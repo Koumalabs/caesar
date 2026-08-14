@@ -10,7 +10,7 @@ Get an independent review of: **$ARGUMENTS**
    this conversation, so the material has to travel inside the delegation: inline the patch and the
    surrounding code it cannot infer, not paths to them.
 
-2. **Pick a different provider.** Call `orch_list_agents` and choose an installed, allowed provider
+2. **Pick a different provider.** Call `caesar_list_agents` and choose an installed, allowed provider
    **other than the one that produced the code** — including when this session wrote it. An author
    reviewing their own work reproduces their own blind spot. Say which provider was chosen and why.
 

@@ -1,9 +1,9 @@
 /**
- * `orch protocol schema [task|report|event]` : publie le JSON Schema du
- * standard `@orch/protocol`. Sans argument, liste les documents disponibles.
+ * `caesar protocol schema [task|report|event]` : publie le JSON Schema du
+ * standard `@caesar/protocol`. Sans argument, liste les documents disponibles.
  */
-import type { SchemaName } from "@orch/protocol";
-import { jsonSchemaFor, strictReportJsonSchema } from "@orch/protocol";
+import type { SchemaName } from "@caesar/protocol";
+import { jsonSchemaFor, strictReportJsonSchema } from "@caesar/protocol";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_USAGE, printError, printJson, writeLine } from "../output.js";
 

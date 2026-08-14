@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { OrchEventInput } from "@orch/protocol";
-import { ENV, EventSchema } from "@orch/protocol";
+import type { CaesarEventInput } from "@caesar/protocol";
+import { ENV, EventSchema } from "@caesar/protocol";
 import { allowInplaceWrite, FAKE_AGENT_PATH, makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
 import { runPolicyDeny } from "./policy.js";
 import { describeEvent, formatEventLine, runRun } from "./run.js";
@@ -16,8 +16,8 @@ const execFileAsync = promisify(execFile);
 
 async function initGitRepo(root: string): Promise<void> {
   await execFileAsync("git", ["init", "-q"], { cwd: root });
-  await execFileAsync("git", ["config", "user.email", "orch-test@example.com"], { cwd: root });
-  await execFileAsync("git", ["config", "user.name", "Orch Test"], { cwd: root });
+  await execFileAsync("git", ["config", "user.email", "caesar-test@example.com"], { cwd: root });
+  await execFileAsync("git", ["config", "user.name", "Caesar Test"], { cwd: root });
   await writeFile(join(root, "a.txt"), "hello\n", "utf8");
   await execFileAsync("git", ["add", "a.txt"], { cwd: root });
   await execFileAsync("git", ["commit", "-q", "-m", "init"], { cwd: root });
@@ -39,12 +39,12 @@ async function initGitRepoAllowingInplaceWrite(root: string): Promise<void> {
   await allowInplaceWrite(root);
 }
 
-describe("orch run", () => {
+describe("caesar run", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-run-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-run-"));
     io = makeIo();
   });
 
@@ -78,7 +78,7 @@ describe("orch run", () => {
         // mode "success" (défaut) : le processus sort en code 0. `status: "failed"`
         // (surcharge du rapport écrit) : l'agent déclare néanmoins un échec.
         // Avant I3, exit code et "statut : succeeded" ne regardaient que le
-        // processus — une automatisation qui enchaîne sur "orch run" aurait
+        // processus — une automatisation qui enchaîne sur "caesar run" aurait
         // conclu au succès sur cette tâche.
         const code = await runRun(
           root,
@@ -143,7 +143,7 @@ describe("orch run", () => {
       // l'issue, l'opt-in la dérogation.
       expect(io.stderrText()).toMatch(/\[worktree\]/);
       expect(io.stderrText()).toMatch(/allow_inplace_write/);
-      await expect(readFile(join(root, ".orch", "tasks"), "utf8")).rejects.toThrow();
+      await expect(readFile(join(root, ".caesar", "tasks"), "utf8")).rejects.toThrow();
     });
   });
 
@@ -156,7 +156,7 @@ describe("orch run", () => {
     );
   }, 20_000);
 
-  it("un agent refusé par la politique sort en code 2 avec le motif rendu par @orch/core, mot pour mot", async () => {
+  it("un agent refusé par la politique sort en code 2 avec le motif rendu par @caesar/core, mot pour mot", async () => {
     await withFakeHome(async () => {
       await runPolicyDeny(root, "codex", {}, makeIo());
       const code = await runRun(root, "tâche", { agent: "codex" }, io);
@@ -354,12 +354,12 @@ describe("orch run", () => {
    * qui masquerait un identifiant du catalogue natif plutôt que d'en déclarer
    * un nouveau.
    */
-  it("C1 : un agent déclaré en [[agent]] (.orch/config.toml) tourne de bout en bout via \"orch run\"", async () => {
+  it("C1 : un agent déclaré en [[agent]] (.caesar/config.toml) tourne de bout en bout via \"caesar run\"", async () => {
     await withFakeHome(async () => {
       // Reproduit littéralement le repro de C1 dans la revue finale :
-      // `orch run --agent mon-agent-bash` répondait jusqu'ici "Agent inconnu"
+      // `caesar run --agent mon-agent-bash` répondait jusqu'ici "Agent inconnu"
       // (exit 2), alors que la configuration était bien lue.
-      await mkdir(join(root, ".orch"), { recursive: true });
+      await mkdir(join(root, ".caesar"), { recursive: true });
       const toml = [
         "[[agent]]",
         'id = "mon-agent-bash"',
@@ -367,7 +367,7 @@ describe("orch run", () => {
         `args = [${JSON.stringify(FAKE_AGENT_PATH)}, "{{prompt}}"]`,
         "",
       ].join("\n");
-      await writeFile(join(root, ".orch", "config.toml"), toml, "utf8");
+      await writeFile(join(root, ".caesar", "config.toml"), toml, "utf8");
 
       const code = await runRun(
         root,
@@ -383,10 +383,10 @@ describe("orch run", () => {
     });
   }, 20_000);
 
-  it("C4 : une profondeur héritée de $ORCH_DEPTH atteignant max_depth refuse la délégation", async () => {
+  it("C4 : une profondeur héritée de $CAESAR_DEPTH atteignant max_depth refuse la délégation", async () => {
     await withFakeHome(async () => {
       // policy.max_depth vaut 2 par défaut (config.ts, DEFAULT_POLICY).
-      // $ORCH_DEPTH="1" simule un `orch run` tournant lui-même comme
+      // $CAESAR_DEPTH="1" simule un `caesar run` tournant lui-même comme
       // sous-agent d'une délégation de profondeur 1 : la délégation suivante
       // serait donc de profondeur 2, qui atteint exactement max_depth — et
       // doit être refusée (isDepthAllowed : depth >= max_depth). Avant C4 de
@@ -434,7 +434,7 @@ describe("orch run", () => {
         // la preuve que l'argument est réellement parvenu au sous-processus,
         // et non seulement au `RunTaskInput`.
         const taskId = JSON.parse(io.stdoutText()).task_id as string;
-        const events = await readFile(join(root, ".orch", "tasks", taskId, "events.jsonl"), "utf8");
+        const events = await readFile(join(root, ".caesar", "tasks", taskId, "events.jsonl"), "utf8");
         const started = events
           .split("\n")
           .filter((line) => line.trim() !== "")
@@ -446,12 +446,12 @@ describe("orch run", () => {
   }, 20_000);
 });
 
-describe("orch run — arguments bruts et le séparateur « -- »", () => {
+describe("caesar run — arguments bruts et le séparateur « -- »", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-dashdash-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-dashdash-"));
     io = makeIo();
   });
 
@@ -460,10 +460,10 @@ describe("orch run — arguments bruts et le séparateur « -- »", () => {
   });
 
   it("refuse des opérandes en trop sans séparateur — une coquille reste une coquille", async () => {
-    // Commander refusait déjà `orch run "obj" coquille` (« too many
+    // Commander refusait déjà `caesar run "obj" coquille` (« too many
     // arguments ») ; l'argument variadique qui recueille ce qui suit « -- »
     // aurait supprimé ce refus sans cette garde.
-    const code = await runCli(["node", "orch", "run", "--root", root, "objectif", "coquille"], io);
+    const code = await runCli(["node", "caesar", "run", "--root", root, "objectif", "coquille"], io);
     expect(code).toBe(EXIT_USAGE);
     expect(io.stderrText()).toContain("« -- »");
     expect(io.stderrText()).toContain("coquille");
@@ -472,7 +472,7 @@ describe("orch run — arguments bruts et le séparateur « -- »", () => {
   it("laisse passer les mêmes arguments dès qu'ils suivent le séparateur", async () => {
     // Sans agent installé, la délégation échoue plus loin — mais plus sur la
     // garde de forme : le message ne parle plus du séparateur.
-    const code = await runCli(["node", "orch", "run", "--root", root, "--agent", "agent-absent", "objectif", "--", "coquille"], io);
+    const code = await runCli(["node", "caesar", "run", "--root", root, "--agent", "agent-absent", "objectif", "--", "coquille"], io);
     expect(code).toBe(EXIT_USAGE);
     expect(io.stderrText()).not.toContain("« -- »");
   });
@@ -483,13 +483,13 @@ describe("orch run — arguments bruts et le séparateur « -- »", () => {
  * tests n'émet pas de lignes au format d'un CLI réel, aucun test de bout en
  * bout ne passerait donc par ces branches.
  */
-describe("orch run — l'avancement affiché", () => {
-  function ev(partial: Omit<OrchEventInput, "protocol" | "seq" | "at" | "task_id">) {
-    return EventSchema.parse({ protocol: "orch.event/v1", seq: 0, at: "2026-08-11T14:00:00.000Z", task_id: "t", ...partial });
+describe("caesar run — l'avancement affiché", () => {
+  function ev(partial: Omit<CaesarEventInput, "protocol" | "seq" | "at" | "task_id">) {
+    return EventSchema.parse({ protocol: "caesar.event/v1", seq: 0, at: "2026-08-11T14:00:00.000Z", task_id: "t", ...partial });
   }
 
   /** La ligne telle qu'elle s'écrit, sur un flux sans couleur. */
-  function ligne(partial: Omit<OrchEventInput, "protocol" | "seq" | "at" | "task_id">): string | undefined {
+  function ligne(partial: Omit<CaesarEventInput, "protocol" | "seq" | "at" | "task_id">): string | undefined {
     const line = describeEvent(ev(partial));
     return line ? formatEventLine(line, makeIo()) : undefined;
   }
@@ -503,7 +503,7 @@ describe("orch run — l'avancement affiché", () => {
   });
 
   it("lit le résumé d'un rapport plutôt que d'en déverser le JSON", () => {
-    const rapport = JSON.stringify({ protocol: "orch.report/v1", status: "partial", summary: "Je crée les trois fichiers." });
+    const rapport = JSON.stringify({ protocol: "caesar.report/v1", status: "partial", summary: "Je crée les trois fichiers." });
     expect(ligne({ type: "message", text: rapport })).toBe("  » agent      Je crée les trois fichiers.");
   });
 

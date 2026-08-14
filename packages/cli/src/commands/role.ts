@@ -1,5 +1,5 @@
 /**
- * `orch role list|show|add|remove`.
+ * `caesar role list|show|add|remove`.
  *
  * `add`/`remove` écrivent une seule couche (`--global`/`--local`, projet par
  * défaut), jamais la fusion : voir le brief de la tâche 13. Contrairement
@@ -14,9 +14,9 @@
  * `mergeConfig`) —, le dire clairement plutôt que de rendre EXIT_OK sans
  * rien avoir changé.
  */
-import type { NetworkRequest, RoleConfig } from "@orch/core";
-import { loadConfig, loadLayer, parseDuration, pickAgentForRole, resolveInstalledMap, resolveRole, roleProvenance, saveLayer } from "@orch/core";
-import type { Isolation, TaskMode } from "@orch/protocol";
+import type { NetworkRequest, RoleConfig } from "@caesar/core";
+import { loadConfig, loadLayer, parseDuration, pickAgentForRole, resolveInstalledMap, resolveRole, roleProvenance, saveLayer } from "@caesar/core";
+import type { Isolation, TaskMode } from "@caesar/protocol";
 import { ISOLATIONS, NETWORK_REQUEST_VALUES, TASK_MODES } from "../flags.js";
 import type { Cell, Io } from "../output.js";
 import {
@@ -34,7 +34,7 @@ import {
 import type { ScopeOptions } from "../scope.js";
 import { resolveScope, scopeFlagHint, scopeLabel } from "../scope.js";
 
-/** Agents référencés par un ensemble de rôles, tous à la fois (`resolveInstalledMap` de `@orch/core` ne prend qu'une seule liste). */
+/** Agents référencés par un ensemble de rôles, tous à la fois (`resolveInstalledMap` de `@caesar/core` ne prend qu'une seule liste). */
 function agentIdsOf(roles: readonly RoleConfig[]): string[] {
   const ids = new Set<string>();
   for (const role of roles) for (const id of role.agents) ids.add(id);

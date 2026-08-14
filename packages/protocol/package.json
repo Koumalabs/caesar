@@ -1,5 +1,5 @@
 {
-  "name": "@orch/protocol",
+  "name": "@caesar/protocol",
   "version": "0.1.0",
   "description": "Le standard de communication entre un orchestrateur et ses sous-agents de code",
   "type": "module",

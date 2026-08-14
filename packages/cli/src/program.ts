@@ -1,6 +1,6 @@
 /**
  * Câblage commander des sous-commandes décrites par le brief de la tâche 6,
- * autour de `@orch/core` : `buildProgram` construit le programme, `runCli`
+ * autour de `@caesar/core` : `buildProgram` construit le programme, `runCli`
  * l'enveloppe (parse `argv`, traduit les `CommanderError` en code de sortie).
  * Aucune des deux ne parse `process.argv` ni n'appelle `process.exit` — ce
  * sont des fonctions pures du point de vue du processus, ce qui les rend
@@ -16,7 +16,7 @@
  * Séparé ici en revue de la tâche 12 : `bin.ts` importé par `bun-entry.ts`
  * (pour réutiliser `runCli` "le programme commander existant" plutôt que de
  * le dupliquer) exécutait alors *deux fois* le CLI dans le binaire compilé —
- * un double `orch --version`/`orch doctor` constaté en vérifiant le binaire
+ * un double `caesar --version`/`caesar doctor` constaté en vérifiant le binaire
  * réel, jamais dans les tests `vitest`, qui n'assemblent jamais un binaire
  * Bun. La cause : dans un exécutable produit par `bun build --compile`,
  * `import.meta.url` vaut la même URL virtuelle (`file:///$bunfs/root/<nom
@@ -87,8 +87,8 @@ function withCommonOptions(command: Command): Command {
  */
 function withScopeOptions(command: Command): Command {
   return command
-    .option("--global", "Cible la couche globale (~/.config/orch/config.toml) plutôt que la couche projet.")
-    .option("--local", "Cible la couche locale du projet (.orch/config.local.toml, non versionnée) plutôt que la couche projet.");
+    .option("--global", "Cible la couche globale (~/.config/caesar/config.toml) plutôt que la couche projet.")
+    .option("--local", "Cible la couche locale du projet (.caesar/config.local.toml, non versionnée) plutôt que la couche projet.");
 }
 
 /**
@@ -105,12 +105,12 @@ function withScopeOptions(command: Command): Command {
 export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: readonly string[] = []): Command {
   const program = new Command();
   program
-    .name("orch")
+    .name("caesar")
     .description("Orchestrateur de sous-agents de code (Antigravity, Codex, OpenCode, Copilot, Claude).")
     // Les libellés par défaut de commander sont en anglais : sans ces trois
     // remplacements, « output the version number » et « display help for
     // command » figuraient au milieu d'une aide entièrement française.
-    .version(VERSION, "-V, --version", "Affiche la version d'orch.")
+    .version(VERSION, "-V, --version", "Affiche la version de caesar.")
     .helpOption("-h, --help", "Affiche cette aide.")
     .helpCommand("help [commande]", "Affiche l'aide d'une commande.")
     .exitOverride()
@@ -120,8 +120,8 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     })
     // Posé **avant** la création des sous-commandes : commander copie la
     // configuration d'aide au moment du `.command()`, jamais après. Réglée
-    // plus bas, elle ne s'appliquerait qu'à `orch --help` et laisserait
-    // `orch run --help` en anglais.
+    // plus bas, elle ne s'appliquerait qu'à `caesar --help` et laisserait
+    // `caesar run --help` en anglais.
     .configureHelp({ formatHelp: (cmd, helper) => formatHelp(cmd, helper, io) });
 
   async function run(action: () => Promise<number>): Promise<void> {
@@ -152,13 +152,13 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
 
   withCommonOptions(program.command("init"))
     .description(
-      'Crée <root>/.orch/config.toml et les prompts système par défaut de chaque rôle, et dépose la connaissance agentique (skill + commandes) pour les runtimes détectés. Sur un projet déjà initialisé, rafraîchit les assets sans toucher à la configuration ni aux rôles (--force pour tout réinitialiser). --global : ~/.config/orch/config.toml, jamais versionné — le niveau projet, lui, l\'est, donc partagé avec l\'équipe.',
+      'Crée <root>/.caesar/config.toml et les prompts système par défaut de chaque rôle, et dépose la connaissance agentique (skill + commandes) pour les runtimes détectés. Sur un projet déjà initialisé, rafraîchit les assets sans toucher à la configuration ni aux rôles (--force pour tout réinitialiser). --global : ~/.config/caesar/config.toml, jamais versionné — le niveau projet, lui, l\'est, donc partagé avec l\'équipe.',
     )
     .option("--force", "Réinitialise complètement : réécrit la configuration et les prompts système existants (les assets, eux, sont de toute façon toujours rafraîchis).")
-    .option("--global", "Crée/rafraîchit la couche globale (~/.config/orch/config.toml) plutôt que la couche projet — jamais versionnée, propre à ce poste.")
+    .option("--global", "Crée/rafraîchit la couche globale (~/.config/caesar/config.toml) plutôt que la couche projet — jamais versionnée, propre à ce poste.")
     .option(
       "--agent <id>",
-      'Force le dépôt pour ce runtime plutôt que la détection automatique (répétable) : claude, codex, copilot, opencode ou antigravity — le runtime qui LIT la skill (donneur d\'ordre), pas l\'exécutant choisi par "orch run --agent".',
+      'Force le dépôt pour ce runtime plutôt que la détection automatique (répétable) : claude, codex, copilot, opencode ou antigravity — le runtime qui LIT la skill (donneur d\'ordre), pas l\'exécutant choisi par "caesar run --agent".',
       (value: string, previous: string[] = []) => [...previous, value],
     )
     .option("--no-skills", 'Ne dépose ni ne rafraîchit la skill ou les commandes agentiques. Non mémorisé : à repasser à chaque "init".')
@@ -198,7 +198,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
         // L'accepter en silence laisserait croire qu'il a été honoré :
         // refusé explicitement plutôt qu'ignoré (revue de la tâche 10).
         if (opts.json) {
-          printError(io, '--json n\'a pas de sens pour "orch config" : cette commande lance un TUI interactif, pas une sortie machine.');
+          printError(io, '--json n\'a pas de sens pour "caesar config" : cette commande lance un TUI interactif, pas une sortie machine.');
           return EXIT_USAGE;
         }
         return runConfig(await resolveRoot(opts.root), io);
@@ -425,7 +425,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     .argument("<objective>", "L'objectif confié à l'agent, en une phrase.")
     .argument(
       "[extra_args...]",
-      "Arguments bruts transmis tels quels au CLI de l'agent, après « -- ». Échappatoire pour ce qu'orch n'expose pas : orch run --agent codex \"…\" -- --enable feature_x",
+      "Arguments bruts transmis tels quels au CLI de l'agent, après « -- ». Échappatoire pour ce que caesar n'expose pas : caesar run --agent codex \"…\" -- --enable feature_x",
     )
     .option("--role <name>", "Rôle à travers lequel choisir l'agent.")
     .option("--agent <id>", "Agent à utiliser directement (l'emporte sur --role).")
@@ -463,7 +463,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
         await run(async () => {
           // Commander ne distingue pas les opérandes en trop de ce qui suit
           // « -- » : les deux atterrissent dans le même variadique. Sans cette
-          // vérification, `orch run "obj" coquille` partirait silencieusement
+          // vérification, `caesar run "obj" coquille` partirait silencieusement
           // vers l'agent, alors que commander le refusait jusqu'ici (« too many
           // arguments »). C'est ce refus qu'on préserve, sauf intention écrite.
           if (extraArgs.length > 0 && !argv.includes("--")) {
@@ -578,7 +578,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     });
 
   withCommonOptions(mcp.command("install"))
-    .description("Enregistre \"orch\" auprès d'un client MCP : claude, codex, copilot, opencode ou antigravity.")
+    .description("Enregistre \"caesar\" auprès d'un client MCP : claude, codex, copilot, opencode ou antigravity.")
     .argument("<client>", "claude, codex, copilot, opencode ou antigravity")
     .option("--dry-run", "Affiche ce qui serait fait (commande exécutée ou fichier écrit), sans rien exécuter ni écrire.")
     .action(async (client: string, options: GlobalOptions & { dryRun?: boolean }, command: Command) => {
@@ -591,9 +591,9 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   // ---------------------------------------------------------------------
 
   // Groupe caché : atteint par auto-invocation depuis le binaire compilé
-  // (voir `configureChannelLauncher` dans `@orch/core` et `bun-entry.ts`),
-  // jamais tapé à la main — masqué de `orch --help` (`{ hidden: true }`),
-  // toujours joignable explicitement (`orch channel serve --task-dir <dir>`).
+  // (voir `configureChannelLauncher` dans `@caesar/core` et `bun-entry.ts`),
+  // jamais tapé à la main — masqué de `caesar --help` (`{ hidden: true }`),
+  // toujours joignable explicitement (`caesar channel serve --task-dir <dir>`).
   const channel = program
     .command("channel", { hidden: true })
     .description("Canal retour MCP : sous-commandes internes, atteintes par auto-invocation.");
@@ -610,7 +610,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   // protocol
   // ---------------------------------------------------------------------
 
-  const protocol = program.command("protocol").description("Le standard @orch/protocol : JSON Schema publiés.");
+  const protocol = program.command("protocol").description("Le standard @caesar/protocol : JSON Schema publiés.");
 
   withCommonOptions(protocol.command("schema"))
     .description("Publie le JSON Schema d'un document du standard (task, report, event). Sans argument : les liste.")

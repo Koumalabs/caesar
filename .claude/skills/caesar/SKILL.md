@@ -1,18 +1,18 @@
 ---
-name: orch
+name: caesar
 description: Use when work should go to an external coding agent (codex, claude, copilot, opencode, antigravity) — delegating an implementation or an independent review, fanning work out in parallel, racing providers on one objective, following running delegations, or landing a returned diff.
 ---
 
 # Directing external coding agents
 
-The delegation tools — `orch_delegate`, `orch_await`, `orch_status`, `orch_logs`, `orch_diff`,
-`orch_apply`, `orch_cancel`, `orch_answer`, `orch_list_agents`, `orch_list_roles` — run coding-agent
+The delegation tools — `caesar_delegate`, `caesar_await`, `caesar_status`, `caesar_logs`, `caesar_diff`,
+`caesar_apply`, `caesar_cancel`, `caesar_answer`, `caesar_list_agents`, `caesar_list_roles` — run coding-agent
 CLIs as separate processes. Their descriptions carry the mechanics. This document carries the
 judgment: when to hand work over, how to cut it, and how to control what comes back.
 
 Detail lives in the references:
 
-- `references/cli.md` — the sixteen `orch` commands, their flags and exit codes.
+- `references/cli.md` — the sixteen `caesar` commands, their flags and exit codes.
 - `references/config.md` — configuration layers, policy, roles, and the `[worktree]` section.
 - `references/troubleshooting.md` — symptom, cause, remedy.
 - `references/protocol.md` — the file-based contract, for wiring a CLI that is not in the catalogue.
@@ -88,7 +88,7 @@ system. Ground every delegation in what the repository actually contains.
 ### The arbitrations
 
 **`role` or `agent`.** A role carries a fallback chain plus defaults for mode, isolation, network
-and timeout; `orch_list_roles` shows which agent each one resolves to right now, and why earlier
+and timeout; `caesar_list_roles` shows which agent each one resolves to right now, and why earlier
 candidates were skipped. Use a role when any competent provider will do — the chain absorbs a
 missing binary or a policy refusal without you deciding anything. Name an `agent` when the choice
 *is* the point: racing providers, or reviewing with a provider other than the one that wrote the
@@ -138,24 +138,24 @@ If two pieces share a file, merge them into one objective or run them in sequenc
 diffs conflict has cost more than doing the work in a single delegation — you now have two patches,
 neither applicable as-is, and no provider that can reconcile them.
 
-**Each task gets its own workshop.** A worktree under `.orch/wt/<taskId>`, on a disposable branch
-named `orch/<role or agent>/<objective>-<8 hex>`. That is what keeps diffs attributable: readable
+**Each task gets its own workshop.** A worktree under `.caesar/wt/<taskId>`, on a disposable branch
+named `caesar/<role or agent>/<objective>-<8 hex>`. That is what keeps diffs attributable: readable
 one at a time, applicable or discardable one at a time. It is also why racing works at all — two
 providers on the same objective never see each other's files.
 
 **Size the batch to `max_parallel`.** Four by default, and enforced *across processes*: the slots
-are files under `.orch/state/slots/`, shared by everything delegating under the same project root,
+are files under `.caesar/state/slots/`, shared by everything delegating under the same project root,
 including other terminals. Ten objectives against a limit of four means six tasks queueing before
 they start, and a collection call that reports them still pending. Cut into batches you can actually
 hold, or delegate in waves.
 
 **Never let a straggler hold the report.** One slow or hung provider must not delay what the others
-already produced. Stop waiting on it, `orch_cancel` it rather than leaving it running, present the
+already produced. Stop waiting on it, `caesar_cancel` it rather than leaving it running, present the
 tasks that finished, and name the one that did not and what is known about it. A partial report
 delivered now beats a complete one delivered too late to act on.
 
-**Follow the set** with `orch ps` (active tasks plus the most recently finished) or `orch watch
---once` (one snapshot, then exit). `orch watch` *without* `--once` is an interactive view for a
+**Follow the set** with `caesar ps` (active tasks plus the most recently finished) or `caesar watch
+--once` (one snapshot, then exit). `caesar watch` *without* `--once` is an interactive view for a
 human at a terminal: it redraws and never terminates on its own — never call it.
 
 ## Controlling what comes back
@@ -188,15 +188,15 @@ work reproduces their own blind spot; a different provider has different ones.
 
 **Answer rather than let it guess.** Pass `channel: true` on a delegation where a decision you own
 is likely to come up mid-run, watch for the questions surfaced with the task's status, and answer
-them with `orch_answer`. Thirty seconds of answer is cheaper than a blocked report — and much
+them with `caesar_answer`. Thirty seconds of answer is cheaper than a blocked report — and much
 cheaper than a plausible guess. An unanswered question does not stall forever: the sub-agent
 eventually proceeds on its own judgment, so silence is a decision too.
 
 **Applying is a decision, not a final step.** Nothing reaches the repository until it is applied.
 State what is being applied and which criterion it met; when it met none, say so and leave the
-worktree unapplied. Close the loop with `orch gc` once the session's delegations are settled:
+worktree unapplied. Close the loop with `caesar gc` once the session's delegations are settled:
 applied worktrees are collected on their own, and what gc keeps is exactly the work never applied
-— or modified since its application — to settle with `orch diff`/`orch apply` rather than a
+— or modified since its application — to settle with `caesar diff`/`caesar apply` rather than a
 reflexive `--force` (see `references/cli.md`). A diff nobody can defend is not cheaper for having
 been written elsewhere.
 

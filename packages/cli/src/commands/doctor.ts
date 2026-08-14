@@ -1,5 +1,5 @@
 /**
- * `orch doctor` : diagnostic d'installation. Une ligne par agent du
+ * `caesar doctor` : diagnostic d'installation. Une ligne par agent du
  * catalogue — présence, version, capacités, statut vis-à-vis de la politique —
  * suivie de ce qui manque et de comment y remédier.
  *
@@ -18,7 +18,7 @@ import {
   loadConfig,
   policyFieldProvenance,
   remedyFor,
-} from "@orch/core";
+} from "@caesar/core";
 import type { Cell, Io } from "../output.js";
 import {
   EXIT_OK,
@@ -105,7 +105,7 @@ export async function runDoctor(root: string, options: DoctorOptions, io: Io): P
 
   if (missing.length === 0 && denied.length === 0) {
     printDone(io, "Tous les agents du catalogue sont installés et autorisés par la politique.");
-    if (!options.verbose) printNote(io, 'Chemins et capacités en toutes lettres : "orch doctor --verbose".');
+    if (!options.verbose) printNote(io, 'Chemins et capacités en toutes lettres : "caesar doctor --verbose".');
     return EXIT_OK;
   }
 
@@ -131,8 +131,8 @@ export async function runDoctor(root: string, options: DoctorOptions, io: Io): P
       const explicitPath = r.bin.includes("/");
       bullet(
         explicitPath
-          ? `"${r.id}" (${r.display_name}) : "${r.bin}" n'existe pas ou n'est pas exécutable. Corrigez le chemin ("orch agents add ${r.id} --bin <chemin>"), puis relancez "orch doctor".`
-          : `"${r.id}" (${r.display_name}) : binaire "${r.bin}" introuvable dans le PATH. Installez-le, puis relancez "orch doctor".`,
+          ? `"${r.id}" (${r.display_name}) : "${r.bin}" n'existe pas ou n'est pas exécutable. Corrigez le chemin ("caesar agents add ${r.id} --bin <chemin>"), puis relancez "caesar doctor".`
+          : `"${r.id}" (${r.display_name}) : binaire "${r.bin}" introuvable dans le PATH. Installez-le, puis relancez "caesar doctor".`,
       );
     }
     if (denied.length > 0) writeLine(io.stdout);
@@ -147,9 +147,9 @@ export async function runDoctor(root: string, options: DoctorOptions, io: Io): P
       // `.reason`/`.rule` soient accessibles ci-dessous sans cast.
       if (r.policy.allowed) continue;
       // CONTRÔLEUR-1 de la revue finale : le remède dépend de la règle qui a
-      // refusé — ni "orch agents enable" ni "orch policy allow" ne lèvent un
+      // refusé — ni "caesar agents enable" ni "caesar policy allow" ne lèvent un
       // refus par récursion (`allow_recursion`), et seul le premier lève un
-      // refus par "denied" (voir `remedyFor`, `@orch/core`).
+      // refus par "denied" (voir `remedyFor`, `@caesar/core`).
       //
       // La couche qui déclare la règle compte autant que la règle : une
       // commande sans `--global` écrit dans la couche projet et laisse donc

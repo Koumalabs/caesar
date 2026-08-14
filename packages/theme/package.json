@@ -1,5 +1,5 @@
 {
-  "name": "@orch/theme",
+  "name": "@caesar/theme",
   "version": "0.1.0",
   "description": "Palette, glyphes et logotype partagés par la ligne de commande et le TUI",
   "type": "module",

@@ -110,7 +110,7 @@ export function cell(text: string, width: number): string {
 
 /**
  * `text` raccourci **par la gauche** à `width` caractères. Pour un chemin,
- * c'est la fin qui renseigne (`…/mon-projet/.orch/config.toml`) : le tronquer
+ * c'est la fin qui renseigne (`…/mon-projet/.caesar/config.toml`) : le tronquer
  * par la droite comme une valeur ordinaire laisserait le préfixe commun à
  * tous les chemins de la machine, c'est-à-dire rien.
  */

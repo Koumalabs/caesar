@@ -20,17 +20,17 @@ import {
   roleProvenance,
   saveLayer,
   type ConfigLayer,
-  type OrchConfig,
+  type CaesarConfig,
   type PolicyConfig,
   type RoleConfig,
 } from "./config.js";
 
 // `globalConfigPath()` lit `$HOME` à chaque appel (voir node:os#homedir) :
 // pointer HOME vers un répertoire temporaire isole entièrement ces tests du
-// vrai `~/.config/orch/` de la machine, sans avoir à changer la signature
+// vrai `~/.config/caesar/` de la machine, sans avoir à changer la signature
 // de `loadConfig`.
 async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
-  const home = await mkdtemp(join(tmpdir(), "orch-home-"));
+  const home = await mkdtemp(join(tmpdir(), "caesar-home-"));
   const previous = process.env["HOME"];
   process.env["HOME"] = home;
   try {
@@ -113,7 +113,7 @@ describe("defaultConfig", () => {
   });
 
   it("chaque rôle par défaut porte déjà la convention system_prompt_file (roles/<name>.md), sans qu'aucune couche ne l'ait déclarée", () => {
-    // Voir l'en-tête de `DEFAULT_ROLES" (config.ts) : c'est ce qui permet à `orch init` (couche projet) de ne
+    // Voir l'en-tête de `DEFAULT_ROLES" (config.ts) : c'est ce qui permet à `caesar init` (couche projet) de ne
     // matérialiser que les fichiers de prompt, sans avoir à déclarer les rôles dans le TOML du projet.
     for (const role of defaultConfig().roles) {
       expect(role.system_prompt_file).toBe(`roles/${role.name}.md`);
@@ -131,14 +131,14 @@ describe("defaultConfig", () => {
 });
 
 describe("globalConfigPath / projectConfigPath", () => {
-  it("le chemin global se trouve sous ~/.config/orch/config.toml", async () => {
+  it("le chemin global se trouve sous ~/.config/caesar/config.toml", async () => {
     await withFakeHome(async (home) => {
-      expect(globalConfigPath()).toBe(join(home, ".config", "orch", "config.toml"));
+      expect(globalConfigPath()).toBe(join(home, ".config", "caesar", "config.toml"));
     });
   });
 
-  it("le chemin projet se trouve sous <root>/.orch/config.toml", () => {
-    expect(projectConfigPath("/repo")).toBe(join("/repo", ".orch", "config.toml"));
+  it("le chemin projet se trouve sous <root>/.caesar/config.toml", () => {
+    expect(projectConfigPath("/repo")).toBe(join("/repo", ".caesar", "config.toml"));
   });
 
   it("suit $HOME même quand il diffère de ce que os.homedir() rendrait — Bun ignore $HOME dans os.homedir() (tâche 15)", async () => {
@@ -158,7 +158,7 @@ describe("mergeConfig", () => {
   }
 
   it("policy se fusionne champ par champ", () => {
-    const base: OrchConfig = { policy: policyOf({ max_parallel: 4, allow_recursion: false }), roles: [], agents: [] };
+    const base: CaesarConfig = { policy: policyOf({ max_parallel: 4, allow_recursion: false }), roles: [], agents: [] };
     // Un override qui ne précise qu'un sous-ensemble des champs réellement présents dans un
     // fichier TOML : c'est exactement la forme que produit `parseConfigFile` en interne, et ce
     // que le type de `override` (ConfigOverride, policy en Partial<PolicyConfig>) accepte
@@ -185,7 +185,7 @@ describe("mergeConfig", () => {
       isolation: "worktree",
       timeout_ms: 2000,
     };
-    const base: OrchConfig = { policy: defaultConfig().policy, roles: [reviewerA], agents: [] };
+    const base: CaesarConfig = { policy: defaultConfig().policy, roles: [reviewerA], agents: [] };
     const merged = mergeConfig(base, { roles: [reviewerB] });
     expect(merged.roles).toEqual([reviewerB]);
   });
@@ -207,13 +207,13 @@ describe("mergeConfig", () => {
       isolation: "worktree",
       timeout_ms: 1000,
     };
-    const base: OrchConfig = { policy: defaultConfig().policy, roles: [globalRole], agents: [] };
+    const base: CaesarConfig = { policy: defaultConfig().policy, roles: [globalRole], agents: [] };
     const merged = mergeConfig(base, { roles: [projectRole] });
     expect(merged.roles.map((r) => r.name).sort()).toEqual(["global-only", "project-only"]);
   });
 
   it("même logique de fusion par clé pour les agents", () => {
-    const base: OrchConfig = {
+    const base: CaesarConfig = {
       policy: defaultConfig().policy,
       roles: [],
       agents: [{ id: "shared", bin: "old-bin", args: [] }],
@@ -231,7 +231,7 @@ describe("mergeConfig", () => {
   });
 
   it("un override sans policy laisse la policy de base intacte", () => {
-    const base: OrchConfig = { policy: policyOf({ max_parallel: 7 }), roles: [], agents: [] };
+    const base: CaesarConfig = { policy: policyOf({ max_parallel: 7 }), roles: [], agents: [] };
     const merged = mergeConfig(base, {});
     expect(merged.policy.max_parallel).toBe(7);
   });
@@ -241,7 +241,7 @@ describe("loadConfig", () => {
   let projectRoot: string;
 
   beforeEach(async () => {
-    projectRoot = await mkdtemp(join(tmpdir(), "orch-project-"));
+    projectRoot = await mkdtemp(join(tmpdir(), "caesar-project-"));
   });
 
   afterEach(async () => {
@@ -259,8 +259,8 @@ describe("loadConfig", () => {
 
   it("global seul : ses valeurs s'appliquent, la source global est renseignée", async () => {
     await withFakeHome(async (home) => {
-      const globalPath = join(home, ".config", "orch", "config.toml");
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
+      const globalPath = join(home, ".config", "caesar", "config.toml");
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(globalPath, '[policy]\nmax_parallel = 9\n', "utf8");
 
       const loaded = await loadConfig(projectRoot);
@@ -272,26 +272,26 @@ describe("loadConfig", () => {
 
   it("projet seul : ses valeurs s'appliquent, la source projet est renseignée", async () => {
     await withFakeHome(async () => {
-      await mkdir(join(projectRoot, ".orch"), { recursive: true });
-      await writeFile(join(projectRoot, ".orch", "config.toml"), '[policy]\nmax_parallel = 6\n', "utf8");
+      await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+      await writeFile(join(projectRoot, ".caesar", "config.toml"), '[policy]\nmax_parallel = 6\n', "utf8");
 
       const loaded = await loadConfig(projectRoot);
       expect(loaded.config.policy.max_parallel).toBe(6);
-      expect(loaded.sources.project).toBe(join(projectRoot, ".orch", "config.toml"));
+      expect(loaded.sources.project).toBe(join(projectRoot, ".caesar", "config.toml"));
       expect(loaded.sources.global).toBeUndefined();
     });
   });
 
   it("les deux présents : le projet écrase le global sur les champs qu'il précise", async () => {
     await withFakeHome(async (home) => {
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(
-        join(home, ".config", "orch", "config.toml"),
+        join(home, ".config", "caesar", "config.toml"),
         '[policy]\nmax_parallel = 9\nallow_recursion = true\n',
         "utf8",
       );
-      await mkdir(join(projectRoot, ".orch"), { recursive: true });
-      await writeFile(join(projectRoot, ".orch", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
+      await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+      await writeFile(join(projectRoot, ".caesar", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
 
       const loaded = await loadConfig(projectRoot);
       // Précisé par le projet : le projet gagne.
@@ -305,9 +305,9 @@ describe("loadConfig", () => {
 
   it("un rôle projet de même nom qu'un rôle global le remplace entièrement, sans fusion de champs", async () => {
     await withFakeHome(async (home) => {
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(
-        join(home, ".config", "orch", "config.toml"),
+        join(home, ".config", "caesar", "config.toml"),
         [
           "[[role]]",
           'name = "reviewer"',
@@ -320,9 +320,9 @@ describe("loadConfig", () => {
         ].join("\n"),
         "utf8",
       );
-      await mkdir(join(projectRoot, ".orch"), { recursive: true });
+      await mkdir(join(projectRoot, ".caesar"), { recursive: true });
       await writeFile(
-        join(projectRoot, ".orch", "config.toml"),
+        join(projectRoot, ".caesar", "config.toml"),
         [
           "[[role]]",
           'name = "reviewer"',
@@ -358,8 +358,8 @@ describe("loadConfig", () => {
 
   it("TOML syntaxiquement invalide produit une erreur qui nomme le fichier", async () => {
     await withFakeHome(async () => {
-      await mkdir(join(projectRoot, ".orch"), { recursive: true });
-      const path = join(projectRoot, ".orch", "config.toml");
+      await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+      const path = join(projectRoot, ".caesar", "config.toml");
       await writeFile(path, "[policy\nmax_parallel = 4\n", "utf8");
 
       await expect(loadConfig(projectRoot)).rejects.toThrow(path);
@@ -368,8 +368,8 @@ describe("loadConfig", () => {
 
   it("un champ de type incorrect produit une erreur qui nomme le champ et le fichier", async () => {
     await withFakeHome(async () => {
-      await mkdir(join(projectRoot, ".orch"), { recursive: true });
-      const path = join(projectRoot, ".orch", "config.toml");
+      await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+      const path = join(projectRoot, ".caesar", "config.toml");
       await writeFile(path, '[policy]\nmax_parallel = "quatre"\n', "utf8");
 
       await expect(loadConfig(projectRoot)).rejects.toThrow(path);
@@ -379,8 +379,8 @@ describe("loadConfig", () => {
 
   it("un champ inconnu (faute de frappe) produit une erreur qui le nomme, plutôt que d'être ignoré silencieusement", async () => {
     await withFakeHome(async () => {
-      await mkdir(join(projectRoot, ".orch"), { recursive: true });
-      const path = join(projectRoot, ".orch", "config.toml");
+      await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+      const path = join(projectRoot, ".caesar", "config.toml");
       await writeFile(path, '[policy]\nmax_paralel = 4\n', "utf8");
 
       await expect(loadConfig(projectRoot)).rejects.toThrow(/max_paralel/);
@@ -389,8 +389,8 @@ describe("loadConfig", () => {
 
   it("une durée invalide produit une erreur nommant le champ concerné", async () => {
     await withFakeHome(async () => {
-      await mkdir(join(projectRoot, ".orch"), { recursive: true });
-      const path = join(projectRoot, ".orch", "config.toml");
+      await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+      const path = join(projectRoot, ".caesar", "config.toml");
       await writeFile(path, '[[role]]\nname = "x"\nagents = ["codex"]\nmode = "write"\ntimeout = "3 fortnights"\n', "utf8");
 
       await expect(loadConfig(projectRoot)).rejects.toThrow(/timeout/);
@@ -399,7 +399,7 @@ describe("loadConfig", () => {
 
   it("un fichier de configuration illisible (répertoire à la place d'un fichier) est une erreur nommant le fichier", async () => {
     await withFakeHome(async () => {
-      const path = join(projectRoot, ".orch", "config.toml");
+      const path = join(projectRoot, ".caesar", "config.toml");
       // Un répertoire du même nom que le fichier attendu : la lecture échoue avec autre chose qu'ENOENT.
       await mkdir(path, { recursive: true });
 
@@ -418,7 +418,7 @@ describe("[worktree]", () => {
   let projectRoot: string;
 
   beforeEach(async () => {
-    projectRoot = await mkdtemp(join(tmpdir(), "orch-worktree-cfg-"));
+    projectRoot = await mkdtemp(join(tmpdir(), "caesar-worktree-cfg-"));
   });
 
   afterEach(async () => {
@@ -426,8 +426,8 @@ describe("[worktree]", () => {
   });
 
   async function writeProject(toml: string): Promise<void> {
-    await mkdir(join(projectRoot, ".orch"), { recursive: true });
-    await writeFile(join(projectRoot, ".orch", "config.toml"), toml, "utf8");
+    await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+    await writeFile(join(projectRoot, ".caesar", "config.toml"), toml, "utf8");
   }
 
   it("absente partout : trois listes vides, jamais undefined", async () => {
@@ -451,8 +451,8 @@ describe("[worktree]", () => {
 
   it("un champ absent du fichier ne dit rien : la couche précédente le garde", async () => {
     await withFakeHome(async (home) => {
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
-      await writeFile(join(home, ".config", "orch", "config.toml"), '[worktree]\ncopy = ["node_modules"]\nsetup = ["npm ci"]\n', "utf8");
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
+      await writeFile(join(home, ".config", "caesar", "config.toml"), '[worktree]\ncopy = ["node_modules"]\nsetup = ["npm ci"]\n', "utf8");
       await writeProject('[worktree]\nsetup = ["pnpm install"]\n');
 
       const loaded = await loadConfig(projectRoot);
@@ -465,8 +465,8 @@ describe("[worktree]", () => {
     // La propriété qui rend le retrait local possible : une union laisserait
     // une entrée héritée du global impossible à retirer côté projet.
     await withFakeHome(async (home) => {
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
-      await writeFile(join(home, ".config", "orch", "config.toml"), '[worktree]\ncopy = ["node_modules", ".venv"]\n', "utf8");
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
+      await writeFile(join(home, ".config", "caesar", "config.toml"), '[worktree]\ncopy = ["node_modules", ".venv"]\n', "utf8");
       await writeProject('[worktree]\ncopy = [".env"]\n');
 
       const loaded = await loadConfig(projectRoot);
@@ -476,8 +476,8 @@ describe("[worktree]", () => {
 
   it("liste vide déclarée : retire tout ce qui était hérité", async () => {
     await withFakeHome(async (home) => {
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
-      await writeFile(join(home, ".config", "orch", "config.toml"), '[worktree]\ncopy = ["node_modules"]\n', "utf8");
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
+      await writeFile(join(home, ".config", "caesar", "config.toml"), '[worktree]\ncopy = ["node_modules"]\n', "utf8");
       await writeProject("[worktree]\ncopy = []\n");
 
       const loaded = await loadConfig(projectRoot);
@@ -494,7 +494,7 @@ describe("[worktree]", () => {
       ["remontée", '[worktree]\ncopy = ["../ailleurs"]\n', /\.\./],
       ["imbriqué remontant", '[worktree]\nlink = ["a/../../b"]\n', /\.\./],
       [".git", '[worktree]\ncopy = [".git"]\n', /\.git/],
-      [".orch", '[worktree]\nlink = [".orch/state"]\n', /\.orch/],
+      [".caesar", '[worktree]\nlink = [".caesar/state"]\n', /\.caesar/],
       ["vide", '[worktree]\ncopy = [""]\n', /vide/],
     ];
     for (const [name, toml, motif] of cases) {
@@ -535,7 +535,7 @@ describe("saveLayer / loadConfig — aller-retour", () => {
   let projectRoot: string;
 
   beforeEach(async () => {
-    projectRoot = await mkdtemp(join(tmpdir(), "orch-roundtrip-"));
+    projectRoot = await mkdtemp(join(tmpdir(), "caesar-roundtrip-"));
   });
 
   afterEach(async () => {
@@ -549,9 +549,9 @@ describe("saveLayer / loadConfig — aller-retour", () => {
       // doit déjà être la forme complète (post-fusion) qu'on veut retrouver —
       // exactement ce que produirait un vrai fichier projet une fois fusionné
       // à la configuration par défaut, `reviewer`/`implementer`/`investigator`
-      // compris. `saveLayer` accepte directement un `OrchConfig` complet : il
+      // compris. `saveLayer` accepte directement un `CaesarConfig` complet : il
       // satisfait structurellement `ConfigOverride` (tous ses champs présents).
-      const config: OrchConfig = mergeConfig(defaultConfig(), {
+      const config: CaesarConfig = mergeConfig(defaultConfig(), {
         policy: {
           allowed: ["codex", "antigravity"],
           denied: ["copilot"],
@@ -623,7 +623,7 @@ describe("saveLayer / loadConfig — aller-retour", () => {
 
   it("écrit de façon atomique (fichier temporaire renommé, aucun résidu)", async () => {
     await saveLayer("project", projectRoot, defaultConfig());
-    const entries = await readdir(join(projectRoot, ".orch"));
+    const entries = await readdir(join(projectRoot, ".caesar"));
     expect(entries).toEqual(["config.toml"]);
   });
 
@@ -650,7 +650,7 @@ describe("saveLayer / loadConfig — aller-retour", () => {
     await saveLayer("project", projectRoot, {});
     const raw = await readFile(projectConfigPath(projectRoot), "utf8");
     expect(raw.trim()).toBe(
-      "# Fichier généré par @orch/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.",
+      "# Fichier généré par @caesar/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.",
     );
     expect(await loadLayer("project", projectRoot)).toEqual({});
   });
@@ -659,10 +659,10 @@ describe("saveLayer / loadConfig — aller-retour", () => {
 describe("configPathFor / localConfigPath", () => {
   it("délègue à globalConfigPath/projectConfigPath/localConfigPath selon la couche", async () => {
     await withFakeHome(async (home) => {
-      expect(configPathFor("global", "/repo")).toBe(join(home, ".config", "orch", "config.toml"));
-      expect(configPathFor("project", "/repo")).toBe(join("/repo", ".orch", "config.toml"));
-      expect(configPathFor("local", "/repo")).toBe(join("/repo", ".orch", "config.local.toml"));
-      expect(localConfigPath("/repo")).toBe(join("/repo", ".orch", "config.local.toml"));
+      expect(configPathFor("global", "/repo")).toBe(join(home, ".config", "caesar", "config.toml"));
+      expect(configPathFor("project", "/repo")).toBe(join("/repo", ".caesar", "config.toml"));
+      expect(configPathFor("local", "/repo")).toBe(join("/repo", ".caesar", "config.local.toml"));
+      expect(localConfigPath("/repo")).toBe(join("/repo", ".caesar", "config.local.toml"));
     });
   });
 });
@@ -671,7 +671,7 @@ describe("loadLayer", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-loadlayer-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-loadlayer-"));
   });
 
   afterEach(async () => {
@@ -687,8 +687,8 @@ describe("loadLayer", () => {
   });
 
   it("rend exactement ce que le fichier déclare, jamais les défauts ni les autres couches", async () => {
-    await mkdir(join(root, ".orch"), { recursive: true });
-    await writeFile(join(root, ".orch", "config.toml"), '[policy]\nmax_parallel = 9\n', "utf8");
+    await mkdir(join(root, ".caesar"), { recursive: true });
+    await writeFile(join(root, ".caesar", "config.toml"), '[policy]\nmax_parallel = 9\n', "utf8");
 
     const layer = await loadLayer("project", root);
     expect(layer).toEqual({ policy: { max_parallel: 9 } });
@@ -697,9 +697,9 @@ describe("loadLayer", () => {
   });
 
   it("lit la couche locale (config.local.toml), distincte de la couche projet", async () => {
-    await mkdir(join(root, ".orch"), { recursive: true });
-    await writeFile(join(root, ".orch", "config.toml"), '[policy]\nmax_parallel = 2\n', "utf8");
-    await writeFile(join(root, ".orch", "config.local.toml"), '[policy]\nmax_parallel = 7\n', "utf8");
+    await mkdir(join(root, ".caesar"), { recursive: true });
+    await writeFile(join(root, ".caesar", "config.toml"), '[policy]\nmax_parallel = 2\n', "utf8");
+    await writeFile(join(root, ".caesar", "config.local.toml"), '[policy]\nmax_parallel = 7\n', "utf8");
 
     expect(await loadLayer("project", root)).toEqual({ policy: { max_parallel: 2 } });
     expect(await loadLayer("local", root)).toEqual({ policy: { max_parallel: 7 } });
@@ -710,7 +710,7 @@ describe("loadConfig — trois couches, la locale incluse", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-threelayers-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-threelayers-"));
   });
 
   afterEach(async () => {
@@ -719,11 +719,11 @@ describe("loadConfig — trois couches, la locale incluse", () => {
 
   it("le local l'emporte sur le projet, qui l'emporte sur le global, sur les champs qu'il précise", async () => {
     await withFakeHome(async (home) => {
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
-      await writeFile(join(home, ".config", "orch", "config.toml"), "[policy]\nmax_parallel = 9\nallow_recursion = true\n", "utf8");
-      await mkdir(join(root, ".orch"), { recursive: true });
-      await writeFile(join(root, ".orch", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
-      await writeFile(join(root, ".orch", "config.local.toml"), "[policy]\nmax_parallel = 5\n", "utf8");
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
+      await writeFile(join(home, ".config", "caesar", "config.toml"), "[policy]\nmax_parallel = 9\nallow_recursion = true\n", "utf8");
+      await mkdir(join(root, ".caesar"), { recursive: true });
+      await writeFile(join(root, ".caesar", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
+      await writeFile(join(root, ".caesar", "config.local.toml"), "[policy]\nmax_parallel = 5\n", "utf8");
 
       const loaded = await loadConfig(root);
       // Précisé par les trois : le local (le plus spécifique) gagne.
@@ -732,14 +732,14 @@ describe("loadConfig — trois couches, la locale incluse", () => {
       expect(loaded.config.policy.allow_recursion).toBe(true);
       expect(loaded.sources.global).toBeDefined();
       expect(loaded.sources.project).toBeDefined();
-      expect(loaded.sources.local).toBe(join(root, ".orch", "config.local.toml"));
+      expect(loaded.sources.local).toBe(join(root, ".caesar", "config.local.toml"));
     });
   });
 
   it("expose les trois couches dans l'ordre d'application, y compris celles dont le fichier est absent", async () => {
     await withFakeHome(async () => {
-      await mkdir(join(root, ".orch"), { recursive: true });
-      await writeFile(join(root, ".orch", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
+      await mkdir(join(root, ".caesar"), { recursive: true });
+      await writeFile(join(root, ".caesar", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
 
       const loaded = await loadConfig(root);
       expect(loaded.layers.map((l) => l.scope)).toEqual(["global", "project", "local"]);
@@ -820,11 +820,11 @@ describe("materializeListEdit", () => {
   });
 
   it("est le calcul que materializePolicyList applique ensuite au disque (même résultat, en mémoire)", async () => {
-    const root = await mkdtemp(join(tmpdir(), "orch-materialize-pure-"));
+    const root = await mkdtemp(join(tmpdir(), "caesar-materialize-pure-"));
     try {
       await withFakeHome(async () => {
-        await mkdir(join(root, ".orch"), { recursive: true });
-        await writeFile(join(root, ".orch", "config.toml"), '[policy]\ndenied = ["codex"]\n', "utf8");
+        await mkdir(join(root, ".caesar"), { recursive: true });
+        await writeFile(join(root, ".caesar", "config.toml"), '[policy]\ndenied = ["codex"]\n', "utf8");
 
         const pure = materializeListEdit(["codex"], ["codex"], "opencode", true);
         const io = await materializePolicyList(root, "project", "denied", "opencode", true);
@@ -840,7 +840,7 @@ describe("materializePolicyList", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-materialize-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-materialize-"));
   });
 
   afterEach(async () => {
@@ -849,8 +849,8 @@ describe("materializePolicyList", () => {
 
   it("augmente la liste effective (pas seulement l'id ajouté) et écrit ce résultat dans la couche visée", async () => {
     await withFakeHome(async (home) => {
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
-      await writeFile(join(home, ".config", "orch", "config.toml"), '[policy]\ndenied = ["copilot"]\n', "utf8");
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
+      await writeFile(join(home, ".config", "caesar", "config.toml"), '[policy]\ndenied = ["copilot"]\n', "utf8");
 
       const result = await materializePolicyList(root, "project", "denied", "opencode", true);
       expect(result.effective).toEqual(["copilot", "opencode"]);
@@ -864,8 +864,8 @@ describe("materializePolicyList", () => {
 
   it("materialized est faux quand la couche déclarait déjà ce champ", async () => {
     await withFakeHome(async () => {
-      await mkdir(join(root, ".orch"), { recursive: true });
-      await writeFile(join(root, ".orch", "config.toml"), '[policy]\ndenied = ["codex"]\n', "utf8");
+      await mkdir(join(root, ".caesar"), { recursive: true });
+      await writeFile(join(root, ".caesar", "config.toml"), '[policy]\ndenied = ["codex"]\n', "utf8");
 
       const result = await materializePolicyList(root, "project", "denied", "opencode", true);
       expect(result.materialized).toBe(false);
@@ -875,8 +875,8 @@ describe("materializePolicyList", () => {
 
   it("ne touche pas aux autres champs déjà déclarés par la couche visée", async () => {
     await withFakeHome(async () => {
-      await mkdir(join(root, ".orch"), { recursive: true });
-      await writeFile(join(root, ".orch", "config.toml"), '[policy]\nmax_parallel = 7\n', "utf8");
+      await mkdir(join(root, ".caesar"), { recursive: true });
+      await writeFile(join(root, ".caesar", "config.toml"), '[policy]\nmax_parallel = 7\n', "utf8");
 
       await materializePolicyList(root, "project", "denied", "codex", true);
 
@@ -895,8 +895,8 @@ describe("materializePolicyList", () => {
 
   it("retrait dans une liste héritée : la moitié symétrique de l'augmentation — le global déclare denied = [a, b], le projet retire a, et matérialise denied = [b]", async () => {
     await withFakeHome(async (home) => {
-      await mkdir(join(home, ".config", "orch"), { recursive: true });
-      await writeFile(join(home, ".config", "orch", "config.toml"), '[policy]\ndenied = ["copilot", "opencode"]\n', "utf8");
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
+      await writeFile(join(home, ".config", "caesar", "config.toml"), '[policy]\ndenied = ["copilot", "opencode"]\n', "utf8");
 
       const result = await materializePolicyList(root, "project", "denied", "copilot", false);
       expect(result.materialized).toBe(true);

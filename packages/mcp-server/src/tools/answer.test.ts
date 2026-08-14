@@ -2,20 +2,20 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readAnswer, writeQuestion } from "@orch/mcp-channel";
-import { readEvents, taskPaths } from "@orch/protocol";
+import { readAnswer, writeQuestion } from "@caesar/mcp-channel";
+import { readEvents, taskPaths } from "@caesar/protocol";
 import { createSession } from "../session.js";
 import type { McpSession } from "../session.js";
-import { orchAnswer } from "./answer.js";
+import { caesarAnswer } from "./answer.js";
 
-describe("orch_answer", () => {
+describe("caesar_answer", () => {
   let root: string;
   let taskDir: string;
   let session: McpSession;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-answer-"));
-    taskDir = join(root, ".orch", "tasks", "t_test");
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-answer-"));
+    taskDir = join(root, ".caesar", "tasks", "t_test");
     await mkdir(taskDir, { recursive: true });
     session = await createSession(root);
     await session.store.create({
@@ -41,7 +41,7 @@ describe("orch_answer", () => {
   it("écrit la réponse et émet un événement `answer`", async () => {
     await writeQuestion(taskDir, { id: "q1", question: "Continuer ?", options: [], asked_at: new Date().toISOString() });
 
-    const result = await orchAnswer(session, { task_id: "t_test", question_id: "q1", answer: "oui" });
+    const result = await caesarAnswer(session, { task_id: "t_test", question_id: "q1", answer: "oui" });
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toEqual({ task_id: "t_test", question_id: "q1", answered: true });
 
@@ -53,7 +53,7 @@ describe("orch_answer", () => {
   });
 
   it("question inconnue : erreur claire, rien n'est écrit", async () => {
-    const result = await orchAnswer(session, { task_id: "t_test", question_id: "q-fantome", answer: "oui" });
+    const result = await caesarAnswer(session, { task_id: "t_test", question_id: "q-fantome", answer: "oui" });
     expect(result.isError).toBe(true);
     expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);
     expect(await readAnswer(taskDir, "q-fantome")).toBeNull();
@@ -62,10 +62,10 @@ describe("orch_answer", () => {
   it("réponse en double : erreur claire, la première réponse n'est pas modifiée", async () => {
     await writeQuestion(taskDir, { id: "q1", question: "Continuer ?", options: [], asked_at: new Date().toISOString() });
 
-    const first = await orchAnswer(session, { task_id: "t_test", question_id: "q1", answer: "oui" });
+    const first = await caesarAnswer(session, { task_id: "t_test", question_id: "q1", answer: "oui" });
     expect(first.isError).toBeFalsy();
 
-    const second = await orchAnswer(session, { task_id: "t_test", question_id: "q1", answer: "non" });
+    const second = await caesarAnswer(session, { task_id: "t_test", question_id: "q1", answer: "non" });
     expect(second.isError).toBe(true);
     expect((second.content?.[0] as { text: string }).text).toMatch(/déjà/);
 
@@ -73,7 +73,7 @@ describe("orch_answer", () => {
   });
 
   it("tâche inconnue : erreur claire", async () => {
-    const result = await orchAnswer(session, { task_id: "t_inexistant", question_id: "q1", answer: "oui" });
+    const result = await caesarAnswer(session, { task_id: "t_inexistant", question_id: "q1", answer: "oui" });
     expect(result.isError).toBe(true);
     expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);
   });

@@ -68,7 +68,7 @@ export interface MaterializeResult {
   /**
    * Les chemins effectivement posés, à exclure du diff de la tâche : ce que
    * l'orchestrateur a lui-même déposé n'est pas le travail de l'agent, et un
-   * `.env` recopié n'a rien à faire dans un `orch apply`.
+   * `.env` recopié n'a rien à faire dans un `caesar apply`.
    */
   excluded: string[];
   /**
@@ -95,9 +95,9 @@ function assertRelativeInsidePath(path: string): void {
   if (segments.includes("..")) {
     throw new Error(`Chemin "${path}" invalide dans [worktree] : un segment ".." sortirait du workspace.`);
   }
-  if (segments[0] === ".git" || segments[0] === ".orch") {
+  if (segments[0] === ".git" || segments[0] === ".caesar") {
     throw new Error(
-      `Chemin "${path}" invalide dans [worktree] : ".git" et ".orch" sont l'administration du dépôt et celle d'orch, ` +
+      `Chemin "${path}" invalide dans [worktree] : ".git" et ".caesar" sont l'administration du dépôt et celle de caesar, ` +
         `le worktree existe précisément pour ne pas y toucher.`,
     );
   }
@@ -189,8 +189,8 @@ async function copyTree(source: string, target: string): Promise<MaterializeVia>
  *    déjà sa version, et poser un lien par-dessus ferait écrire le sous-agent
  *    **dans le dépôt principal** — précisément le défaut qu'on corrige ;
  * 4. **non ignoré par git** ⇒ écarté : le poser le ferait apparaître dans
- *    `orch diff`, qui fait foi, et `worktreeHasChanges` verrait le worktree
- *    sale à vie, si bien qu'`orch gc` ne le nettoierait jamais ;
+ *    `caesar diff`, qui fait foi, et `worktreeHasChanges` verrait le worktree
+ *    sale à vie, si bien que `caesar gc` ne le nettoierait jamais ;
  * 5. **déjà présent dans le worktree** ⇒ écarté, on n'écrase rien ;
  * 6. sinon **posé**, par clone, copie ou lien.
  *
@@ -240,8 +240,8 @@ export async function materializeUntracked(
         path,
         reason: "not-ignored",
         detail:
-          `"${path}" n'est ni suivi ni ignoré par git : le poser le ferait apparaître dans "orch diff" comme un ` +
-          `changement de l'agent, et "orch gc" ne nettoierait plus jamais ce worktree. Ajoutez-le au .gitignore, ` +
+          `"${path}" n'est ni suivi ni ignoré par git : le poser le ferait apparaître dans "caesar diff" comme un ` +
+          `changement de l'agent, et "caesar gc" ne nettoierait plus jamais ce worktree. Ajoutez-le au .gitignore, ` +
           `ou retirez-le de [worktree].`,
       });
       continue;
@@ -340,7 +340,7 @@ function shellArgs(): string[] {
  *
  * Volontairement court et conventionnel. Une détection exhaustive se
  * tromperait plus souvent qu'elle n'aiderait — et un `[worktree]` écrit une
- * fois par `orch init` se relit et se corrige à la main, ce qui n'est vrai
+ * fois par `caesar init` se relit et se corrige à la main, ce qui n'est vrai
  * d'aucune heuristique appliquée à chaque exécution.
  */
 const PROJECT_MARKERS: { marker: string; copy: string[]; setup?: string }[] = [
@@ -359,7 +359,7 @@ const PROJECT_MARKERS: { marker: string; copy: string[]; setup?: string }[] = [
 const COMMON_UNTRACKED = [".env", ".env.local"];
 
 /**
- * Devine ce que le worktree d'un projet devrait emporter, pour qu'`orch init`
+ * Devine ce que le worktree d'un projet devrait emporter, pour que `caesar init`
  * écrive un `[worktree]` déjà utile plutôt qu'une section vide à remplir.
  *
  * Ne propose **que** ce qui existe réellement dans le workspace et que git
@@ -368,7 +368,7 @@ const COMMON_UNTRACKED = [".env", ".env.local"];
  * proposer un chemin ni suivi ni ignoré polluerait le diff. La détection
  * applique donc, en amont, exactement les mêmes règles que la pose.
  *
- * Un projet nu ne produit rien du tout — `orch init` n'écrit alors aucune
+ * Un projet nu ne produit rien du tout — `caesar init` n'écrit alors aucune
  * section, plutôt qu'une section vide qui ferait croire à un réglage.
  * `setup` est le seul champ que la détection puisse proposer à tort : une
  * commande d'installation est une convention, pas un fait, et c'est à ce titre

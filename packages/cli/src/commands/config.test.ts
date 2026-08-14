@@ -25,14 +25,14 @@ process.exit(${options.exitCode});
   await chmod(target, 0o755);
 }
 
-describe("orch config — bun absent", () => {
+describe("caesar config — bun absent", () => {
   let root: string;
   let shimDir: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-config-root-"));
-    shimDir = await mkdtemp(join(tmpdir(), "orch-cli-config-shim-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-config-root-"));
+    shimDir = await mkdtemp(join(tmpdir(), "caesar-cli-config-shim-"));
     io = makeIo();
   });
 
@@ -46,22 +46,22 @@ describe("orch config — bun absent", () => {
       const code = await runConfig(root, io);
       expect(code).toBe(EXIT_RUNTIME);
       expect(io.stderrText()).toMatch(/Bun/);
-      expect(io.stderrText()).toContain("orch policy show");
-      expect(io.stderrText()).toContain("orch role list");
-      expect(io.stderrText()).toContain("orch agents list");
+      expect(io.stderrText()).toContain("caesar policy show");
+      expect(io.stderrText()).toContain("caesar role list");
+      expect(io.stderrText()).toContain("caesar agents list");
     });
   });
 });
 
-describe("orch config — bun présent", () => {
+describe("caesar config — bun présent", () => {
   let root: string;
   let shimDir: string;
   let captureFile: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-config-root-"));
-    shimDir = await mkdtemp(join(tmpdir(), "orch-cli-config-shim-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-config-root-"));
+    shimDir = await mkdtemp(join(tmpdir(), "caesar-cli-config-shim-"));
     captureFile = join(shimDir, "capture.json");
     io = makeIo();
   });
@@ -93,12 +93,12 @@ describe("orch config — bun présent", () => {
   });
 });
 
-describe("orch config — lanceur in-process configuré (tâche 12)", () => {
+describe("caesar config — lanceur in-process configuré (tâche 12)", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-config-root-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-config-root-"));
     io = makeIo();
   });
 

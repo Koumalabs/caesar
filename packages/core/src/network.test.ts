@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NetworkControl, NetworkRequest } from "./network.js";
 import { decideNetwork, describeNetworkControl } from "./network.js";
-import type { TaskMode } from "@orch/protocol";
+import type { TaskMode } from "@caesar/protocol";
 
 const CONTROLS: NetworkControl[] = ["open", "toggle", "write-only", "unknown"];
 const REQUESTS: NetworkRequest[] = ["auto", "on", "off"];

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultConfig } from "./config.js";
-import type { OrchConfig, PolicyConfig, RoleConfig } from "./config.js";
+import type { CaesarConfig, PolicyConfig, RoleConfig } from "./config.js";
 import { pickAgentForRole, resolveRole } from "./roles.js";
 
 function policy(overrides: Partial<PolicyConfig> = {}): PolicyConfig {
@@ -26,7 +26,7 @@ describe("resolveRole", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-roles-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-roles-"));
   });
 
   afterEach(async () => {
@@ -39,10 +39,10 @@ describe("resolveRole", () => {
   });
 
   it("résout un rôle et charge son prompt système", async () => {
-    await mkdir(join(root, ".orch", "roles"), { recursive: true });
-    await writeFile(join(root, ".orch", "roles", "reviewer.md"), "Tu es un relecteur strict.", "utf8");
+    await mkdir(join(root, ".caesar", "roles"), { recursive: true });
+    await writeFile(join(root, ".caesar", "roles", "reviewer.md"), "Tu es un relecteur strict.", "utf8");
 
-    const config: OrchConfig = {
+    const config: CaesarConfig = {
       policy: defaultConfig().policy,
       roles: [role({ system_prompt_file: "roles/reviewer.md" })],
       agents: [],
@@ -55,13 +55,13 @@ describe("resolveRole", () => {
   });
 
   it("un rôle sans system_prompt_file a un prompt système vide", async () => {
-    const config: OrchConfig = { policy: defaultConfig().policy, roles: [role()], agents: [] };
+    const config: CaesarConfig = { policy: defaultConfig().policy, roles: [role()], agents: [] };
     const resolved = await resolveRole(config, root, "reviewer");
     expect(resolved?.systemPrompt).toBe("");
   });
 
   it("system_prompt_file absent du disque : prompt vide, pas d'erreur", async () => {
-    const config: OrchConfig = {
+    const config: CaesarConfig = {
       policy: defaultConfig().policy,
       roles: [role({ system_prompt_file: "roles/absent.md" })],
       agents: [],
@@ -72,10 +72,10 @@ describe("resolveRole", () => {
 
   it("system_prompt_file illisible pour une autre raison qu'une absence lève une erreur nommant le rôle et le chemin", async () => {
     // Un répertoire à la place du fichier attendu : la lecture échoue avec autre chose qu'ENOENT.
-    const dirAsFile = join(root, ".orch", "roles", "reviewer.md");
+    const dirAsFile = join(root, ".caesar", "roles", "reviewer.md");
     await mkdir(dirAsFile, { recursive: true });
 
-    const config: OrchConfig = {
+    const config: CaesarConfig = {
       policy: defaultConfig().policy,
       roles: [role({ system_prompt_file: "roles/reviewer.md" })],
       agents: [],

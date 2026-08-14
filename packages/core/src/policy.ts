@@ -11,8 +11,8 @@ import type { PolicyConfig, ProvenanceSource } from "./config.js";
 /**
  * Quelle règle a produit un refus — voir CONTRÔLEUR-1 de la revue finale :
  * `Decision` ne portait jusqu'ici qu'une phrase, ce qui a produit un remède
- * générique dans `orch doctor` (« Autorisez-le avec "orch agents enable X"
- * ou "orch policy allow X" »), faux pour deux des trois motifs de refus —
+ * générique dans `caesar doctor` (« Autorisez-le avec "caesar agents enable X"
+ * ou "caesar policy allow X" »), faux pour deux des trois motifs de refus —
  * ni l'un ni l'autre ne touche `allow_recursion`, seul motif du refus de
  * `claude` par défaut. `denied`/`allowlist`/`depth`/`recursion` permettent à
  * un appelant (CLI, TUI, tools MCP) de choisir le bon remède sans
@@ -119,13 +119,13 @@ export function describeAgentPolicy(policy: PolicyConfig, agentId: string): Deci
 /**
  * Le remède qui vaut effectivement pour `rule` — voir CONTRÔLEUR-1 de la
  * revue finale. Centralisé ici plutôt que réécrit par chaque façade
- * (`orch doctor`, l'écran Agents du TUI, un futur tool MCP de diagnostic) :
+ * (`caesar doctor`, l'écran Agents du TUI, un futur tool MCP de diagnostic) :
  * c'est la même logique de correspondance rule → remède partout.
  *
- * - `"denied"` : seul `orch agents enable` retire l'agent de `denied` —
- *   `orch policy allow` ne le ferait pas passer pour autant (`denied`
+ * - `"denied"` : seul `caesar agents enable` retire l'agent de `denied` —
+ *   `caesar policy allow` ne le ferait pas passer pour autant (`denied`
  *   l'emporte toujours) et aurait l'effet de bord décrit sous `"allowlist"`.
- * - `"allowlist"` : `orch policy allow` est le bon remède, mais avec
+ * - `"allowlist"` : `caesar policy allow` est le bon remède, mais avec
  *   l'avertissement de CONTRÔLEUR-2 — si `allowed` était vide, cette
  *   commande restreint désormais tous les autres agents non explicitement
  *   listés.
@@ -135,27 +135,27 @@ export function describeAgentPolicy(policy: PolicyConfig, agentId: string): Deci
  * - `"depth"` : ne se corrige pas par agent — c'est la profondeur de la
  *   délégation en cours qui dépasse `max_depth`, pas une propriété de
  *   l'agent lui-même ; sans objet pour un diagnostic statique par agent
- *   (`orch doctor`), qui n'atteint jamais ce cas (il n'appelle pas
+ *   (`caesar doctor`), qui n'atteint jamais ce cas (il n'appelle pas
  *   `isDepthAllowed`).
  */
 export function remedyFor(agentId: string, rule: PolicyRule, scope: ProvenanceSource = "project"): string {
   // Sans option, les commandes d'écriture visent la couche projet. Suggérer
-  // "orch agents enable X" pour lever un refus déclaré par le global ne lève
+  // "caesar agents enable X" pour lever un refus déclaré par le global ne lève
   // rien : cela écrit dans le projet, où la liste n'était pas déclarée, et la
   // matérialise avec la valeur effective — refus compris. Le remède doit donc
   // viser la couche qui porte la règle.
   const layerFlag = scope === "global" ? " --global" : scope === "local" ? " --local" : "";
   switch (rule) {
     case "denied":
-      return `Autorisez-le avec "orch agents enable ${agentId}${layerFlag}".`;
+      return `Autorisez-le avec "caesar agents enable ${agentId}${layerFlag}".`;
     case "allowlist":
       return (
-        `Ajoutez-le avec "orch policy allow ${agentId}${layerFlag}" — attention, si la liste "allowed" est vide aujourd'hui, ` +
+        `Ajoutez-le avec "caesar policy allow ${agentId}${layerFlag}" — attention, si la liste "allowed" est vide aujourd'hui, ` +
         `cette commande la fera passer de "tout agent non refusé" à "seulement ${agentId}", refusant du même geste ` +
-        `tous les autres agents (voir "orch policy show").`
+        `tous les autres agents (voir "caesar policy show").`
       );
     case "recursion":
-      return `Activez "allow_recursion" (onglet Politique du TUI "orch config", ou éditez .orch/config.toml — aucune sous-commande dédiée aujourd'hui).`;
+      return `Activez "allow_recursion" (onglet Politique du TUI "caesar config", ou éditez .caesar/config.toml — aucune sous-commande dédiée aujourd'hui).`;
     case "depth":
       return `Sans objet par agent : c'est la profondeur de délégation en cours qui dépasse "max_depth", pas une propriété de l'agent.`;
   }

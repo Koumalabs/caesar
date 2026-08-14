@@ -1,5 +1,5 @@
 {
-  "name": "@orch/mcp-server",
+  "name": "@caesar/mcp-server",
   "version": "0.1.0",
   "description": "Serveur MCP exposant les tools de délégation à l'agent principal",
   "type": "module",
@@ -11,9 +11,9 @@
   "files": ["dist"],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@orch/core": "workspace:*",
-    "@orch/mcp-channel": "workspace:*",
-    "@orch/protocol": "workspace:*",
+    "@caesar/core": "workspace:*",
+    "@caesar/mcp-channel": "workspace:*",
+    "@caesar/protocol": "workspace:*",
     "zod": "^4.4.3"
   }
 }

@@ -1,7 +1,7 @@
 /**
- * `orch watch` : regarder les sous-agents travailler.
+ * `caesar watch` : regarder les sous-agents travailler.
  *
- * `orch ps` est un instantané, `orch logs --follow` suit une tâche dont il
+ * `caesar ps` est un instantané, `caesar logs --follow` suit une tâche dont il
  * faut déjà connaître l'identifiant. Quand trois délégations tournent en
  * parallèle, rien ne les montrait ensemble.
  *
@@ -9,7 +9,7 @@
  * ligne à ligne **pendant** l'exécution (`spawn.ts`) et publie l'état des
  * tâches par `rename`/`link` atomiques (`store.ts`). Cette commande ne fait
  * que lire ce que d'autres processus écrivent — la même propriété qui fait
- * marcher `orch cancel` par pid et les créneaux de `max_parallel`.
+ * marcher `caesar cancel` par pid et les créneaux de `max_parallel`.
  *
  * Deux rendus, selon la destination :
  *
@@ -21,12 +21,12 @@
  *
  * Regarder ne modifie rien : aucune interaction hors `q`/Ctrl-C pour sortir.
  */
-import type { PendingQuestion } from "@orch/mcp-channel";
-import { listPendingQuestions } from "@orch/mcp-channel";
-import type { OrchEvent } from "@orch/protocol";
-import { EventSchema, taskPaths } from "@orch/protocol";
-import type { ActivityState, TaskRecord, TaskStatus } from "@orch/core";
-import { describeActivity, emptyActivity, fileTaskStore, foldActivity, formatDuration, loadConfig, readableMessage } from "@orch/core";
+import type { PendingQuestion } from "@caesar/mcp-channel";
+import { listPendingQuestions } from "@caesar/mcp-channel";
+import type { CaesarEvent } from "@caesar/protocol";
+import { EventSchema, taskPaths } from "@caesar/protocol";
+import type { ActivityState, TaskRecord, TaskStatus } from "@caesar/core";
+import { describeActivity, emptyActivity, fileTaskStore, foldActivity, formatDuration, loadConfig, readableMessage } from "@caesar/core";
 import type { Io } from "../output.js";
 import { EXIT_OK, EXIT_USAGE, activeGlyphs, colorize, printError, terminalWidth, writeLine } from "../output.js";
 import { createLineTail } from "../tail.js";
@@ -81,8 +81,8 @@ interface Tracked {
  * d'image — un désalignement entre ce que le moteur écrit et ce que ce CLI
  * sait lire ne doit pas se perdre en silence.
  */
-async function pump(tracked: Tracked): Promise<OrchEvent[]> {
-  const fresh: OrchEvent[] = [];
+async function pump(tracked: Tracked): Promise<CaesarEvent[]> {
+  const fresh: CaesarEvent[] = [];
   for (const line of await tracked.tail.read()) {
     let parsed: unknown;
     try {
@@ -103,7 +103,7 @@ async function pump(tracked: Tracked): Promise<OrchEvent[]> {
 }
 
 /** Une ligne par événement, pour le rendu hors terminal. */
-function describeEventLine(record: TaskRecord, event: OrchEvent): string | undefined {
+function describeEventLine(record: TaskRecord, event: CaesarEvent): string | undefined {
   const prefix = `${shortId(record.id)} ${record.agent}`;
   switch (event.type) {
     case "started":
@@ -113,7 +113,7 @@ function describeEventLine(record: TaskRecord, event: OrchEvent): string | undef
     case "file_changed":
       return `${prefix}  ~ ${event.action} ${event.path}`;
     case "message":
-      // Même traitement que la vue d'ensemble et qu'`orch run` : les
+      // Même traitement que la vue d'ensemble et que `caesar run` : les
       // `agent_message` de codex sont des rapports JSON sérialisés.
       return `${prefix}  « ${readableMessage(event.text).replace(/\s+/g, " ").trim()} »`;
     case "thinking":
@@ -139,7 +139,7 @@ function renderFrame(tracked: readonly Tracked[], maxParallel: number, now: numb
 
   const g = activeGlyphs().status;
   const heure = new Date(now).toTimeString().slice(0, 8);
-  const titre = `${g.mark} orch ${g.bullet} watch`;
+  const titre = `${g.mark} caesar ${g.bullet} watch`;
   const compte = `${active.length} active${active.length > 1 ? "s" : ""} ${g.bullet} max_parallel ${maxParallel}`;
   const gauche = `${titre}   ${compte}`;
   lines.push(
@@ -172,10 +172,10 @@ function renderFrame(tracked: readonly Tracked[], maxParallel: number, now: numb
       const q = t.questions[0];
       const reste = t.questions.length > 1 ? ` (+${t.questions.length - 1})` : "";
       lines.push(`  ${colorize(clip(`${g.question} ${q?.question ?? ""}${reste}`, width - 2), "warn", io.stdout)}`);
-      // Aucune commande CLI ne répond aujourd'hui : `orch_answer` est un outil
+      // Aucune commande CLI ne répond aujourd'hui : `caesar_answer` est un outil
       // MCP, donc le geste appartient à l'agent principal. Le dire plutôt que
-      // de suggérer un `orch answer` qui n'existe pas.
-      lines.push(`  ${colorize(`en attente d'une réponse — l'agent principal répond par orch_answer (id ${q?.id ?? ""})`, "dim", io.stdout)}`);
+      // de suggérer un `caesar answer` qui n'existe pas.
+      lines.push(`  ${colorize(`en attente d'une réponse — l'agent principal répond par caesar_answer (id ${q?.id ?? ""})`, "dim", io.stdout)}`);
     } else {
       lines.push(`  ${clip(headline, width - 2)}`);
     }
@@ -229,7 +229,7 @@ export async function runWatch(root: string, ids: readonly string[], options: Wa
   const redraw = isTty(io) && !options.json && !options.once;
 
   /** Met à jour la liste des tâches suivies, replie les nouveaux événements, et rend ceux-ci. */
-  async function step(now: number): Promise<{ tracked: Tracked[]; fresh: { record: TaskRecord; event: OrchEvent }[] }> {
+  async function step(now: number): Promise<{ tracked: Tracked[]; fresh: { record: TaskRecord; event: CaesarEvent }[] }> {
     for (const record of await store.list()) {
       if (wanted.size > 0 && !wanted.has(record.id)) continue;
       const known = tracked.get(record.id);
@@ -258,7 +258,7 @@ export async function runWatch(root: string, ids: readonly string[], options: Wa
       if (t.endedSeenAt !== undefined && now - t.endedSeenAt > RECENT_MS) tracked.delete(id);
     }
 
-    const fresh: { record: TaskRecord; event: OrchEvent }[] = [];
+    const fresh: { record: TaskRecord; event: CaesarEvent }[] = [];
     for (const t of tracked.values()) {
       for (const event of await pump(t)) fresh.push({ record: t.record, event });
       t.questions = isActive(t.record.status) ? await listPendingQuestions(taskPaths(t.record.task_dir).dir) : [];

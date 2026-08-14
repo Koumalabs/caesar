@@ -41,13 +41,13 @@ describe("mission", () => {
   });
 
   it("refuse une version de protocole inconnue", () => {
-    const result = TaskSchema.safeParse({ ...sampleTask(), protocol: "orch.task/v2" });
+    const result = TaskSchema.safeParse({ ...sampleTask(), protocol: "caesar.task/v2" });
     expect(result.success).toBe(false);
   });
 
   it("relit une mission écrite avant l'existence du champ « network »", () => {
-    // Les task.json déjà présents dans .orch/tasks/ sont rouverts par
-    // `orch ps`, `orch logs` et `orch diff` : sans défaut, ce champ les aurait
+    // Les task.json déjà présents dans .caesar/tasks/ sont rouverts par
+    // `caesar ps`, `caesar logs` et `caesar diff` : sans défaut, ce champ les aurait
     // tous rendus illisibles d'un coup.
     const { network, ...ancienne } = sampleTask();
     expect(network).toBe(true);
@@ -85,7 +85,7 @@ describe("extraction du rapport depuis du texte libre", () => {
   });
 
   it("lit un bloc de code balisé", () => {
-    const text = ["Voilà le résultat.", "", "```json orch:report", valid, "```"].join("\n");
+    const text = ["Voilà le résultat.", "", "```json caesar:report", valid, "```"].join("\n");
     expect(extractReportFromText(text)?.summary).toBe("Deux fichiers modifiés.");
   });
 
@@ -273,7 +273,7 @@ describe("prompt de mission", () => {
   });
 
   it("oriente vers le canal retour quand il est disponible", () => {
-    const prompt = renderTaskPrompt(sampleTask(), { reportVia: "channel", channelServerName: "orch" });
+    const prompt = renderTaskPrompt(sampleTask(), { reportVia: "channel", channelServerName: "caesar" });
     expect(prompt).toContain("submit_report");
     expect(prompt).toContain("ask_orchestrator");
   });

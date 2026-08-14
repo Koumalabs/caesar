@@ -33,7 +33,7 @@ const COMMANDES: ReadonlyArray<{ nom: string; libellé: string; run: Commande }>
 
 let root: string;
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), "orch-theme-"));
+  root = await mkdtemp(join(tmpdir(), "caesar-theme-"));
 });
 afterAll(async () => {
   await rm(root, { recursive: true, force: true });
@@ -45,7 +45,7 @@ describe("le thème, sur chaque commande", () => {
       await withFakeHome(async () => {
         const io = makeIo();
         expect(await run(root, {}, io)).toBe(EXIT_OK);
-        expect(io.stdoutText()).toMatch(new RegExp(`^▞▚ orch · ${libellé} ─+\\n`));
+        expect(io.stdoutText()).toMatch(new RegExp(`^▞▚ caesar · ${libellé} ─+\\n`));
       });
     });
 

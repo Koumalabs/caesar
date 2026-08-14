@@ -63,11 +63,11 @@ describe("buildProgram (structurel)", () => {
   });
 });
 
-describe("orch (binaire compilé)", () => {
+describe("caesar (binaire compilé)", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-bin-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-bin-"));
   });
 
   afterEach(async () => {
@@ -125,8 +125,8 @@ describe("orch (binaire compilé)", () => {
   // chaque branche plutôt que de se fier à la seule lecture du code.
 
   it("un fichier de configuration invalide sort en code 2 (erreur de configuration, pas d'exécution)", async () => {
-    await mkdir(join(root, ".orch"), { recursive: true });
-    await writeFile(join(root, ".orch", "config.toml"), "ceci n'est pas du toml valide [[[", "utf8");
+    await mkdir(join(root, ".caesar"), { recursive: true });
+    await writeFile(join(root, ".caesar", "config.toml"), "ceci n'est pas du toml valide [[[", "utf8");
 
     await expect(execFileAsync("node", [BIN_PATH, "policy", "show", "--root", root])).rejects.toMatchObject({ code: 2 });
     try {
@@ -137,17 +137,17 @@ describe("orch (binaire compilé)", () => {
   });
 
   it("une vraie erreur système non anticipée (répertoire non accessible en écriture) sort en code 1, pas 2", async () => {
-    const orchDir = join(root, ".orch");
-    await mkdir(orchDir, { recursive: true });
+    const caesarDir = join(root, ".caesar");
+    await mkdir(caesarDir, { recursive: true });
     // Lecture toujours possible (aucun config.toml : chemin "absent", pas une
     // erreur), écriture impossible : `saveProjectConfig` (appelé par
     // `policy allow`) échoue avec une vraie erreur système (`EACCES`), jamais
     // ré-enveloppée en `Error` métier — contrairement à `loadConfig`.
-    await chmod(orchDir, 0o500);
+    await chmod(caesarDir, 0o500);
     try {
       await expect(execFileAsync("node", [BIN_PATH, "policy", "allow", "codex", "--root", root])).rejects.toMatchObject({ code: 1 });
     } finally {
-      await chmod(orchDir, 0o700);
+      await chmod(caesarDir, 0o700);
     }
   });
 

@@ -1,16 +1,16 @@
 /**
- * `orch init [--global]` : crée la couche projet (par défaut) ou la couche
+ * `caesar init [--global]` : crée la couche projet (par défaut) ou la couche
  * globale (`--global`). N'écrase jamais une configuration existante sans
  * `--force`.
  *
  * La couche **projet** ne déclare rien : `defaultConfig()` porte déjà la
  * politique et les rôles par défaut (`system_prompt_file` compris, une
  * convention de nom résolue par `resolveRole` indépendamment de toute
- * couche — voir `config.ts`) — écrire ces valeurs dans `.orch/config.toml`
+ * couche — voir `config.ts`) — écrire ces valeurs dans `.caesar/config.toml`
  * les y figerait, masquant toute configuration globale ultérieure (le
  * défaut I11 de la revue finale). Le rôle de cette commande, côté projet,
  * se limite donc à matérialiser les *fichiers* de prompt système
- * (`.orch/roles/<name>.md`) et à compléter le `.gitignore`.
+ * (`.caesar/roles/<name>.md`) et à compléter le `.gitignore`.
  *
  * La couche **globale** (`--global`), à l'inverse, écrit `defaultConfig()`
  * intégralement : c'est le point de départ éditable d'un "preset" partagé
@@ -18,13 +18,13 @@
  *
  * ## Connaissance agentique (skill + commandes) et refresh
  *
- * `orch init` dépose aussi la skill Agent Skills et les commandes des
- * runtimes détectés (`installAgentAssets`, `@orch/core`) — la façon dont un
+ * `caesar init` dépose aussi la skill Agent Skills et les commandes des
+ * runtimes détectés (`installAgentAssets`, `@caesar/core`) — la façon dont un
  * agent principal (claude, codex, copilot, opencode, antigravity) apprend à
- * diriger `orch` plutôt que d'exécuter lui-même.
+ * diriger `caesar` plutôt que d'exécuter lui-même.
  *
  * **Sur un projet déjà initialisé, sans `--force` : refresh.** Relancer
- * `orch init` ne réécrit ni `.orch/config.toml` ni `.orch/roles/*.md` — ce
+ * `caesar init` ne réécrit ni `.caesar/config.toml` ni `.caesar/roles/*.md` — ce
  * sont les fichiers que l'utilisateur édite (politique, rôles, prompts
  * système), et un `init` réexécuté par réflexe (ou par un script) les
  * écraserait sans le vouloir. Seuls les assets agentiques sont
@@ -53,8 +53,8 @@ import {
   repoRoot,
   saveLayer,
   writeFileAtomic,
-} from "@orch/core";
-import type { AgentAssetInstall, AssetScope, McpClient, WorktreeConfig } from "@orch/core";
+} from "@caesar/core";
+import type { AgentAssetInstall, AssetScope, McpClient, WorktreeConfig } from "@caesar/core";
 import type { Io } from "../output.js";
 import { VERSION } from "../version.js";
 import {
@@ -106,7 +106,7 @@ function defaultRolePrompt(name: string): string {
  * état) — voir le constat I5 de la revue finale, repris ici puisque cette
  * commande est de toute façon réécrite par la tâche 13.
  */
-const GITIGNORE_ENTRIES = [".orch/config.local.toml", ".orch/tasks/", ".orch/wt/", ".orch/state/"];
+const GITIGNORE_ENTRIES = [".caesar/config.local.toml", ".caesar/tasks/", ".caesar/wt/", ".caesar/state/"];
 
 interface GitignoreResult {
   path: string;
@@ -124,7 +124,7 @@ interface GitignoreResult {
  * dans sa propre sortie plutôt que cette fonction n'écrive un `.gitignore`
  * orphelin hors de tout dépôt.
  *
- * Écriture atomique (`writeFileAtomic`, `@orch/core`) — même motif que
+ * Écriture atomique (`writeFileAtomic`, `@caesar/core`) — même motif que
  * `saveLayer` (`config.ts`) et `packages/core/src/store.ts`, plutôt que
  * réécrire `.gitignore` en place.
  */
@@ -155,7 +155,7 @@ async function completeGitignore(root: string, isGitRepo: boolean): Promise<Giti
 
 /**
  * Cible interne, jamais annoncée dans `targets` : sert uniquement à déposer
- * le socle partagé (`.agents/skills/orch/`, voir `ASSET_TARGETS` dans
+ * le socle partagé (`.agents/skills/caesar/`, voir `ASSET_TARGETS` dans
  * `agent-assets.ts`) quand aucun runtime n'est détecté et qu'aucun `--agent`
  * n'a été donné. `codex` ne porte ni commandes ni fusion `settings.json` —
  * le choisir ne dépose donc jamais rien de plus que le socle partagé
@@ -170,7 +170,7 @@ const SHARED_ONLY_CLIENT: McpClient = "codex";
  * dans le PATH — jamais `detectAgentInstallation` (qui sonde `--version`,
  * jusqu'à 3 s par agent : coûteux et hors de propos ici, on ne veut savoir
  * que "présent ou pas"), et jamais les agents génériques de la configuration
- * (`[[agent]]`) : `orch init` dépose la connaissance des cinq runtimes
+ * (`[[agent]]`) : `caesar init` dépose la connaissance des cinq runtimes
  * natifs, pas d'un agent personnalisé qui ne lira de toute façon aucune
  * skill standard.
  */
@@ -230,8 +230,8 @@ function plural(n: number): string {
  * confirmation nommant les runtimes servis et le nombre de fichiers
  * déposés/rafraîchis, un avertissement agrégé pour les fichiers qui
  * différaient du catalogue et ont été remplacés, puis la suite logique : la
- * skill appelle les tools du serveur MCP `orch`, qui n'existent pour un
- * runtime qu'une fois `orch mcp install <client>` lancé pour lui.
+ * skill appelle les tools du serveur MCP `caesar`, qui n'existent pour un
+ * runtime qu'une fois `caesar mcp install <client>` lancé pour lui.
  *
  * Ne rend PAS `outcome.install.warnings` (`settings.json` malformé,
  * notamment) : ce sont les seuls avertissements du module qui doivent aussi
@@ -246,7 +246,7 @@ function printAssetsOutcome(io: Io, outcome: AssetOutcome): void {
   const label =
     outcome.targets.length > 0
       ? `Connaissance agentique déposée pour ${outcome.targets.join(", ")}`
-      : "Aucun runtime détecté dans le PATH : socle partagé (.agents/skills/orch/) déposé quand même";
+      : "Aucun runtime détecté dans le PATH : socle partagé (.agents/skills/caesar/) déposé quand même";
   printDone(
     io,
     `${label} — ${changed.length} fichier${plural(changed.length)} déposé${plural(changed.length)} ou rafraîchi${plural(changed.length)} (sur ${total} géré${plural(total)}).`,
@@ -256,13 +256,13 @@ function printAssetsOutcome(io: Io, outcome: AssetOutcome): void {
   if (updated.length > 0) {
     printWarning(
       io,
-      `${updated.length} fichier${plural(updated.length)} géré${plural(updated.length)} par orch remplacé${plural(updated.length)}, divergent${plural(updated.length)} du catalogue : ${updated.map((f) => homePath(f.path)).join(", ")}`,
+      `${updated.length} fichier${plural(updated.length)} géré${plural(updated.length)} par caesar remplacé${plural(updated.length)}, divergent${plural(updated.length)} du catalogue : ${updated.map((f) => homePath(f.path)).join(", ")}`,
     );
   }
 
   printNote(
     io,
-    'La skill appelle les tools du serveur MCP "orch" : ils n\'existent pour un runtime qu\'une fois "orch mcp install <client>" lancé pour lui.',
+    'La skill appelle les tools du serveur MCP "caesar" : ils n\'existent pour un runtime qu\'une fois "caesar mcp install <client>" lancé pour lui.',
   );
 }
 
@@ -319,12 +319,12 @@ async function runInitGlobal(root: string, options: InitOptions, io: Io): Promis
 async function runInitProject(root: string, options: InitOptions, io: Io): Promise<number> {
   const loaded = await loadConfig(root);
   // Sans --force, un projet déjà initialisé n'est plus un refus : c'est un
-  // refresh (voir l'en-tête du module) — `.orch/config.toml` et
-  // `.orch/roles/*.md` restent strictement intacts, seuls les assets
+  // refresh (voir l'en-tête du module) — `.caesar/config.toml` et
+  // `.caesar/roles/*.md` restent strictement intacts, seuls les assets
   // agentiques sont réécrits/rafraîchis.
   const refresh = loaded.sources.project !== undefined && !options.force;
 
-  const rolesDir = join(root, ".orch", "roles");
+  const rolesDir = join(root, ".caesar", "roles");
   const roleFiles: string[] = [];
   let worktree: WorktreeConfig | null = null;
 
@@ -337,7 +337,7 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
     // module.
     for (const role of defaultConfig().roles) {
       if (!role.system_prompt_file) continue;
-      const absPath = join(root, ".orch", role.system_prompt_file);
+      const absPath = join(root, ".caesar", role.system_prompt_file);
       await writeFile(absPath, defaultRolePrompt(role.name) + "\n", "utf8");
       roleFiles.push(absPath);
     }
@@ -405,7 +405,7 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
       assets: assets ? { targets: assets.targets, files: assets.install.files, stale: assets.install.stale } : null,
     });
   } else {
-    // Le logotype ouvre `orch init` et rien d'autre : c'est la seule commande
+    // Le logotype ouvre `caesar init` et rien d'autre : c'est la seule commande
     // qu'on tape une fois, sans savoir encore ce que l'outil est. Ailleurs, il
     // serait du bruit à chaque invocation.
     for (const line of bannerLines(io.stdout, `orchestrateur de sous-agents · v${VERSION}`)) writeLine(io.stdout, line);

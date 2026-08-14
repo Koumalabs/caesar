@@ -5,7 +5,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { OrchConfig, PolicyConfig, RoleConfig } from "./config.js";
+import type { CaesarConfig, PolicyConfig, RoleConfig } from "./config.js";
 import { isEnoent } from "./config.js";
 import { isAgentAllowed, isRecursionAllowed } from "./policy.js";
 import { findAgentDefinition, findBinaryInPath } from "./registry/index.js";
@@ -16,7 +16,7 @@ export interface ResolvedRole extends RoleConfig {
 }
 
 /**
- * Où un `system_prompt_file` est réellement lu : sous `<root>/.orch/`,
+ * Où un `system_prompt_file` est réellement lu : sous `<root>/.caesar/`,
  * toujours — y compris quand le rôle vient de la couche globale, dont les
  * chemins sont donc résolus dans le projet courant (limite connue, pas une
  * décision de cette fonction).
@@ -28,17 +28,17 @@ export interface ResolvedRole extends RoleConfig {
  * sans que rien ne le signale.
  */
 export function rolePromptPath(root: string, systemPromptFile: string): string {
-  return join(root, ".orch", systemPromptFile);
+  return join(root, ".caesar", systemPromptFile);
 }
 
 /**
  * Résout un rôle par nom et charge son prompt système. `null` si aucun rôle
  * de ce nom n'existe. `system_prompt_file` est résolu relativement à
- * `<root>/.orch/` (`rolePromptPath`) ; un fichier absent n'est pas une
+ * `<root>/.caesar/` (`rolePromptPath`) ; un fichier absent n'est pas une
  * erreur, `systemPrompt` vaut simplement la chaîne vide — un rôle sans
  * prompt système reste parfaitement utilisable.
  */
-export async function resolveRole(config: OrchConfig, root: string, name: string): Promise<ResolvedRole | null> {
+export async function resolveRole(config: CaesarConfig, root: string, name: string): Promise<ResolvedRole | null> {
   const role = config.roles.find((candidate) => candidate.name === name);
   if (!role) return null;
 
@@ -63,12 +63,12 @@ export async function resolveRole(config: OrchConfig, root: string, name: string
  * Résout, pour un ensemble d'identifiants d'agents, si chacun est installé
  * (binaire trouvé sur le `PATH`) — le prédicat synchrone attendu par
  * `pickAgentForRole`, précalculé une fois pour toutes. Partagé par
- * `resolveDelegation` (ci-dessous, un rôle à la fois) et par `orch role list`
+ * `resolveDelegation` (ci-dessous, un rôle à la fois) et par `caesar role list`
  * (`packages/cli/src/commands/role.ts`, tous les rôles d'un coup) : les deux
  * façades resolvaient jusqu'ici cette même carte chacune de leur côté (tâche
  * 10, B).
  *
- * `extraAgents` (agents de configuration, `OrchConfig.agents`) permet à
+ * `extraAgents` (agents de configuration, `CaesarConfig.agents`) permet à
  * `role.agents` de nommer un agent générique, pas seulement le catalogue
  * natif — voir C1 de la revue finale.
  */

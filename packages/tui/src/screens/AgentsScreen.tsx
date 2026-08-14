@@ -18,12 +18,12 @@
  *  - le motif d'un refus partait hors de l'écran sur une ligne unique : il
  *    est replié dans le panneau de détail ;
  *  - le chemin du binaire occupait une colonne alors qu'il ne sert qu'une
- *    fois qu'on s'intéresse à un agent précis — même leçon qu'`orch doctor`,
+ *    fois qu'on s'intéresse à un agent précis — même leçon que `caesar doctor`,
  *    qui l'a sorti de sa vue par défaut. Il vit maintenant dans le détail.
  *
  * Capacités et statut vis-à-vis de la politique viennent de
- * `describeAgentCapabilities`/`describeAgentPolicy` (`@orch/core`) — la même
- * logique qu'`orch doctor`/`orch agents list`, réutilisée telle quelle. La
+ * `describeAgentCapabilities`/`describeAgentPolicy` (`@caesar/core`) — la même
+ * logique que `caesar doctor`/`caesar agents list`, réutilisée telle quelle. La
  * détection d'installation est calculée une seule fois par `App` : cet écran
  * ne fait qu'afficher `installed`, jamais la relancer.
  *
@@ -48,8 +48,8 @@ import {
   listAgentDefinitions,
   splitArgTemplate,
   validateGenericAgentSpec,
-} from "@orch/core";
-import type { AgentDefinition, AgentInstallStatus, GenericAgentSpec } from "@orch/core";
+} from "@caesar/core";
+import type { AgentDefinition, AgentInstallStatus, GenericAgentSpec } from "@caesar/core";
 import {
   agentDeclaredByActiveLayer,
   agentMark,
@@ -94,7 +94,7 @@ const FIELD_HINTS: Record<Field_, string> = {
   bin: "La commande à lancer. Un chemin (avec un « / ») désigne un fichier ; un nom seul est cherché dans le PATH.",
   args: `Gabarit de ligne de commande. Jetons : ${GENERIC_ARG_TOKENS.map((name) => `{{${name}}}`).join(" ")}. Un argument dont un jeton n'a pas de valeur disparaît entièrement.`,
   networkArgs:
-    "Ce qu'il faut ajouter pour ouvrir le réseau, p. ex. --allow-all-urls. Les déclarer, c'est affirmer que sans eux ce CLI est confiné — sinon orch annonce « réseau inconnu » et ne promet rien.",
+    "Ce qu'il faut ajouter pour ouvrir le réseau, p. ex. --allow-all-urls. Les déclarer, c'est affirmer que sans eux ce CLI est confiné — sinon caesar annonce « réseau inconnu » et ne promet rien.",
   cwdMode: "process : le répertoire courant porte le workspace. flag : il est déjà passé en argument.",
   nativeReadOnly: "Le CLI garantit-il lui-même de ne rien écrire ? Sinon, une tâche en lecture seule est isolée dans un worktree.",
 };
@@ -374,7 +374,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
       </Panel>
 
       {editing?.kind === "new-agent" ? (
-        <Panel title="Déclarer un agent" focused note="Identifiant — celui qu'on écrira dans « orch run --agent » et dans les rôles.">
+        <Panel title="Déclarer un agent" focused note="Identifiant — celui qu'on écrira dans « caesar run --agent » et dans les rôles.">
           <box flexDirection="row">
             <text>{"Identifiant   "}</text>
             <input

@@ -147,7 +147,7 @@ describe("createGenericAgent", () => {
 
   it("déduit la capacité \"modèle\" de la présence de {{model}} dans les arguments", () => {
     // Rien d'autre ne porte le choix du modèle pour un agent générique : la
-    // capacité annoncée par `orch agents list` doit suivre les arguments, pas
+    // capacité annoncée par `caesar agents list` doit suivre les arguments, pas
     // une case cochée à côté d'eux.
     expect(createGenericAgent({ id: "a", bin: "a", args: ["{{prompt}}"] }).capabilities.model).toBe(false);
     expect(createGenericAgent({ id: "a", bin: "a", args: ["--model", "{{model}}", "{{prompt}}"] }).capabilities.model).toBe(true);

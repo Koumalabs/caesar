@@ -4,8 +4,8 @@
  *
  * Il ne dépend d'aucun package du monorepo : c'est délibéré. Un agent
  * extérieur réel ne connaîtrait rien de cette implémentation, seulement le
- * contrat minimal documenté par `@orch/protocol` — lire `$ORCH_TASK_FILE`,
- * écrire `$ORCH_REPORT_PATH`. Ce script prouve que ce contrat suffit : s'il
+ * contrat minimal documenté par `@caesar/protocol` — lire `$CAESAR_TASK_FILE`,
+ * écrire `$CAESAR_REPORT_PATH`. Ce script prouve que ce contrat suffit : s'il
  * est orchestrable au même titre que Codex ou Antigravity, n'importe quel
  * CLI extérieur l'est aussi.
  *
@@ -37,7 +37,7 @@
  *   l'annulation. Avec `ignoreSigterm`, installe un gestionnaire qui absorbe
  *   SIGTERM, pour éprouver l'escalade vers SIGKILL.
  * - "ask" (tâche 9, canal retour) : si `task.channel` est renseigné, se
- *   connecte à `orch-channel` comme client MCP (voir
+ *   connecte à `caesar-channel` comme client MCP (voir
  *   `@modelcontextprotocol/sdk/client`), appelle `ask_orchestrator` avec
  *   `question`/`options`, puis `submit_report` avec un résumé qui rapporte
  *   littéralement la réponse reçue — c'est ce qui permet à un test de
@@ -64,12 +64,12 @@
  * dans `final-message.txt`, sous le répertoire de la tâche. Ce script ne
  * reçoit ce chemin par aucun jeton dédié — `GenericAgentSpec` (tâche 3) n'en
  * prévoit pas pour un CLI générique — mais le retrouve lui-même sous
- * `$ORCH_TASK_DIR`, exactement comme le calcule le runner.
+ * `$CAESAR_TASK_DIR`, exactement comme le calcule le runner.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 
-const REPORT_PROTOCOL = "orch.report/v1";
+const REPORT_PROTOCOL = "caesar.report/v1";
 const FINAL_MESSAGE_FILE_NAME = "final-message.txt";
 
 function log(kind, message) {
@@ -140,10 +140,10 @@ async function handleAskMode(task, directive, reportPath) {
 }
 
 async function main() {
-  const taskFile = process.env["ORCH_TASK_FILE"];
-  const reportPath = process.env["ORCH_REPORT_PATH"];
+  const taskFile = process.env["CAESAR_TASK_FILE"];
+  const reportPath = process.env["CAESAR_REPORT_PATH"];
   if (!taskFile || !reportPath) {
-    process.stderr.write("fake-agent: ORCH_TASK_FILE / ORCH_REPORT_PATH manquants\n");
+    process.stderr.write("fake-agent: CAESAR_TASK_FILE / CAESAR_REPORT_PATH manquants\n");
     process.exitCode = 1;
     return;
   }
@@ -197,7 +197,7 @@ async function main() {
   }
 
   if (directive.finalMessage !== undefined) {
-    const taskDir = process.env["ORCH_TASK_DIR"];
+    const taskDir = process.env["CAESAR_TASK_DIR"];
     writeFileSync(join(taskDir, FINAL_MESSAGE_FILE_NAME), directive.finalMessage, "utf8");
   }
 

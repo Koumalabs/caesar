@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Isolation, TaskMode } from "@orch/protocol";
+import type { Isolation, TaskMode } from "@caesar/protocol";
 import type { IsolationSource } from "./isolation.js";
 import { decideInplaceWrite } from "./isolation.js";
 
@@ -59,7 +59,7 @@ describe("decideInplaceWrite — les gardes, une par une", () => {
     expect(decide("inplace", "read-only", true, false)).toEqual({ refused: false });
   });
 
-  it("laisse passer hors dépôt utilisable : refuser rendrait orch inutilisable sur un projet non versionné", () => {
+  it("laisse passer hors dépôt utilisable : refuser rendrait caesar inutilisable sur un projet non versionné", () => {
     // Sans dépôt (ou sans le moindre commit), aucun worktree n'est créable :
     // un refus n'offrirait aucune issue.
     expect(decide("inplace", "write", false, false)).toEqual({ refused: false });

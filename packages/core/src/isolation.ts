@@ -7,7 +7,7 @@
  * (`delegation.ts`) accordait à une demande explicite le dernier mot sur le
  * rôle et sur la politique, et `prepareIsolation` (`engine/runner.ts`)
  * l'honorait telle quelle — sans avertissement, sans constat dans le rapport.
- * Un `isolation: "inplace"` passé à `orch_delegate` défaisait donc en silence
+ * Un `isolation: "inplace"` passé à `caesar_delegate` défaisait donc en silence
  * le rôle `implementer`, qui impose pourtant `worktree`. Constaté sur un dépôt
  * réel : trois tâches déléguées ont écrit directement sur la branche de travail
  * de l'utilisateur, et rien dans leur rapport ne le disait.
@@ -26,7 +26,7 @@
  * nu remonterait tel quel à l'agent principal via MCP, où il serait
  * inexploitable.
  */
-import type { Isolation, TaskMode } from "@orch/protocol";
+import type { Isolation, TaskMode } from "@caesar/protocol";
 
 /**
  * D'où vient l'isolation retenue, le long de la chaîne
@@ -88,7 +88,7 @@ function describeSource(source: IsolationSource | undefined, roleName?: string):
  * - `mode === "write"` : la lecture seule relève de `mustForceWorktree`, dont la
  *   logique est opposée (contenir, pas interdire).
  * - `repoUsable` : sans dépôt utilisable, aucun worktree n'est possible.
- *   Refuser ici rendrait `orch` inutilisable sur tout projet non versionné ou
+ *   Refuser ici rendrait `caesar` inutilisable sur tout projet non versionné ou
  *   fraîchement initialisé — un durcissement qui casse le cas ordinaire n'est
  *   pas un durcissement, c'est une panne. `prepareIsolation` avertit déjà pour
  *   ce cas.
@@ -114,12 +114,12 @@ export function decideInplaceWrite(query: InplaceWriteQuery): InplaceWriteDecisi
     reason:
       `Isolation "inplace" ${describeSource(query.source, query.roleName)} pour une tâche en écriture : refusée. ` +
       `Le sous-agent écrirait directement dans l'arbre de travail${where}, sur la branche courante — ` +
-      `ses modifications se mêleraient aux vôtres et à celles des autres tâches, sans que "orch diff" puisse en rendre compte.`,
+      `ses modifications se mêleraient aux vôtres et à celles des autres tâches, sans que "caesar diff" puisse en rendre compte.`,
     remedy:
       `Laissez l'isolation à "worktree" (ou "auto") : le sous-agent travaille alors sur une branche jetable, ` +
-      `dont "orch diff" montre le résultat et "orch apply" le reporte. Si le worktree est inexploitable parce qu'il ` +
+      `dont "caesar diff" montre le résultat et "caesar apply" le reporte. Si le worktree est inexploitable parce qu'il ` +
       `manque des fichiers non suivis par git (dépendances installées, ".env", briefs ignorés), déclarez-les sous ` +
-      `[worktree] dans ".orch/config.toml" (clés "copy", "link", "setup") plutôt que de renoncer à l'isolation. ` +
+      `[worktree] dans ".caesar/config.toml" (clés "copy", "link", "setup") plutôt que de renoncer à l'isolation. ` +
       `En dernier recours, et en connaissance de cause, posez "allow_inplace_write = true" sous [policy].`,
   };
 }

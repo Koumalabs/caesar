@@ -33,7 +33,7 @@ describe("buildServer sur le transport stdio", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-mcp-server-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-mcp-server-"));
   });
 
   afterEach(async () => {
@@ -67,20 +67,20 @@ describe("buildServer sur le transport stdio", () => {
     const listResponse = JSON.parse(listResponseLine) as { result: { tools: Array<{ name: string }> } };
     const names = listResponse.result.tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      "orch_answer",
-      "orch_apply",
-      "orch_await",
-      "orch_cancel",
-      "orch_delegate",
-      "orch_diff",
-      "orch_list_agents",
-      "orch_list_roles",
-      "orch_logs",
-      "orch_status",
+      "caesar_answer",
+      "caesar_apply",
+      "caesar_await",
+      "caesar_cancel",
+      "caesar_delegate",
+      "caesar_diff",
+      "caesar_list_agents",
+      "caesar_list_roles",
+      "caesar_logs",
+      "caesar_status",
     ]);
 
     // Un appel de tool réel, à travers le protocole : preuve que le schéma
-    // zod 4 de chaque tool (dont `orch_status`, qui prend un argument) est
+    // zod 4 de chaque tool (dont `caesar_status`, qui prend un argument) est
     // effectivement converti et validé côté SDK, pas seulement construit
     // sans erreur (voir le point de vigilance du brief sur la compatibilité
     // zod du SDK MCP).
@@ -88,7 +88,7 @@ describe("buildServer sur le transport stdio", () => {
       jsonrpc: "2.0",
       id: 3,
       method: "tools/call",
-      params: { name: "orch_status", arguments: { task_id: "t_inexistant" } },
+      params: { name: "caesar_status", arguments: { task_id: "t_inexistant" } },
     };
     const callResponsePromise = nextLine(stdout);
     stdin.write(JSON.stringify(callRequest) + "\n");

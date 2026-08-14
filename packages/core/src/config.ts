@@ -3,11 +3,11 @@
  *
  * Trois emplacements sur disque, fusionnés au chargement dans cet ordre — le
  * plus spécifique l'emportant, champ par champ :
- *   - global  : `~/.config/orch/config.toml`               (non versionné, propre au poste)
- *   - projet  : `<root>/.orch/config.toml`                 (versionné, partagé avec l'équipe)
- *   - local   : `<root>/.orch/config.local.toml`            (non versionné, propre au poste — à ajouter au `.gitignore`)
+ *   - global  : `~/.config/caesar/config.toml`               (non versionné, propre au poste)
+ *   - projet  : `<root>/.caesar/config.toml`                 (versionné, partagé avec l'équipe)
+ *   - local   : `<root>/.caesar/config.local.toml`            (non versionné, propre au poste — à ajouter au `.gitignore`)
  *
- * `@orch/core` est la seule source de vérité de cette configuration (voir
+ * `@caesar/core` est la seule source de vérité de cette configuration (voir
  * les contraintes globales du projet) : aucune façade (CLI, TUI, serveur
  * MCP) ne doit relire ni réécrire le TOML pour son propre compte, elles
  * passent toutes par ce module.
@@ -34,8 +34,8 @@ import { join } from "node:path";
 import type { ZodIssue } from "zod";
 import { z } from "zod";
 import { parse as parseToml, stringify as stringifyToml, TomlError } from "smol-toml";
-import type { Isolation, TaskMode } from "@orch/protocol";
-import { TaskModeSchema } from "@orch/protocol";
+import type { Isolation, TaskMode } from "@caesar/protocol";
+import { TaskModeSchema } from "@caesar/protocol";
 import type { GenericAgentSpec } from "./registry/generic.js";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { NETWORK_REQUESTS } from "./network.js";
@@ -57,7 +57,7 @@ export interface PolicyConfig {
    * Faux par défaut, et c'est tout l'objet du réglage : `decideInplaceWrite`
    * (`isolation.ts`) refuse cette combinaison, parce qu'elle mêle les
    * modifications du sous-agent à celles de l'utilisateur et à celles des
-   * autres tâches, hors de portée d'`orch diff`. L'opt-in existe pour les
+   * autres tâches, hors de portée de `caesar diff`. L'opt-in existe pour les
    * dépôts où l'utilisateur assume ce mélange en connaissance de cause —
    * jamais comme réponse à un worktree incomplet, dont le remède est la
    * section `[worktree]`.
@@ -121,7 +121,7 @@ export interface RoleConfig {
   system_prompt_file?: string;
 }
 
-export interface OrchConfig {
+export interface CaesarConfig {
   policy: PolicyConfig;
   worktree: WorktreeConfig;
   roles: RoleConfig[];
@@ -129,12 +129,12 @@ export interface OrchConfig {
 }
 
 /**
- * Une contribution à fusionner dans un `OrchConfig` de base — ce que `mergeConfig`
+ * Une contribution à fusionner dans un `CaesarConfig` de base — ce que `mergeConfig`
  * accepte comme `override`, et ce qu'un seul fichier de configuration (global ou
  * projet) apporte une fois parsé.
  *
  * `policy` est volontairement `Partial<PolicyConfig>`, pas `PolicyConfig` :
- * `Partial<OrchConfig>` ne l'aurait rendu superficiellement optionnel qu'au
+ * `Partial<CaesarConfig>` ne l'aurait rendu superficiellement optionnel qu'au
  * niveau de `policy` lui-même, en exigeant qu'il soit complet dès qu'il est
  * présent — alors que la fusion voulue (et testée) est champ par champ. `roles`
  * et `agents` restent des listes d'entrées complètes : ces deux-là se
@@ -167,7 +167,7 @@ export interface ConfigLayer {
 }
 
 export interface LoadedConfig {
-  config: OrchConfig;
+  config: CaesarConfig;
   /** Les trois couches, dans l'ordre d'application (global, projet, local) — y compris celles dont le fichier est absent (`override` vide alors). */
   layers: ConfigLayer[];
   sources: { global?: string; project?: string; local?: string };
@@ -270,7 +270,7 @@ type RawPolicy = z.infer<typeof RawPolicySchema>;
 
 /**
  * Un chemin de `[worktree] copy`/`link` : relatif à la racine du workspace,
- * restant à l'intérieur, et ne touchant ni `.git` ni `.orch`.
+ * restant à l'intérieur, et ne touchant ni `.git` ni `.caesar`.
  *
  * Validé ici plutôt qu'à la matérialisation, parce qu'une entrée invalide est
  * une erreur de configuration, pas une circonstance d'exécution : elle doit se
@@ -280,7 +280,7 @@ type RawPolicy = z.infer<typeof RawPolicySchema>;
  * - **absolu** : désignerait un ailleurs quelconque de la machine ;
  * - **`..`** : sortirait du workspace, donc du périmètre que l'isolation
  *   promet de contenir ;
- * - **`.git` / `.orch`** : recopier ou lier l'un des deux ferait écrire le
+ * - **`.git` / `.caesar`** : recopier ou lier l'un des deux ferait écrire le
  *   sous-agent dans l'administration du dépôt ou de l'orchestrateur —
  *   exactement ce à quoi le worktree sert à ne pas toucher.
  */
@@ -295,8 +295,8 @@ const WorktreePathSchema = z
   })
   .refine((value) => {
     const first = value.split(/[\\/]/)[0];
-    return first !== ".git" && first !== ".orch";
-  }, { message: '".git" et ".orch" sont exclus : ce sont l\'administration du dépôt et celle d\'orch' });
+    return first !== ".git" && first !== ".caesar";
+  }, { message: '".git" et ".caesar" sont exclus : ce sont l\'administration du dépôt et celle d\'caesar' });
 
 /**
  * `[worktree]` : mêmes règles que `[policy]` — chaque champ facultatif, la
@@ -371,7 +371,7 @@ const RawFileSchema = z
   .strict();
 
 // ---------------------------------------------------------------------------
-// Conversions entre la forme brute (TOML) et la forme applicative (OrchConfig)
+// Conversions entre la forme brute (TOML) et la forme applicative (CaesarConfig)
 // ---------------------------------------------------------------------------
 
 /** Ne garde que les champs effectivement présents : c'est ce qui rend la fusion `policy` champ par champ possible. */
@@ -436,7 +436,7 @@ function toAgentSpec(raw: RawAgent): GenericAgentSpec {
  * cette fonction que `Partial<PolicyConfig>` — un objet complet a, par
  * définition, tous ses champs "présents" — ce qui lui permet de servir aussi
  * bien à sérialiser une couche partielle (`saveLayer`, la matérialisation
- * d'une liste) qu'une configuration complète (`orch init --global`, qui
+ * d'une liste) qu'une configuration complète (`caesar init --global`, qui
  * écrit `defaultConfig()` intégralement à la couche globale).
  */
 function fromPolicyOverride(policy: Partial<PolicyConfig>): Record<string, unknown> {
@@ -562,7 +562,7 @@ function formatZodError(error: z.ZodError, filePath: string): string {
  * `HOME` pour isoler un test (le motif déjà en place dans
  * `packages/core/src/config.test.ts` et `packages/cli/test/support.ts`)
  * n'empêchait pas `globalConfigPath()` de résoudre le vrai
- * `~/.config/orch/` sous Bun, avec le risque réel d'écrire dedans — ce qui
+ * `~/.config/caesar/` sous Bun, avec le risque réel d'écrire dedans — ce qui
  * s'est produit en écrivant le test qui a révélé le défaut. Lire `$HOME`
  * explicitement avant de retomber sur `homedir()` reproduit le comportement
  * Node existant (aucun changement sous Node, où `$HOME` l'emportait déjà) et
@@ -582,16 +582,16 @@ export function homeDirectory(): string {
 }
 
 export function globalConfigPath(): string {
-  return join(homeDirectory(), ".config", "orch", "config.toml");
+  return join(homeDirectory(), ".config", "caesar", "config.toml");
 }
 
 export function projectConfigPath(root: string): string {
-  return join(root, ".orch", "config.toml");
+  return join(root, ".caesar", "config.toml");
 }
 
-/** Couche locale : jamais versionnée (voir `orch init`, qui la déclare au `.gitignore`), propre à un poste de travail pour un projet donné. */
+/** Couche locale : jamais versionnée (voir `caesar init`, qui la déclare au `.gitignore`), propre à un poste de travail pour un projet donné. */
 export function localConfigPath(root: string): string {
-  return join(root, ".orch", "config.local.toml");
+  return join(root, ".caesar", "config.local.toml");
 }
 
 /** Chemin du fichier d'une couche donnée — la seule fonction qui doit choisir entre `globalConfigPath`/`projectConfigPath`/`localConfigPath`, pour que le choix de la couche reste un simple paramètre partout ailleurs (`loadLayer`, `saveLayer`, les façades CLI). */
@@ -760,7 +760,7 @@ function mergeByKey<T>(base: readonly T[], override: readonly T[] | undefined, k
  * clé (`name`, `id`) : une entrée d'`override` remplace entièrement celle de
  * `base` de même clé, les entrées propres à chaque niveau sont conservées.
  */
-export function mergeConfig(base: OrchConfig, override: ConfigOverride): OrchConfig {
+export function mergeConfig(base: CaesarConfig, override: ConfigOverride): CaesarConfig {
   const policy: PolicyConfig = override.policy ? { ...base.policy, ...override.policy } : base.policy;
   // Champ par champ, comme `policy` — et donc par *remplacement* de chaque
   // liste, jamais par concaténation : une union rendrait impossible le retrait
@@ -798,17 +798,17 @@ const DEFAULT_POLICY: PolicyConfig = {
 
 /**
  * `system_prompt_file` pointe déjà ici vers la convention `roles/<name>.md`
- * (résolue par `resolveRole`, relativement à `<root>/.orch/`), alors même
+ * (résolue par `resolveRole`, relativement à `<root>/.caesar/`), alors même
  * qu'aucune couche ne l'a déclaré : c'est délibéré, depuis la tâche 13.
  *
- * `orch init` (variante projet) matérialise le *fichier* (`.orch/roles/<name>.md`,
+ * `caesar init` (variante projet) matérialise le *fichier* (`.caesar/roles/<name>.md`,
  * un prompt système par défaut) mais ne déclare plus le rôle lui-même dans la
  * couche projet — sans quoi cette couche figerait la politique et les rôles
  * par défaut au moment de l'init, masquant toute configuration globale
  * ultérieure (exactement le défaut I11 que cette tâche corrige). En portant
  * la référence au fichier ici, dans la base commune à toutes les couches, le
  * rôle reste utilisable (prompt vide, `resolveRole` tolère un fichier
- * absent) même sans `orch init`, et se remplit dès que `orch init` a écrit
+ * absent) même sans `caesar init`, et se remplit dès que `caesar init` a écrit
  * le fichier — quel que soit le projet, sans que la couche projet ait besoin
  * de le répéter.
  */
@@ -846,7 +846,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
 ];
 
 /** La configuration de base, avant toute fusion avec un fichier global ou projet. Toujours une copie fraîche. */
-export function defaultConfig(): OrchConfig {
+export function defaultConfig(): CaesarConfig {
   return {
     policy: { ...DEFAULT_POLICY, allowed: [...DEFAULT_POLICY.allowed], denied: [...DEFAULT_POLICY.denied] },
     worktree: { copy: [], link: [], setup: [] },
@@ -860,11 +860,11 @@ export function defaultConfig(): OrchConfig {
 // ---------------------------------------------------------------------------
 
 const SAVE_HEADER =
-  "# Fichier généré par @orch/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n\n";
+  "# Fichier généré par @caesar/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n\n";
 
 /**
  * Régénère le fichier de la couche `scope`, à partir de `override` — pas
- * d'un `OrchConfig` fusionné. `override` ne sérialise que ce qu'il porte
+ * d'un `CaesarConfig` fusionné. `override` ne sérialise que ce qu'il porte
  * explicitement : une section `[policy]` uniquement pour les champs présents
  * dans `override.policy`, des sections `[[role]]`/`[[agent]]` uniquement si
  * `override.roles`/`override.agents` sont définis. C'est ce qui rend une

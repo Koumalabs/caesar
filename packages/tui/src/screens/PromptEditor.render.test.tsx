@@ -14,7 +14,7 @@ import { PromptEditor } from "./PromptEditor";
 let root: string;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "orch-prompt-editor-"));
+  root = await mkdtemp(join(tmpdir(), "caesar-prompt-editor-"));
 });
 
 afterEach(async () => {
@@ -39,7 +39,9 @@ async function mount(file = "roles/reviewer.md"): Promise<Harness> {
         onClose={(saved) => closes.push(saved)}
         notify={(text, isError = false) => messages.push({ text, isError })}
       />,
-      { width: 100, height: 24 },
+      // 120 et non 100 : le chemin absolu affiché (tmpdir + « caesar-prompt-editor-… »)
+      // dépasse 100 colonnes sur macOS, et un chemin replié échapperait à toContain.
+      { width: 120, height: 24 },
     ),
   );
   // La lecture du fichier est asynchrone : le champ n'est monté qu'ensuite.
@@ -71,12 +73,12 @@ describe("PromptEditor", () => {
   it("montre le chemin absolu réellement lu par le moteur", async () => {
     // Sans lui, on édite à l'aveugle : un rôle venu de la couche globale
     // résout son prompt dans le projet courant, ce que seul le chemin montre.
-    await mkdir(join(root, ".orch", "roles"), { recursive: true });
-    await writeFile(join(root, ".orch", "roles", "reviewer.md"), "Tu es strict.", "utf8");
+    await mkdir(join(root, ".caesar", "roles"), { recursive: true });
+    await writeFile(join(root, ".caesar", "roles", "reviewer.md"), "Tu es strict.", "utf8");
 
     const { setup } = await mount();
     const frame = setup.captureCharFrame();
-    expect(frame).toContain(join(root, ".orch", "roles", "reviewer.md"));
+    expect(frame).toContain(join(root, ".caesar", "roles", "reviewer.md"));
     expect(frame).toContain("Tu es strict.");
     setup.renderer.destroy();
   });
@@ -100,7 +102,7 @@ describe("PromptEditor", () => {
       await setup.renderOnce();
     });
 
-    const written = await readFile(join(root, ".orch", "roles", "reviewer.md"), "utf8");
+    const written = await readFile(join(root, ".caesar", "roles", "reviewer.md"), "utf8");
     expect(written).toBe("Ne corrige rien toi-même.");
     expect(closes).toEqual([true]);
     expect(messages[0]?.text).toContain("enregistré");

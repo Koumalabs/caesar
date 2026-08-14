@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import type { Channel, Finding, Isolation, OrchEvent, Report, ReportChannel, Task, TaskMode, TaskPaths } from "@orch/protocol";
+import type { Channel, Finding, Isolation, CaesarEvent, Report, ReportChannel, Task, TaskMode, TaskPaths } from "@caesar/protocol";
 import {
   REPORT_PROTOCOL,
   ReportSchema,
@@ -20,7 +20,7 @@ import {
   taskPaths,
   writeReport,
   writeTask,
-} from "@orch/protocol";
+} from "@caesar/protocol";
 import type { WorktreeConfig } from "../config.js";
 import { decideInplaceWrite } from "../isolation.js";
 import { resolveAgentDefinition } from "../registry/index.js";
@@ -49,22 +49,22 @@ import { acquireLease, releaseLease } from "./lock.js";
 const DEFAULT_TIMEOUT_MS = 600_000;
 
 /** Nom sous lequel le canal retour est déclaré côté agent (voir `Channel.server_name`). Exporté : un lanceur alternatif (voir `ChannelLauncher`) doit pouvoir le reprendre sans le redéfinir. */
-export const CHANNEL_SERVER_NAME = "orch";
+export const CHANNEL_SERVER_NAME = "caesar";
 
 /**
- * Chemin absolu de `dist/bin.js` dans `@orch/mcp-channel`, résolu via la
+ * Chemin absolu de `dist/bin.js` dans `@caesar/mcp-channel`, résolu via la
  * résolution de module Node plutôt que supposé à un chemin relatif fixe —
  * voir le brief de la tâche 9 ("résous son chemin dynamiquement plutôt que
  * de le supposer"). Cette résolution survit à une installation en dehors de
- * ce dépôt (npm, un lien global…), tant que `@orch/mcp-channel` reste une
- * dépendance déclarée de `@orch/core` (voir son `package.json`) : c'est la
+ * ce dépôt (npm, un lien global…), tant que `@caesar/mcp-channel` reste une
+ * dépendance déclarée de `@caesar/core` (voir son `package.json`) : c'est la
  * même méthode que `resolveTuiEntry` dans
- * `packages/cli/src/commands/config.ts` pour `@orch/tui`.
+ * `packages/cli/src/commands/config.ts` pour `@caesar/tui`.
  *
- * `@orch/mcp-channel` restreint son `"exports"` à `"."` (contrairement à
- * `@orch/tui`, dépourvu d'`"exports"`, que `resolveTuiEntry` peut donc
+ * `@caesar/mcp-channel` restreint son `"exports"` à `"."` (contrairement à
+ * `@caesar/tui`, dépourvu d'`"exports"`, que `resolveTuiEntry` peut donc
  * résoudre jusqu'à `package.json` directement) : demander la résolution de
- * `"@orch/mcp-channel/package.json"` échouerait (`ERR_PACKAGE_PATH_NOT_EXPORTED`).
+ * `"@caesar/mcp-channel/package.json"` échouerait (`ERR_PACKAGE_PATH_NOT_EXPORTED`).
  * On résout donc l'entrée principale (`"."` → `dist/index.js`) et on
  * descend vers son voisin `dist/bin.js`, toujours émis dans le même
  * répertoire par `tsc` puisque `src/index.ts` et `src/bin.ts` sont tous deux
@@ -78,7 +78,7 @@ export const CHANNEL_SERVER_NAME = "orch";
  */
 function resolveChannelEntry(): string {
   const require = createRequire(import.meta.url);
-  const indexPath = require.resolve("@orch/mcp-channel");
+  const indexPath = require.resolve("@caesar/mcp-channel");
   return join(dirname(indexPath), "bin.js");
 }
 
@@ -103,7 +103,7 @@ export type ChannelLauncher = (taskDir: string) => Channel | undefined;
  * Lanceur par défaut, jamais reconfiguré par le chemin Node (`bin.ts`) :
  * c'est le comportement historique de `buildChannel`, avant la tâche 12,
  * repris tel quel — `command` est le binaire Node lui-même
- * (`process.execPath`), jamais `orch-channel` par son nom ni le fichier
+ * (`process.execPath`), jamais `caesar-channel` par son nom ni le fichier
  * résolu directement : ni l'un ni l'autre ne peuvent être supposés
  * exécutables ou présents dans le `PATH` du sous-agent qui le lancera — voir
  * le brief de la tâche 9. Lève si `resolveChannelEntry` échoue ;
@@ -120,7 +120,7 @@ let channelLauncher: ChannelLauncher = defaultChannelLauncher;
  * Point d'entrée de l'extension de la tâche 12 : remplace le lanceur du
  * canal retour utilisé par tout `runTask` ultérieur. Le point d'entrée Bun
  * (`bun-entry.ts`) l'appelle une fois au démarrage avec un lanceur qui
- * auto-invoque le binaire compilé (`orch channel serve --task-dir <dir>`) ;
+ * auto-invoque le binaire compilé (`caesar channel serve --task-dir <dir>`) ;
  * le point d'entrée Node (`bin.ts`) ne l'appelle jamais, laissant
  * `defaultChannelLauncher` en place — comportement inchangé.
  */
@@ -145,7 +145,7 @@ function buildChannel(taskDir: string): Channel | undefined {
 /**
  * Nom du fichier où un CLI capable de `finalMessageFile` dépose son dernier
  * message, sous le répertoire de la tâche. Chemin fixe et prévisible : un
- * agent qui connaît son répertoire de tâche (`$ORCH_TASK_DIR`) peut le
+ * agent qui connaît son répertoire de tâche (`$CAESAR_TASK_DIR`) peut le
  * retrouver sans qu'aucun jeton dédié n'existe dans le gabarit générique
  * d'arguments (`GenericAgentSpec`, tâche 3) — c'est ce que fait l'agent
  * factice dans les tests.
@@ -160,7 +160,7 @@ export interface RunnerDeps {
    * `runTask` d'une même façade. Obligatoire — quitte à passer `undefined`
    * explicitement — voir C4/le durcissement de typage de la revue finale :
    * une propriété optionnelle est précisément ce qui a laissé les trois
-   * façades (`orch run`, `orch_delegate`, `orch agents test`) omettre le
+   * façades (`caesar run`, `caesar_delegate`, `caesar agents test`) omettre le
    * câblage sans qu'aucune erreur de compilation ne le signale, rendant
    * `max_parallel` inappliqué de bout en bout. `undefined` reste un choix
    * légitime pour un appelant qui ne veut délibérément aucune limite (voir
@@ -196,7 +196,7 @@ export interface RunTaskInput {
    * Le réseau est-il disponible pour cette tâche ? Déjà résolu — la demande
    * tri-état s'arrête chez `resolveDelegation`, qui l'a confrontée à ce que
    * l'agent permet. Absent : vrai, comme le défaut du protocole, pour que les
-   * appelants qui n'en savent rien (`orch agents test`) restent inchangés.
+   * appelants qui n'en savent rien (`caesar agents test`) restent inchangés.
    */
   network?: boolean;
   /** Avertissement issu de cette résolution, à verser au rapport (voir `ResolvedDelegation.networkWarning`). */
@@ -207,17 +207,17 @@ export interface RunTaskInput {
   timeoutMs?: number;
   depth?: number;
   /**
-   * Agents génériques déclarés en configuration (`OrchConfig.agents`,
+   * Agents génériques déclarés en configuration (`CaesarConfig.agents`,
    * `[[agent]]` du TOML), consultés en plus du catalogue natif pour résoudre
    * `agentId` — voir `resolveAgentDefinition` et C1 de la revue finale.
    * Absent ou vide : catalogue natif seul (comportement inchangé). Les
-   * appelants qui disposent déjà de la configuration (`orch run`,
-   * `orch_delegate`, `orch agents test`) la transmettent ici plutôt que de la
+   * appelants qui disposent déjà de la configuration (`caesar run`,
+   * `caesar_delegate`, `caesar agents test`) la transmettent ici plutôt que de la
    * faire recharger par `runTask`, qui n'a autrement que `deps.root`.
    */
   extraAgents?: GenericAgentSpec[];
   /**
-   * La section `[worktree]` du projet (`OrchConfig.worktree`) : ce qu'il faut
+   * La section `[worktree]` du projet (`CaesarConfig.worktree`) : ce qu'il faut
    * ajouter au worktree pour qu'on puisse y travailler, et ce qu'il faut y
    * lancer avant l'agent.
    *
@@ -234,8 +234,8 @@ export interface RunTaskInput {
    * cible sait charger un serveur MCP (`capabilities.mcpInjection !==
    * "none"`) : le runner construit alors lui-même les coordonnées du
    * `Channel` (voir `buildChannel`/`resolveChannelEntry` plus bas) — binaire
-   * `orch-channel` résolu dynamiquement, argument `taskDir`, nom de serveur
-   * `"orch"` — aucun appelant n'a besoin d'en connaître le détail. Absent ou
+   * `caesar-channel` résolu dynamiquement, argument `taskDir`, nom de serveur
+   * `"caesar"` — aucun appelant n'a besoin d'en connaître le détail. Absent ou
    * faux (défaut) : comportement inchangé, aucun canal proposé — voir le
    * brief de la tâche 9 : le canal ajoute un processus et une injection de
    * configuration à chaque délégation, cela se choisit explicitement.
@@ -249,11 +249,11 @@ export interface RunTaskInput {
   /**
    * Identifiant à utiliser pour cette tâche, plutôt que d'en générer un.
    * Permet à l'appelant de connaître à l'avance le répertoire de la tâche
-   * (`<root>/.orch/tasks/<taskId>`) — donc de la suivre (`events.jsonl`)
+   * (`<root>/.caesar/tasks/<taskId>`) — donc de la suivre (`events.jsonl`)
    * pendant qu'elle tourne, ou de la référencer avant même que `runTask` ne
    * résolve. Absent : comportement inchangé, un identifiant est généré ici
-   * comme avant. Sert notamment le CLI (`orch run`, avancement en direct) et,
-   * à terme, le serveur MCP (`orch_delegate`, qui doit rendre un identifiant
+   * comme avant. Sert notamment le CLI (`caesar run`, avancement en direct) et,
+   * à terme, le serveur MCP (`caesar_delegate`, qui doit rendre un identifiant
    * immédiatement pour permettre plusieurs délégations en parallèle).
    */
   taskId?: string;
@@ -269,7 +269,7 @@ export interface RunTaskInput {
    * l'appelant d'observer les événements normalisés au fil de l'eau, plutôt
    * que de devoir relire `events.jsonl` après coup.
    */
-  onEvent?: (event: OrchEvent) => void;
+  onEvent?: (event: CaesarEvent) => void;
 }
 
 export interface TaskOutcome {
@@ -285,7 +285,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   const depth = input.depth ?? 0;
 
   const id = input.taskId ?? generateTaskId();
-  const taskDir = join(deps.root, ".orch", "tasks", id);
+  const taskDir = join(deps.root, ".caesar", "tasks", id);
   const paths = taskPaths(taskDir);
 
   // Vérifié ici, avant d'engager l'isolation : la préparation qui suit peut
@@ -298,7 +298,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   }
 
   // Posé avant toute création possible de worktree et conservé jusqu'à la
-  // fin : `orch gc` peut ainsi distinguer une vraie tâche en démarrage d'un
+  // fin : `caesar gc` peut ainsi distinguer une vraie tâche en démarrage d'un
   // orphelin, même pendant la fenêtre précédant `store.create`.
   const worktreeLease = await markWorktreeInUse(deps.root, id);
   try {
@@ -322,7 +322,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   // prix assumé du choix) du `"inplace"` subi, faute de dépôt git utilisable.
   // Verrouiller le second sérialiserait toute délégation en écriture sur un
   // projet non versionné — au prix de la promesse de parallélisme que porte
-  // `orch_delegate` — sans offrir la moindre alternative, puisqu'aucun
+  // `caesar_delegate` — sans offrir la moindre alternative, puisqu'aucun
   // worktree n'y est créable. Le constat d'isolation dégradée, lui, est déjà
   // au rapport.
   //
@@ -333,7 +333,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   // saura mieux que nous s'il veut attendre ou reformuler.
   const writeLease =
     isolation === "inplace" && input.mode === "write" && worktreeWasPossible
-      ? await acquireLease(join(deps.root, ".orch", "state", "workspace-writers"), workspace, {
+      ? await acquireLease(join(deps.root, ".caesar", "state", "workspace-writers"), workspace, {
           label: `tâche ${id} (${agentDef.id})`,
           describeHolder: (holder) =>
             `Écriture en place impossible dans "${workspace}" : ${holder.label ?? `le processus ${holder.pid}`} y écrit déjà. ` +
@@ -399,7 +399,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     model: input.model,
     extraArgs: input.extraArgs ?? [],
   });
-  // Le contrat minimal d'un agent externe ($ORCH_TASK_FILE, $ORCH_REPORT_PATH…)
+  // Le contrat minimal d'un agent externe ($CAESAR_TASK_FILE, $CAESAR_REPORT_PATH…)
   // ne dépend d'aucun adaptateur : c'est le moteur qui le garantit, ici, pour
   // tout agent, générique ou non.
   const finalPlan: SpawnPlan = { ...plan, env: { ...taskEnv(task, paths), ...plan.env } };
@@ -419,7 +419,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     isolation,
     mode: input.mode,
     branch: handle?.branch,
-    // Persisté dès la création, et non à la fin : `orch diff` peut être appelé
+    // Persisté dès la création, et non à la fin : `caesar diff` peut être appelé
     // sur une tâche encore en cours, et doit déjà exclure ce que
     // l'orchestrateur a posé.
     ...(handle?.excluded ? { excluded_paths: handle.excluded } : {}),
@@ -432,8 +432,8 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   // "running" : voir I13 de la revue finale. Sans ce `try/finally`, une
   // exception inattendue entre `store.create` et le `store.update` final
   // (E/S, sous-processus git...) laissait l'enregistrement bloqué "running"
-  // pour toujours — `orch ps` le classe alors "actif" à vie, et un futur
-  // `orch cancel` sur cet identifiant enverrait un signal à un pid que l'OS a
+  // pour toujours — `caesar ps` le classe alors "actif" à vie, et un futur
+  // `caesar cancel` sur cet identifiant enverrait un signal à un pid que l'OS a
   // pu réattribuer entre-temps (risque déjà identifié par le commentaire de
   // `pid: undefined` plus bas, mais qui ne couvrait jusqu'ici que le chemin
   // heureux). `finalized` évite un double `store.update` sur le chemin
@@ -470,7 +470,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
       signal: input.signal,
       onEvent: input.onEvent,
       // Renseigne le pid dès qu'il est connu, pour qu'un autre processus
-      // (typiquement `orch cancel`) puisse retrouver et signaler la tâche
+      // (typiquement `caesar cancel`) puisse retrouver et signaler la tâche
       // pendant qu'elle tourne encore — voir `TaskRecord.pid`.
       onSpawn: async (pid) => {
         await deps.store.update(id, { pid });
@@ -500,7 +500,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   let report = resolved.report;
 
   // Provenance de `report.changes` pour le consommateur en bout de chaîne
-  // (`ReportSummary.changes_verified_by`, `orch_await`/`orch_delegate`) :
+  // (`ReportSummary.changes_verified_by`, `caesar_await`/`caesar_delegate`) :
   // "git" dès qu'un recoupement a pu être tenté (worktree, ou inplace dans un
   // dépôt git), "declaration" seulement quand aucun `git status`/`git diff`
   // n'était possible (workspace hors dépôt git) — c'est alors la seule
@@ -569,7 +569,7 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   // appelant en production, `submit_report` du canal MCP
   // (`packages/mcp-channel/src/server.ts`) — `runTask` calculait le rapport
   // recoupé puis le laissait mourir avec le processus. Conséquence directe :
-  // `orch_await` sur une tâche lancée par un autre processus
+  // `caesar_await` sur une tâche lancée par un autre processus
   // (`describeFromStore`, `packages/mcp-server`) relisait le rapport brut de
   // l'agent, jamais recoupé, ou rien du tout quand le palier retenu
   // n'écrivait pas `report.json` (paliers "extracted"/"synthesized"). Écrit
@@ -590,10 +590,10 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     // qui écrit {"status":"failed"} puis sort en code 0 produisait
     // `status: "succeeded"` sans que rien ne porte trace du rapport "failed"
     // dans le store. `report_status` porte ce second niveau, pour que
-    // `orch ps`, le code de sortie de `orch run` et `orch_status` puissent
+    // `caesar ps`, le code de sortie de `caesar run` et `caesar_status` puissent
     // croiser les deux plutôt que d'ignorer le second.
     report_status: report.status,
-    // Le processus n'existe plus : un pid effacé évite à `orch cancel` de
+    // Le processus n'existe plus : un pid effacé évite à `caesar cancel` de
     // signaler un pid réutilisé entre-temps par un tout autre processus.
     pid: undefined,
   });
@@ -621,7 +621,7 @@ export function generateTaskId(): string {
  * aucune isolation n'est préparée (pas de worktree git, potentiellement
  * lent), `agentDef.build` n'est pas appelé, et surtout aucun processus n'est
  * lancé. Le résultat reste un `TaskOutcome` valide, visible par
- * `orch ps`/`orch logs` comme n'importe quelle autre tâche annulée.
+ * `caesar ps`/`caesar logs` comme n'importe quelle autre tâche annulée.
  */
 async function abortBeforeStart(
   deps: RunnerDeps,
@@ -710,7 +710,7 @@ interface IsolationPreparation {
    * s'exécute, et c'est précisément ce que le rapport doit dire.
    */
   missingSection?: string;
-  /** Renseigné quand `.orch/wt/` n'est pas ignoré par git — voir `worktreesDirIgnored`. */
+  /** Renseigné quand `.caesar/wt/` n'est pas ignoré par git — voir `worktreesDirIgnored`. */
   gitignoreWarning?: string;
   /**
    * Un worktree était-il possible ? Faux hors dépôt git, ou dans un dépôt sans
@@ -734,7 +734,7 @@ interface IsolationPreparation {
  *
  * C3 de la revue finale : cette transformation était jusqu'ici un défaut de
  * la résolution `"auto"`, pas une contrainte — un `isolation: "inplace"`
- * explicite (argument de `orch_delegate`, `role.isolation`,
+ * explicite (argument de `caesar_delegate`, `role.isolation`,
  * `policy.default_isolation`) la défaisait silencieusement, y compris pour
  * le rôle `reviewer` livré par défaut. `mustForceWorktree` en fait une
  * contrainte non contournable : dès qu'un agent en lecture seule sans mode
@@ -838,7 +838,7 @@ async function prepareIsolation(
   }
 
   // L'étape 0 du skill `superpowers:using-git-worktrees`, que le projet
-  // supposait acquise depuis `orch init` — un `.gitignore` réécrit à la main
+  // supposait acquise depuis `caesar init` — un `.gitignore` réécrit à la main
   // suffit à défaire ce qu'il avait posé.
   //
   // Un constat, pas un refus, et c'est délibéré : vérifié plutôt que supposé,
@@ -849,8 +849,8 @@ async function prepareIsolation(
   // coûterait plus cher que ce qu'elle protège.
   const gitignoreWarning = (await worktreesDirIgnored(base, taskId))
     ? undefined
-    : `Le répertoire des worktrees ".orch/wt/" n'est pas ignoré par git dans "${base}" : un "git add -A" y ajouterait ` +
-      `une entrée de dépôt imbriqué. Ajoutez ".orch/wt/" au ".gitignore" (ou relancez "orch init --force", qui le fait).`;
+    : `Le répertoire des worktrees ".caesar/wt/" n'est pas ignoré par git dans "${base}" : un "git add -A" y ajouterait ` +
+      `une entrée de dépôt imbriqué. Ajoutez ".caesar/wt/" au ".gitignore" (ou relancez "caesar init --force", qui le fait).`;
 
   // Nommée pour être lue : dans un atelier, l'utilisateur relit ses branches.
   // Le rôle quand il y en a un, l'agent sinon — c'est ce qui distingue deux
@@ -883,8 +883,8 @@ async function prepareIsolation(
       missingSection =
         `Le worktree ne contient que les fichiers suivis par git. Ce projet semble avoir besoin d'y emporter ` +
         `${detected.copy.join(", ")} — sans quoi rien ne s'y installe ni ne s'y lance. Déclarez-les sous [worktree] ` +
-        `dans ".orch/config.toml" (clé "copy"${detected.setup.length > 0 ? `, et "setup" pour ${detected.setup.join(" ; ")}` : ""}), ` +
-        `ou relancez "orch init --force" qui les détectera.`;
+        `dans ".caesar/config.toml" (clé "copy"${detected.setup.length > 0 ? `, et "setup" pour ${detected.setup.join(" ; ")}` : ""}), ` +
+        `ou relancez "caesar init --force" qui les détectera.`;
     }
   }
 
@@ -896,7 +896,7 @@ async function prepareIsolation(
       throw new Error(
         `Tâche "${taskId}" : la commande de préparation du worktree a échoué — "${setup.failure.command}" ` +
           `(code ${setup.failure.exitCode ?? "inconnu"}).\n${setup.failure.output}\n` +
-          `Corrigez la commande sous [worktree] setup dans ".orch/config.toml", ou retirez-la.`,
+          `Corrigez la commande sous [worktree] setup dans ".caesar/config.toml", ou retirez-la.`,
       );
     }
   }

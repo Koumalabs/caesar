@@ -56,7 +56,7 @@ describe("détection d'installation", () => {
 
   it("findBinaryInPath accepte un chemin explicite sans le chercher dans le PATH", async () => {
     // La règle d'`execvp` : un nom contenant un séparateur désigne un fichier.
-    // Sans elle, un agent déclaré par chemin absolu (`orch agents add --bin
+    // Sans elle, un agent déclaré par chemin absolu (`caesar agents add --bin
     // /opt/mon-cli`) tournait mais était rapporté "absent" partout.
     const nodePath = process.execPath;
     expect(await findBinaryInPath(nodePath)).toBe(nodePath);

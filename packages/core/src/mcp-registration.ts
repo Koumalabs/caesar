@@ -8,8 +8,8 @@
  * correction) : `packages/tui` (écran Intégrations) avait besoin de cette
  * même logique, et la faire dépendre de `packages/cli` pour l'obtenir
  * créait une dépendance de workspace cyclique avec le sens `cli → tui`
- * qu'`orch config` a légitimement besoin (résolution dynamique du chemin de
- * `@orch/tui`, jamais un import statique). Ramener ce module ici, à côté de
+ * que `caesar config` a légitimement besoin (résolution dynamique du chemin de
+ * `@caesar/tui`, jamais un import statique). Ramener ce module ici, à côté de
  * `config.ts`/`policy.ts`, rétablit une seule direction de dépendance —
  * même raisonnement que `resolveDelegation` (`delegation.ts`) à la tâche
  * précédente.
@@ -17,7 +17,7 @@
  * `packages/cli` (`commands/mcp.ts`) garde un habillage fin par-dessus ce
  * module : le format d'affichage propre au CLI (`describePlan`/`planToJson`,
  * spécifiques à `--json`/texte) et la forme `Io`/codes de sortie d'
- * `orch mcp install`. Ce module-ci ne connaît ni l'un ni l'autre — il
+ * `caesar mcp install`. Ce module-ci ne connaît ni l'un ni l'autre — il
  * construit un plan, l'applique, ou lit un statut, et rien de plus.
  *
  * Note sur `opencode` (héritée du brief de la tâche 7, reprise telle
@@ -37,8 +37,8 @@ import { writeFileAtomic } from "./fs-atomic.js";
 
 const execFileAsync = promisify(execFile);
 
-/** Nom sous lequel l'orchestrateur s'enregistre chez chaque client — cohérent avec `ChannelSchema.server_name` (`@orch/protocol`). */
-export const SERVER_NAME = "orch";
+/** Nom sous lequel l'orchestrateur s'enregistre chez chaque client — cohérent avec `ChannelSchema.server_name` (`@caesar/protocol`). */
+export const SERVER_NAME = "caesar";
 
 export const MCP_CLIENTS = ["claude", "codex", "copilot", "opencode", "antigravity"] as const;
 export type McpClient = (typeof MCP_CLIENTS)[number];
@@ -72,16 +72,16 @@ export type InstallPlan = CommandInstallPlan | FileInstallPlan;
 export function buildPlan(client: McpClient, root: string): InstallPlan {
   switch (client) {
     case "claude":
-      return { client, kind: "command", bin: "claude", args: ["mcp", "add", SERVER_NAME, "--", "orch", ...serveArgs(root)] };
+      return { client, kind: "command", bin: "claude", args: ["mcp", "add", SERVER_NAME, "--", "caesar", ...serveArgs(root)] };
     case "codex":
-      return { client, kind: "command", bin: "codex", args: ["mcp", "add", SERVER_NAME, "--", "orch", ...serveArgs(root)] };
+      return { client, kind: "command", bin: "codex", args: ["mcp", "add", SERVER_NAME, "--", "caesar", ...serveArgs(root)] };
     case "copilot":
       return {
         client,
         kind: "file",
         path: join(homeDirectory(), ".copilot", "mcp-config.json"),
         mergeKey: "mcpServers",
-        entry: { type: "stdio", command: "orch", args: serveArgs(root) },
+        entry: { type: "stdio", command: "caesar", args: serveArgs(root) },
       };
     case "antigravity":
       return {
@@ -92,7 +92,7 @@ export function buildPlan(client: McpClient, root: string): InstallPlan {
         // préservés par la fusion ci-dessous (`applyPlan`).
         path: join(homeDirectory(), ".gemini", "antigravity-cli", "settings.json"),
         mergeKey: "mcpServers",
-        entry: { command: "orch", args: serveArgs(root) },
+        entry: { command: "caesar", args: serveArgs(root) },
       };
     case "opencode":
       // "command" est un tableau chez OpenCode, à la différence de
@@ -102,7 +102,7 @@ export function buildPlan(client: McpClient, root: string): InstallPlan {
         kind: "file",
         path: join(homeDirectory(), ".config", "opencode", "opencode.json"),
         mergeKey: "mcp",
-        entry: { type: "local", command: ["orch", ...serveArgs(root)], enabled: true },
+        entry: { type: "local", command: ["caesar", ...serveArgs(root)], enabled: true },
       };
   }
 }
@@ -127,7 +127,7 @@ async function writeJsonFileAtomic(path: string, data: unknown): Promise<void> {
   await writeFileAtomic(path, JSON.stringify(data, null, 2) + "\n");
 }
 
-/** N'écrase jamais le fichier : ne modifie que la clé `mergeKey.orch`, tout le reste (dont, pour Antigravity, `trustedWorkspaces`) est préservé tel quel. */
+/** N'écrase jamais le fichier : ne modifie que la clé `mergeKey.caesar`, tout le reste (dont, pour Antigravity, `trustedWorkspaces`) est préservé tel quel. */
 export async function applyPlan(plan: InstallPlan): Promise<void> {
   if (plan.kind === "command") {
     await execFileAsync(plan.bin, plan.args);

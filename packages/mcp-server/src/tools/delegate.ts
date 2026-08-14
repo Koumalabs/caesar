@@ -1,12 +1,12 @@
 /**
- * `orch_delegate` : lance une tâche chez un sous-agent et rend son `taskId`
+ * `caesar_delegate` : lance une tâche chez un sous-agent et rend son `taskId`
  * immédiatement, sans attendre la fin de l'exécution — voir le brief de la
  * tâche 7.
  *
  * L'assemblage (charger la configuration, résoudre le rôle puis l'agent,
  * vérifier la politique, calculer mode/isolation/timeout/contexte) est
- * délégué à `resolveDelegation` (`@orch/core`), le point d'assemblage partagé
- * avec `orch run` (`packages/cli/src/commands/run.ts`) — voir son en-tête
+ * délégué à `resolveDelegation` (`@caesar/core`), le point d'assemblage partagé
+ * avec `caesar run` (`packages/cli/src/commands/run.ts`) — voir son en-tête
  * et le rapport de correction de la tâche 7 : les deux façades appliquaient
  * jusqu'ici la même règle en deux endroits distincts.
  *
@@ -15,35 +15,35 @@
  * projet) — pas la résolution finale "auto" → "inplace"/"worktree" que
  * `runTask` effectue en interne : cette dernière dépend de l'état du dépôt
  * git et d'une préparation d'isolation potentiellement non instantanée
- * (création d'un worktree), qu'`orch_delegate` ne peut pas attendre sans
- * rouvrir la promesse de non-blocage que ce tool porte. `orch_status`/
- * `orch_await`, une fois la tâche connue du store, rendent l'isolation
+ * (création d'un worktree), que `caesar_delegate` ne peut pas attendre sans
+ * rouvrir la promesse de non-blocage que ce tool porte. `caesar_status`/
+ * `caesar_await`, une fois la tâche connue du store, rendent l'isolation
  * réellement retenue.
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { RunTaskInput } from "@orch/core";
-import { describeWorkspaceMismatch, generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation } from "@orch/core";
+import type { RunTaskInput } from "@caesar/core";
+import { describeWorkspaceMismatch, generateTaskId, loadConfig, nextDelegationDepth, resolveDelegation } from "@caesar/core";
 import { launchTask } from "../session.js";
 import type { McpSession } from "../session.js";
 import { errorResult, jsonResult } from "./result.js";
 
-export const ORCH_DELEGATE = "orch_delegate";
+export const CAESAR_DELEGATE = "caesar_delegate";
 
-export const orchDelegateDescription =
+export const caesarDelegateDescription =
   "Delegate an objective to a sub-agent (codex, antigravity, opencode, copilot, or claude) running as a " +
   "separate CLI process, in read-only or write mode, optionally isolated on a disposable git worktree. " +
   "This call returns immediately — as soon as the agent is resolved and the delegation is approved by policy " +
   "— with a task_id; it does NOT wait for the sub-agent to finish, which can take from seconds to the " +
-  "configured timeout (minutes). The task is still running when this returns: you MUST call orch_await with " +
+  "configured timeout (minutes). The task is still running when this returns: you MUST call caesar_await with " +
   "the returned task_id to get the actual result. To run several providers on the same objective in parallel, " +
-  "call orch_delegate repeatedly back to back, then a single orch_await with every task_id — that is the whole " +
+  "call caesar_delegate repeatedly back to back, then a single caesar_await with every task_id — that is the whole " +
   "point of this call not blocking. A policy refusal or an unknown role/agent is reported as an error result " +
   "instead of a task_id. Pass channel: true to let the sub-agent ask you questions mid-run instead of guessing " +
   "(see the channel parameter for how to answer them).";
 
-export const orchDelegateInputShape = {
+export const caesarDelegateInputShape = {
   objective: z
     .string()
     .min(1)
@@ -52,7 +52,7 @@ export const orchDelegateInputShape = {
     .string()
     .optional()
     .describe(
-      "Name of a configured role (see orch_list_roles) used to pick an agent automatically along its fallback " +
+      "Name of a configured role (see caesar_list_roles) used to pick an agent automatically along its fallback " +
         "chain, and to fill in defaults for mode/isolation/timeout/system prompt. Ignored for the agent choice " +
         "when `agent` is also given, but its defaults still apply.",
     ),
@@ -60,7 +60,7 @@ export const orchDelegateInputShape = {
     .string()
     .optional()
     .describe(
-      "Explicit provider id (see orch_list_agents), e.g. \"codex\", \"antigravity\", \"opencode\", \"copilot\", " +
+      "Explicit provider id (see caesar_list_agents), e.g. \"codex\", \"antigravity\", \"opencode\", \"copilot\", " +
         "\"claude\". Takes precedence over the agent that `role` would have picked. One of `role` or `agent` is required.",
     ),
   mode: z
@@ -76,12 +76,12 @@ export const orchDelegateInputShape = {
     .describe(
       "\"worktree\" runs the agent in its own workshop — a disposable git branch, complete with the untracked files " +
         "the project declares under [worktree] (dependencies, .env) and its setup commands already run, so the agent " +
-        "can install, run and test there. Its work is inspected with orch_diff and landed with orch_apply instead of " +
+        "can install, run and test there. Its work is inspected with caesar_diff and landed with caesar_apply instead of " +
         "touching the workspace directly. \"auto\" (default) picks based on mode and git availability, and already " +
         "chooses worktree for write tasks in a git repository — prefer it. \"inplace\" runs directly in the user's " +
         "working tree and is REFUSED for write tasks in a usable git repository unless the project opted in with " +
         "policy.allow_inplace_write; if the worktree seems incomplete, the fix is to declare the missing paths under " +
-        "[worktree] in .orch/config.toml, never to fall back to \"inplace\".",
+        "[worktree] in .caesar/config.toml, never to fall back to \"inplace\".",
     ),
   network: z
     .enum(["auto", "on", "off"])
@@ -91,7 +91,7 @@ export const orchDelegateInputShape = {
         "\"auto\" (default) opens it wherever the chosen agent allows it and reports a warning where it cannot; " +
         "\"on\" demands it, and **fails the delegation outright** when the agent cannot provide it, with the reason " +
         "and the remedy — notably codex, whose sandbox cuts the network in read-only mode and can only open it " +
-        "under `--mode write`; \"off\" closes it where orch knows how. Prefer \"on\" when the objective is " +
+        "under `--mode write`; \"off\" closes it where caesar knows how. Prefer \"on\" when the objective is " +
         "impossible without network: a clear refusal beats a sub-agent burning its whole budget on a failing install.",
     ),
   context: z
@@ -111,20 +111,20 @@ export const orchDelegateInputShape = {
     .describe(
       "Enable the MCP back-channel for this task, if the chosen agent supports loading an MCP server. With it, " +
         "the sub-agent can call ask_orchestrator to ask you a question mid-run instead of guessing or giving up " +
-        "in status \"blocked\" — discover pending questions via orch_status/orch_await (pending_questions) and " +
-        "answer them with orch_answer while the task keeps running. Off by default: it adds a process and a " +
+        "in status \"blocked\" — discover pending questions via caesar_status/caesar_await (pending_questions) and " +
+        "answer them with caesar_answer while the task keeps running. Off by default: it adds a process and a " +
         "configuration injection to every delegation, so it is opt-in rather than automatic.",
     ),
 };
 
-const OrchDelegateInputSchema = z.object(orchDelegateInputShape);
-export type OrchDelegateInput = z.infer<typeof OrchDelegateInputSchema>;
+const CaesarDelegateInputSchema = z.object(caesarDelegateInputShape);
+export type CaesarDelegateInput = z.infer<typeof CaesarDelegateInputSchema>;
 
-export async function orchDelegate(session: McpSession, input: OrchDelegateInput): Promise<CallToolResult> {
+export async function caesarDelegate(session: McpSession, input: CaesarDelegateInput): Promise<CallToolResult> {
   const { config } = await loadConfig(session.root);
 
-  // Profondeur héritée de `$ORCH_DEPTH` (+1) : voir C4 de la revue finale. Un
-  // serveur MCP peut lui-même tourner comme sous-agent (`orch mcp install`
+  // Profondeur héritée de `$CAESAR_DEPTH` (+1) : voir C4 de la revue finale. Un
+  // serveur MCP peut lui-même tourner comme sous-agent (`caesar mcp install`
   // l'enregistre globalement chez plusieurs clients — voir I4/le constat
   // "aggravant" de C4) : sans relire cette variable, `max_depth` et le
   // garde-fou anti-récursion ne s'appliquaient qu'au premier niveau.
@@ -141,7 +141,7 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
     depth,
   });
   if ("error" in resolved) {
-    // Motif rendu tel quel par @orch/core — voir le brief.
+    // Motif rendu tel quel par @caesar/core — voir le brief.
     return errorResult(resolved.error);
   }
 
@@ -172,7 +172,7 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
   };
   launchTask(session, runInput, controller);
 
-  // Le décalage de racine, dit au moment où il compte. `orch mcp install` fige
+  // Le décalage de racine, dit au moment où il compte. `caesar mcp install` fige
   // `--root` une fois pour toutes : si l'agent principal est passé dans un
   // worktree depuis, les sous-agents travaillent dans un arbre que plus
   // personne ne regarde. Un avertissement plutôt qu'un refus — le répertoire
@@ -199,8 +199,8 @@ export async function orchDelegate(session: McpSession, input: OrchDelegateInput
   });
 }
 
-export function registerOrchDelegate(server: McpServer, session: McpSession): void {
-  server.registerTool(ORCH_DELEGATE, { description: orchDelegateDescription, inputSchema: orchDelegateInputShape }, (args) =>
-    orchDelegate(session, args),
+export function registerCaesarDelegate(server: McpServer, session: McpSession): void {
+  server.registerTool(CAESAR_DELEGATE, { description: caesarDelegateDescription, inputSchema: caesarDelegateInputShape }, (args) =>
+    caesarDelegate(session, args),
   );
 }

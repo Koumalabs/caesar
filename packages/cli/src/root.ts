@@ -1,6 +1,6 @@
 /**
  * Résolution de la racine de projet : depuis le répertoire courant, en
- * remontant jusqu'au premier répertoire contenant `.orch/` ou `.git/`
+ * remontant jusqu'au premier répertoire contenant `.caesar/` ou `.git/`
  * (voir les conventions du brief). L'option globale `--root <dir>` la
  * force explicitement.
  */
@@ -18,9 +18,9 @@ async function exists(path: string): Promise<boolean> {
 
 /**
  * `explicit`, s'il est fourni, l'emporte toujours (résolu contre `startDir`).
- * Sinon, remonte depuis `startDir` à la recherche de `.orch/` ou `.git/`.
+ * Sinon, remonte depuis `startDir` à la recherche de `.caesar/` ou `.git/`.
  * Si aucun des deux n'est trouvé avant la racine du système de fichiers,
- * replie sur `startDir` lui-même — c'est le cas d'un `orch init` sur un
+ * replie sur `startDir` lui-même — c'est le cas d'un `caesar init` sur un
  * répertoire tout neuf, qui doit pouvoir s'exécuter sans configuration
  * préalable.
  */
@@ -29,7 +29,7 @@ export async function resolveRoot(explicit: string | undefined, startDir: string
 
   let dir = resolve(startDir);
   for (;;) {
-    if ((await exists(join(dir, ".orch"))) || (await exists(join(dir, ".git")))) {
+    if ((await exists(join(dir, ".caesar"))) || (await exists(join(dir, ".git")))) {
       return dir;
     }
     const parent = dirname(dir);

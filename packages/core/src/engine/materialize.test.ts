@@ -24,10 +24,10 @@ describe("materializeUntracked", () => {
   let worktree: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-materialize-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-materialize-"));
     await git(root, ["init", "-q"]);
-    await git(root, ["config", "user.email", "orch-test@example.com"]);
-    await git(root, ["config", "user.name", "Orch Test"]);
+    await git(root, ["config", "user.email", "caesar-test@example.com"]);
+    await git(root, ["config", "user.name", "Caesar Test"]);
     await writeFile(join(root, ".gitignore"), "node_modules/\n.env\n.superpowers/\ncache/\n", "utf8");
     await writeFile(join(root, "a.txt"), "hello\n", "utf8");
     await git(root, ["add", "-A"]);
@@ -169,7 +169,7 @@ describe("materializeUntracked", () => {
       ["absolu", request({ copy: ["/etc/passwd"] })],
       ["remontée", request({ copy: ["../ailleurs"] })],
       [".git", request({ copy: [".git"] })],
-      [".orch", request({ link: [".orch/state"] })],
+      [".caesar", request({ link: [".caesar/state"] })],
       ["vide", request({ copy: [""] })],
     ];
     for (const [name, cfg] of cases) {
@@ -194,7 +194,7 @@ describe("runSetup", () => {
   let dir: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), "orch-setup-"));
+    dir = await mkdtemp(join(tmpdir(), "caesar-setup-"));
   });
 
   afterEach(async () => {
@@ -238,10 +238,10 @@ describe("detectUntrackedNeeds", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-detect-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-detect-"));
     await git(root, ["init", "-q"]);
-    await git(root, ["config", "user.email", "orch-test@example.com"]);
-    await git(root, ["config", "user.name", "Orch Test"]);
+    await git(root, ["config", "user.email", "caesar-test@example.com"]);
+    await git(root, ["config", "user.name", "Caesar Test"]);
   });
 
   afterEach(async () => {
@@ -255,7 +255,7 @@ describe("detectUntrackedNeeds", () => {
   }
 
   it("projet nu : rien du tout, plutôt qu'une section vide", async () => {
-    // Une section vide ferait croire à un réglage. `orch init` n'écrit alors
+    // Une section vide ferait croire à un réglage. `caesar init` n'écrit alors
     // rien.
     await commitIgnore("");
     expect(await detectUntrackedNeeds(root)).toBeNull();
@@ -293,7 +293,7 @@ describe("detectUntrackedNeeds", () => {
   it("ne propose jamais un chemin que git ne veut pas ignorer", async () => {
     // La détection applique en amont exactement les règles que la pose
     // exigera : proposer un chemin non ignoré polluerait le diff qui fait foi,
-    // et `orch gc` ne nettoierait plus jamais ce worktree.
+    // et `caesar gc` ne nettoierait plus jamais ce worktree.
     await writeFile(join(root, "package.json"), "{}\n", "utf8");
     await commitIgnore("# rien d'ignoré\n");
     await mkdir(join(root, "node_modules"), { recursive: true });

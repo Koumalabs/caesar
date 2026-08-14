@@ -1,19 +1,19 @@
 /**
  * État vivant du serveur MCP, pour la durée d'une connexion : la racine du
  * projet, le store de tâches qui en découle, et les tâches lancées par
- * `orch_delegate` — chacune avec son `AbortController` (pour `orch_cancel`)
- * et la promesse de son issue (pour `orch_await`/`orch_status`).
+ * `caesar_delegate` — chacune avec son `AbortController` (pour `caesar_cancel`)
+ * et la promesse de son issue (pour `caesar_await`/`caesar_status`).
  *
- * Point de vigilance du brief de la tâche 7 : `orch_delegate` lance `runTask`
+ * Point de vigilance du brief de la tâche 7 : `caesar_delegate` lance `runTask`
  * sans l'attendre. Une promesse non attendue qui rejette produirait un rejet
  * non intercepté — `launchTask` s'en protège en interceptant systématiquement
  * l'échec de `runTask` et en le transformant en `TaskOutcome` synthétique,
- * dont la trace est déposée dans le store : c'est `orch_await` qui la
+ * dont la trace est déposée dans le store : c'est `caesar_await` qui la
  * rapportera, jamais une exception qui remonte dans le vide.
  */
-import type { Queue, RunTaskInput, TaskOutcome, TaskRecord, TaskStore } from "@orch/core";
-import { createSlotQueue, fileTaskStore, loadConfig, runTask } from "@orch/core";
-import { REPORT_PROTOCOL, ReportSchema } from "@orch/protocol";
+import type { Queue, RunTaskInput, TaskOutcome, TaskRecord, TaskStore } from "@caesar/core";
+import { createSlotQueue, fileTaskStore, loadConfig, runTask } from "@caesar/core";
+import { REPORT_PROTOCOL, ReportSchema } from "@caesar/protocol";
 
 export interface SessionTask {
   agentId: string;
@@ -28,11 +28,11 @@ export interface McpSession {
   store: TaskStore;
   tasks: Map<string, SessionTask>;
   /**
-   * Sémaphore partagé par tous les `orch_delegate` de cette session — voir
+   * Sémaphore partagé par tous les `caesar_delegate` de cette session — voir
    * C4 de la revue finale : `RunnerDeps.queue` n'était câblé par aucune
    * façade, `max_parallel` n'était donc appliqué nulle part alors que
-   * `orchDelegateDescription` encourage explicitement le modèle à appeler
-   * `orch_delegate` "repeatedly back to back". Sa limite est celle de
+   * `caesarDelegateDescription` encourage explicitement le modèle à appeler
+   * `caesar_delegate` "repeatedly back to back". Sa limite est celle de
    * `policy.max_parallel` au moment de la connexion (`createSession`) :
    * comme la détection d'installation du TUI ("chargée une seule fois, pas à
    * chaque frappe"), une édition ultérieure de la politique en cours de
@@ -41,7 +41,7 @@ export interface McpSession {
    *
    * Depuis, ce sémaphore est adossé à des fichiers-créneaux
    * (`createSlotQueue`) plutôt qu'à la mémoire : la limite vaut désormais
-   * entre processus, donc entre cette session et les `orch run` lancés à la
+   * entre processus, donc entre cette session et les `caesar run` lancés à la
    * main sous la même racine.
    */
   queue: Queue;
@@ -50,12 +50,12 @@ export interface McpSession {
 export async function createSession(root: string): Promise<McpSession> {
   const { config } = await loadConfig(root);
   // Créneaux sur disque, partagés avec tout ce qui délègue sous cette racine :
-  // sans eux, une session MCP à quatre tâches et un `orch run` lancé dans un
+  // sans eux, une session MCP à quatre tâches et un `caesar run` lancé dans un
   // terminal s'ignoraient, et `max_parallel = 4` autorisait cinq agents.
   const queue = createSlotQueue({
     root,
     limit: config.policy.max_parallel,
-    label: "orch mcp serve",
+    label: "caesar mcp serve",
   });
   return { root, store: fileTaskStore(root), tasks: new Map(), queue };
 }

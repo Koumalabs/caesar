@@ -8,7 +8,7 @@ describe("resolveRoot", () => {
   let base: string;
 
   beforeEach(async () => {
-    base = await realpath(await mkdtemp(join(tmpdir(), "orch-cli-root-")));
+    base = await realpath(await mkdtemp(join(tmpdir(), "caesar-cli-root-")));
   });
 
   afterEach(async () => {
@@ -21,8 +21,8 @@ describe("resolveRoot", () => {
     expect(await resolveRoot(explicit, base)).toBe(explicit);
   });
 
-  it("remonte jusqu'au premier répertoire contenant .orch/", async () => {
-    await mkdir(join(base, ".orch"), { recursive: true });
+  it("remonte jusqu'au premier répertoire contenant .caesar/", async () => {
+    await mkdir(join(base, ".caesar"), { recursive: true });
     const nested = join(base, "src", "deep");
     await mkdir(nested, { recursive: true });
     expect(await resolveRoot(undefined, nested)).toBe(base);
@@ -35,12 +35,12 @@ describe("resolveRoot", () => {
     expect(await resolveRoot(undefined, nested)).toBe(base);
   });
 
-  it("ni .orch/ ni .git/ trouvé : replie sur le répertoire de départ", async () => {
+  it("ni .caesar/ ni .git/ trouvé : replie sur le répertoire de départ", async () => {
     expect(await resolveRoot(undefined, base)).toBe(base);
   });
 
-  it("le répertoire courant lui-même contenant .orch/ est retenu directement", async () => {
-    await mkdir(join(base, ".orch"), { recursive: true });
+  it("le répertoire courant lui-même contenant .caesar/ est retenu directement", async () => {
+    await mkdir(join(base, ".caesar"), { recursive: true });
     expect(await resolveRoot(undefined, base)).toBe(base);
   });
 });

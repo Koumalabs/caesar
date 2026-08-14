@@ -42,12 +42,12 @@ describe("opencodeAgent.build", () => {
   });
 
   it("dépose un opencode.json dans le workspace au palier channel", () => {
-    const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: ["server.js"], server_name: "orch" } });
+    const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: ["server.js"], server_name: "caesar" } });
     const plan = opencodeAgent.build(sampleContext({ task, reportVia: "channel" }));
     expect(plan.files).toHaveLength(1);
     expect(plan.files[0]?.path).toBe(join("/tmp/wt", "opencode.json"));
     const content = JSON.parse(plan.files[0]?.content ?? "{}");
-    expect(content.mcp.orch).toEqual({ type: "local", command: ["node", "server.js"], enabled: true });
+    expect(content.mcp.caesar).toEqual({ type: "local", command: ["node", "server.js"], enabled: true });
   });
 
   it("ne dépose aucun fichier hors du palier channel", () => {

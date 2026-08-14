@@ -1,6 +1,6 @@
 /**
- * `orch channel serve --task-dir <dir>` — la sous-commande interne du canal
- * retour (tâche 12). Même style de test que `mcp.test.ts` pour `orch mcp
+ * `caesar channel serve --task-dir <dir>` — la sous-commande interne du canal
+ * retour (tâche 12). Même style de test que `mcp.test.ts` pour `caesar mcp
  * serve` : un vrai échange JSON-RPC sur un flux stdio simulé, pas un appel
  * direct à `buildChannelServer` (déjà couvert par
  * `packages/mcp-channel/src/server.test.ts`) — ce test vérifie la façade
@@ -11,15 +11,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TASK_PROTOCOL, TaskSchema, taskPaths, writeTask } from "@orch/protocol";
+import { TASK_PROTOCOL, TaskSchema, taskPaths, writeTask } from "@caesar/protocol";
 import { runChannelServe } from "./channel.js";
 import { EXIT_OK } from "../output.js";
 
-describe("orch channel serve", () => {
+describe("caesar channel serve", () => {
   let taskDir: string;
 
   beforeEach(async () => {
-    taskDir = await mkdtemp(join(tmpdir(), "orch-cli-channel-serve-"));
+    taskDir = await mkdtemp(join(tmpdir(), "caesar-cli-channel-serve-"));
     const task = TaskSchema.parse({
       protocol: TASK_PROTOCOL,
       id: "t_channel_cli",

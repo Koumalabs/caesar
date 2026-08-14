@@ -7,12 +7,12 @@ import { makeIo, withFakeHome, type CapturedIo } from "../../test/support.js";
 import { checkMcpStatus, runMcpInstall, runMcpServe } from "./mcp.js";
 import { EXIT_OK, EXIT_USAGE } from "../output.js";
 
-describe("orch mcp install --dry-run", () => {
+describe("caesar mcp install --dry-run", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-mcp-install-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-mcp-install-"));
     io = makeIo();
   });
 
@@ -28,8 +28,8 @@ describe("orch mcp install --dry-run", () => {
       expect(parsed.dry_run).toBe(true);
       expect(parsed.action).toBe("run-command");
       expect(parsed.command[0]).toBe("claude");
-      expect(parsed.command).toContain("orch");
-      expect(parsed.command).toEqual(expect.arrayContaining(["mcp", "add", "orch", "--", "orch", "mcp", "serve", "--root", root]));
+      expect(parsed.command).toContain("caesar");
+      expect(parsed.command).toEqual(expect.arrayContaining(["mcp", "add", "caesar", "--", "caesar", "mcp", "serve", "--root", root]));
     });
   });
 
@@ -51,7 +51,7 @@ describe("orch mcp install --dry-run", () => {
       expect(parsed.action).toBe("write-file");
       expect(parsed.file).toBe(join(home, ".copilot", "mcp-config.json"));
       expect(parsed.key).toBe("mcpServers");
-      expect(parsed.entry).toEqual({ type: "stdio", command: "orch", args: ["mcp", "serve", "--root", root] });
+      expect(parsed.entry).toEqual({ type: "stdio", command: "caesar", args: ["mcp", "serve", "--root", root] });
 
       await expect(readFile(parsed.file, "utf8")).rejects.toThrow();
     });
@@ -77,7 +77,7 @@ describe("orch mcp install --dry-run", () => {
       expect(parsed.action).toBe("write-file");
       expect(parsed.file).toBe(join(home, ".config", "opencode", "opencode.json"));
       expect(parsed.key).toBe("mcp");
-      expect(parsed.entry).toEqual({ type: "local", command: ["orch", "mcp", "serve", "--root", root], enabled: true });
+      expect(parsed.entry).toEqual({ type: "local", command: ["caesar", "mcp", "serve", "--root", root], enabled: true });
     });
   });
 
@@ -100,12 +100,12 @@ describe("orch mcp install --dry-run", () => {
   });
 });
 
-describe("orch mcp install (écriture réelle, sous HOME factice)", () => {
+describe("caesar mcp install (écriture réelle, sous HOME factice)", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-mcp-install-real-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-mcp-install-real-"));
     io = makeIo();
   });
 
@@ -124,7 +124,7 @@ describe("orch mcp install (écriture réelle, sous HOME factice)", () => {
 
       const written = JSON.parse(await readFile(path, "utf8"));
       expect(written.mcpServers.autre).toEqual({ type: "stdio", command: "autre-cli" });
-      expect(written.mcpServers.orch).toEqual({ type: "stdio", command: "orch", args: ["mcp", "serve", "--root", root] });
+      expect(written.mcpServers.caesar).toEqual({ type: "stdio", command: "caesar", args: ["mcp", "serve", "--root", root] });
     });
   });
 
@@ -145,7 +145,7 @@ describe("orch mcp install (écriture réelle, sous HOME factice)", () => {
       const written = JSON.parse(await readFile(path, "utf8"));
       expect(written.trustedWorkspaces).toEqual(existing.trustedWorkspaces);
       expect(written.theme).toBe("dark");
-      expect(written.mcpServers.orch).toEqual({ command: "orch", args: ["mcp", "serve", "--root", root] });
+      expect(written.mcpServers.caesar).toEqual({ command: "caesar", args: ["mcp", "serve", "--root", root] });
     });
   });
 
@@ -155,7 +155,7 @@ describe("orch mcp install (écriture réelle, sous HOME factice)", () => {
       expect(code).toBe(EXIT_OK);
       const path = join(home, ".copilot", "mcp-config.json");
       const written = JSON.parse(await readFile(path, "utf8"));
-      expect(written.mcpServers.orch.command).toBe("orch");
+      expect(written.mcpServers.caesar.command).toBe("caesar");
     });
   });
 });
@@ -164,7 +164,7 @@ describe("checkMcpStatus", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-mcp-status-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-mcp-status-"));
   });
 
   afterEach(async () => {
@@ -187,7 +187,7 @@ describe("checkMcpStatus", () => {
     });
   });
 
-  it("copilot : un fichier existant avec un autre serveur reste \"not-registered\" pour \"orch\"", async () => {
+  it("copilot : un fichier existant avec un autre serveur reste \"not-registered\" pour \"caesar\"", async () => {
     await withFakeHome(async (home) => {
       const path = join(home, ".copilot", "mcp-config.json");
       await mkdir(join(home, ".copilot"), { recursive: true });
@@ -210,12 +210,12 @@ describe("checkMcpStatus", () => {
   });
 });
 
-describe("orch mcp serve", () => {
+describe("caesar mcp serve", () => {
   let root: string;
   let io: CapturedIo;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "orch-cli-mcp-serve-"));
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-mcp-serve-"));
     io = makeIo();
   });
 

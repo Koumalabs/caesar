@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Construit l'exécutable autonome `orch` (tâche 12) : un unique binaire, sans
+# Construit l'exécutable autonome `caesar` (tâche 12) : un unique binaire, sans
 # Node, ni Bun, ni node_modules requis sur la machine cible.
 #
 # Deux étapes :
-#   1. `tsc -b` — dist/ à jour pour tous les packages compilés (@orch/core,
-#      @orch/protocol, @orch/mcp-channel, @orch/mcp-server, @orch/cli).
+#   1. `tsc -b` — dist/ à jour pour tous les packages compilés (@caesar/core,
+#      @caesar/protocol, @caesar/mcp-channel, @caesar/mcp-server, @caesar/cli).
 #      `bun-entry.ts` les importe via leurs "main"/dist compilés, à
-#      l'exception d'@orch/tui, importé directement depuis sa source .tsx —
+#      l'exception d'@caesar/tui, importé directement depuis sa source .tsx —
 #      jamais concerné par tsc.
 #   2. `bun build --compile packages/cli/src/bun-entry.ts` — embarque le
 #      runtime Bun, le CLI et le TUI (OpenTUI compris, cœur natif inclus)
@@ -25,14 +25,14 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/dist-bin"
-OUT_FILE="$OUT_DIR/orch"
+OUT_FILE="$OUT_DIR/caesar"
 
 if ! command -v bun >/dev/null 2>&1; then
   echo "bun est introuvable dans le PATH : requis pour produire l'exécutable autonome (https://bun.sh)." >&2
   exit 1
 fi
 
-echo "1/2 — pnpm exec tsc -b (dist/ à jour pour tous les packages sauf @orch/tui)"
+echo "1/2 — pnpm exec tsc -b (dist/ à jour pour tous les packages sauf @caesar/tui)"
 (cd "$ROOT_DIR" && pnpm exec tsc -b)
 
 mkdir -p "$OUT_DIR"
