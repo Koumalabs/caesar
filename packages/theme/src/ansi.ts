@@ -76,9 +76,9 @@ function nearestCubeIndex(value: number): number {
  *
  * Deux candidats sont mis en concurrence, et non un seul : le cube 6×6×6
  * (indices 16 à 231) et la rampe de 24 gris (232 à 255). Un demi-ton comme
- * `DIM` (#8992A6) tombe entre deux paliers du cube ; le gris le plus proche
- * lui est souvent plus fidèle. Ne considérer que le cube donnerait un texte
- * secondaire légèrement teinté de bleu ou de violet.
+ * #8992A6 tombe entre deux paliers du cube ; le gris le plus proche lui est
+ * souvent plus fidèle. Ne considérer que le cube donnerait un texte
+ * secondaire légèrement teinté — de bleu ou de violet pour celui-là.
  */
 export function toAnsi256(rgb: readonly [number, number, number]): number {
   const cubeIndex = [rgb[0], rgb[1], rgb[2]].map(nearestCubeIndex);

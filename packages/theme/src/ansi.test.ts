@@ -55,7 +55,7 @@ describe("parseHex", () => {
 
 describe("dégradation des couleurs", () => {
   it("truecolor rend la teinte exacte", () => {
-    expect(foreground(ACCENT, "truecolor")).toBe("\x1b[38;2;122;162;247m");
+    expect(foreground(ACCENT, "truecolor")).toBe("\x1b[38;2;234;165;46m");
   });
 
   it("256 couleurs rend un index du cube ou de la rampe de gris", () => {
@@ -70,7 +70,7 @@ describe("dégradation des couleurs", () => {
   });
 
   it("un demi-ton qui penche garde son penchant plutôt que de virer au gris", () => {
-    // DIM (#8992A6) a 29 points de bleu de plus que de rouge : le cube lui est
+    // #8992A6 a 29 points de bleu de plus que de rouge : le cube lui est
     // plus fidèle que le gris le plus proche, et c'est lui qui doit gagner.
     const index = toAnsi256([0x89, 0x92, 0xa6]);
     expect(index).toBeLessThan(232);
@@ -89,7 +89,10 @@ describe("dégradation des couleurs", () => {
     expect(toAnsi16(parseHex(OK))).toBe(92); // vert vif
     expect(toAnsi16(parseHex(WARN))).toBe(93); // jaune vif
     expect(toAnsi16(parseHex(BAD))).toBe(91); // rouge vif
-    expect(toAnsi16(parseHex(ACCENT))).toBe(94); // bleu vif
+    // L'or d'accent rejoint WARN sur le jaune vif : à 16 couleurs, la marque
+    // et l'avertissement partagent la même teinte — c'est le prix, assumé,
+    // d'un accent doré ; la graisse et le contexte les distinguent encore.
+    expect(toAnsi16(parseHex(ACCENT))).toBe(93); // jaune vif
   });
 
   it("les neutres sont choisis sur leur clarté, pas sur une teinte inventée", () => {
@@ -120,7 +123,7 @@ describe("paint", () => {
   });
 
   it("ferme toujours ce qu'il ouvre", () => {
-    expect(paint("texte", { hex: ACCENT }, "truecolor")).toBe(`\x1b[38;2;122;162;247mtexte${RESET}`);
+    expect(paint("texte", { hex: ACCENT }, "truecolor")).toBe(`\x1b[38;2;234;165;46mtexte${RESET}`);
     expect(paint("texte", { bold: true }, "truecolor")).toBe(`\x1b[1mtexte${RESET}`);
   });
 });

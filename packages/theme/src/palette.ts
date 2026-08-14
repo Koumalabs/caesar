@@ -5,9 +5,14 @@
  * lui : la CLI, elle, piochait au cas par cas dans sept codes ANSI de base
  * (`red`, `green`, `cyan`…). Les deux moitiés du même outil ne se
  * ressemblaient donc pas à l'écran. Ce fichier est la palette du TUI,
- * déplacée telle quelle — les valeurs n'ont pas bougé d'un chiffre, et
- * `packages/tui/src/ui/theme.ts` la ré-exporte — augmentée de ce que la
- * ligne de commande réclamait en propre.
+ * déplacée puis ré-accordée autour de l'or de la marque (#EAA52E) : l'accent
+ * et les neutres ont quitté le bleu pour des tons chauds, à luminance et
+ * contraste équivalents — chaque rôle garde exactement la place qu'il avait.
+ * Les sémantiques (`OK`/`WARN`/`BAD`), elles, n'ont pas bougé : leur teinte
+ * est un contrat de lecture, pas une décoration, et le repli à 16 couleurs
+ * (`toAnsi16`, qui classe par teinte) compte sur `WARN` côté jaune — un
+ * `WARN` poussé vers l'orange retomberait sur le rouge et se confondrait
+ * avec `BAD`.
  *
  * Les deux règles qui la tiennent, héritées du TUI :
  *
@@ -23,11 +28,11 @@
  *     `SELECTED_BG` (voir plus bas).
  */
 
-/** Bleu d'accent : focus, sélection, onglet actif. Assez saturé pour trancher, assez sombre pour porter du texte clair. */
-export const ACCENT = "#7AA2F7";
+/** Or d'accent — la couleur de la marque : focus, sélection, onglet actif. Assez saturé pour trancher, assez clair pour porter une encre sombre. */
+export const ACCENT = "#EAA52E";
 
-/** Texte posé sur `ACCENT` — un fond clair appelle une encre sombre. */
-export const ACCENT_INK = "#0B0E14";
+/** Texte posé sur `ACCENT` — un fond doré appelle une encre sombre, chaude comme lui. */
+export const ACCENT_INK = "#1A1206";
 
 /**
  * Fond de la ligne sélectionnée. Volontairement sans avant-plan imposé : les
@@ -37,24 +42,24 @@ export const ACCENT_INK = "#0B0E14";
  * la même que faisait déjà l'écran Agents ; le curseur "›" et la graisse
  * restent lisibles même si ce fond ne rend rien.
  */
-export const SELECTED_BG = "#31395E";
+export const SELECTED_BG = "#4A3714";
 
 /** Fond de la ligne sélectionnée dans un panneau qui n'a *pas* le focus — présent, mais qui ne réclame pas l'œil. */
-export const SELECTED_BG_IDLE = "#23283A";
+export const SELECTED_BG_IDLE = "#332714";
 
 /** Texte secondaire : en-têtes de colonnes, valeurs par défaut, explications. Lisible, contrairement au "gray" du terminal. */
-export const DIM = "#8992A6";
+export const DIM = "#9E9284";
 
 /** Texte tertiaire : bordures inactives, marques d'héritage, ce qui ne doit se lire que si on le cherche. */
-export const FAINT = "#5E6678";
+export const FAINT = "#6B6252";
 
 export const OK = "#7DCE82";
 export const WARN = "#E0AF68";
 export const BAD = "#E88388";
 
 /** Fond des touches dans la barre d'aide contextuelle, avec son encre. */
-export const KEY_BG = "#3B4359";
-export const KEY_FG = "#E6E9F0";
+export const KEY_BG = "#473C26";
+export const KEY_FG = "#F0EAD9";
 
 /**
  * Les traits des encadrés. Une bordure décrit une structure, elle ne la
