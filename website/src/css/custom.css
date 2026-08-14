@@ -42,6 +42,49 @@
   --caesar-ramp-5: #9f6e1f;
 }
 
+/* Navbar, in the same register as the rest of the page: warm ground,
+   hairline rule instead of a shadow, links in spaced mono caps, the brand
+   title in Geist Pixel, gold on hover. Global on purpose — the docs pages
+   share it, like the footer. */
+:root {
+  --ifm-navbar-background-color: #faf6ee;
+  --ifm-navbar-shadow: none;
+  --ifm-dropdown-background-color: #f3ede0;
+}
+
+[data-theme='dark'] {
+  --ifm-navbar-background-color: #0c0904;
+  --ifm-dropdown-background-color: #120e06;
+}
+
+.navbar {
+  border-bottom: 1px solid rgba(107, 98, 82, 0.28);
+}
+
+[data-theme='dark'] .navbar {
+  border-bottom-color: rgba(158, 146, 132, 0.18);
+}
+
+.navbar__title {
+  font-family: 'Geist Pixel', var(--ifm-font-family-monospace);
+  font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+}
+
+.navbar__link {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.navbar__link:hover,
+.navbar__link--active {
+  color: var(--ifm-color-primary);
+}
+
 /* Geist Pixel (Square variant) — Vercel, SIL OFL 1.1, vendored under
    static/fonts/ with its license. Reserved for the site's annotation
    layer: section numbering, panel annotations, stat labels, footer caps.
