@@ -50,6 +50,14 @@ export interface DelegationParams {
   /** Raw duration ("10m", "90s"…); the reason from `parseDuration` is rendered as-is on failure. */
   timeout?: string;
   /**
+   * Explicitly requested model (`--model`/`model:`). Wins over the role's
+   * `model` and over the `[models]` per-agent default — and, unlike those
+   * two, is *refused* rather than dropped when the selected agent cannot
+   * choose a model: an explicit ask silently ignored is the C6 class of
+   * defect this resolution exists to close.
+   */
+  model?: string;
+  /**
    * Delegation depth, passed on to `checkDelegation`. Required — see C4 of
    * the final review: a parameter with a default value
    * (`params.depth ?? 0`) is what left `max_depth` unenforced without
@@ -108,6 +116,19 @@ export interface ResolvedDelegation {
   networkWarning?: string;
   timeoutMs: number;
   context?: string;
+  /**
+   * Model to pass to `RunTaskInput.model`, if any — the explicit request,
+   * the role's, or the `[models]` default of the *elected* agent, in that
+   * order. Absent when nothing asked for one, or when a config-derived
+   * model had to be dropped (see `modelWarning`).
+   */
+  model?: string;
+  /**
+   * Same contract as `networkWarning`: what to say when a config-derived
+   * model could not be honored — the agent does not support choosing one —
+   * without failing a delegation over a default the caller never asked for.
+   */
+  modelWarning?: string;
 }
 
 export type DelegationResult = ResolvedDelegation | { error: string };
@@ -198,6 +219,28 @@ export async function resolveDelegation(config: CaesarConfig, root: string, para
     return { error: `${netDecision.reason} ${netDecision.remedy}` };
   }
 
+  // After the agent, necessarily: both the `[models]` lookup and the
+  // capability check need the *elected* agent — a role's fallback may have
+  // skipped the first candidate, and the default that applies is the
+  // survivor's, not the list's.
+  const requestedModel = params.model ?? role?.model ?? config.models[agentId];
+  let model: string | undefined;
+  let modelWarning: string | undefined;
+  if (requestedModel !== undefined) {
+    if (agentDef.capabilities.model) {
+      model = requestedModel;
+    } else if (params.model !== undefined) {
+      return {
+        error:
+          `Agent "${agentId}" does not support choosing a model: "${params.model}" would be silently ignored. ` +
+          `Drop the explicit model, or pick an agent with the "model" capability.`,
+      };
+    } else {
+      const source = role?.model !== undefined ? `role "${role.name}"` : "the [models] table";
+      modelWarning = `Model "${requestedModel}" (from ${source}) ignored: agent "${agentId}" does not support choosing a model.`;
+    }
+  }
+
   let timeoutMs: number;
   try {
     timeoutMs = params.timeout ? parseDuration(params.timeout) : (role?.timeout_ms ?? config.policy.default_timeout_ms);
@@ -219,6 +262,8 @@ export async function resolveDelegation(config: CaesarConfig, root: string, para
     timeoutMs,
   };
   if (netDecision.warning !== undefined) result.networkWarning = netDecision.warning;
+  if (model !== undefined) result.model = model;
+  if (modelWarning !== undefined) result.modelWarning = modelWarning;
   if (params.role) result.role = params.role;
   if (context !== undefined) result.context = context;
   return result;

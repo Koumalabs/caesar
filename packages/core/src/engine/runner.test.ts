@@ -168,6 +168,27 @@ describe("runTask", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  describe("model warning from the caller", () => {
+    it("pours modelWarning into the report as an info finding, like networkWarning", async () => {
+      await initGitRepo(root);
+      const outcome = await runTask(
+        { store, root, queue: createQueue(2) },
+        {
+          agentId: "fake-agent",
+          objective: "write",
+          mode: "write",
+          workspace: root,
+          modelWarning: 'Model "x" ignored: agent "fake-agent" does not support choosing a model.',
+        },
+      );
+
+      expect(outcome.record.status).toBe("succeeded");
+      expect(outcome.report.findings).toEqual([
+        expect.objectContaining({ severity: "info", title: expect.stringMatching(/model/i) }),
+      ]);
+    });
+  });
+
   describe('"auto" isolation rule', () => {
     it("write + git repository → worktree", async () => {
       await initGitRepo(root);

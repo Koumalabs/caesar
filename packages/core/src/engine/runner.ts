@@ -201,6 +201,8 @@ export interface RunTaskInput {
   network?: boolean;
   /** Warning produced by that resolution, to be added to the report (see `ResolvedDelegation.networkWarning`). */
   networkWarning?: string;
+  /** Same channel for a dropped config-derived model (see `ResolvedDelegation.modelWarning`). */
+  modelWarning?: string;
   workspace: string;
   role?: string;
   model?: string;
@@ -563,6 +565,10 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   // makes the intent explicit and silences the warning.
   if (input.networkWarning) {
     report = withFinding(report, { severity: "info", title: "Network not guaranteed", detail: input.networkWarning });
+  }
+
+  if (input.modelWarning) {
+    report = withFinding(report, { severity: "info", title: "Model not applied", detail: input.modelWarning });
   }
 
   // Persisted before the final store update (see C2 of the final

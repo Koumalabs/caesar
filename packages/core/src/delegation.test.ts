@@ -234,6 +234,97 @@ describe("resolveDelegation — network", () => {
   });
 });
 
+describe("resolveDelegation — model", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "caesar-model-"));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  // A generic agent whose args carry no {{model}} token: `capabilities.model`
+  // is deduced as false (see `createGenericAgent`) — the command line would
+  // pass a requested model nowhere.
+  const incapable = { id: "nomodel", bin: "true", args: ["{{prompt}}"] };
+
+  it("an explicit model wins over the role's and over the [models] default", async () => {
+    const config: CaesarConfig = {
+      ...defaultConfig(),
+      roles: [role({ agents: ["codex"], model: "from-role" })],
+      models: { codex: "from-table" },
+    };
+    const result = await resolveDelegation(config, root, { role: "reviewer", agent: "codex", model: "explicit", depth: 0 });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.model).toBe("explicit");
+  });
+
+  it("the role's model beats the per-agent default", async () => {
+    const config: CaesarConfig = {
+      ...defaultConfig(),
+      roles: [role({ agents: ["codex"], model: "from-role" })],
+      models: { codex: "from-table" },
+    };
+    const result = await resolveDelegation(config, root, { role: "reviewer", agent: "codex", depth: 0 });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.model).toBe("from-role");
+  });
+
+  it("falls back to the [models] default of the selected agent", async () => {
+    const config: CaesarConfig = { ...defaultConfig(), models: { codex: "from-table" } };
+    const result = await resolveDelegation(config, root, { agent: "codex", depth: 0 });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.model).toBe("from-table");
+  });
+
+  it("resolves the per-agent default after the role's fallback elected the agent", async () => {
+    // Two generic agents so the test controls what is "installed" without
+    // touching PATH: the first one's binary does not exist, the fallback
+    // must elect the second — and the model must be *its* default, proof
+    // that the lookup happens after `pickAgentForRole`, not before.
+    const config: CaesarConfig = {
+      ...defaultConfig(),
+      agents: [
+        { id: "ghostbin", bin: "definitely-missing-bin-xyz", args: ["{{model}}", "{{prompt}}"] },
+        { id: "realbin", bin: "true", args: ["{{model}}", "{{prompt}}"] },
+      ],
+      roles: [role({ agents: ["ghostbin", "realbin"] })],
+      models: { ghostbin: "m-ghost", realbin: "m-real" },
+    };
+    const result = await resolveDelegation(config, root, { role: "reviewer", depth: 0 });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.agentId).toBe("realbin");
+    expect(result.model).toBe("m-real");
+  });
+
+  it("refuses — without writing anything to disk — an explicit model on an agent that cannot choose one", async () => {
+    const config: CaesarConfig = { ...defaultConfig(), agents: [incapable] };
+    const result = await resolveDelegation(config, root, { agent: "nomodel", model: "x", depth: 0 });
+    expect("error" in result).toBe(true);
+    if (!("error" in result)) throw new Error("expected a refusal");
+    expect(result.error).toContain("nomodel");
+    expect(result.error).toMatch(/model/i);
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  it("drops a config-derived model on an incapable agent with a warning — the delegation still departs", async () => {
+    const config: CaesarConfig = { ...defaultConfig(), agents: [incapable], models: { nomodel: "x" } };
+    const result = await resolveDelegation(config, root, { agent: "nomodel", depth: 0 });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.model).toBeUndefined();
+    expect(result.modelWarning).toContain("nomodel");
+  });
+
+  it("no model anywhere: neither model nor warning on the result", async () => {
+    const result = await resolveDelegation(defaultConfig(), root, { agent: "codex", mode: "write", depth: 0 });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.model).toBeUndefined();
+    expect(result.modelWarning).toBeUndefined();
+  });
+});
+
 /**
  * The in-place write refusal, seen from the first of the two gates.
  *
