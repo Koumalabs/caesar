@@ -42,6 +42,46 @@
   --caesar-ramp-5: #9f6e1f;
 }
 
+/* Site-wide ground — the landing's warm paper and ink, promoted from the
+   .landing scope (index.module.css) onto Infima's own variables so the
+   docs, the protocol pages and every other route sit on the same ground.
+   Literal values on purpose: they must match --landing-bg / -bg-raised /
+   -ink / -ink-secondary and the landing hairlines exactly. The emphasis
+   stops warm Infima's gray scale where it shows most: borders (200/300)
+   and secondary text such as the sidebar and breadcrumbs (600/700). */
+:root {
+  --ifm-background-color: #faf6ee;
+  --ifm-background-surface-color: #f3ede0;
+  --ifm-font-color-base: #201a10;
+  --ifm-color-content-secondary: #6b6252;
+  --ifm-color-emphasis-200: #ece4d3;
+  --ifm-color-emphasis-300: #d9cfba;
+  --ifm-color-emphasis-600: #6b6252;
+  --ifm-color-emphasis-700: #55493a;
+  --ifm-toc-border-color: rgba(107, 98, 82, 0.28);
+  --ifm-code-background: #f3ede0;
+  --ifm-hover-overlay: rgba(107, 98, 82, 0.08);
+  --ifm-table-stripe-background: rgba(107, 98, 82, 0.05);
+}
+
+/* html[data-theme='dark'], not [data-theme='dark']: Docusaurus declares the
+   dark grounds under the former, and an attribute-only selector loses to it
+   regardless of source order. */
+html[data-theme='dark'] {
+  --ifm-background-color: #0c0904;
+  --ifm-background-surface-color: #120e06;
+  --ifm-font-color-base: #f0e9dc;
+  --ifm-color-content-secondary: #9e9284;
+  --ifm-color-emphasis-200: #241e12;
+  --ifm-color-emphasis-300: #2e2718;
+  --ifm-color-emphasis-600: #9e9284;
+  --ifm-color-emphasis-700: #b3a894;
+  --ifm-toc-border-color: rgba(158, 146, 132, 0.18);
+  --ifm-code-background: #1a1206;
+  --ifm-hover-overlay: rgba(158, 146, 132, 0.08);
+  --ifm-table-stripe-background: rgba(158, 146, 132, 0.05);
+}
+
 /* Navbar, in the same register as the rest of the page: warm ground,
    hairline rule instead of a shadow, links in spaced mono caps, the brand
    title in Geist Pixel, gold on hover. Global on purpose — the docs pages

@@ -2,6 +2,22 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 import {themes as prismThemes} from 'prism-react-renderer';
 
+/**
+ * Code blocks in the site's own grounds: gruvbox Material's warm, earthy
+ * token colors (the only warm pair prism-react-renderer ships), with the
+ * backgrounds swapped for the site's raised paper (light) and the same
+ * near-black ink as the landing's terminal windows (dark, --caesar-accent-ink).
+ */
+const caesarPrismLight = {
+  ...prismThemes.gruvboxMaterialLight,
+  plain: {...prismThemes.gruvboxMaterialLight.plain, backgroundColor: '#f3ede0'},
+};
+
+const caesarPrismDark = {
+  ...prismThemes.gruvboxMaterialDark,
+  plain: {...prismThemes.gruvboxMaterialDark.plain, backgroundColor: '#1a1206'},
+};
+
 const config: Config = {
   title: 'caesar',
   tagline: 'Delegate coding tasks to external agent CLIs — safely.',
@@ -107,8 +123,8 @@ const config: Config = {
       copyright: 'caesar — orchestrator of coding sub-agents.',
     },
     prism: {
-      theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      theme: caesarPrismLight,
+      darkTheme: caesarPrismDark,
       additionalLanguages: ['bash', 'json', 'toml'],
     },
   } satisfies Preset.ThemeConfig,
