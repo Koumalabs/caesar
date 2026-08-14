@@ -182,3 +182,240 @@ html[data-theme='dark'] {
   --ifm-color-primary-lighter: #eaa52e;
   --ifm-color-primary-lightest: #eaa52e;
 }
+
+/* ————————————————————————————————————————————————————————————————————————
+   Iconography. The site already speaks in glyphs — § numbers the sections,
+   ▸/◂ mark calls and returns, ↗ marks external links, $ prompts, · joins.
+   Docusaurus's stock pictograms (Material globe, sun/moon, rounded house,
+   soft chevrons) belong to another design entirely, so every icon below is
+   replaced by a glyph from that same vocabulary, set in the mono/pixel
+   annotation layer: faint at rest, gold on hover, never decorative.
+   ———————————————————————————————————————————————————————————————————————— */
+
+/* Sidebar carets: Infima's rounded chevron becomes a sharp triangle. The
+   source SVG points UP on purpose — Infima rotates it 180° when expanded
+   (→ ▾) and 90° when collapsed (→ ▸), landing exactly on the site's ▸. */
+:root {
+  --ifm-menu-link-sublist-icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="%236b6252" d="M8 6l3.5 5.5h-7z"/></svg>');
+}
+
+html[data-theme='dark'] {
+  --ifm-menu-link-sublist-icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="%239e9284" d="M8 6l3.5 5.5h-7z"/></svg>');
+  --ifm-menu-link-sublist-icon-filter: none;
+}
+
+/* Color-mode toggle: ◐ in light, ◑ in dark — the same disc, lit from the
+   other side — instead of the sun/moon pictograms. */
+.navbar [class*='toggleButton'] svg {
+  display: none;
+}
+
+.navbar [class*='toggleButton']::after {
+  content: '◐';
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+html[data-theme='dark'] .navbar [class*='toggleButton']::after {
+  content: '◑';
+}
+
+.navbar [class*='toggleButton']:hover::after {
+  color: var(--ifm-color-primary);
+}
+
+/* Locale dropdown: the mono-caps label already says what it is — the
+   Material globe goes, the caret becomes ▾. */
+.navbar svg[class*='iconLanguage'] {
+  display: none;
+}
+
+/* transform: none undoes Infima's translateY(-50%), which centers its
+   zero-height border triangle but hoists a real glyph into superscript
+   position. On the baseline, ▾ sits right on its own. */
+.dropdown > .navbar__link::after {
+  border: none;
+  top: 0;
+  transform: none;
+  content: '▾';
+  margin-left: 0.35em;
+}
+
+/* External links: the ↗ the hero already uses, instead of the boxed-arrow
+   pictogram appended by the theme. */
+svg[class*='iconExternalLink'] {
+  display: none;
+}
+
+.navbar__link[target='_blank']::after,
+.footer__link-item[target='_blank']::after {
+  content: '↗';
+  margin-left: 0.3em;
+}
+
+/* Breadcrumbs read as a shell path: ~ for home, / between segments, the
+   current page in gold — no house icon, no pill backgrounds. */
+.breadcrumbs {
+  --ifm-breadcrumb-item-background-active: transparent;
+  --ifm-breadcrumb-padding-horizontal: 0.35rem;
+}
+
+.breadcrumbs__link {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.78rem;
+}
+
+.breadcrumbs__link svg[class*='breadcrumbHomeIcon'] {
+  display: none;
+}
+
+.breadcrumbs__item:first-child .breadcrumbs__link::after {
+  content: '~';
+}
+
+.breadcrumbs__item:not(:last-child)::after {
+  background: none;
+  filter: none;
+  opacity: 1;
+  width: auto;
+  height: auto;
+  content: '/';
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.78rem;
+  color: #9e9284;
+}
+
+html[data-theme='dark'] .breadcrumbs__item:not(:last-child)::after {
+  color: #6b6252;
+}
+
+/* Heading anchors: the site numbers its sections with § — the docs inherit
+   the mark in place of the default #. The `a` tag qualifier outranks the
+   theme's own .hash-link::before rule, whose position in the bundle is not
+   guaranteed to precede this file. */
+a.hash-link::before {
+  content: '§';
+}
+
+/* Code-block buttons: the same text button as the hero installer instead
+   of floating clipboard/checkmark pictograms. At rest the buttons carry no
+   class of their own (only `clean-btn`) — they are recognizable only by
+   the icon wrapper they contain, hence the :has() selectors. line-height 1
+   undoes the theme's line-height: 0 (sized for an icon, it would crush
+   text). */
+.theme-code-block button:has(span[class*='copyButtonIcons']),
+.theme-code-block button:has(svg[class*='wordWrapButtonIcon']) {
+  line-height: 1;
+  padding: 0.4rem 0.55rem;
+}
+
+.theme-code-block button span[class*='copyButtonIcons'],
+.theme-code-block button svg[class*='wordWrapButtonIcon'] {
+  display: none;
+}
+
+.theme-code-block button:has(span[class*='copyButtonIcons'])::after {
+  content: 'copy';
+  font-family: 'Geist Pixel', var(--ifm-font-family-monospace);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* The :has() here only mirrors the base rule's specificity — without it,
+   the base rule would keep winning on `content` and 'copied' would never
+   show. */
+.theme-code-block button[class*='copyButtonCopied']:has(span[class*='copyButtonIcons'])::after {
+  content: 'copied';
+  color: var(--caesar-ok);
+}
+
+/* The button text lives in CSS, out of reach of the i18n layer — the FR
+   locale gets the same words as the hero installer (code.json:
+   homepage.hero.copy/copied). */
+html[lang='fr'] .theme-code-block button:has(span[class*='copyButtonIcons'])::after {
+  content: 'copier';
+}
+
+html[lang='fr']
+  .theme-code-block
+  button[class*='copyButtonCopied']:has(span[class*='copyButtonIcons'])::after {
+  content: 'copié';
+}
+
+.theme-code-block button:has(svg[class*='wordWrapButtonIcon'])::after {
+  content: '↩';
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.8rem;
+}
+
+.theme-code-block button[class*='wordWrapButtonEnabled']::after {
+  color: var(--ifm-color-primary);
+}
+
+/* Admonitions: no icon — a hairline box on the raised ground, a 2px left
+   rule and the title carrying the caesar semantic tone (ok/warn/bad from
+   palette.ts), like the status colors in the terminals. */
+.theme-admonition {
+  --ifm-alert-background-color: var(--ifm-background-surface-color);
+  --ifm-alert-foreground-color: var(--ifm-font-color-base);
+  --ifm-alert-border-color: var(--caesar-dim);
+  --ifm-code-background: rgba(107, 98, 82, 0.12);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-left: 2px solid var(--ifm-alert-border-color);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-theme='dark'] .theme-admonition {
+  --ifm-code-background: rgba(158, 146, 132, 0.14);
+}
+
+.theme-admonition-tip {
+  --ifm-alert-border-color: var(--caesar-ok);
+}
+
+.theme-admonition-warning,
+.theme-admonition-caution {
+  --ifm-alert-border-color: var(--caesar-warn);
+}
+
+.theme-admonition-danger {
+  --ifm-alert-border-color: var(--caesar-bad);
+}
+
+.theme-admonition [class*='admonitionIcon'] {
+  display: none;
+}
+
+.theme-admonition [class*='admonitionHeading'] {
+  font-family: 'Geist Pixel', var(--ifm-font-family-monospace);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ifm-alert-border-color);
+}
+
+/* Pagination: ← and → in place of the guillemets, hairline boxes in place
+   of rounded cards, the sublabel in the annotation layer. */
+.pagination-nav__link {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 0;
+}
+
+.pagination-nav__sublabel {
+  font-family: 'Geist Pixel', var(--ifm-font-family-monospace);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pagination-nav__link--prev .pagination-nav__label::before {
+  content: '← ';
+}
+
+.pagination-nav__link--next .pagination-nav__label::after {
+  content: ' →';
+}
