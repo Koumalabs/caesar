@@ -1,7 +1,8 @@
 # Post-remote checklist (this repo has no GitHub remote yet):
 # 1. Settings → Pages → Source: "GitHub Actions".
 # 2. Confirm org/repo/default-branch below and in website/docusaurus.config.ts
-#    (url, baseUrl, organizationName, projectName).
+#    (url, baseUrl, organizationName, projectName) and in
+#    website/src/components/Quickstart/index.tsx (clone URL).
 # 3. Custom domain? Set baseUrl to '/' and add website/static/CNAME.
 
 name: Deploy website

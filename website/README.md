@@ -5,7 +5,7 @@ Docusaurus 3 site for caesar's documentation, part of the pnpm workspace at the 
 ## Locales
 
 - **English** (`website/docs/`) is canonical.
-- **French** lives in `website/i18n/fr/docusaurus-plugin-content-docs/current/`, mirroring `website/docs/` path for path (same filenames, same directory structure).
+- **French** lives in `website/i18n/fr/docusaurus-plugin-content-docs/current/`, mirroring `website/docs/` file-for-file (same filenames, same directory structure).
 
 Any PR that changes `website/docs/**` must update the matching French file(s) in the same change, or mark the French page as stale by adding this at the top of its content:
 

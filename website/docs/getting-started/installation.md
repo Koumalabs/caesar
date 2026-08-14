@@ -8,11 +8,11 @@ description: Prerequisites and first steps to set up caesar from a checkout of t
 
 # Installation
 
-caesar is a pnpm monorepo targeting Node 24. It is **not yet published on npm**: you use it from a checkout of the repository, targeting the project where you want to delegate tasks with `--root`.
+caesar is a pnpm monorepo. It is **not yet published on npm**: you use it from a checkout of the repository, targeting the project where you want to delegate tasks with `--root`.
 
 ## Prerequisites
 
-- Node ≥ 22.
+- Node ≥ 22 (developed on Node 24).
 - pnpm.
 - At least one supported agent CLI on the `PATH` (Codex, Antigravity, OpenCode, Copilot, or Claude Code) — caesar delegates to it, it does not bundle it.
 - Bun, only if you plan to use the configuration TUI (`caesar config`) or build the standalone binary — the rest of the CLI runs on Node alone.

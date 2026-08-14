@@ -8,11 +8,11 @@ description: Prérequis et premiers pas pour configurer caesar depuis un checkou
 
 # Installation
 
-caesar est un monorepo pnpm ciblant Node 24. Il n'est **pas encore publié sur npm** : vous l'utilisez depuis un checkout du dépôt, en ciblant le projet dans lequel vous voulez déléguer des tâches avec `--root`.
+caesar est un monorepo pnpm. Il n'est **pas encore publié sur npm** : vous l'utilisez depuis un checkout du dépôt, en ciblant le projet dans lequel vous voulez déléguer des tâches avec `--root`.
 
 ## Prérequis
 
-- Node ≥ 22.
+- Node ≥ 22 (développé sous Node 24).
 - pnpm.
 - Au moins une CLI d'agent prise en charge sur le `PATH` (Codex, Antigravity, OpenCode, Copilot, ou Claude Code) — caesar lui délègue, il ne l'embarque pas.
 - Bun, seulement si vous prévoyez d'utiliser la TUI de configuration (`caesar config`) ou de construire le binaire autonome — le reste de la CLI tourne sur Node seul.

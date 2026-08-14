@@ -5,20 +5,23 @@
  * color (only secondary/tertiary/semantic tones are colored), and the
  * accent ramp is narrow and goes toward the dark, never toward white.
  *
- * Light mode: #EAA52E does not hold AA contrast on a light background, so
- * the bottom of the ramp (#9F6E1F) is the light-mode primary instead — its
- * "light" declinations climb back up the ramp, its "dark" declinations
- * continue the ramp's own per-channel progression (R -0x0F, G -0x0B,
- * B -0x03 per step) past #9F6E1F.
+ * Light mode: #EAA52E does not hold AA contrast on a light background, and
+ * neither does the bottom of the ramp, #9F6E1F (4.445:1 on white, just
+ * under the 4.5:1 AA threshold for normal text) — so the light-mode
+ * primary is #90631C instead, one step past #9F6E1F in the ramp's own
+ * per-channel progression (R -0x0F, G -0x0B, B -0x03 per step), which
+ * clears AA at 5.267:1 on white. Its "light" declinations climb back up
+ * onto the ramp itself (#9F6E1F, then #AE7922, #BD8425); its "dark"
+ * declinations continue that same per-channel progression past #90631C.
  */
 :root {
-  --ifm-color-primary: #9f6e1f;
-  --ifm-color-primary-dark: #90631c;
-  --ifm-color-primary-darker: #815819;
-  --ifm-color-primary-darkest: #724d16;
-  --ifm-color-primary-light: #ae7922;
-  --ifm-color-primary-lighter: #bd8425;
-  --ifm-color-primary-lightest: #cc8f28;
+  --ifm-color-primary: #90631c;
+  --ifm-color-primary-dark: #815819;
+  --ifm-color-primary-darker: #724d16;
+  --ifm-color-primary-darkest: #634213;
+  --ifm-color-primary-light: #9f6e1f;
+  --ifm-color-primary-lighter: #ae7922;
+  --ifm-color-primary-lightest: #bd8425;
 
   /* Semantic tones and the wordmark's ramp — theme-invariant by design
      (see palette.ts): they are tuned to stay readable on light and dark

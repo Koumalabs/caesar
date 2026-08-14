@@ -6,10 +6,12 @@ import styles from './styles.module.css';
 /**
  * The commands below are real, copy-pasteable shell input — like the
  * agent binaries in AgentsTable and the output in TerminalBlock, they stay
- * out of `<Translate>` on purpose. They match "Installation and first
- * steps" in this repository's README.
+ * out of `<Translate>` on purpose. The `git clone` and `cd` lines are an
+ * addition for a from-zero quickstart; the remaining commands match
+ * "Installation and first steps" in this repository's README.
  */
 const COMMANDS = [
+  // TODO: confirm org/repo when the GitHub remote exists (same values as docusaurus.config.ts).
   'git clone https://github.com/koumalabs/agent-orchestrateur.git',
   'cd agent-orchestrateur',
   'pnpm install',
