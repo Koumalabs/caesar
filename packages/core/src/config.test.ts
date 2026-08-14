@@ -25,10 +25,10 @@ import {
   type RoleConfig,
 } from "./config.js";
 
-// `globalConfigPath()` lit `$HOME` à chaque appel (voir node:os#homedir) :
-// pointer HOME vers un répertoire temporaire isole entièrement ces tests du
-// vrai `~/.config/caesar/` de la machine, sans avoir à changer la signature
-// de `loadConfig`.
+// `globalConfigPath()` reads `$HOME` on every call (see node:os#homedir):
+// pointing HOME at a temporary directory fully isolates these tests from the
+// machine's real `~/.config/caesar/`, without having to change the signature
+// of `loadConfig`.
 async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
   const home = await mkdtemp(join(tmpdir(), "caesar-home-"));
   const previous = process.env["HOME"];
@@ -49,51 +49,51 @@ describe("parseDuration", () => {
     ["1h", 3_600_000],
     ["500ms", 500],
     ["5000", 5000],
-  ])("convertit %s en %i ms", (input, expected) => {
+  ])("converts %s to %i ms", (input, expected) => {
     expect(parseDuration(input)).toBe(expected);
   });
 
-  it("accepte un nombre brut interprété en millisecondes", () => {
+  it("accepts a raw number interpreted as milliseconds", () => {
     expect(parseDuration(1500)).toBe(1500);
   });
 
-  it("lève sur une forme non reconnue, en montrant les formes acceptées", () => {
+  it("throws on an unrecognized form, showing the accepted forms", () => {
     expect(() => parseDuration("3 fortnights")).toThrow(/10m.*90s.*1h/s);
   });
 
-  it("lève sur un nombre négatif", () => {
+  it("throws on a negative number", () => {
     expect(() => parseDuration(-1)).toThrow();
   });
 });
 
 describe("defaultConfig", () => {
-  it("livre trois rôles immédiatement utiles", () => {
+  it("ships three immediately useful roles", () => {
     const config = defaultConfig();
     expect(config.roles.map((r) => r.name)).toEqual(["reviewer", "implementer", "investigator"]);
   });
 
-  it("le rôle reviewer est en lecture seule, inplace", () => {
+  it("the reviewer role is read-only, inplace", () => {
     const role = defaultConfig().roles.find((r) => r.name === "reviewer")!;
     expect(role.mode).toBe("read-only");
     expect(role.isolation).toBe("inplace");
     expect(role.agents).toEqual(["codex", "antigravity"]);
   });
 
-  it("le rôle implementer écrit, en worktree", () => {
+  it("the implementer role writes, in a worktree", () => {
     const role = defaultConfig().roles.find((r) => r.name === "implementer")!;
     expect(role.mode).toBe("write");
     expect(role.isolation).toBe("worktree");
     expect(role.agents).toEqual(["codex", "antigravity", "opencode"]);
   });
 
-  it("le rôle investigator est en lecture seule, isolation auto", () => {
+  it("the investigator role is read-only, auto isolation", () => {
     const role = defaultConfig().roles.find((r) => r.name === "investigator")!;
     expect(role.mode).toBe("read-only");
     expect(role.isolation).toBe("auto");
     expect(role.agents).toEqual(["antigravity", "codex", "opencode"]);
   });
 
-  it("la politique par défaut correspond au brief", () => {
+  it("the default policy matches the brief", () => {
     expect(defaultConfig().policy).toEqual<PolicyConfig>({
       allowed: [],
       denied: [],
@@ -108,44 +108,44 @@ describe("defaultConfig", () => {
     });
   });
 
-  it("aucun agent personnalisé par défaut", () => {
+  it("no custom agent by default", () => {
     expect(defaultConfig().agents).toEqual([]);
   });
 
-  it("chaque rôle par défaut porte déjà la convention system_prompt_file (roles/<name>.md), sans qu'aucune couche ne l'ait déclarée", () => {
-    // Voir l'en-tête de `DEFAULT_ROLES" (config.ts) : c'est ce qui permet à `caesar init` (couche projet) de ne
-    // matérialiser que les fichiers de prompt, sans avoir à déclarer les rôles dans le TOML du projet.
+  it("each default role already carries the system_prompt_file convention (roles/<name>.md), without any layer having declared it", () => {
+    // See the header of `DEFAULT_ROLES" (config.ts): this is what allows `caesar init` (project layer) to only
+    // materialize the prompt files, without having to declare the roles in the project's TOML.
     for (const role of defaultConfig().roles) {
       expect(role.system_prompt_file).toBe(`roles/${role.name}.md`);
     }
   });
 
-  it("renvoie une copie fraîche à chaque appel", () => {
+  it("returns a fresh copy on every call", () => {
     const a = defaultConfig();
-    a.roles[0]!.agents.push("intrus");
-    a.policy.allowed.push("intrus");
+    a.roles[0]!.agents.push("intruder");
+    a.policy.allowed.push("intruder");
     const b = defaultConfig();
-    expect(b.roles[0]!.agents).not.toContain("intrus");
-    expect(b.policy.allowed).not.toContain("intrus");
+    expect(b.roles[0]!.agents).not.toContain("intruder");
+    expect(b.policy.allowed).not.toContain("intruder");
   });
 });
 
 describe("globalConfigPath / projectConfigPath", () => {
-  it("le chemin global se trouve sous ~/.config/caesar/config.toml", async () => {
+  it("the global path lives under ~/.config/caesar/config.toml", async () => {
     await withFakeHome(async (home) => {
       expect(globalConfigPath()).toBe(join(home, ".config", "caesar", "config.toml"));
     });
   });
 
-  it("le chemin projet se trouve sous <root>/.caesar/config.toml", () => {
+  it("the project path lives under <root>/.caesar/config.toml", () => {
     expect(projectConfigPath("/repo")).toBe(join("/repo", ".caesar", "config.toml"));
   });
 
-  it("suit $HOME même quand il diffère de ce que os.homedir() rendrait — Bun ignore $HOME dans os.homedir() (tâche 15)", async () => {
-    // Ce test passe trivialement sous Node (vitest, ce fichier) : `os.homedir()` y respecte déjà `$HOME`. Sa
-    // valeur est de figer le comportement pour Bun (`packages/tui`, qui consomme ce module compilé) : y écrire
-    // `os.homedir()` à la place de `process.env.HOME` régresserait silencieusement sous Bun uniquement, sans
-    // qu'aucun test Node ne le détecte — voir `globalConfigPath` pour l'incident qui a révélé ce défaut.
+  it("follows $HOME even when it differs from what os.homedir() would return — Bun ignores $HOME in os.homedir() (task 15)", async () => {
+    // This test passes trivially under Node (vitest, this file): `os.homedir()` already respects `$HOME` there. Its
+    // value is to pin the behavior for Bun (`packages/tui`, which consumes this compiled module): writing
+    // `os.homedir()` there instead of `process.env.HOME` would regress silently under Bun only, without
+    // any Node test detecting it — see `globalConfigPath` for the incident that revealed this defect.
     await withFakeHome(async (home) => {
       expect(globalConfigPath().startsWith(home)).toBe(true);
     });
@@ -157,21 +157,21 @@ describe("mergeConfig", () => {
     return { ...defaultConfig().policy, ...overrides };
   }
 
-  it("policy se fusionne champ par champ", () => {
+  it("policy merges field by field", () => {
     const base: CaesarConfig = { policy: policyOf({ max_parallel: 4, allow_recursion: false }), roles: [], agents: [] };
-    // Un override qui ne précise qu'un sous-ensemble des champs réellement présents dans un
-    // fichier TOML : c'est exactement la forme que produit `parseConfigFile` en interne, et ce
-    // que le type de `override` (ConfigOverride, policy en Partial<PolicyConfig>) accepte
-    // directement, sans cast.
+    // An override that specifies only a subset of the fields actually present in a
+    // TOML file: exactly the shape `parseConfigFile` produces internally, and what
+    // the type of `override` (ConfigOverride, policy as Partial<PolicyConfig>) accepts
+    // directly, without a cast.
     const merged = mergeConfig(base, { policy: { max_parallel: 8 } });
     expect(merged.policy.max_parallel).toBe(8);
     expect(merged.policy.allow_recursion).toBe(false);
   });
 
-  it("un rôle de même nom est remplacé entièrement, pas fusionné champ par champ", () => {
+  it("a role with the same name is replaced entirely, not merged field by field", () => {
     const reviewerA: RoleConfig = {
       name: "reviewer",
-      purpose: "ancien",
+      purpose: "old",
       agents: ["codex"],
       mode: "read-only",
       isolation: "inplace",
@@ -179,7 +179,7 @@ describe("mergeConfig", () => {
     };
     const reviewerB: RoleConfig = {
       name: "reviewer",
-      purpose: "nouveau",
+      purpose: "new",
       agents: ["opencode"],
       mode: "write",
       isolation: "worktree",
@@ -190,7 +190,7 @@ describe("mergeConfig", () => {
     expect(merged.roles).toEqual([reviewerB]);
   });
 
-  it("les rôles propres à chaque niveau sont conservés", () => {
+  it("roles specific to each level are kept", () => {
     const globalRole: RoleConfig = {
       name: "global-only",
       purpose: "",
@@ -212,7 +212,7 @@ describe("mergeConfig", () => {
     expect(merged.roles.map((r) => r.name).sort()).toEqual(["global-only", "project-only"]);
   });
 
-  it("même logique de fusion par clé pour les agents", () => {
+  it("same merge-by-key logic for agents", () => {
     const base: CaesarConfig = {
       policy: defaultConfig().policy,
       roles: [],
@@ -230,7 +230,7 @@ describe("mergeConfig", () => {
     ]);
   });
 
-  it("un override sans policy laisse la policy de base intacte", () => {
+  it("an override without policy leaves the base policy untouched", () => {
     const base: CaesarConfig = { policy: policyOf({ max_parallel: 7 }), roles: [], agents: [] };
     const merged = mergeConfig(base, {});
     expect(merged.policy.max_parallel).toBe(7);
@@ -248,7 +248,7 @@ describe("loadConfig", () => {
     await rm(projectRoot, { recursive: true, force: true });
   });
 
-  it("fichiers absents des deux côtés : configuration par défaut, aucune source", async () => {
+  it("files absent on both sides: default configuration, no source", async () => {
     await withFakeHome(async () => {
       const loaded = await loadConfig(projectRoot);
       expect(loaded.config).toEqual(defaultConfig());
@@ -257,7 +257,7 @@ describe("loadConfig", () => {
     });
   });
 
-  it("global seul : ses valeurs s'appliquent, la source global est renseignée", async () => {
+  it("global alone: its values apply, the global source is set", async () => {
     await withFakeHome(async (home) => {
       const globalPath = join(home, ".config", "caesar", "config.toml");
       await mkdir(join(home, ".config", "caesar"), { recursive: true });
@@ -270,7 +270,7 @@ describe("loadConfig", () => {
     });
   });
 
-  it("projet seul : ses valeurs s'appliquent, la source projet est renseignée", async () => {
+  it("project alone: its values apply, the project source is set", async () => {
     await withFakeHome(async () => {
       await mkdir(join(projectRoot, ".caesar"), { recursive: true });
       await writeFile(join(projectRoot, ".caesar", "config.toml"), '[policy]\nmax_parallel = 6\n', "utf8");
@@ -282,7 +282,7 @@ describe("loadConfig", () => {
     });
   });
 
-  it("les deux présents : le projet écrase le global sur les champs qu'il précise", async () => {
+  it("both present: the project overrides the global on the fields it specifies", async () => {
     await withFakeHome(async (home) => {
       await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(
@@ -294,16 +294,16 @@ describe("loadConfig", () => {
       await writeFile(join(projectRoot, ".caesar", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
 
       const loaded = await loadConfig(projectRoot);
-      // Précisé par le projet : le projet gagne.
+      // Specified by the project: the project wins.
       expect(loaded.config.policy.max_parallel).toBe(2);
-      // Précisé par le global seulement, absent du projet : le global survit.
+      // Specified by the global only, absent from the project: the global survives.
       expect(loaded.config.policy.allow_recursion).toBe(true);
       expect(loaded.sources.global).toBeDefined();
       expect(loaded.sources.project).toBeDefined();
     });
   });
 
-  it("un rôle projet de même nom qu'un rôle global le remplace entièrement, sans fusion de champs", async () => {
+  it("a project role with the same name as a global role replaces it entirely, without field merging", async () => {
     await withFakeHome(async (home) => {
       await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(
@@ -326,7 +326,7 @@ describe("loadConfig", () => {
         [
           "[[role]]",
           'name = "reviewer"',
-          'purpose = "projet"',
+          'purpose = "project"',
           'agents = ["opencode"]',
           'mode = "write"',
           'isolation = "worktree"',
@@ -341,22 +341,22 @@ describe("loadConfig", () => {
       expect(reviewers).toHaveLength(1);
       expect(reviewers[0]).toEqual({
         name: "reviewer",
-        purpose: "projet",
+        purpose: "project",
         agents: ["opencode"],
         mode: "write",
         isolation: "worktree",
-        // Non déclaré par la couche projet : c'est le défaut *de l'entrée*
-        // (RawRoleSchema) qui s'applique, pas la valeur du rôle global —
-        // c'est précisément ce que « remplace entièrement » veut dire.
+        // Not declared by the project layer: it is the *entry's* default
+        // (RawRoleSchema) that applies, not the global role's value —
+        // that is precisely what "replaces entirely" means.
         network: "auto",
         timeout_ms: 1_200_000,
       });
-      // Les autres rôles par défaut (implementer, investigator) survivent.
+      // The other default roles (implementer, investigator) survive.
       expect(loaded.config.roles.map((r) => r.name).sort()).toEqual(["implementer", "investigator", "reviewer"]);
     });
   });
 
-  it("TOML syntaxiquement invalide produit une erreur qui nomme le fichier", async () => {
+  it("syntactically invalid TOML produces an error naming the file", async () => {
     await withFakeHome(async () => {
       await mkdir(join(projectRoot, ".caesar"), { recursive: true });
       const path = join(projectRoot, ".caesar", "config.toml");
@@ -366,18 +366,18 @@ describe("loadConfig", () => {
     });
   });
 
-  it("un champ de type incorrect produit une erreur qui nomme le champ et le fichier", async () => {
+  it("a field of the wrong type produces an error naming the field and the file", async () => {
     await withFakeHome(async () => {
       await mkdir(join(projectRoot, ".caesar"), { recursive: true });
       const path = join(projectRoot, ".caesar", "config.toml");
-      await writeFile(path, '[policy]\nmax_parallel = "quatre"\n', "utf8");
+      await writeFile(path, '[policy]\nmax_parallel = "four"\n', "utf8");
 
       await expect(loadConfig(projectRoot)).rejects.toThrow(path);
       await expect(loadConfig(projectRoot)).rejects.toThrow(/max_parallel/);
     });
   });
 
-  it("un champ inconnu (faute de frappe) produit une erreur qui le nomme, plutôt que d'être ignoré silencieusement", async () => {
+  it("an unknown field (typo) produces an error naming it, rather than being silently ignored", async () => {
     await withFakeHome(async () => {
       await mkdir(join(projectRoot, ".caesar"), { recursive: true });
       const path = join(projectRoot, ".caesar", "config.toml");
@@ -387,7 +387,7 @@ describe("loadConfig", () => {
     });
   });
 
-  it("une durée invalide produit une erreur nommant le champ concerné", async () => {
+  it("an invalid duration produces an error naming the field concerned", async () => {
     await withFakeHome(async () => {
       await mkdir(join(projectRoot, ".caesar"), { recursive: true });
       const path = join(projectRoot, ".caesar", "config.toml");
@@ -397,10 +397,10 @@ describe("loadConfig", () => {
     });
   });
 
-  it("un fichier de configuration illisible (répertoire à la place d'un fichier) est une erreur nommant le fichier", async () => {
+  it("an unreadable configuration file (directory instead of a file) is an error naming the file", async () => {
     await withFakeHome(async () => {
       const path = join(projectRoot, ".caesar", "config.toml");
-      // Un répertoire du même nom que le fichier attendu : la lecture échoue avec autre chose qu'ENOENT.
+      // A directory with the same name as the expected file: the read fails with something other than ENOENT.
       await mkdir(path, { recursive: true });
 
       await expect(loadConfig(projectRoot)).rejects.toThrow(path);
@@ -409,10 +409,10 @@ describe("loadConfig", () => {
 });
 
 /**
- * `[worktree]` — la section qui rend le worktree habitable. Sans elle, un
- * worktree ne contient que les fichiers suivis par git : ni dépendances
- * installées, ni `.env`, ni répertoires ignorés — et l'isolation devient
- * inexploitable, donc contournée. Voir `WorktreeConfig`.
+ * `[worktree]` — the section that makes the worktree habitable. Without it, a
+ * worktree only contains the files tracked by git: no installed
+ * dependencies, no `.env`, no ignored directories — and isolation becomes
+ * unusable, hence bypassed. See `WorktreeConfig`.
  */
 describe("[worktree]", () => {
   let projectRoot: string;
@@ -430,26 +430,26 @@ describe("[worktree]", () => {
     await writeFile(join(projectRoot, ".caesar", "config.toml"), toml, "utf8");
   }
 
-  it("absente partout : trois listes vides, jamais undefined", async () => {
+  it("absent everywhere: three empty lists, never undefined", async () => {
     await withFakeHome(async () => {
       const loaded = await loadConfig(projectRoot);
       expect(loaded.config.worktree).toEqual({ copy: [], link: [], setup: [] });
     });
   });
 
-  it("lit copy, link et setup", async () => {
+  it("reads copy, link and setup", async () => {
     await withFakeHome(async () => {
-      await writeProject('[worktree]\ncopy = ["node_modules", ".env"]\nlink = ["gros-cache"]\nsetup = ["pnpm install --offline"]\n');
+      await writeProject('[worktree]\ncopy = ["node_modules", ".env"]\nlink = ["big-cache"]\nsetup = ["pnpm install --offline"]\n');
       const loaded = await loadConfig(projectRoot);
       expect(loaded.config.worktree).toEqual({
         copy: ["node_modules", ".env"],
-        link: ["gros-cache"],
+        link: ["big-cache"],
         setup: ["pnpm install --offline"],
       });
     });
   });
 
-  it("un champ absent du fichier ne dit rien : la couche précédente le garde", async () => {
+  it("a field absent from the file says nothing: the previous layer keeps it", async () => {
     await withFakeHome(async (home) => {
       await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(join(home, ".config", "caesar", "config.toml"), '[worktree]\ncopy = ["node_modules"]\nsetup = ["npm ci"]\n', "utf8");
@@ -461,9 +461,9 @@ describe("[worktree]", () => {
     });
   });
 
-  it("remplace la liste héritée au lieu de s'y ajouter", async () => {
-    // La propriété qui rend le retrait local possible : une union laisserait
-    // une entrée héritée du global impossible à retirer côté projet.
+  it("replaces the inherited list instead of adding to it", async () => {
+    // The property that makes local removal possible: a union would leave an
+    // entry inherited from the global impossible to remove on the project side.
     await withFakeHome(async (home) => {
       await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(join(home, ".config", "caesar", "config.toml"), '[worktree]\ncopy = ["node_modules", ".venv"]\n', "utf8");
@@ -474,7 +474,7 @@ describe("[worktree]", () => {
     });
   });
 
-  it("liste vide déclarée : retire tout ce qui était hérité", async () => {
+  it("declared empty list: removes everything that was inherited", async () => {
     await withFakeHome(async (home) => {
       await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(join(home, ".config", "caesar", "config.toml"), '[worktree]\ncopy = ["node_modules"]\n', "utf8");
@@ -485,36 +485,36 @@ describe("[worktree]", () => {
     });
   });
 
-  describe("chemins refusés au chargement, avec leur cause", () => {
-    // Une entrée invalide est une erreur de configuration, pas une
-    // circonstance d'exécution : elle doit se voir en lisant le fichier, pas
-    // se transformer plus tard en tâche qui échoue sans qu'on sache pourquoi.
+  describe("paths refused at load time, with their cause", () => {
+    // An invalid entry is a configuration error, not an execution
+    // circumstance: it must show up when reading the file, not turn
+    // later into a task that fails without anyone knowing why.
     const cases: [string, string, RegExp][] = [
-      ["absolu", '[worktree]\ncopy = ["/etc/passwd"]\n', /absolu/],
-      ["remontée", '[worktree]\ncopy = ["../ailleurs"]\n', /\.\./],
-      ["imbriqué remontant", '[worktree]\nlink = ["a/../../b"]\n', /\.\./],
+      ["absolute", '[worktree]\ncopy = ["/etc/passwd"]\n', /absolute/],
+      ["upward traversal", '[worktree]\ncopy = ["../elsewhere"]\n', /\.\./],
+      ["nested climbing", '[worktree]\nlink = ["a/../../b"]\n', /\.\./],
       [".git", '[worktree]\ncopy = [".git"]\n', /\.git/],
       [".caesar", '[worktree]\nlink = [".caesar/state"]\n', /\.caesar/],
-      ["vide", '[worktree]\ncopy = [""]\n', /vide/],
+      ["empty", '[worktree]\ncopy = [""]\n', /empty/],
     ];
-    for (const [name, toml, motif] of cases) {
+    for (const [name, toml, pattern] of cases) {
       it(name, async () => {
         await withFakeHome(async () => {
           await writeProject(toml);
-          await expect(loadConfig(projectRoot)).rejects.toThrow(motif);
+          await expect(loadConfig(projectRoot)).rejects.toThrow(pattern);
         });
       });
     }
 
-    it("champ inconnu de la section : refusé comme partout ailleurs", async () => {
+    it("unknown field in the section: refused like everywhere else", async () => {
       await withFakeHome(async () => {
         await writeProject('[worktree]\ncoppy = ["node_modules"]\n');
-        await expect(loadConfig(projectRoot)).rejects.toThrow(/champ inconnu/);
+        await expect(loadConfig(projectRoot)).rejects.toThrow(/unknown field/);
       });
     });
   });
 
-  it("accepte un chemin imbriqué légitime", async () => {
+  it("accepts a legitimate nested path", async () => {
     await withFakeHome(async () => {
       await writeProject('[worktree]\ncopy = ["packages/api/node_modules", ".superpowers"]\n');
       const loaded = await loadConfig(projectRoot);
@@ -522,7 +522,7 @@ describe("[worktree]", () => {
     });
   });
 
-  it("survit à l'aller-retour saveLayer/loadLayer", async () => {
+  it("survives the saveLayer/loadLayer round-trip", async () => {
     await withFakeHome(async () => {
       const worktree = { copy: ["node_modules"], link: ["cache"], setup: ["pnpm install --offline"] };
       await saveLayer("project", projectRoot, { worktree });
@@ -531,7 +531,7 @@ describe("[worktree]", () => {
   });
 });
 
-describe("saveLayer / loadConfig — aller-retour", () => {
+describe("saveLayer / loadConfig — round-trip", () => {
   let projectRoot: string;
 
   beforeEach(async () => {
@@ -542,15 +542,15 @@ describe("saveLayer / loadConfig — aller-retour", () => {
     await rm(projectRoot, { recursive: true, force: true });
   });
 
-  it("relit une configuration équivalente après écriture", async () => {
+  it("re-reads an equivalent configuration after writing", async () => {
     await withFakeHome(async () => {
-      // `loadConfig` reconstruit toujours sa base depuis `defaultConfig()` :
-      // pour que l'aller-retour soit fidèle, la configuration sauvegardée
-      // doit déjà être la forme complète (post-fusion) qu'on veut retrouver —
-      // exactement ce que produirait un vrai fichier projet une fois fusionné
-      // à la configuration par défaut, `reviewer`/`implementer`/`investigator`
-      // compris. `saveLayer` accepte directement un `CaesarConfig` complet : il
-      // satisfait structurellement `ConfigOverride` (tous ses champs présents).
+      // `loadConfig` always rebuilds its base from `defaultConfig()`:
+      // for the round-trip to be faithful, the saved configuration
+      // must already be the complete (post-merge) shape we want to find again —
+      // exactly what a real project file would produce once merged
+      // with the default configuration, `reviewer`/`implementer`/`investigator`
+      // included. `saveLayer` directly accepts a complete `CaesarConfig`: it
+      // structurally satisfies `ConfigOverride` (all its fields present).
       const config: CaesarConfig = mergeConfig(defaultConfig(), {
         policy: {
           allowed: ["codex", "antigravity"],
@@ -566,7 +566,7 @@ describe("saveLayer / loadConfig — aller-retour", () => {
         roles: [
           {
             name: "custom",
-            purpose: "Rôle de test.",
+            purpose: "Test role.",
             agents: ["codex"],
             mode: "write",
             isolation: "auto",
@@ -577,9 +577,9 @@ describe("saveLayer / loadConfig — aller-retour", () => {
         ],
         agents: [
           {
-            id: "monagent",
-            displayName: "Mon agent",
-            bin: "mon-cli",
+            id: "myagent",
+            displayName: "My agent",
+            bin: "my-cli",
             args: ["--prompt", "{{prompt}}"],
             cwdMode: "process",
             networkArgs: ["--online"],
@@ -595,69 +595,69 @@ describe("saveLayer / loadConfig — aller-retour", () => {
     });
   });
 
-  it("un agent déclaré garde sa capacité \"lecture seule native\" à l'aller-retour", async () => {
-    // La seule capacité que `[[agent]]` sait porter (voir `RawAgentSchema`) —
-    // et la seule que le moteur honore sans que la ligne de commande ait à
-    // coopérer : `runner.ts` s'en sert pour décider si une tâche en lecture
-    // seule doit être isolée dans un worktree. Perdue à la relecture, la
-    // déclaration serait sans effet, en silence.
+  it("a declared agent keeps its \"native read-only\" capability across the round-trip", async () => {
+    // The only capability `[[agent]]` can carry (see `RawAgentSchema`) —
+    // and the only one the engine honors without the command line having to
+    // cooperate: `runner.ts` uses it to decide whether a read-only task
+    // must be isolated in a worktree. Lost on re-read, the
+    // declaration would be silently ineffective.
     const override = {
-      agents: [{ id: "monagent", bin: "mon-cli", args: ["{{prompt}}"], capabilities: { nativeReadOnly: true } }],
+      agents: [{ id: "myagent", bin: "my-cli", args: ["{{prompt}}"], capabilities: { nativeReadOnly: true } }],
     };
     await saveLayer("project", projectRoot, override);
     const layer = await loadLayer("project", projectRoot);
     expect(layer.agents).toEqual(override.agents);
   });
 
-  it("un agent sans capacité déclarée ne se voit pas en inventer une", async () => {
-    await saveLayer("project", projectRoot, { agents: [{ id: "monagent", bin: "mon-cli", args: ["{{prompt}}"] }] });
+  it("an agent without a declared capability does not get one invented for it", async () => {
+    await saveLayer("project", projectRoot, { agents: [{ id: "myagent", bin: "my-cli", args: ["{{prompt}}"] }] });
     const layer = await loadLayer("project", projectRoot);
     expect(layer.agents?.[0]).not.toHaveProperty("capabilities");
   });
 
-  it("écrit un en-tête avertissant que les commentaires manuels ne survivent pas", async () => {
+  it("writes a header warning that manual comments do not survive", async () => {
     await saveLayer("project", projectRoot, defaultConfig());
     const raw = await readFile(projectConfigPath(projectRoot), "utf8");
-    expect(raw.split("\n")[0]).toMatch(/^#.*commentaire/i);
+    expect(raw.split("\n")[0]).toMatch(/^#.*comment/i);
   });
 
-  it("écrit de façon atomique (fichier temporaire renommé, aucun résidu)", async () => {
+  it("writes atomically (temporary file renamed, no residue)", async () => {
     await saveLayer("project", projectRoot, defaultConfig());
     const entries = await readdir(join(projectRoot, ".caesar"));
     expect(entries).toEqual(["config.toml"]);
   });
 
-  it("ne sérialise que ce que l'override déclare : un override partiel produit un fichier qui ne porte que ce champ", async () => {
+  it("serializes only what the override declares: a partial override produces a file carrying only that field", async () => {
     await saveLayer("project", projectRoot, { policy: { denied: ["copilot", "opencode"] } });
     const raw = await readFile(projectConfigPath(projectRoot), "utf8");
 
-    // Le fichier ne doit porter aucune trace des défauts (max_parallel, rôles…) : uniquement ce que l'override a
-    // déclaré. C'est la preuve, au niveau du fichier, que `saveLayer` ne réécrit jamais la fusion. Comparaison
-    // structurelle (via `parseToml`) plutôt que sous-chaîne littérale : insensible au formatage des espaces dans
-    // les tableaux TOML (smol-toml écrit `[ "a", "b" ]`, pas `["a", "b"]`).
+    // The file must carry no trace of the defaults (max_parallel, roles…): only what the override
+    // declared. This is the file-level proof that `saveLayer` never rewrites the merge. Structural
+    // comparison (via `parseToml`) rather than a literal substring: insensitive to whitespace formatting in
+    // TOML arrays (smol-toml writes `[ "a", "b" ]`, not `["a", "b"]`).
     expect(parseToml(raw)).toEqual({ policy: { denied: ["copilot", "opencode"] } });
     expect(raw).not.toContain("max_parallel");
     expect(raw).not.toContain("[[role]]");
     expect(raw).not.toContain("[[agent]]");
     expect(raw).not.toContain("allowed");
 
-    // Et la relecture de cette seule couche ne rend que ce qui a été déclaré.
+    // And re-reading this single layer returns only what was declared.
     const layer = await loadLayer("project", projectRoot);
     expect(layer).toEqual({ policy: { denied: ["copilot", "opencode"] } });
   });
 
-  it("un override vide n'écrit aucune section — juste l'en-tête", async () => {
+  it("an empty override writes no section — just the header", async () => {
     await saveLayer("project", projectRoot, {});
     const raw = await readFile(projectConfigPath(projectRoot), "utf8");
     expect(raw.trim()).toBe(
-      "# Fichier généré par @caesar/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.",
+      "# File generated by @caesar/core: comments added by hand do not survive the next write.",
     );
     expect(await loadLayer("project", projectRoot)).toEqual({});
   });
 });
 
 describe("configPathFor / localConfigPath", () => {
-  it("délègue à globalConfigPath/projectConfigPath/localConfigPath selon la couche", async () => {
+  it("delegates to globalConfigPath/projectConfigPath/localConfigPath depending on the layer", async () => {
     await withFakeHome(async (home) => {
       expect(configPathFor("global", "/repo")).toBe(join(home, ".config", "caesar", "config.toml"));
       expect(configPathFor("project", "/repo")).toBe(join("/repo", ".caesar", "config.toml"));
@@ -678,7 +678,7 @@ describe("loadLayer", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("un fichier absent rend un override vide, pas une erreur", async () => {
+  it("an absent file yields an empty override, not an error", async () => {
     await withFakeHome(async () => {
       expect(await loadLayer("global", root)).toEqual({});
       expect(await loadLayer("project", root)).toEqual({});
@@ -686,17 +686,17 @@ describe("loadLayer", () => {
     });
   });
 
-  it("rend exactement ce que le fichier déclare, jamais les défauts ni les autres couches", async () => {
+  it("returns exactly what the file declares, never the defaults nor the other layers", async () => {
     await mkdir(join(root, ".caesar"), { recursive: true });
     await writeFile(join(root, ".caesar", "config.toml"), '[policy]\nmax_parallel = 9\n', "utf8");
 
     const layer = await loadLayer("project", root);
     expect(layer).toEqual({ policy: { max_parallel: 9 } });
-    // Ni "denied"/"allowed" (absents du fichier), ni les rôles par défaut.
+    // Neither "denied"/"allowed" (absent from the file), nor the default roles.
     expect(layer.roles).toBeUndefined();
   });
 
-  it("lit la couche locale (config.local.toml), distincte de la couche projet", async () => {
+  it("reads the local layer (config.local.toml), distinct from the project layer", async () => {
     await mkdir(join(root, ".caesar"), { recursive: true });
     await writeFile(join(root, ".caesar", "config.toml"), '[policy]\nmax_parallel = 2\n', "utf8");
     await writeFile(join(root, ".caesar", "config.local.toml"), '[policy]\nmax_parallel = 7\n', "utf8");
@@ -706,7 +706,7 @@ describe("loadLayer", () => {
   });
 });
 
-describe("loadConfig — trois couches, la locale incluse", () => {
+describe("loadConfig — three layers, the local one included", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -717,7 +717,7 @@ describe("loadConfig — trois couches, la locale incluse", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("le local l'emporte sur le projet, qui l'emporte sur le global, sur les champs qu'il précise", async () => {
+  it("the local wins over the project, which wins over the global, on the fields it specifies", async () => {
     await withFakeHome(async (home) => {
       await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(join(home, ".config", "caesar", "config.toml"), "[policy]\nmax_parallel = 9\nallow_recursion = true\n", "utf8");
@@ -726,9 +726,9 @@ describe("loadConfig — trois couches, la locale incluse", () => {
       await writeFile(join(root, ".caesar", "config.local.toml"), "[policy]\nmax_parallel = 5\n", "utf8");
 
       const loaded = await loadConfig(root);
-      // Précisé par les trois : le local (le plus spécifique) gagne.
+      // Specified by all three: the local (the most specific) wins.
       expect(loaded.config.policy.max_parallel).toBe(5);
-      // Précisé par le global seulement : survit, aucune couche plus spécifique ne l'a touché.
+      // Specified by the global only: survives, no more specific layer touched it.
       expect(loaded.config.policy.allow_recursion).toBe(true);
       expect(loaded.sources.global).toBeDefined();
       expect(loaded.sources.project).toBeDefined();
@@ -736,7 +736,7 @@ describe("loadConfig — trois couches, la locale incluse", () => {
     });
   });
 
-  it("expose les trois couches dans l'ordre d'application, y compris celles dont le fichier est absent", async () => {
+  it("exposes the three layers in application order, including those whose file is absent", async () => {
     await withFakeHome(async () => {
       await mkdir(join(root, ".caesar"), { recursive: true });
       await writeFile(join(root, ".caesar", "config.toml"), "[policy]\nmax_parallel = 2\n", "utf8");
@@ -749,7 +749,7 @@ describe("loadConfig — trois couches, la locale incluse", () => {
     });
   });
 
-  it("aucune couche : loadConfig(...).config reste la configuration par défaut, comme avant l'introduction du local", async () => {
+  it("no layer: loadConfig(...).config stays the default configuration, as before the local layer was introduced", async () => {
     await withFakeHome(async () => {
       const loaded = await loadConfig(root);
       expect(loaded.config).toEqual(defaultConfig());
@@ -767,59 +767,59 @@ describe("policyFieldProvenance / roleProvenance / agentProvenance", () => {
     }));
   }
 
-  it("policyFieldProvenance : \"default\" quand aucune couche ne déclare le champ", () => {
+  it("policyFieldProvenance: \"default\" when no layer declares the field", () => {
     const layers = layersOf({});
     expect(policyFieldProvenance(layers, "max_parallel")).toBe("default");
   });
 
-  it("policyFieldProvenance : la couche la plus spécifique qui déclare le champ l'emporte", () => {
+  it("policyFieldProvenance: the most specific layer that declares the field wins", () => {
     const layers = layersOf({
       global: { policy: { max_parallel: 9, allow_recursion: true } },
       project: { policy: { max_parallel: 2 } },
     });
-    // Déclaré par project (plus spécifique que global) : provenance "project".
+    // Declared by project (more specific than global): provenance "project".
     expect(policyFieldProvenance(layers, "max_parallel")).toBe("project");
-    // Déclaré par global seulement : provenance "global".
+    // Declared by global only: provenance "global".
     expect(policyFieldProvenance(layers, "allow_recursion")).toBe("global");
-    // Jamais déclaré : "default".
+    // Never declared: "default".
     expect(policyFieldProvenance(layers, "max_depth")).toBe("default");
   });
 
-  it("roleProvenance : la couche qui déclare une entrée [[role]] de ce nom, \"default\" sinon", () => {
+  it("roleProvenance: the layer that declares a [[role]] entry of that name, \"default\" otherwise", () => {
     const role = (name: string): RoleConfig => ({ name, purpose: "", agents: [], mode: "write", isolation: "auto", timeout_ms: 1 });
     const layers = layersOf({
       global: { roles: [role("reviewer")] },
       local: { roles: [role("reviewer")] },
     });
-    // Déclaré par global ET local : le local (plus spécifique) l'emporte.
+    // Declared by global AND local: the local (more specific) wins.
     expect(roleProvenance(layers, "reviewer")).toBe("local");
     expect(roleProvenance(layers, "implementer")).toBe("default");
   });
 
-  it("agentProvenance : la couche qui déclare une entrée [[agent]] de cet id, \"default\" sinon (agents natifs compris)", () => {
-    const layers = layersOf({ project: { agents: [{ id: "monagent", bin: "mon-cli", args: [] }] } });
-    expect(agentProvenance(layers, "monagent")).toBe("project");
+  it("agentProvenance: the layer that declares an [[agent]] entry with that id, \"default\" otherwise (native agents included)", () => {
+    const layers = layersOf({ project: { agents: [{ id: "myagent", bin: "my-cli", args: [] }] } });
+    expect(agentProvenance(layers, "myagent")).toBe("project");
     expect(agentProvenance(layers, "codex")).toBe("default");
   });
 });
 
 describe("materializeListEdit", () => {
-  it("ajoute un id à la liste effective, matérialisée si la couche ne déclarait pas encore le champ", () => {
+  it("adds an id to the effective list, materialized if the layer did not yet declare the field", () => {
     const result = materializeListEdit(["copilot"], undefined, "opencode", true);
     expect(result).toEqual({ effective: ["copilot", "opencode"], materialized: true });
   });
 
-  it("n'est pas matérialisée quand la couche déclare déjà le champ, même vide", () => {
+  it("is not materialized when the layer already declares the field, even empty", () => {
     const result = materializeListEdit(["codex"], [], "codex", true);
     expect(result).toEqual({ effective: ["codex"], materialized: false });
   });
 
-  it("retire un id, sans dupliquer si présent plusieurs fois dans l'effectif", () => {
+  it("removes an id, without duplicating if present several times in the effective list", () => {
     const result = materializeListEdit(["codex", "opencode"], ["codex", "opencode"], "codex", false);
     expect(result).toEqual({ effective: ["opencode"], materialized: false });
   });
 
-  it("est le calcul que materializePolicyList applique ensuite au disque (même résultat, en mémoire)", async () => {
+  it("is the computation materializePolicyList then applies to disk (same result, in memory)", async () => {
     const root = await mkdtemp(join(tmpdir(), "caesar-materialize-pure-"));
     try {
       await withFakeHome(async () => {
@@ -847,7 +847,7 @@ describe("materializePolicyList", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("augmente la liste effective (pas seulement l'id ajouté) et écrit ce résultat dans la couche visée", async () => {
+  it("grows the effective list (not just the added id) and writes that result into the targeted layer", async () => {
     await withFakeHome(async (home) => {
       await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(join(home, ".config", "caesar", "config.toml"), '[policy]\ndenied = ["copilot"]\n', "utf8");
@@ -856,13 +856,13 @@ describe("materializePolicyList", () => {
       expect(result.effective).toEqual(["copilot", "opencode"]);
       expect(result.materialized).toBe(true);
 
-      // La couche projet porte désormais la liste effective entière, pas seulement "opencode".
+      // The project layer now carries the entire effective list, not just "opencode".
       const layer = await loadLayer("project", root);
       expect(layer.policy?.denied).toEqual(["copilot", "opencode"]);
     });
   });
 
-  it("materialized est faux quand la couche déclarait déjà ce champ", async () => {
+  it("materialized is false when the layer already declared this field", async () => {
     await withFakeHome(async () => {
       await mkdir(join(root, ".caesar"), { recursive: true });
       await writeFile(join(root, ".caesar", "config.toml"), '[policy]\ndenied = ["codex"]\n', "utf8");
@@ -873,7 +873,7 @@ describe("materializePolicyList", () => {
     });
   });
 
-  it("ne touche pas aux autres champs déjà déclarés par la couche visée", async () => {
+  it("does not touch the other fields already declared by the targeted layer", async () => {
     await withFakeHome(async () => {
       await mkdir(join(root, ".caesar"), { recursive: true });
       await writeFile(join(root, ".caesar", "config.toml"), '[policy]\nmax_parallel = 7\n', "utf8");
@@ -886,24 +886,24 @@ describe("materializePolicyList", () => {
     });
   });
 
-  it("retirer un id absent laisse la liste effective inchangée (present=false, ensemble)", async () => {
+  it("removing an absent id leaves the effective list unchanged (present=false, set semantics)", async () => {
     await withFakeHome(async () => {
       const result = await materializePolicyList(root, "project", "allowed", "codex", false);
       expect(result.effective).toEqual([]);
     });
   });
 
-  it("retrait dans une liste héritée : la moitié symétrique de l'augmentation — le global déclare denied = [a, b], le projet retire a, et matérialise denied = [b]", async () => {
+  it("removal from an inherited list: the symmetric half of growing it — the global declares denied = [a, b], the project removes a, and materializes denied = [b]", async () => {
     await withFakeHome(async (home) => {
       await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(join(home, ".config", "caesar", "config.toml"), '[policy]\ndenied = ["copilot", "opencode"]\n', "utf8");
 
       const result = await materializePolicyList(root, "project", "denied", "copilot", false);
       expect(result.materialized).toBe(true);
-      // "copilot" retiré, "opencode" (hérité du global) survit dans la liste matérialisée — pas juste "sans copilot".
+      // "copilot" removed, "opencode" (inherited from the global) survives in the materialized list — not just "without copilot".
       expect(result.effective).toEqual(["opencode"]);
 
-      // Le projet porte désormais cette liste en propre ; le global, lui, n'a pas bougé.
+      // The project now carries this list in its own right; the global, for its part, has not moved.
       const projectLayer = await loadLayer("project", root);
       expect(projectLayer).toEqual({ policy: { denied: ["opencode"] } });
       const globalLayer = await loadLayer("global", root);
@@ -914,9 +914,9 @@ describe("materializePolicyList", () => {
     });
   });
 
-  it("le défaut I11 : deux couches, la globale et la projet, se matérialisent indépendamment", async () => {
-    // Scénario minimal (voir le scénario complet côté CLI, packages/cli/src/commands/policy.test.ts) : la couche
-    // globale ne doit jamais se retrouver aplatie dans la couche projet par une matérialisation de liste.
+  it("the I11 defect: two layers, the global and the project, materialize independently", async () => {
+    // Minimal scenario (see the full scenario on the CLI side, packages/cli/src/commands/policy.test.ts): the
+    // global layer must never end up flattened into the project layer by a list materialization.
     await withFakeHome(async () => {
       await materializePolicyList(root, "global", "denied", "copilot", true);
       await materializePolicyList(root, "project", "denied", "opencode", true);

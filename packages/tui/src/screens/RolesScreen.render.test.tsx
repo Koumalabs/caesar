@@ -27,7 +27,7 @@ async function mount(state = makeState(), size = { width: 120, height: 34 }) {
   return setup;
 }
 
-/** Laisse l'aperçu du prompt (lecture de fichier, asynchrone) arriver avant de capturer. */
+/** Lets the prompt preview (a file read, asynchronous) arrive before capturing. */
 async function settle(setup: Awaited<ReturnType<typeof mount>>): Promise<void> {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -36,86 +36,86 @@ async function settle(setup: Awaited<ReturnType<typeof mount>>): Promise<void> {
 }
 
 describe("RolesScreen", () => {
-  it("affiche les rôles et les champs du rôle sélectionné", async () => {
+  it("shows the roles and the selected role's fields", async () => {
     const setup = await mount();
     const frame = setup.captureCharFrame();
     expect(frame).toContain("reviewer");
     expect(frame).toContain("implementer");
-    expect(frame).toContain("Intention");
+    expect(frame).toContain("Purpose");
     expect(frame).toContain("Agents");
-    // Le nom du rôle est désormais un champ à part entière : un rôle se renomme
-    // sans passer par le fichier TOML.
-    expect(frame).toContain("Nom");
+    // The role name is now a field in its own right: a role gets renamed
+    // without going through the TOML file.
+    expect(frame).toContain("Name");
     setup.renderer.destroy();
   });
 
-  it("signale qu'un rôle redéfini globalement est hérité, pas déclaré par la couche active", async () => {
+  it("signals that a role redefined globally is inherited, not declared by the active layer", async () => {
     const state = makeState();
     state.layers[0] = {
       ...state.layers[0]!,
       override: {
         roles: [
-          { name: "reviewer", purpose: "Redéfini globalement.", agents: ["codex"], mode: "read-only", isolation: "inplace", network: "auto", timeout_ms: 600_000 },
+          { name: "reviewer", purpose: "Redefined globally.", agents: ["codex"], mode: "read-only", isolation: "inplace", network: "auto", timeout_ms: 600_000 },
         ],
       },
     };
     const setup = await mount(state);
     const frame = setup.captureCharFrame();
-    expect(frame).toContain("Redéfini globalement.");
-    expect(frame).toContain("Hérité ← global");
+    expect(frame).toContain("Redefined globally.");
+    expect(frame).toContain("Inherited ← global");
     setup.renderer.destroy();
   });
 
-  it("montre le prompt système : son chemin, sa taille et ses premières lignes", async () => {
-    // Le défaut central que cet écran corrige : le prompt n'existait à
-    // l'écran que sous forme de chemin, alors que ce fichier *est* ce que
-    // l'agent reçoit en tête de contexte.
+  it("shows the system prompt: its path, its size and its first lines", async () => {
+    // The central defect this screen fixes: the prompt only existed on
+    // screen as a path, while that file *is* what the agent receives at
+    // the head of its context.
     await mkdir(join(root, ".caesar", "roles"), { recursive: true });
-    await writeFile(join(root, ".caesar", "roles", "reviewer.md"), "Tu es un relecteur strict.\nNe corrige rien toi-même.\n", "utf8");
+    await writeFile(join(root, ".caesar", "roles", "reviewer.md"), "You are a strict reviewer.\nDo not fix anything yourself.\n", "utf8");
 
     const setup = await mount();
     await settle(setup);
     const frame = setup.captureCharFrame();
     expect(frame).toContain("roles/reviewer.md");
-    expect(frame).toContain("Tu es un relecteur strict.");
-    expect(frame).toContain("caractères");
+    expect(frame).toContain("You are a strict reviewer.");
+    expect(frame).toContain("characters");
     setup.renderer.destroy();
   });
 
-  it("dit qu'un prompt déclaré mais absent du disque reste à créer", async () => {
+  it("says that a prompt declared but absent from disk remains to be created", async () => {
     const setup = await mount();
     await settle(setup);
-    expect(setup.captureCharFrame()).toContain("à créer");
+    expect(setup.captureCharFrame()).toContain("to be created");
     setup.renderer.destroy();
   });
 
-  it("l'aide de touches suit le niveau de focus", async () => {
+  it("the key hints follow the focus level", async () => {
     const setup = await mount();
-    expect(setup.captureCharFrame()).toContain("nouveau");
+    expect(setup.captureCharFrame()).toContain("new");
 
-    // Entrer dans les champs : les touches proposées changent.
+    // Entering the fields: the offered keys change.
     await act(async () => setup.mockInput.pressEnter());
     await act(async () => setup.renderOnce());
     const frame = setup.captureCharFrame();
-    expect(frame).toContain("revenir aux rôles");
-    // …et le champ sélectionné s'explique.
+    expect(frame).toContain("back to roles");
+    // …and the selected field is explained.
     expect(frame).toContain("caesar run --role");
     setup.renderer.destroy();
   });
 
-  it("propose d'ouvrir l'éditeur quand on atteint le champ du prompt", async () => {
+  it("offers to open the editor when the prompt field is reached", async () => {
     const setup = await mount();
     await act(async () => setup.mockInput.pressEnter());
-    // name, purpose, agents, mode, isolation, network, timeout, prompt : sept crans.
+    // name, purpose, agents, mode, isolation, network, timeout, prompt: seven notches.
     for (let i = 0; i < 7; i++) await act(async () => setup.mockInput.pressKey("j"));
     await act(async () => setup.renderOnce());
     const frame = setup.captureCharFrame();
-    expect(frame).toContain("éditer le prompt");
-    expect(frame).toContain("changer le fichier");
+    expect(frame).toContain("edit the prompt");
+    expect(frame).toContain("change the file");
     setup.renderer.destroy();
   });
 
-  it("aucune ligne ne déborde de la largeur du terminal", async () => {
+  it("no line overflows the terminal width", async () => {
     for (const width of [80, 120, 200]) {
       const setup = await mount(makeState(), { width, height: 34 });
       await settle(setup);

@@ -24,15 +24,15 @@ async function initGitRepo(root: string): Promise<void> {
 }
 
 /**
- * Le dépôt **et** l'opt-in qui rend `--isolation inplace` acceptable en
- * écriture.
+ * The repository **and** the opt-in that makes `--isolation inplace`
+ * acceptable for writes.
  *
- * Les tests d'aller-retour ci-dessous demandent tous `inplace` : ils vérifient
- * le code de sortie, le rapport, un timeout, une ligne de commande — jamais la
- * règle d'isolation elle-même, et un worktree ne ferait qu'y ajouter une
- * indirection. Depuis que cette combinaison est refusée par défaut, l'assumer
- * fait partie de leur mise en place, exactement comme pour un utilisateur. Le
- * refus, lui, a son propre test : « refuse … sans opt-in ».
+ * The round-trip tests below all ask for `inplace`: they check the exit
+ * code, the report, a timeout, a command line — never the isolation rule
+ * itself, and a worktree would only add an indirection to them. Since that
+ * combination is refused by default, assuming it is part of their setup,
+ * exactly as it is for a user. The refusal, for its part, has its own test:
+ * "refuses … without the opt-in".
  */
 async function initGitRepoAllowingInplaceWrite(root: string): Promise<void> {
   await initGitRepo(root);
@@ -52,13 +52,13 @@ describe("caesar run", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("aller-retour complet avec un agent factice substitué au vrai binaire de \"codex\"", async () => {
+  it("full round trip with a fake agent substituted for the real \"codex\" binary", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         await initGitRepoAllowingInplaceWrite(root);
         const code = await runRun(
           root,
-          "écrire un fichier",
+          "write a file",
           { agent: "codex", mode: "write", isolation: "inplace", json: true },
           io,
         );
@@ -71,56 +71,57 @@ describe("caesar run", () => {
     );
   }, 20_000);
 
-  it("I3 (revue finale) : un agent qui sort en code 0 mais déclare un rapport \"failed\" ne rend pas un exit code de succès", async () => {
+  it("I3 (final review): an agent exiting with code 0 but declaring a \"failed\" report does not return a success exit code", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         await initGitRepoAllowingInplaceWrite(root);
-        // mode "success" (défaut) : le processus sort en code 0. `status: "failed"`
-        // (surcharge du rapport écrit) : l'agent déclare néanmoins un échec.
-        // Avant I3, exit code et "statut : succeeded" ne regardaient que le
-        // processus — une automatisation qui enchaîne sur "caesar run" aurait
-        // conclu au succès sur cette tâche.
+        // "success" mode (default): the process exits with code 0.
+        // `status: "failed"` (override of the written report): the agent
+        // nevertheless declares a failure. Before I3, exit code and
+        // "status: succeeded" only looked at the process — an automation
+        // chaining on "caesar run" would have concluded success on this
+        // task.
         const code = await runRun(
           root,
-          "tâche dont le rapport dit échec malgré un exit 0",
+          "task whose report says failure despite an exit 0",
           { agent: "codex", mode: "write", isolation: "inplace", context: JSON.stringify({ status: "failed" }), json: true },
           io,
         );
         const parsed = JSON.parse(io.stdoutText());
-        expect(parsed.status).toBe("succeeded"); // le processus, lui, a bien réussi.
-        expect(parsed.report.status).toBe("failed"); // mais le rapport dit l'inverse.
-        expect(code).toBe(EXIT_RUNTIME); // et c'est ce second niveau qui doit décider du code de sortie.
+        expect(parsed.status).toBe("succeeded"); // the process, for its part, did succeed.
+        expect(parsed.report.status).toBe("failed"); // but the report says the opposite.
+        expect(code).toBe(EXIT_RUNTIME); // and it is that second level that must decide the exit code.
       }),
     );
   }, 20_000);
 
-  it("--channel active le canal retour : le palier de rapport devient \"channel\" (tâche 9)", async () => {
+  it("--channel enables the return channel: the report tier becomes \"channel\" (task 9)", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         await initGitRepoAllowingInplaceWrite(root);
         const code = await runRun(
           root,
-          "écrire un fichier, avec canal",
+          "write a file, with a channel",
           { agent: "codex", mode: "write", isolation: "inplace", json: true, channel: true },
           io,
         );
         expect(code).toBe(EXIT_OK);
         const parsed = JSON.parse(io.stdoutText());
         expect(parsed.status).toBe("succeeded");
-        // "channel" plutôt que "file" (comparer à la première tâche de ce
-        // fichier, identique sans --channel) : preuve que le flag a bien
-        // atteint `runTask` via `RunTaskInput.channel`, et que "codex"
-        // (mcpInjection: "flag") le supporte.
+        // "channel" rather than "file" (compare with the first task of this
+        // file, identical without --channel): proof that the flag did reach
+        // `runTask` via `RunTaskInput.channel`, and that "codex"
+        // (mcpInjection: "flag") supports it.
         expect(parsed.report_source).toBe("channel");
       }),
     );
   }, 20_000);
 
-  it("--json ne produit rien d'autre qu'un JSON valide sur stdout, sans ANSI", async () => {
+  it("--json produces nothing but valid JSON on stdout, without ANSI", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         await initGitRepoAllowingInplaceWrite(root);
-        const code = await runRun(root, "tâche", { agent: "codex", mode: "write", isolation: "inplace", json: true }, io);
+        const code = await runRun(root, "task", { agent: "codex", mode: "write", isolation: "inplace", json: true }, io);
         expect(code).toBe(EXIT_OK);
         expect(() => JSON.parse(io.stdoutText())).not.toThrow();
         expect(io.stdoutText()).not.toMatch(/\x1b\[/);
@@ -129,120 +130,120 @@ describe("caesar run", () => {
     );
   }, 20_000);
 
-  it("--isolation inplace en écriture dans un dépôt git : refusé, sans rien lancer ni rien laisser derrière", async () => {
-    // Le défaut d'origine, vu depuis le CLI : sans ce refus, l'agent écrivait
-    // sur la branche de travail courante de l'utilisateur, et seul le contenu
-    // du dépôt le révélait après coup. Le refus tombe dans `resolveDelegation`,
-    // donc avant tout répertoire de tâche et tout sous-processus.
+  it("--isolation inplace for writes in a git repository: refused, launching nothing and leaving nothing behind", async () => {
+    // The original defect, seen from the CLI: without this refusal, the
+    // agent wrote on the user's current working branch, and only the
+    // repository's content revealed it after the fact. The refusal falls in
+    // `resolveDelegation`, hence before any task directory and any
+    // subprocess.
     await withFakeHome(async () => {
       await initGitRepo(root);
-      const code = await runRun(root, "tâche", { agent: "codex", mode: "write", isolation: "inplace" }, io);
+      const code = await runRun(root, "task", { agent: "codex", mode: "write", isolation: "inplace" }, io);
       expect(code).toBe(EXIT_USAGE);
-      expect(io.stderrText()).toMatch(/refusée/);
-      // Le motif doit envoyer vers l'atelier avant l'opt-in : le worktree est
-      // l'issue, l'opt-in la dérogation.
+      expect(io.stderrText()).toMatch(/refused/);
+      // The reason must send toward the workshop before the opt-in: the
+      // worktree is the way out, the opt-in the derogation.
       expect(io.stderrText()).toMatch(/\[worktree\]/);
       expect(io.stderrText()).toMatch(/allow_inplace_write/);
       await expect(readFile(join(root, ".caesar", "tasks"), "utf8")).rejects.toThrow();
     });
   });
 
-  it("--isolation inplace en écriture hors dépôt git : accepté, aucun worktree n'y étant possible", async () => {
+  it("--isolation inplace for writes outside a git repository: accepted, no worktree being possible there", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        const code = await runRun(root, "tâche", { agent: "codex", mode: "write", isolation: "inplace", json: true }, io);
+        const code = await runRun(root, "task", { agent: "codex", mode: "write", isolation: "inplace", json: true }, io);
         expect(code).toBe(EXIT_OK);
       }),
     );
   }, 20_000);
 
-  it("un agent refusé par la politique sort en code 2 avec le motif rendu par @caesar/core, mot pour mot", async () => {
+  it("an agent denied by the policy exits with code 2 with the reason rendered by @caesar/core, word for word", async () => {
     await withFakeHome(async () => {
       await runPolicyDeny(root, "codex", {}, makeIo());
-      const code = await runRun(root, "tâche", { agent: "codex" }, io);
+      const code = await runRun(root, "task", { agent: "codex" }, io);
       expect(code).toBe(EXIT_USAGE);
       expect(io.stderrText().trim()).toBe(
-        'Agent "codex" refusé : présent dans la liste "denied" de la politique.',
+        'Agent "codex" refused: present in the policy\'s "denied" list.',
       );
     });
   });
 
-  it("--role inconnu : code d'usage, message clair", async () => {
+  it("unknown --role: usage code, clear message", async () => {
     await withFakeHome(async () => {
-      const code = await runRun(root, "tâche", { role: "inexistant" }, io);
+      const code = await runRun(root, "task", { role: "nonexistent" }, io);
       expect(code).toBe(EXIT_USAGE);
-      expect(io.stderrText()).toMatch(/inexistant/);
+      expect(io.stderrText()).toMatch(/nonexistent/);
     });
   });
 
-  it("ni --agent ni --role : code d'usage, message nommant les deux flags", async () => {
+  it("neither --agent nor --role: usage code, message naming both flags", async () => {
     await withFakeHome(async () => {
-      const code = await runRun(root, "tâche", {}, io);
+      const code = await runRun(root, "task", {}, io);
       expect(code).toBe(EXIT_USAGE);
-      // Message propre au CLI (nomme les flags), pas le motif générique que
-      // rend `resolveDelegation` pour ses autres appelants (voir le rapport
-      // de correction de la tâche 7 — perdu sans bruit lors de l'extraction,
-      // restauré par la revue).
-      expect(io.stderrText().trim()).toBe("Précisez --agent <id> ou --role <name>.");
+      // Message specific to the CLI (names the flags), not the generic
+      // reason `resolveDelegation` renders for its other callers (see the
+      // task 7 correction report — lost silently during the extraction,
+      // restored by the review).
+      expect(io.stderrText().trim()).toBe("Specify --agent <id> or --role <name>.");
     });
   });
 
-  it("--mode invalide l'emporte sur --role inconnu : la validation de forme sort avant toute résolution", async () => {
+  it("an invalid --mode wins over an unknown --role: shape validation exits before any resolution", async () => {
     await withFakeHome(async () => {
-      // Fixe la précédence entérinée par la revue de la tâche 7 : les
-      // validations de forme (--mode, --isolation), qui ne nécessitent
-      // aucune E/S, sortent avant même de tenter de résoudre --role — que
-      // celui-ci soit ou non valide. Avant l'extraction de
-      // `resolveDelegation`, l'ordre inverse aurait rendu "Rôle inconnu"
-      // ici ; ce test aurait détecté la régression de précédence relevée en
-      // revue.
-      const code = await runRun(root, "tâche", { role: "inexistant", mode: "bogus" }, io);
-      expect(code).toBe(EXIT_USAGE);
-      expect(io.stderrText()).toMatch(/--mode/);
-      expect(io.stderrText()).not.toMatch(/inexistant/);
-      expect(io.stderrText()).not.toMatch(/[Rr]ôle inconnu/);
-    });
-  });
-
-  it("--agent inconnu du catalogue : code d'usage", async () => {
-    await withFakeHome(async () => {
-      const code = await runRun(root, "tâche", { agent: "agent-fantome" }, io);
-      expect(code).toBe(EXIT_USAGE);
-      expect(io.stderrText()).toMatch(/inconnu/);
-    });
-  });
-
-  it("--mode invalide : code d'usage, sans lancer quoi que ce soit", async () => {
-    await withFakeHome(async () => {
-      const code = await runRun(root, "tâche", { agent: "codex", mode: "readonly" }, io);
+      // Pins the precedence ratified by the task 7 review: shape
+      // validations (--mode, --isolation), which require no I/O, exit
+      // before even attempting to resolve --role — whether or not it is
+      // valid. Before the extraction of `resolveDelegation`, the reverse
+      // order would have rendered "Unknown role" here; this test would have
+      // caught the precedence regression flagged in review.
+      const code = await runRun(root, "task", { role: "nonexistent", mode: "bogus" }, io);
       expect(code).toBe(EXIT_USAGE);
       expect(io.stderrText()).toMatch(/--mode/);
+      expect(io.stderrText()).not.toMatch(/nonexistent/);
+      expect(io.stderrText()).not.toMatch(/[Uu]nknown role/);
     });
   });
 
-  it("--isolation invalide : code d'usage", async () => {
+  it("--agent unknown to the catalog: usage code", async () => {
     await withFakeHome(async () => {
-      const code = await runRun(root, "tâche", { agent: "codex", isolation: "bogus" }, io);
+      const code = await runRun(root, "task", { agent: "ghost-agent" }, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toMatch(/[Uu]nknown/);
+    });
+  });
+
+  it("invalid --mode: usage code, without launching anything", async () => {
+    await withFakeHome(async () => {
+      const code = await runRun(root, "task", { agent: "codex", mode: "readonly" }, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toMatch(/--mode/);
+    });
+  });
+
+  it("invalid --isolation: usage code", async () => {
+    await withFakeHome(async () => {
+      const code = await runRun(root, "task", { agent: "codex", isolation: "bogus" }, io);
       expect(code).toBe(EXIT_USAGE);
       expect(io.stderrText()).toMatch(/--isolation/);
     });
   });
 
-  it("--timeout invalide : code d'usage avec le message de parseDuration", async () => {
+  it("invalid --timeout: usage code with the parseDuration message", async () => {
     await withFakeHome(async () => {
-      const code = await runRun(root, "tâche", { agent: "codex", timeout: "3 fortnights" }, io);
+      const code = await runRun(root, "task", { agent: "codex", timeout: "3 fortnights" }, io);
       expect(code).toBe(EXIT_USAGE);
-      expect(io.stderrText()).toMatch(/Durée invalide/);
+      expect(io.stderrText()).toMatch(/Invalid duration/);
     });
   });
 
-  it("un agent qui échoue (exit non nul) fait sortir la commande en code 1", async () => {
+  it("an agent that fails (non-zero exit) makes the command exit with code 1", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         await initGitRepoAllowingInplaceWrite(root);
         const code = await runRun(
           root,
-          "tâche",
+          "task",
           { agent: "codex", mode: "write", isolation: "inplace", json: true, context: JSON.stringify({ mode: "fail" }) },
           io,
         );
@@ -253,16 +254,16 @@ describe("caesar run", () => {
     );
   }, 20_000);
 
-  it("--context @fichier lit le fichier désigné", async () => {
+  it("--context @file reads the designated file", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         await initGitRepoAllowingInplaceWrite(root);
-        const contextFile = join(root, "contexte.txt");
-        await writeFile(contextFile, JSON.stringify({ summary: "depuis un fichier" }), "utf8");
+        const contextFile = join(root, "context.txt");
+        await writeFile(contextFile, JSON.stringify({ summary: "from a file" }), "utf8");
 
         const code = await runRun(
           root,
-          "tâche",
+          "task",
           { agent: "codex", mode: "write", isolation: "inplace", json: true, context: `@${contextFile}` },
           io,
         );
@@ -271,14 +272,14 @@ describe("caesar run", () => {
     );
   }, 20_000);
 
-  it("l'avancement (mode humain) est émis pendant l'exécution, pas seulement relu à la fin", async () => {
+  it("progress (human mode) is emitted during execution, not merely re-read at the end", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         await initGitRepoAllowingInplaceWrite(root);
         let settled = false;
         const runPromise = runRun(
           root,
-          "tâche suivie en direct",
+          "task followed live",
           { agent: "codex", mode: "write", isolation: "inplace", context: JSON.stringify({ mode: "hang", sleepMs: 500 }) },
           io,
         ).then((code) => {
@@ -286,14 +287,13 @@ describe("caesar run", () => {
           return code;
         });
 
-        // La ligne "départ" (dérivée de l'événement "started") doit
-        // apparaître alors que `runRun` est encore en cours d'exécution —
-        // c'est ce qui distingue un affichage en direct (onEvent) d'une
-        // relecture après coup.
-        for (let i = 0; i < 100 && !io.stdoutText().includes("départ"); i++) {
+        // The "start" line (derived from the "started" event) must appear
+        // while `runRun` is still executing — that is what distinguishes a
+        // live display (onEvent) from an after-the-fact re-read.
+        for (let i = 0; i < 100 && !io.stdoutText().includes("start"); i++) {
           await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 10));
         }
-        expect(io.stdoutText()).toContain("départ");
+        expect(io.stdoutText()).toContain("start");
         expect(settled).toBe(false);
 
         const code = await runPromise;
@@ -302,7 +302,7 @@ describe("caesar run", () => {
     );
   }, 20_000);
 
-  it("SIGINT interrompt proprement une tâche en cours, sans laisser de processus fils", async () => {
+  it("SIGINT cleanly interrupts a running task, leaving no child process behind", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async (shimDir) => {
         await initGitRepoAllowingInplaceWrite(root);
@@ -310,34 +310,34 @@ describe("caesar run", () => {
 
         const runPromise = runRun(
           root,
-          "tâche interrompue",
+          "interrupted task",
           { agent: "codex", mode: "write", isolation: "inplace", context: JSON.stringify({ mode: "hang", sleepMs: 30_000 }) },
           io,
         );
 
-        for (let i = 0; i < 100 && !io.stdoutText().includes("départ"); i++) {
+        for (let i = 0; i < 100 && !io.stdoutText().includes("start"); i++) {
           await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 10));
         }
-        expect(io.stdoutText()).toContain("départ");
+        expect(io.stdoutText()).toContain("start");
 
-        // `process.emit` invoque directement les gestionnaires enregistrés via
-        // `process.on("SIGINT", ...)`, sans passer par le signal OS réel — on
-        // exerce exactement le même code que Ctrl-C déclencherait, sans risquer
-        // d'affecter le process de test lui-même ou d'autres fichiers de test
-        // exécutés en parallèle.
+        // `process.emit` directly invokes the handlers registered via
+        // `process.on("SIGINT", ...)`, without going through the real OS
+        // signal — we exercise exactly the same code Ctrl-C would trigger,
+        // without risking affecting the test process itself or other test
+        // files running in parallel.
         process.emit("SIGINT", "SIGINT");
 
-        // Preuve que le signal a réellement atteint et terminé le
-        // sous-processus, bien avant les 30 s de `sleepMs`.
+        // Proof that the signal really reached and terminated the
+        // subprocess, well before `sleepMs`'s 30 s.
         const code = await runPromise;
         expect(code).toBe(EXIT_RUNTIME);
-        expect(io.stderrText()).toMatch(/Interruption demandée/);
+        expect(io.stderrText()).toMatch(/Interruption requested/);
 
         try {
           const { stdout } = await execFileAsync("pgrep", ["-f", shimPath]);
           expect(stdout.trim()).toBe("");
         } catch (error) {
-          // pgrep sort en erreur (code 1) quand rien ne correspond : c'est le résultat attendu.
+          // pgrep exits with an error (code 1) when nothing matches: that is the expected result.
           expect((error as { code?: number }).code).toBe(1);
         }
       }),
@@ -345,24 +345,23 @@ describe("caesar run", () => {
   }, 20_000);
 
   /**
-   * Tests de couture (revue finale) pour C1 et C4 — voir aussi
-   * `packages/core/src/engine/runner.test.ts` (`describe("tests de couture — revue finale"`)
-   * pour C2/C3, et `packages/core/src/delegation.test.ts` (`describe("nextDelegationDepth"`)
-   * pour l'unité de calcul de profondeur que le second test ci-dessous câble
-   * bout en bout. `FAKE_AGENT_PATH` (jamais un vrai CLI d'agent) est utilisé
-   * directement comme `bin` d'un `[[agent]]` — pas via `withFakeAgentAsBin`,
-   * qui masquerait un identifiant du catalogue natif plutôt que d'en déclarer
-   * un nouveau.
+   * Seam tests (final review) for C1 and C4 — see also
+   * `packages/core/src/engine/runner.test.ts` (`describe("seam tests — final review"`)
+   * for C2/C3, and `packages/core/src/delegation.test.ts` (`describe("nextDelegationDepth"`)
+   * for the depth-computation unit that the second test below wires end to
+   * end. `FAKE_AGENT_PATH` (never a real agent CLI) is used directly as the
+   * `bin` of an `[[agent]]` — not via `withFakeAgentAsBin`, which would
+   * mask an identifier of the native catalog rather than declare a new one.
    */
-  it("C1 : un agent déclaré en [[agent]] (.caesar/config.toml) tourne de bout en bout via \"caesar run\"", async () => {
+  it("C1: an agent declared in [[agent]] (.caesar/config.toml) runs end to end via \"caesar run\"", async () => {
     await withFakeHome(async () => {
-      // Reproduit littéralement le repro de C1 dans la revue finale :
-      // `caesar run --agent mon-agent-bash` répondait jusqu'ici "Agent inconnu"
-      // (exit 2), alors que la configuration était bien lue.
+      // Literally reproduces the C1 repro from the final review:
+      // `caesar run --agent my-bash-agent` used to answer "Unknown agent"
+      // (exit 2), even though the configuration was properly read.
       await mkdir(join(root, ".caesar"), { recursive: true });
       const toml = [
         "[[agent]]",
-        'id = "mon-agent-bash"',
+        'id = "my-bash-agent"',
         `bin = ${JSON.stringify(process.execPath)}`,
         `args = [${JSON.stringify(FAKE_AGENT_PATH)}, "{{prompt}}"]`,
         "",
@@ -371,8 +370,8 @@ describe("caesar run", () => {
 
       const code = await runRun(
         root,
-        "crée hello.txt",
-        { agent: "mon-agent-bash", mode: "write", isolation: "inplace", json: true },
+        "create hello.txt",
+        { agent: "my-bash-agent", mode: "write", isolation: "inplace", json: true },
         io,
       );
 
@@ -383,19 +382,19 @@ describe("caesar run", () => {
     });
   }, 20_000);
 
-  it("C4 : une profondeur héritée de $CAESAR_DEPTH atteignant max_depth refuse la délégation", async () => {
+  it("C4: a depth inherited from $CAESAR_DEPTH reaching max_depth refuses the delegation", async () => {
     await withFakeHome(async () => {
-      // policy.max_depth vaut 2 par défaut (config.ts, DEFAULT_POLICY).
-      // $CAESAR_DEPTH="1" simule un `caesar run` tournant lui-même comme
-      // sous-agent d'une délégation de profondeur 1 : la délégation suivante
-      // serait donc de profondeur 2, qui atteint exactement max_depth — et
-      // doit être refusée (isDepthAllowed : depth >= max_depth). Avant C4 de
-      // la revue finale, cette variable n'était relue par personne : le
-      // refus n'existait pas, quelle que soit la profondeur héritée.
+      // policy.max_depth is 2 by default (config.ts, DEFAULT_POLICY).
+      // $CAESAR_DEPTH="1" simulates a `caesar run` itself running as the
+      // sub-agent of a depth-1 delegation: the next delegation would thus
+      // be of depth 2, which reaches max_depth exactly — and must be
+      // refused (isDepthAllowed: depth >= max_depth). Before C4 of the
+      // final review, nobody re-read this variable: the refusal did not
+      // exist, whatever the inherited depth.
       const previous = process.env[ENV.depth];
       process.env[ENV.depth] = "1";
       try {
-        const code = await runRun(root, "objectif à une profondeur excessive", { agent: "codex", mode: "read-only", json: true }, io);
+        const code = await runRun(root, "objective at an excessive depth", { agent: "codex", mode: "read-only", json: true }, io);
         expect(code).toBe(EXIT_USAGE);
         expect(io.stderrText()).toMatch(/max_depth/);
       } finally {
@@ -405,34 +404,34 @@ describe("caesar run", () => {
     });
   });
 
-  it("refuse une délégation qui exige le réseau quand l'agent ne peut pas le fournir", async () => {
+  it("refuses a delegation requiring the network when the agent cannot provide it", async () => {
     await withFakeHome(async () => {
-      const code = await runRun(root, "installe une dépendance", { agent: "codex", mode: "read-only", network: "on", json: true }, io);
+      const code = await runRun(root, "install a dependency", { agent: "codex", mode: "read-only", network: "on", json: true }, io);
       expect(code).toBe(EXIT_USAGE);
       expect(io.stderrText()).toContain("--mode write");
     });
   });
 
-  it("refuse une valeur de --network hors des trois attendues, avant toute résolution", async () => {
-    const code = await runRun(root, "objectif", { agent: "codex", network: "peut-être", json: true }, io);
+  it("refuses a --network value outside the three expected ones, before any resolution", async () => {
+    const code = await runRun(root, "objective", { agent: "codex", network: "maybe" }, io);
     expect(code).toBe(EXIT_USAGE);
-    expect(io.stderrText()).toMatch(/--network invalide/);
+    expect(io.stderrText()).toMatch(/Invalid --network/);
   });
 
-  it("transmet les arguments bruts au CLI de l'agent, en fin de ligne de commande", async () => {
+  it("passes the raw arguments to the agent's CLI, at the end of the command line", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         await initGitRepoAllowingInplaceWrite(root);
         const code = await runRun(
           root,
-          "objectif",
+          "objective",
           { agent: "codex", mode: "write", isolation: "inplace", extraArgs: ["--enable", "feature_x"], json: true },
           io,
         );
         expect(code).toBe(EXIT_OK);
-        // L'événement `started` publie la ligne de commande complète : c'est
-        // la preuve que l'argument est réellement parvenu au sous-processus,
-        // et non seulement au `RunTaskInput`.
+        // The `started` event publishes the full command line: it is the
+        // proof that the argument really reached the subprocess, and not
+        // only the `RunTaskInput`.
         const taskId = JSON.parse(io.stdoutText()).task_id as string;
         const events = await readFile(join(root, ".caesar", "tasks", taskId, "events.jsonl"), "utf8");
         const started = events
@@ -446,7 +445,7 @@ describe("caesar run", () => {
   }, 20_000);
 });
 
-describe("caesar run — arguments bruts et le séparateur « -- »", () => {
+describe("caesar run — raw arguments and the \"--\" separator", () => {
   let root: string;
   let io: CapturedIo;
 
@@ -459,85 +458,87 @@ describe("caesar run — arguments bruts et le séparateur « -- »", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("refuse des opérandes en trop sans séparateur — une coquille reste une coquille", async () => {
-    // Commander refusait déjà `caesar run "obj" coquille` (« too many
-    // arguments ») ; l'argument variadique qui recueille ce qui suit « -- »
-    // aurait supprimé ce refus sans cette garde.
-    const code = await runCli(["node", "caesar", "run", "--root", root, "objectif", "coquille"], io);
+  it("refuses excess operands without the separator — a typo stays a typo", async () => {
+    // Commander already refused `caesar run "obj" typo` ("too many
+    // arguments"); the variadic argument collecting what follows "--" would
+    // have removed that refusal without this guard.
+    const code = await runCli(["node", "caesar", "run", "--root", root, "objective", "typo"], io);
     expect(code).toBe(EXIT_USAGE);
-    expect(io.stderrText()).toContain("« -- »");
-    expect(io.stderrText()).toContain("coquille");
+    expect(io.stderrText()).toContain('"--"');
+    expect(io.stderrText()).toContain("typo");
   });
 
-  it("laisse passer les mêmes arguments dès qu'ils suivent le séparateur", async () => {
-    // Sans agent installé, la délégation échoue plus loin — mais plus sur la
-    // garde de forme : le message ne parle plus du séparateur.
-    const code = await runCli(["node", "caesar", "run", "--root", root, "--agent", "agent-absent", "objectif", "--", "coquille"], io);
+  it("lets the same arguments through as soon as they follow the separator", async () => {
+    // Without an installed agent, the delegation fails further along — but
+    // no longer on the shape guard: the message no longer speaks of the
+    // separator.
+    const code = await runCli(["node", "caesar", "run", "--root", root, "--agent", "absent-agent", "objective", "--", "typo"], io);
     expect(code).toBe(EXIT_USAGE);
-    expect(io.stderrText()).not.toContain("« -- »");
+    expect(io.stderrText()).not.toContain('"--"');
   });
 });
 
 /**
- * L'affichage au fil de l'eau, éprouvé directement : l'agent factice des
- * tests n'émet pas de lignes au format d'un CLI réel, aucun test de bout en
- * bout ne passerait donc par ces branches.
+ * The live display, exercised directly: the tests' fake agent does not emit
+ * lines in a real CLI's format, so no end-to-end test would go through
+ * these branches.
  */
-describe("caesar run — l'avancement affiché", () => {
+describe("caesar run — the displayed progress", () => {
   function ev(partial: Omit<CaesarEventInput, "protocol" | "seq" | "at" | "task_id">) {
     return EventSchema.parse({ protocol: "caesar.event/v1", seq: 0, at: "2026-08-11T14:00:00.000Z", task_id: "t", ...partial });
   }
 
-  /** La ligne telle qu'elle s'écrit, sur un flux sans couleur. */
-  function ligne(partial: Omit<CaesarEventInput, "protocol" | "seq" | "at" | "task_id">): string | undefined {
+  /** The line as it gets written, on a colorless stream. */
+  function renderLine(partial: Omit<CaesarEventInput, "protocol" | "seq" | "at" | "task_id">): string | undefined {
     const line = describeEvent(ev(partial));
     return line ? formatEventLine(line, makeIo()) : undefined;
   }
 
-  it("montre enfin ce que l'agent dit", () => {
-    // Écrit dans `events.jsonl` depuis toujours, affiché nulle part : sur une
-    // tâche qui réfléchit longtemps entre deux outils, c'était la seule chose
-    // à voir.
-    expect(ligne({ type: "message", text: "J'ai relu le parseur." })).toBe("  » agent      J'ai relu le parseur.");
-    expect(ligne({ type: "thinking", text: "Voyons\nles trois couches." })).toBe("  · réflexion  Voyons les trois couches.");
+  it("finally shows what the agent says", () => {
+    // Written to `events.jsonl` since forever, displayed nowhere: on a task
+    // that thinks for a long time between two tools, it was the only thing
+    // to see.
+    expect(renderLine({ type: "message", text: "I reread the parser." })).toBe("  » agent      I reread the parser.");
+    expect(renderLine({ type: "thinking", text: "Let us see\nthe three layers." })).toBe("  · thinking   Let us see the three layers.");
   });
 
-  it("lit le résumé d'un rapport plutôt que d'en déverser le JSON", () => {
-    const rapport = JSON.stringify({ protocol: "caesar.report/v1", status: "partial", summary: "Je crée les trois fichiers." });
-    expect(ligne({ type: "message", text: rapport })).toBe("  » agent      Je crée les trois fichiers.");
+  it("reads a report's summary rather than dumping its JSON", () => {
+    const report = JSON.stringify({ protocol: "caesar.report/v1", status: "partial", summary: "I create the three files." });
+    expect(renderLine({ type: "message", text: report })).toBe("  » agent      I create the three files.");
   });
 
-  it("annonce un outil dès son départ, et nomme sa fermeture anonyme", () => {
-    expect(ligne({ type: "tool_use", tool: "shell", id: "i1", input_summary: "npm test", status: "started" })).toBe(
-      "  ▸ outil      shell — npm test (started)",
+  it("announces a tool from its start, and names its anonymous closing", () => {
+    expect(renderLine({ type: "tool_use", tool: "shell", id: "i1", input_summary: "npm test", status: "started" })).toBe(
+      "  ▸ tool       shell — npm test (started)",
     );
-    // La fermeture d'un outil chez claude ne porte que l'identifiant d'appel.
-    expect(ligne({ type: "tool_use", tool: "", id: "toolu_1", input_summary: "", status: "succeeded" })).toBe(
-      "  ▸ outil      (fin) (succeeded)",
+    // A tool's closing with claude only carries the call identifier.
+    expect(renderLine({ type: "tool_use", tool: "", id: "toolu_1", input_summary: "", status: "succeeded" })).toBe(
+      "  ▸ tool       (end) (succeeded)",
     );
   });
 
-  it("aligne les textes, quel que soit le libellé", () => {
-    // C'est tout l'intérêt du libellé à largeur fixe : la colonne se parcourt
-    // d'un coup d'œil, là où `[outil]`/`[réflexion]` décalaient chaque ligne.
-    const colonne = (line: string): number => line.indexOf(line.trim().split(/\s{2,}/)[1] ?? "");
-    const outil = ligne({ type: "tool_use", tool: "shell", id: "i", input_summary: "x", status: "started" }) ?? "";
-    const reflexion = ligne({ type: "thinking", text: "y" }) ?? "";
-    expect(colonne(outil)).toBe(colonne(reflexion));
+  it("aligns the texts, whatever the label", () => {
+    // That is the whole point of the fixed-width label: the column scans at
+    // a glance, where `[tool]`/`[thinking]` shifted every line.
+    const column = (line: string): number => line.indexOf(line.trim().split(/\s{2,}/)[1] ?? "");
+    const toolLine = renderLine({ type: "tool_use", tool: "shell", id: "i", input_summary: "x", status: "started" }) ?? "";
+    const thinkingLine = renderLine({ type: "thinking", text: "y" }) ?? "";
+    expect(column(toolLine)).toBe(column(thinkingLine));
   });
 
-  it("la marque porte la couleur, jamais la parole de l'agent", () => {
+  it("the mark carries the color, never the agent's speech", () => {
     const io = makeIo();
     (io.stdout as unknown as { isTTY?: boolean }).isTTY = true;
     const previous = process.env["NO_COLOR"];
     delete process.env["NO_COLOR"];
     try {
-      const line = describeEvent(ev({ type: "message", text: "Une phrase." }));
-      const rendu = formatEventLine(line!, io);
-      expect(rendu).toMatch(/\x1b\[/);
-      // Le texte lui-même sort du dernier RESET : il hérite de l'avant-plan du
-      // terminal, donc reste lisible sur fond clair comme sur fond sombre.
-      expect(rendu.slice(rendu.lastIndexOf("\x1b[0m") + 4)).toBe(" Une phrase.");
+      const line = describeEvent(ev({ type: "message", text: "A sentence." }));
+      const rendered = formatEventLine(line!, io);
+      expect(rendered).toMatch(/\x1b\[/);
+      // The text itself comes after the last RESET: it inherits the
+      // terminal's foreground, so it stays readable on light and dark
+      // backgrounds alike.
+      expect(rendered.slice(rendered.lastIndexOf("\x1b[0m") + 4)).toBe(" A sentence.");
     } finally {
       if (previous !== undefined) process.env["NO_COLOR"] = previous;
     }

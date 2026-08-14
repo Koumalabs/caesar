@@ -2,13 +2,13 @@ import { z } from "zod";
 import { REPORT_PROTOCOL } from "./version.js";
 
 export const ReportStatusSchema = z.enum([
-  /** Objectif atteint, critères d'acceptation remplis. */
+  /** Objective met, acceptance criteria satisfied. */
   "success",
-  /** Une partie du travail est faite, le reste est décrit dans next_steps. */
+  /** Part of the work is done, the rest is described in next_steps. */
   "partial",
-  /** L'agent a échoué et n'a pas de chemin de sortie. */
+  /** The agent failed and has no way out. */
   "failed",
-  /** L'agent est arrêté par une décision qui ne lui appartient pas : voir questions. */
+  /** The agent is stopped by a decision that is not its to make: see questions. */
   "blocked",
 ]);
 
@@ -51,20 +51,20 @@ export const UsageSchema = z.object({
 });
 
 /**
- * Le compte rendu d'un sous-agent.
+ * A sub-agent's report.
  *
- * Seuls `protocol`, `status` et `summary` sont exigés : un standard trop strict
- * ne serait pas adopté par les agents extérieurs. Tout le reste porte une valeur
- * par défaut, de sorte qu'un rapport minimal reste valide.
+ * Only `protocol`, `status` and `summary` are required: a standard that is too
+ * strict would not be adopted by outside agents. Everything else carries a
+ * default value, so that a minimal report remains valid.
  *
- * `changes` relève de la déclaration : l'orchestrateur la recoupe systématiquement
- * avec le diff git du worktree, qui seul fait foi.
+ * `changes` is declarative: the orchestrator systematically reconciles it
+ * with the worktree's git diff, which alone is the source of truth.
  */
 export const ReportSchema = z.object({
   protocol: z.literal(REPORT_PROTOCOL),
   task_id: z.string().default(""),
   status: ReportStatusSchema,
-  /** Deux ou trois phrases : ce qui a été fait, et ce qui reste ouvert. */
+  /** Two or three sentences: what was done, and what remains open. */
   summary: z.string().min(1),
   details: z.string().default(""),
   changes: z.array(ChangeSchema).default([]),

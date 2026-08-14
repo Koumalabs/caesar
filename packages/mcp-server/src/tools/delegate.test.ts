@@ -19,14 +19,14 @@ describe("caesar_delegate", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("rend un task_id immédiatement, sans attendre la fin de la tâche", async () => {
+  it("returns a task_id immediately, without waiting for the task to finish", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
         const startedAt = Date.now();
 
         const result = await caesarDelegate(session, {
-          objective: "tâche longue",
+          objective: "long task",
           agent: "codex",
           mode: "write",
           isolation: "inplace",
@@ -41,12 +41,12 @@ describe("caesar_delegate", () => {
         expect(data.agent).toBe("codex");
         expect(data.status).toBe("running");
 
-        // `caesar_delegate` répond avant même que `runTask` n'ait atteint son
-        // premier point d'attente interne (préparation de l'isolation) : le
-        // store peut donc ne pas encore connaître la tâche à cet instant précis.
-        // On attend qu'il la connaisse (elle est censée tourner pendant 5 s),
-        // ce qui prouve qu'elle a bien été lancée sans que `caesar_delegate` ait eu
-        // à en attendre la fin.
+        // `caesar_delegate` responds before `runTask` has even reached its
+        // first internal wait point (isolation preparation): the store may
+        // therefore not know the task yet at that precise moment. We wait
+        // until it does (the task is supposed to run for 5 s), which proves
+        // it really was launched without `caesar_delegate` having to wait
+        // for it to finish.
         let record = await session.store.get(data.task_id);
         for (let i = 0; i < 200 && !record; i++) {
           await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 10));
@@ -54,7 +54,7 @@ describe("caesar_delegate", () => {
         }
         expect(record?.status).toBe("running");
 
-        // Nettoyage : on annule pour ne laisser aucun processus fils derrière le test.
+        // Cleanup: cancel so no child process is left behind by the test.
         const entry = session.tasks.get(data.task_id);
         entry?.controller.abort();
         await entry?.promise;
@@ -62,12 +62,12 @@ describe("caesar_delegate", () => {
     );
   }, 20_000);
 
-  it("channel: true active le canal retour pour la tâche déléguée (tâche 9) — sans lui, task.channel resterait vide", async () => {
+  it("channel: true enables the return channel for the delegated task (task 9) — without it, task.channel would stay empty", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
         const result = await caesarDelegate(session, {
-          objective: "tâche avec canal",
+          objective: "task with channel",
           agent: "codex",
           mode: "write",
           isolation: "inplace",
@@ -87,46 +87,46 @@ describe("caesar_delegate", () => {
     );
   }, 20_000);
 
-  it("un agent refusé par la politique rend une erreur portant le motif exact de @caesar/core", async () => {
+  it("an agent refused by policy returns an error carrying the exact reason from @caesar/core", async () => {
     await withFakeHome(async () => {
       const { config } = await loadConfig(root);
       await saveLayer("project", root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
 
       const session = await createSession(root);
-      const result = await caesarDelegate(session, { objective: "tâche", agent: "codex" });
+      const result = await caesarDelegate(session, { objective: "task", agent: "codex" });
 
       expect(result.isError).toBe(true);
       expect((result.content?.[0] as { text: string }).text).toBe(
-        'Agent "codex" refusé : présent dans la liste "denied" de la politique.',
+        'Agent "codex" refused: present in the policy\'s "denied" list.',
       );
     });
   });
 
-  it("un rôle inconnu est traité proprement, sans lancer quoi que ce soit", async () => {
+  it("an unknown role is handled cleanly, without launching anything", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await caesarDelegate(session, { objective: "tâche", role: "inexistant" });
+      const result = await caesarDelegate(session, { objective: "task", role: "nonexistent" });
 
       expect(result.isError).toBe(true);
-      expect((result.content?.[0] as { text: string }).text).toMatch(/inexistant/);
+      expect((result.content?.[0] as { text: string }).text).toMatch(/nonexistent/);
       expect(session.tasks.size).toBe(0);
     });
   });
 
-  it("ni agent ni role : erreur d'usage", async () => {
+  it("neither agent nor role: usage error", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await caesarDelegate(session, { objective: "tâche" });
+      const result = await caesarDelegate(session, { objective: "task" });
       expect(result.isError).toBe(true);
     });
   });
 
-  it("un agent inconnu du catalogue est traité proprement", async () => {
+  it("an agent unknown to the catalog is handled cleanly", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await caesarDelegate(session, { objective: "tâche", agent: "agent-fantome" });
+      const result = await caesarDelegate(session, { objective: "task", agent: "ghost-agent" });
       expect(result.isError).toBe(true);
-      expect((result.content?.[0] as { text: string }).text).toMatch(/inconnu/);
+      expect((result.content?.[0] as { text: string }).text).toMatch(/unknown/i);
     });
   });
 });

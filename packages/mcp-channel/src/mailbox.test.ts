@@ -15,33 +15,33 @@ describe("mailbox", () => {
     await rm(taskDir, { recursive: true, force: true });
   });
 
-  it("dépose une question, visible dans listPendingQuestions", async () => {
-    await writeQuestion(taskDir, { id: "q1", question: "Continuer ?", options: ["oui", "non"], asked_at: new Date().toISOString() });
+  it("drops off a question, visible in listPendingQuestions", async () => {
+    await writeQuestion(taskDir, { id: "q1", question: "Continue?", options: ["yes", "no"], asked_at: new Date().toISOString() });
 
     const pending = await listPendingQuestions(taskDir);
-    expect(pending).toEqual([expect.objectContaining({ id: "q1", question: "Continuer ?", options: ["oui", "non"] })]);
+    expect(pending).toEqual([expect.objectContaining({ id: "q1", question: "Continue?", options: ["yes", "no"] })]);
   });
 
-  it("waitForAnswer rend la réponse dès qu'elle apparaît, sans attendre le délai complet", async () => {
-    await writeQuestion(taskDir, { id: "q1", question: "Continuer ?", options: [], asked_at: new Date().toISOString() });
+  it("waitForAnswer returns the answer as soon as it appears, without waiting out the full timeout", async () => {
+    await writeQuestion(taskDir, { id: "q1", question: "Continue?", options: [], asked_at: new Date().toISOString() });
 
     const waitPromise = waitForAnswer(taskDir, "q1", 5_000, 20);
-    // Écrit la réponse pendant que l'attente est en cours, comme le ferait
-    // `caesar_answer` dans un processus séparé.
+    // Writes the answer while the wait is in progress, as `caesar_answer`
+    // would from a separate process.
     await new Promise((resolve) => setTimeout(resolve, 60));
-    await writeAnswer(taskDir, { id: "q1", answer: "oui", answered_at: new Date().toISOString() });
+    await writeAnswer(taskDir, { id: "q1", answer: "yes", answered_at: new Date().toISOString() });
 
     const startedAt = Date.now();
     const answer = await waitPromise;
-    expect(answer?.answer).toBe("oui");
+    expect(answer?.answer).toBe("yes");
     expect(Date.now() - startedAt).toBeLessThan(4_000);
 
-    // Une fois répondue, elle disparaît des questions en attente.
+    // Once answered, it disappears from the pending questions.
     expect(await listPendingQuestions(taskDir)).toEqual([]);
   });
 
-  it("waitForAnswer rend null à l'expiration du délai, sans jamais lever", async () => {
-    await writeQuestion(taskDir, { id: "q1", question: "Continuer ?", options: [], asked_at: new Date().toISOString() });
+  it("waitForAnswer returns null when the timeout expires, without ever throwing", async () => {
+    await writeQuestion(taskDir, { id: "q1", question: "Continue?", options: [], asked_at: new Date().toISOString() });
 
     const startedAt = Date.now();
     const answer = await waitForAnswer(taskDir, "q1", 100, 20);
@@ -49,8 +49,8 @@ describe("mailbox", () => {
     expect(Date.now() - startedAt).toBeLessThan(1_000);
   });
 
-  it("un délai déjà épuisé rend immédiatement, sans dormir", async () => {
-    await writeQuestion(taskDir, { id: "q1", question: "Continuer ?", options: [], asked_at: new Date().toISOString() });
+  it("an already-exhausted timeout returns immediately, without sleeping", async () => {
+    await writeQuestion(taskDir, { id: "q1", question: "Continue?", options: [], asked_at: new Date().toISOString() });
 
     const startedAt = Date.now();
     const answer = await waitForAnswer(taskDir, "q1", 0, 20);
@@ -58,21 +58,21 @@ describe("mailbox", () => {
     expect(Date.now() - startedAt).toBeLessThan(50);
   });
 
-  it("répondre à une question inconnue le dit clairement plutôt que d'écrire en silence", async () => {
-    const result = await writeAnswer(taskDir, { id: "q-fantome", answer: "oui", answered_at: new Date().toISOString() });
+  it("answering an unknown question says so clearly rather than writing silently", async () => {
+    const result = await writeAnswer(taskDir, { id: "q-ghost", answer: "yes", answered_at: new Date().toISOString() });
     expect(result).toEqual({ ok: false, reason: "unknown_question" });
-    expect(await readAnswer(taskDir, "q-fantome")).toBeNull();
+    expect(await readAnswer(taskDir, "q-ghost")).toBeNull();
   });
 
-  it("une réponse en double est refusée, la première n'est pas modifiée", async () => {
-    await writeQuestion(taskDir, { id: "q1", question: "Continuer ?", options: [], asked_at: new Date().toISOString() });
+  it("a duplicate answer is refused, the first one is left untouched", async () => {
+    await writeQuestion(taskDir, { id: "q1", question: "Continue?", options: [], asked_at: new Date().toISOString() });
 
-    const first = await writeAnswer(taskDir, { id: "q1", answer: "oui", answered_at: new Date().toISOString() });
+    const first = await writeAnswer(taskDir, { id: "q1", answer: "yes", answered_at: new Date().toISOString() });
     expect(first).toEqual({ ok: true });
 
-    const second = await writeAnswer(taskDir, { id: "q1", answer: "non", answered_at: new Date().toISOString() });
+    const second = await writeAnswer(taskDir, { id: "q1", answer: "no", answered_at: new Date().toISOString() });
     expect(second).toEqual({ ok: false, reason: "already_answered" });
 
-    expect((await readAnswer(taskDir, "q1"))?.answer).toBe("oui");
+    expect((await readAnswer(taskDir, "q1"))?.answer).toBe("yes");
   });
 });

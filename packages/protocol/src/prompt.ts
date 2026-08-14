@@ -2,29 +2,29 @@ import { REPORT_PROTOCOL, ENV } from "./version.js";
 import type { Task } from "./task.js";
 
 /**
- * Comment l'agent est censé rendre son rapport, du plus fiable au plus dégradé.
- * Le moteur choisit le meilleur palier que l'agent visé sait honorer.
+ * How the agent is expected to deliver its report, from most reliable to most
+ * degraded. The engine picks the best tier the targeted agent can honor.
  */
 export type ReportChannel =
-  /** L'agent appelle le tool `submit_report` du canal retour. */
+  /** The agent calls the `submit_report` tool of the return channel. */
   | "channel"
-  /** Le fournisseur contraint nativement la réponse finale par un JSON Schema. */
+  /** The provider natively constrains the final response with a JSON Schema. */
   | "schema"
-  /** L'agent écrit lui-même le fichier de rapport. */
+  /** The agent writes the report file itself. */
   | "file";
 
 export interface PromptOptions {
   reportVia: ReportChannel;
-  /** Nom du serveur MCP tel que déclaré côté agent, pour nommer les tools. */
+  /** Name of the MCP server as declared on the agent side, used to name the tools. */
   channelServerName?: string;
 }
 
 /**
- * Rend la mission sous forme de prompt.
+ * Renders the task as a prompt.
  *
- * Le texte est en anglais : c'est un contrat adressé à des modèles et destiné à
- * être repris par des intégrations tierces. Les champs de la mission, eux, sont
- * repris tels quels — un objectif écrit en français le reste.
+ * The text is in English: it is a contract addressed to models and meant to
+ * be reused by third-party integrations. The task's fields, however, are
+ * carried over verbatim — an objective written in French stays that way.
  */
 export function renderTaskPrompt(task: Task, options: PromptOptions): string {
   const sections: string[] = [];
@@ -46,11 +46,11 @@ export function renderTaskPrompt(task: Task, options: PromptOptions): string {
   if (task.mode === "read-only") {
     constraints.unshift("Do NOT modify, create or delete any file. This is a read-only investigation.");
   }
-  // Un agent qui l'ignore dépense plusieurs tours sur un `npm install` que son
-  // bac à sable ne laissera jamais aboutir. `task.network` ne vaut faux que
-  // lorsque l'orchestrateur *sait* le réseau coupé : là où il l'ignore
-  // (`claude`, `agy`, un agent déclaré sans arguments réseau), le champ reste
-  // vrai et rien n'est affirmé ici.
+  // An agent unaware of this spends several turns on an `npm install` its
+  // sandbox will never let succeed. `task.network` is only false when the
+  // orchestrator *knows* the network is cut off: where it does not know
+  // (`claude`, `agy`, an agent declared without network arguments), the field
+  // stays true and nothing is asserted here.
   if (!task.network) {
     constraints.push(
       "No network access: this sandbox has networking disabled. Do not attempt to install packages, clone repositories or fetch URLs — prefer what is already vendored, and report the need instead of retrying.",

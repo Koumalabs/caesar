@@ -11,34 +11,34 @@ import {
   resolveAgentDefinition,
 } from "./index.js";
 
-describe("catalogue des agents", () => {
-  it("expose les cinq agents connus", () => {
+describe("agent catalog", () => {
+  it("exposes the five known agents", () => {
     const ids = listAgentDefinitions().map((agent) => agent.id);
     expect(ids).toEqual(["codex", "antigravity", "opencode", "copilot", "claude"]);
   });
 
-  it("résout un agent par identifiant", () => {
+  it("resolves an agent by identifier", () => {
     expect(resolveAgentDefinition("codex")).toBe(AGENT_DEFINITIONS[0]);
   });
 
-  it("lève sur un identifiant inconnu", () => {
-    expect(() => resolveAgentDefinition("agent-fantome")).toThrow(/agent-fantome/);
+  it("throws on an unknown identifier", () => {
+    expect(() => resolveAgentDefinition("ghost-agent")).toThrow(/ghost-agent/);
   });
 
-  it("findAgentDefinition renvoie undefined sur un identifiant inconnu, sans lever", () => {
-    expect(findAgentDefinition("agent-fantome")).toBeUndefined();
+  it("findAgentDefinition returns undefined on an unknown identifier, without throwing", () => {
+    expect(findAgentDefinition("ghost-agent")).toBeUndefined();
   });
 });
 
-describe("détection d'installation", () => {
-  it("détecte l'absence d'un binaire du PATH", async () => {
-    const agent = createGenericAgent({ id: "fantome", bin: "ce-binaire-n-existe-pas-xyz", args: [] });
+describe("installation detection", () => {
+  it("detects the absence of a binary from the PATH", async () => {
+    const agent = createGenericAgent({ id: "ghost", bin: "this-binary-does-not-exist-xyz", args: [] });
     const status = await detectAgentInstallation(agent);
-    expect(status).toEqual({ id: "fantome", bin: "ce-binaire-n-existe-pas-xyz", installed: false });
+    expect(status).toEqual({ id: "ghost", bin: "this-binary-does-not-exist-xyz", installed: false });
   });
 
-  it("détecte un binaire présent du PATH et relève sa version quand elle est bon marché", async () => {
-    // node est nécessairement présent : c'est le runtime qui exécute ce test.
+  it("detects a binary present in the PATH and picks up its version when it is cheap", async () => {
+    // node is necessarily present: it is the runtime executing this test.
     const agent = createGenericAgent({ id: "node-runtime", bin: "node", args: [] });
     const status = await detectAgentInstallation(agent);
     expect(status.installed).toBe(true);
@@ -46,41 +46,41 @@ describe("détection d'installation", () => {
     expect(status.version).toMatch(/^v\d+\.\d+\.\d+/);
   });
 
-  it("findBinaryInPath renvoie null pour un binaire absent", async () => {
-    expect(await findBinaryInPath("ce-binaire-n-existe-pas-xyz")).toBeNull();
+  it("findBinaryInPath returns null for an absent binary", async () => {
+    expect(await findBinaryInPath("this-binary-does-not-exist-xyz")).toBeNull();
   });
 
-  it("findBinaryInPath renvoie un chemin pour un binaire présent", async () => {
+  it("findBinaryInPath returns a path for a present binary", async () => {
     expect(await findBinaryInPath("node")).toBeTruthy();
   });
 
-  it("findBinaryInPath accepte un chemin explicite sans le chercher dans le PATH", async () => {
-    // La règle d'`execvp` : un nom contenant un séparateur désigne un fichier.
-    // Sans elle, un agent déclaré par chemin absolu (`caesar agents add --bin
-    // /opt/mon-cli`) tournait mais était rapporté "absent" partout.
+  it("findBinaryInPath accepts an explicit path without looking it up in the PATH", async () => {
+    // The `execvp` rule: a name containing a separator designates a file.
+    // Without it, an agent declared by absolute path (`caesar agents add --bin
+    // /opt/my-cli`) ran but was reported "absent" everywhere.
     const nodePath = process.execPath;
     expect(await findBinaryInPath(nodePath)).toBe(nodePath);
-    expect(await findBinaryInPath("/opt/ce-chemin-n-existe-pas-xyz/bin")).toBeNull();
+    expect(await findBinaryInPath("/opt/this-path-does-not-exist-xyz/bin")).toBeNull();
   });
 
-  it("findBinaryInPath refuse un chemin explicite non exécutable", async () => {
-    // Un fichier existant mais sans bit d'exécution n'est pas un binaire
-    // lançable : le distinguer évite un "installé" trompeur.
+  it("findBinaryInPath refuses a non-executable explicit path", async () => {
+    // A file that exists but lacks the execute bit is not a launchable
+    // binary: distinguishing it avoids a misleading "installed".
     expect(await findBinaryInPath(fileURLToPath(import.meta.url))).toBeNull();
   });
 });
 
 /**
- * Déplacée depuis `packages/cli/src/commands/agents.ts` (tâche 8, rapport de
- * correction) — voir sa docstring pour le raisonnement. `packages/cli`
- * (`agents.ts`, `doctor.ts`) l'appelle désormais d'ici ; ses tests
- * continuent de passer sans modification.
+ * Moved from `packages/cli/src/commands/agents.ts` (task 8, correction
+ * report) — see its docstring for the reasoning. `packages/cli`
+ * (`agents.ts`, `doctor.ts`) now calls it from here; its tests
+ * keep passing without modification.
  */
 describe("describeAgentCapabilities", () => {
-  it("chaque capacité notable produit son propre libellé", () => {
+  it("each notable capability produces its own label", () => {
     const agent = createGenericAgent({
-      id: "complet",
-      bin: "complet-cli",
+      id: "full",
+      bin: "full-cli",
       args: [],
       capabilities: {
         nativeReadOnly: true,
@@ -93,35 +93,35 @@ describe("describeAgentCapabilities", () => {
       },
     });
     expect(describeAgentCapabilities(agent)).toEqual([
-      // En tête : toujours présent, et le plus déterminant.
-      "réseau inconnu",
-      "lecture-seule native",
-      "schéma de sortie",
-      "message final fichier",
-      "reprise",
-      "répertoires additionnels",
-      "choix du modèle",
+      // First: always present, and the most decisive.
+      "network unknown",
+      "native read-only",
+      "output schema",
+      "final message file",
+      "resume",
+      "additional directories",
+      "model choice",
       "mcp:flag",
     ]);
   });
 
-  it("nomme toujours le réseau, y compris pour un agent sans aucune autre capacité", () => {
-    const nu = createGenericAgent({ id: "nu", bin: "nu", args: [] });
-    expect(describeAgentCapabilities(nu)).toEqual(["réseau inconnu"]);
+  it("always names the network, including for an agent without any other capability", () => {
+    const bare = createGenericAgent({ id: "bare", bin: "bare", args: [] });
+    expect(describeAgentCapabilities(bare)).toEqual(["network unknown"]);
   });
 
-  it("distingue les agents du catalogue par leur réseau — le diagnostic qui manquait", () => {
-    const parAgent = new Map(
+  it("distinguishes the catalog agents by their network — the diagnostic that was missing", () => {
+    const byAgent = new Map(
       listAgentDefinitions().map((def) => [def.id, def.capabilities.network] as const),
     );
-    expect(parAgent.get("codex")).toBe("write-only");
-    expect(parAgent.get("copilot")).toBe("toggle");
-    expect(parAgent.get("claude")).toBe("open");
-    expect(parAgent.get("antigravity")).toBe("open");
-    expect(parAgent.get("opencode")).toBe("open");
+    expect(byAgent.get("codex")).toBe("write-only");
+    expect(byAgent.get("copilot")).toBe("toggle");
+    expect(byAgent.get("claude")).toBe("open");
+    expect(byAgent.get("antigravity")).toBe("open");
+    expect(byAgent.get("opencode")).toBe("open");
   });
 
-  it("chaque agent du catalogue natif a au moins une capacité notable", () => {
+  it("every native catalog agent has at least one notable capability", () => {
     for (const def of listAgentDefinitions()) {
       expect(describeAgentCapabilities(def).length).toBeGreaterThan(0);
     }

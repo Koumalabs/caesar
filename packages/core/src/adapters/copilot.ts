@@ -23,12 +23,12 @@ const CAPABILITIES: AgentCapabilities = {
   addDir: true,
   mcpInjection: "flag",
   model: true,
-  // `--allow-all-urls` est un drapeau distinct de `--allow-all-tools` et vaut
-  // dans les deux modes : ouvrir les URL n'ouvre ni l'écriture ni le shell.
+  // `--allow-all-urls` is a flag distinct from `--allow-all-tools` and holds
+  // in both modes: opening URLs opens neither writing nor the shell.
   network: "toggle",
 };
 
-/** Config MCP additionnelle, au format `mcpServers` documenté par `copilot mcp`. */
+/** Additional MCP config, in the `mcpServers` format documented by `copilot mcp`. */
 function mcpConfigFile(taskDir: string, channel: NonNullable<Task["channel"]>): PreparedFile {
   return {
     path: join(taskDir, "copilot-mcp-config.json"),
@@ -66,14 +66,14 @@ function build(ctx: BuildContext): SpawnPlan {
     args.push("--deny-tool=write", "--deny-tool=shell");
   }
 
-  // Distinct de `--allow-all-tools`, qui ne couvre pas les URL : sans ce
-  // drapeau, copilot demandait confirmation pour chaque accès réseau — donc,
-  // en exécution non interactive, ne l'obtenait jamais. En lecture seule, les
-  // refus d'écriture et de shell ci-dessus restent en place.
+  // Distinct from `--allow-all-tools`, which does not cover URLs: without
+  // this flag, copilot asked for confirmation on every network access — so,
+  // in non-interactive execution, never got it. In read-only mode, the write
+  // and shell denials above stay in place.
   if (ctx.task.network) args.push("--allow-all-urls");
 
-  // Le répertoire de tâche héberge le rapport et le message final ; il doit
-  // rester accessible même quand le workspace, lui, est en lecture seule.
+  // The task directory hosts the report and the final message; it must
+  // remain accessible even when the workspace itself is read-only.
   args.push("--add-dir", ctx.paths.dir);
 
   if (ctx.model) args.push("--model", ctx.model);
@@ -91,16 +91,16 @@ function build(ctx: BuildContext): SpawnPlan {
 }
 
 /**
- * Traduit le flux `copilot --output-format json`.
+ * Translates the `copilot --output-format json` stream.
  *
- * Les formes `session.error` (enveloppe `{type, data, id, timestamp}`) et
- * `result` (`{type, exitCode, usage}`, sans enveloppe `data`) viennent de la
- * capture réelle (`test/fixtures/copilot.jsonl`) — obtenue via un échec de
- * quota mensuel Copilot, donc un chemin d'erreur authentique plutôt qu'un
- * succès. Les formes `assistant.message` (texte final, champ `data.content`)
- * et `tool.execution_start` / `tool.execution_complete` sont dérivées de la
- * documentation publique du streaming Copilot ; elles n'ont pas pu être
- * observées faute de quota disponible et restent strictement défensives.
+ * The `session.error` (envelope `{type, data, id, timestamp}`) and
+ * `result` (`{type, exitCode, usage}`, without a `data` envelope) shapes come
+ * from the real capture (`test/fixtures/copilot.jsonl`) — obtained via a
+ * Copilot monthly quota failure, hence an authentic error path rather than a
+ * success. The `assistant.message` (final text, `data.content` field) and
+ * `tool.execution_start` / `tool.execution_complete` shapes are derived from
+ * the public Copilot streaming documentation; they could not be observed for
+ * lack of available quota and remain strictly defensive.
  */
 function translate(line: string): Translation {
   const data = parseJsonLine(line);

@@ -1,24 +1,24 @@
 /**
- * `caesar_delegate` : lance une tâche chez un sous-agent et rend son `taskId`
- * immédiatement, sans attendre la fin de l'exécution — voir le brief de la
- * tâche 7.
+ * `caesar_delegate`: starts a task on a subagent and returns its `taskId`
+ * immediately, without waiting for the run to finish — see the task 7
+ * brief.
  *
- * L'assemblage (charger la configuration, résoudre le rôle puis l'agent,
- * vérifier la politique, calculer mode/isolation/timeout/contexte) est
- * délégué à `resolveDelegation` (`@caesar/core`), le point d'assemblage partagé
- * avec `caesar run` (`packages/cli/src/commands/run.ts`) — voir son en-tête
- * et le rapport de correction de la tâche 7 : les deux façades appliquaient
- * jusqu'ici la même règle en deux endroits distincts.
+ * The assembly (loading the configuration, resolving the role then the
+ * agent, checking the policy, computing mode/isolation/timeout/context) is
+ * delegated to `resolveDelegation` (`@caesar/core`), the assembly point
+ * shared with `caesar run` (`packages/cli/src/commands/run.ts`) — see its
+ * header and the task 7 fix report: until then the two facades applied the
+ * same rule in two distinct places.
  *
- * Le champ `isolation` rendu est celui que `resolveDelegation` a résolu à
- * partir des couches de configuration (entrée explicite > rôle > politique
- * projet) — pas la résolution finale "auto" → "inplace"/"worktree" que
- * `runTask` effectue en interne : cette dernière dépend de l'état du dépôt
- * git et d'une préparation d'isolation potentiellement non instantanée
- * (création d'un worktree), que `caesar_delegate` ne peut pas attendre sans
- * rouvrir la promesse de non-blocage que ce tool porte. `caesar_status`/
- * `caesar_await`, une fois la tâche connue du store, rendent l'isolation
- * réellement retenue.
+ * The returned `isolation` field is the one `resolveDelegation` resolved
+ * from the configuration layers (explicit input > role > project policy) —
+ * not the final "auto" → "inplace"/"worktree" resolution that `runTask`
+ * performs internally: the latter depends on the state of the git repository
+ * and on isolation preparation that may not be instantaneous (creating a
+ * worktree), which `caesar_delegate` cannot wait for without reopening the
+ * non-blocking promise this tool carries. `caesar_status`/`caesar_await`,
+ * once the task is known to the store, return the isolation actually
+ * retained.
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -123,11 +123,11 @@ export type CaesarDelegateInput = z.infer<typeof CaesarDelegateInputSchema>;
 export async function caesarDelegate(session: McpSession, input: CaesarDelegateInput): Promise<CallToolResult> {
   const { config } = await loadConfig(session.root);
 
-  // Profondeur héritée de `$CAESAR_DEPTH` (+1) : voir C4 de la revue finale. Un
-  // serveur MCP peut lui-même tourner comme sous-agent (`caesar mcp install`
-  // l'enregistre globalement chez plusieurs clients — voir I4/le constat
-  // "aggravant" de C4) : sans relire cette variable, `max_depth` et le
-  // garde-fou anti-récursion ne s'appliquaient qu'au premier niveau.
+  // Depth inherited from `$CAESAR_DEPTH` (+1): see C4 of the final review. An
+  // MCP server can itself run as a subagent (`caesar mcp install` registers
+  // it globally with several clients — see I4/the "aggravating" finding of
+  // C4): without re-reading this variable, `max_depth` and the
+  // anti-recursion guardrail only applied at the first level.
   const depth = nextDelegationDepth();
 
   const resolved = await resolveDelegation(config, session.root, {
@@ -141,7 +141,7 @@ export async function caesarDelegate(session: McpSession, input: CaesarDelegateI
     depth,
   });
   if ("error" in resolved) {
-    // Motif rendu tel quel par @caesar/core — voir le brief.
+    // Reason returned verbatim by @caesar/core — see the brief.
     return errorResult(resolved.error);
   }
 
@@ -172,13 +172,12 @@ export async function caesarDelegate(session: McpSession, input: CaesarDelegateI
   };
   launchTask(session, runInput, controller);
 
-  // Le décalage de racine, dit au moment où il compte. `caesar mcp install` fige
-  // `--root` une fois pour toutes : si l'agent principal est passé dans un
-  // worktree depuis, les sous-agents travaillent dans un arbre que plus
-  // personne ne regarde. Un avertissement plutôt qu'un refus — le répertoire
-  // courant du serveur n'est pas une preuve de l'intention de l'appelant, et
-  // faire échouer la délégation sur cette base coûterait plus qu'elle ne
-  // rapporte.
+  // The root mismatch, stated at the moment it matters. `caesar mcp install`
+  // freezes `--root` once and for all: if the main agent has since moved
+  // into a worktree, the subagents work in a tree nobody is looking at
+  // anymore. A warning rather than a refusal — the server's current
+  // directory is no proof of the caller's intent, and failing the delegation
+  // on that basis would cost more than it earns.
   const workspaceWarning = await describeWorkspaceMismatch(session.root, process.cwd());
 
   return jsonResult({
@@ -186,13 +185,13 @@ export async function caesarDelegate(session: McpSession, input: CaesarDelegateI
     agent: resolved.agentId,
     mode: resolved.mode,
     isolation: resolved.isolation,
-    // Rendu explicitement : sans lui, rien dans la réponse ne dit *où* le
-    // sous-agent travaille, et le décalage ci-dessous serait invérifiable.
+    // Returned explicitly: without it, nothing in the response says *where*
+    // the subagent is working, and the mismatch below would be unverifiable.
     workspace: session.root,
     ...(workspaceWarning !== null ? { workspace_warning: workspaceWarning } : {}),
-    // Rendu dès le lancement, et non seulement dans le rapport final :
-    // l'orchestrateur peut ainsi reformuler l'objectif ou changer d'agent
-    // avant que le sous-agent n'ait dépensé son budget.
+    // Returned at launch time, not only in the final report: the
+    // orchestrator can thus rephrase the objective or switch agents before
+    // the subagent has spent its budget.
     network: resolved.network,
     ...(resolved.networkWarning !== undefined ? { network_warning: resolved.networkWarning } : {}),
     status: "running",

@@ -21,7 +21,7 @@ describe("caesar policy allow / deny", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("allow puis deny : la modification est persistée dans le TOML et relue", async () => {
+  it("allow then deny: the change is persisted in the TOML and re-read", async () => {
     await withFakeHome(async () => {
       expect(await runPolicyAllow(root, "codex", {}, io)).toBe(EXIT_OK);
       let loaded = await loadConfig(root);
@@ -31,7 +31,7 @@ describe("caesar policy allow / deny", () => {
       expect(await runPolicyDeny(root, "copilot", {}, io2)).toBe(EXIT_OK);
       loaded = await loadConfig(root);
       expect(loaded.config.policy.denied).toContain("copilot");
-      // La modification précédente (allow codex) survit à la suivante.
+      // The previous change (allow codex) survives the next one.
       expect(loaded.config.policy.allowed).toContain("codex");
     });
   });
@@ -50,7 +50,7 @@ describe("caesar policy show", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("sans aucun fichier : chaque champ vient du défaut", async () => {
+  it("without any file: each field comes from the default", async () => {
     await withFakeHome(async () => {
       const code = await runPolicyShow(root, { json: true }, io);
       expect(code).toBe(EXIT_OK);
@@ -60,7 +60,7 @@ describe("caesar policy show", () => {
     });
   });
 
-  it("distingue la provenance global / projet / défaut, champ par champ", async () => {
+  it("distinguishes global / project / default provenance, field by field", async () => {
     const home = await mkdtemp(join(tmpdir(), "caesar-cli-policy-home-"));
     const previous = process.env["HOME"];
     process.env["HOME"] = home;
@@ -75,15 +75,15 @@ describe("caesar policy show", () => {
       expect(code).toBe(EXIT_OK);
       const parsed = JSON.parse(io.stdoutText());
 
-      // Précisé par le projet (qui l'emporte sur le global) : provenance "project".
+      // Set by the project (which wins over the global): provenance "project".
       expect(parsed.policy.max_parallel).toBe(2);
       expect(parsed.provenance.max_parallel).toBe("project");
 
-      // Précisé par le global seulement : provenance "global".
+      // Set by the global only: provenance "global".
       expect(parsed.policy.allow_recursion).toBe(true);
       expect(parsed.provenance.allow_recursion).toBe("global");
 
-      // Jamais précisé : provenance "default".
+      // Never set: provenance "default".
       expect(parsed.provenance.default_mode).toBe("default");
 
       expect(io.stdoutText()).not.toMatch(/\x1b\[/);
@@ -94,7 +94,7 @@ describe("caesar policy show", () => {
     }
   });
 
-  it("sortie humaine : un tableau champ / valeur / provenance", async () => {
+  it("human output: a field / value / provenance table", async () => {
     await withFakeHome(async () => {
       const code = await runPolicyShow(root, {}, io);
       expect(code).toBe(EXIT_OK);
@@ -106,14 +106,14 @@ describe("caesar policy show", () => {
 });
 
 /**
- * I11 (revue finale de branche) : un seul "caesar policy deny" recopiait la
- * configuration fusionnée (défauts + global + projet) dans le fichier
- * projet, figeant tous les réglages globaux. Ce scénario passe par la
- * façade CLI (pas par `materializePolicyList` directement — c'est elle qui
- * était défaillante), avec un `HOME` neutralisé, exactement le scénario de
- * vérification du brief de la tâche 13.
+ * I11 (final branch review): a single "caesar policy deny" copied the
+ * merged configuration (defaults + global + project) into the project file,
+ * freezing all the global settings. This scenario goes through the CLI
+ * facade (not through `materializePolicyList` directly — that facade was
+ * the faulty one), with a neutralized `HOME`, exactly the verification
+ * scenario of the task 13 brief.
  */
-describe("I11 fermé : la façade CLI n'aplatit plus la configuration fusionnée dans le projet", () => {
+describe("I11 closed: the CLI facade no longer flattens the merged configuration into the project", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -124,17 +124,17 @@ describe("I11 fermé : la façade CLI n'aplatit plus la configuration fusionnée
     await rm(root, { recursive: true, force: true });
   });
 
-  it('"policy deny --global" puis "init" puis "policy deny" (projet) : le fichier projet ne porte que "denied"', async () => {
+  it('"policy deny --global" then "init" then "policy deny" (project): the project file carries only "denied"', async () => {
     await withFakeHome(async () => {
       expect(await runPolicyDeny(root, "copilot", { global: true }, makeIo())).toBe(EXIT_OK);
       expect(await runInit(root, {}, makeIo())).toBe(EXIT_OK);
       expect(await runPolicyDeny(root, "opencode", {}, makeIo())).toBe(EXIT_OK);
 
-      // Le contenu *exact* du fichier projet, pas seulement la valeur effective relue : c'est la preuve que le
-      // défaut est fermé — uniquement "denied", aucun défaut recopié (pas de max_parallel, pas de rôles).
+      // The *exact* content of the project file, not just the effective value re-read: it is the proof that the
+      // defect is closed — only "denied", no default copied over (no max_parallel, no roles).
       const raw = await readFile(projectConfigPath(root), "utf8");
       expect(raw).toBe(
-        "# Fichier généré par @caesar/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n" +
+        "# File generated by @caesar/core: comments added by hand do not survive the next write.\n" +
           "\n" +
           "[policy]\n" +
           'denied = [ "copilot", "opencode" ]\n',
@@ -145,14 +145,14 @@ describe("I11 fermé : la façade CLI n'aplatit plus la configuration fusionnée
     });
   });
 
-  it("modifier max_parallel dans le fichier global après coup se répercute dans le projet (caesar policy show)", async () => {
+  it("editing max_parallel in the global file afterwards is reflected in the project (caesar policy show)", async () => {
     await withFakeHome(async (home) => {
       expect(await runPolicyDeny(root, "copilot", { global: true }, makeIo())).toBe(EXIT_OK);
       expect(await runInit(root, {}, makeIo())).toBe(EXIT_OK);
       expect(await runPolicyDeny(root, "opencode", {}, makeIo())).toBe(EXIT_OK);
 
-      // Modifie le fichier global directement, à la main — exactement le scénario du brief : "en modifiant
-      // max_parallel dans le fichier global, caesar policy show dans le projet doit refléter la nouvelle valeur".
+      // Edits the global file directly, by hand — exactly the brief's scenario: "by editing max_parallel in the
+      // global file, caesar policy show in the project must reflect the new value".
       await writeFile(join(home, ".config", "caesar", "config.toml"), '[policy]\ndenied = ["copilot"]\nmax_parallel = 11\n', "utf8");
 
       const io = makeIo();
@@ -160,13 +160,13 @@ describe("I11 fermé : la façade CLI n'aplatit plus la configuration fusionnée
       const parsed = JSON.parse(io.stdoutText());
       expect(parsed.policy.max_parallel).toBe(11);
       expect(parsed.provenance.max_parallel).toBe("global");
-      // La matérialisation faite plus tôt sur "denied" tient toujours, indépendante du changement global.
+      // The materialization done earlier on "denied" still holds, independent of the global change.
       expect(parsed.policy.denied).toEqual(["copilot", "opencode"]);
     });
   });
 });
 
-describe("caesar policy allow / deny — portée (--global/--local)", () => {
+describe("caesar policy allow / deny — scope (--global/--local)", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -177,13 +177,13 @@ describe("caesar policy allow / deny — portée (--global/--local)", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("--global écrit la couche globale, jamais le projet", async () => {
+  it("--global writes the global layer, never the project", async () => {
     await withFakeHome(async (home) => {
       expect(await runPolicyDeny(root, "copilot", { global: true }, makeIo())).toBe(EXIT_OK);
 
       const raw = await readFile(globalConfigPath(), "utf8");
       expect(raw).toBe(
-        "# Fichier généré par @caesar/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n" +
+        "# File generated by @caesar/core: comments added by hand do not survive the next write.\n" +
           "\n" +
           "[policy]\n" +
           'denied = [ "copilot" ]\n',
@@ -195,13 +195,13 @@ describe("caesar policy allow / deny — portée (--global/--local)", () => {
     });
   });
 
-  it("--local écrit la couche locale, jamais le projet ni le global", async () => {
+  it("--local writes the local layer, never the project nor the global", async () => {
     await withFakeHome(async () => {
       expect(await runPolicyAllow(root, "codex", { local: true }, makeIo())).toBe(EXIT_OK);
 
       const raw = await readFile(join(root, ".caesar", "config.local.toml"), "utf8");
       expect(raw).toBe(
-        "# Fichier généré par @caesar/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n" +
+        "# File generated by @caesar/core: comments added by hand do not survive the next write.\n" +
           "\n" +
           "[policy]\n" +
           'allowed = [ "codex" ]\n',
@@ -213,7 +213,7 @@ describe("caesar policy allow / deny — portée (--global/--local)", () => {
     });
   });
 
-  it("sans option : couche projet, comme avant la tâche 13", async () => {
+  it("without an option: project layer, as before task 13", async () => {
     await withFakeHome(async () => {
       expect(await runPolicyDeny(root, "codex", {}, makeIo())).toBe(EXIT_OK);
       const { sources } = await loadConfig(root);
@@ -222,28 +222,28 @@ describe("caesar policy allow / deny — portée (--global/--local)", () => {
     });
   });
 
-  it("--global et --local ensemble : erreur d'usage explicite, rien n'est écrit sur aucune couche", async () => {
+  it("--global and --local together: explicit usage error, nothing written to any layer", async () => {
     await withFakeHome(async () => {
       const io = makeIo();
       const code = await runPolicyDeny(root, "copilot", { global: true, local: true }, io);
       expect(code).toBe(EXIT_USAGE);
       expect(io.stderrText()).toMatch(/--global/);
       expect(io.stderrText()).toMatch(/--local/);
-      expect(io.stderrText()).toMatch(/mutuellement exclusifs/);
+      expect(io.stderrText()).toMatch(/mutually exclusive/);
 
       const { sources } = await loadConfig(root);
       expect(sources).toEqual({});
     });
   });
 
-  it("avertit quand la liste éditée n'était pas déclarée par la couche visée (matérialisation)", async () => {
+  it("warns when the edited list was not declared by the targeted layer (materialization)", async () => {
     await withFakeHome(async (home) => {
       await mkdir(join(home, ".config", "caesar"), { recursive: true });
       await writeFile(join(home, ".config", "caesar", "config.toml"), '[policy]\ndenied = ["copilot"]\n', "utf8");
 
       const io = makeIo();
       expect(await runPolicyDeny(root, "opencode", {}, io)).toBe(EXIT_OK);
-      expect(io.stdoutText()).toMatch(/n'était pas déclarée/);
+      expect(io.stdoutText()).toMatch(/was not declared/);
       expect(io.stdoutText()).toContain("copilot, opencode");
     });
   });

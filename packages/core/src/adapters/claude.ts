@@ -23,14 +23,14 @@ const CAPABILITIES: AgentCapabilities = {
   addDir: true,
   mcpInjection: "flag",
   model: true,
-  // Nos arguments ne passent aucun bac à sable : le réseau est ouvert, et
-  // nous n'avons pas de quoi le refermer. `claude` sait se confiner, mais par
-  // des réglages de la machine que l'orchestrateur ne pilote pas — annoncer
-  // "toggle" reviendrait à promettre une fermeture que nous n'obtiendrions pas.
+  // Our arguments set up no sandbox: the network is open, and we have
+  // nothing to close it with. `claude` can confine itself, but through
+  // machine-level settings the orchestrator does not control — announcing
+  // "toggle" would promise a closure we would not obtain.
   network: "open",
 };
 
-/** Config MCP, au format `mcpServers` documenté par Claude Code (`--mcp-config`). */
+/** MCP config, in the `mcpServers` format documented by Claude Code (`--mcp-config`). */
 function mcpConfigFile(taskDir: string, channel: NonNullable<Task["channel"]>): PreparedFile {
   return {
     path: join(taskDir, "claude-mcp-config.json"),
@@ -55,16 +55,16 @@ function build(ctx: BuildContext): SpawnPlan {
   const args: string[] = [
     "--print",
     ctx.prompt,
-    // `stream-json` et non `json` : ce dernier n'émet qu'un seul objet, à la
-    // toute fin. Un sous-agent claude était donc muet du début à la fin de son
-    // exécution — rien à afficher dans `caesar run`, rien à suivre dans `caesar
-    // logs --follow`, rien dans `caesar watch`. Le mode flux rend chaque message
-    // de l'assistant dès qu'il est complet.
+    // `stream-json` and not `json`: the latter emits a single object, at the
+    // very end. A claude sub-agent was therefore mute from the start to the
+    // end of its run — nothing to display in `caesar run`, nothing to follow
+    // in `caesar logs --follow`, nothing in `caesar watch`. Stream mode yields
+    // each assistant message as soon as it is complete.
     //
-    // `--verbose` accompagne obligatoirement `stream-json` sous `--print`.
-    // Pas de `--include-partial-messages` : il découperait chaque réponse en
-    // fragments de quelques caractères, soit un événement par fragment dans
-    // `events.jsonl` — le grain utile est le message entier.
+    // `--verbose` must accompany `stream-json` under `--print`.
+    // No `--include-partial-messages`: it would split each response into
+    // fragments of a few characters, i.e. one event per fragment in
+    // `events.jsonl` — the useful grain is the whole message.
     "--output-format",
     "stream-json",
     "--verbose",
@@ -72,8 +72,8 @@ function build(ctx: BuildContext): SpawnPlan {
     ctx.task.mode === "read-only" ? "plan" : "acceptEdits",
   ];
 
-  // Le répertoire de tâche héberge le rapport et le message final ; il doit
-  // rester accessible même quand le workspace, lui, est en lecture seule.
+  // The task directory hosts the report and the final message; it must
+  // remain accessible even when the workspace itself is read-only.
   args.push("--add-dir", ctx.paths.dir);
 
   if (ctx.model) args.push("--model", ctx.model);
@@ -91,10 +91,10 @@ function build(ctx: BuildContext): SpawnPlan {
 }
 
 /**
- * Clés d'entrée d'outil qui portent, à elles seules, ce qu'un humain veut
- * lire — dans l'ordre de préférence. Reprend les schémas des outils de Claude
- * Code (`Bash.command`, `Write.file_path`, `Grep.pattern`…) ; à défaut,
- * l'entrée sérialisée sert de repli.
+ * Tool input keys that carry, on their own, what a human wants to read —
+ * in order of preference. Mirrors the schemas of Claude Code's tools
+ * (`Bash.command`, `Write.file_path`, `Grep.pattern`…); otherwise, the
+ * serialized input serves as fallback.
  */
 const SUMMARY_KEYS = ["command", "file_path", "path", "pattern", "query", "url", "description"] as const;
 
@@ -107,7 +107,7 @@ function summarizeToolInput(input: unknown): string {
   return JSON.stringify(input).slice(0, 200);
 }
 
-/** Les blocs de contenu d'un message `assistant`, traduits un à un. */
+/** The content blocks of an `assistant` message, translated one by one. */
 function translateAssistant(content: readonly unknown[]): PartialEvent[] {
   const events: PartialEvent[] = [];
   for (const block of content) {
@@ -117,20 +117,20 @@ function translateAssistant(content: readonly unknown[]): PartialEvent[] {
     if (blockType === "text" && typeof block["text"] === "string" && block["text"] !== "") {
       events.push({ type: "message", text: block["text"] });
     } else if (blockType === "tool_use") {
-      const tool = typeof block["name"] === "string" ? block["name"] : "outil";
+      const tool = typeof block["name"] === "string" ? block["name"] : "tool";
       const id = typeof block["id"] === "string" ? block["id"] : "";
       events.push({ type: "tool_use", tool, id, input_summary: summarizeToolInput(block["input"]), status: "started" });
     } else if (blockType === "thinking" && typeof block["thinking"] === "string" && block["thinking"] !== "") {
-      // Vide dans la capture : l'API ne rend que la signature du raisonnement,
-      // pas son texte. On ne pousse donc jamais un `thinking` creux — c'est
-      // `system/thinking_tokens` qui porte le signal exploitable (voir plus bas).
+      // Empty in the capture: the API returns only the reasoning's signature,
+      // not its text. So we never push a hollow `thinking` — it is
+      // `system/thinking_tokens` that carries the usable signal (see below).
       events.push({ type: "thinking", text: block["thinking"] });
     }
   }
   return events;
 }
 
-/** Le dernier bloc `text` d'un message `assistant`, s'il y en a un. */
+/** The last `text` block of an `assistant` message, if there is one. */
 function lastText(content: readonly unknown[]): string | undefined {
   let found: string | undefined;
   for (const block of content) {
@@ -142,29 +142,28 @@ function lastText(content: readonly unknown[]): string | undefined {
 }
 
 /**
- * Traduit le flux `claude --print --output-format stream-json --verbose`.
+ * Translates the `claude --print --output-format stream-json --verbose` stream.
  *
- * Toutes les formes traitées viennent de la capture réelle
- * (`test/fixtures/claude.jsonl`, une tâche qui écrit un fichier et lance une
- * commande) : `system` (sous-types `hook_started`, `hook_response`, `init`,
- * `thinking_tokens`), `assistant` (blocs `text`, `tool_use`, `thinking`),
- * `user` (blocs `tool_result`), `rate_limit_event`, et `result`.
+ * All handled shapes come from the real capture
+ * (`test/fixtures/claude.jsonl`, a task that writes a file and runs a
+ * command): `system` (subtypes `hook_started`, `hook_response`, `init`,
+ * `thinking_tokens`), `assistant` (`text`, `tool_use`, `thinking` blocks),
+ * `user` (`tool_result` blocks), `rate_limit_event`, and `result`.
  *
- * Ce que la bascule depuis `--output-format json` change : ce mode n'émettait
- * qu'un seul objet, à la toute fin. Un sous-agent claude était donc muet du
- * début à la fin — rien à suivre, ni dans `caesar run`, ni dans `caesar watch`.
+ * What the switch away from `--output-format json` changes: that mode emitted
+ * a single object, at the very end. A claude sub-agent was therefore mute from
+ * start to finish — nothing to follow, in `caesar run` or in `caesar watch`.
  *
- * Ce qu'elle ne change pas, et c'est ce qui rendait la bascule sûre : la ligne
- * finale porte toujours `type: "result"`, `result` (le texte) et `is_error` au
- * premier niveau. Le repli d'extraction du rapport (`report_source:
- * "extracted"`, alimenté par `finalText`) garde donc exactement la même
- * source — vérifié sur la capture avant d'écrire une ligne de traduction.
+ * What it does not change, and that is what made the switch safe: the final
+ * line always carries `type: "result"`, `result` (the text) and `is_error` at
+ * the top level. The report-extraction fallback (`report_source:
+ * "extracted"`, fed by `finalText`) therefore keeps exactly the same
+ * source — verified on the capture before writing a single line of translation.
  *
- * Les blocs `tool_result` ne portent que `tool_use_id`, jamais le nom de
- * l'outil, et `translate` est sans état par contrat : l'événement de
- * fermeture arrive avec `tool` vide et l'identifiant seul, à charge du
- * consommateur de le rapprocher de son ouverture (voir `CaesarEvent.id` et
- * `foldActivity`).
+ * `tool_result` blocks carry only `tool_use_id`, never the tool's name, and
+ * `translate` is stateless by contract: the closing event arrives with an
+ * empty `tool` and the identifier alone, leaving it to the consumer to match
+ * it with its opening (see `CaesarEvent.id` and `foldActivity`).
  */
 function translate(line: string): Translation {
   const data = parseJsonLine(line);
@@ -193,12 +192,12 @@ function translate(line: string): Translation {
   }
 
   if (type === "system" && data["subtype"] === "thinking_tokens") {
-    // Le seul signal exploitable de réflexion : les blocs `thinking` du flux
-    // arrivent avec leur texte vide. Sans lui, une longue phase de
-    // raisonnement est indiscernable d'un agent figé.
+    // The only usable thinking signal: the stream's `thinking` blocks arrive
+    // with their text empty. Without it, a long reasoning phase is
+    // indistinguishable from a frozen agent.
     const tokens = data["estimated_tokens"];
-    const suffix = typeof tokens === "number" ? ` (~${tokens} jetons)` : "";
-    return { events: [{ type: "progress", message: `Réflexion en cours${suffix}` }] };
+    const suffix = typeof tokens === "number" ? ` (~${tokens} tokens)` : "";
+    return { events: [{ type: "progress", message: `Thinking in progress${suffix}` }] };
   }
 
   if (type === "result") {

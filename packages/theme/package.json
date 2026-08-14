@@ -1,7 +1,7 @@
 {
   "name": "@caesar/theme",
   "version": "0.1.0",
-  "description": "Palette, glyphes et logotype partagés par la ligne de commande et le TUI",
+  "description": "Palette, glyphs and wordmark shared by the command line and the TUI",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

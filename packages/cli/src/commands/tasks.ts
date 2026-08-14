@@ -24,14 +24,14 @@ import { createFileTail } from "../tail.js";
 const KNOWN_STATUSES: readonly TaskStatus[] = ["pending", "running", "succeeded", "failed", "cancelled", "timed_out"];
 const ACTIVE_STATUSES: readonly TaskStatus[] = ["pending", "running"];
 const DEFAULT_RECENT_LIMIT = 10;
-/** Intervalle de scrutation en mode `--follow` : pas d'API de notification de fichier ici, on relit à intervalle court. */
+/** Poll interval in `--follow` mode: no file notification API here, we re-read at a short interval. */
 const FOLLOW_POLL_MS = 150;
 
 function isActive(status: TaskStatus): boolean {
   return ACTIVE_STATUSES.includes(status);
 }
 
-/** L'issue du processus, dite par la couleur autant que par le mot. */
+/** The process outcome, told by color as much as by word. */
 function statusToken(status: TaskStatus): ThemeToken {
   if (status === "running") return "accent";
   if (status === "pending") return "dim";
@@ -39,7 +39,7 @@ function statusToken(status: TaskStatus): ThemeToken {
   return "bad";
 }
 
-/** L'issue déclarée par l'agent — `partial` et `blocked` appellent l'œil sans être des échecs. */
+/** The outcome declared by the agent — `partial` and `blocked` call the eye without being failures. */
 function reportToken(report: string): ThemeToken {
   if (report === "success") return "ok";
   if (report === "partial" || report === "blocked") return "warn";
@@ -48,16 +48,16 @@ function reportToken(report: string): ThemeToken {
 }
 
 /**
- * L'âge d'une tâche, plutôt que sa date de création.
+ * A task's age, rather than its creation date.
  *
- * Un horodatage ISO occupe vingt-quatre colonnes pour dire ce qu'« il y a
- * 2m14s » dit en onze, et il oblige à faire la soustraction de tête. La date
- * exacte reste dans `--json`, où elle a un lecteur qui en a l'usage.
+ * An ISO timestamp occupies twenty-four columns to say what "2m14s ago"
+ * says in nine, and it forces the subtraction to be done in one's head. The
+ * exact date stays in `--json`, where it has a reader with a use for it.
  */
 function age(iso: string, now: number): string {
   const at = Date.parse(iso);
   if (Number.isNaN(at)) return "-";
-  return `il y a ${formatDuration(now - at)}`;
+  return `${formatDuration(now - at)} ago`;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,21 +72,22 @@ export interface PsOptions {
 export async function runPs(root: string, options: PsOptions, io: Io): Promise<number> {
   const store = fileTaskStore(root);
 
-  // `ps` est le premier endroit où se voit une tâche dont l'orchestrateur est
-  // mort sans la conclure — elle y reste "running" à vie, en tête de liste,
-  // sans que rien ne dise que plus personne ne la conduit. C'est donc aussi le
-  // premier endroit où cet état doit se réparer, comme les autres verrous du
-  // dépôt se réparent à la lecture (`reclaimDead`, `purgeLease`).
+  // `ps` is the first place where a task whose orchestrator died without
+  // concluding it shows up — it stays "running" there forever, at the top
+  // of the list, with nothing saying nobody is driving it anymore. It is
+  // therefore also the first place where that state must repair itself,
+  // like the repository's other locks repair themselves on read
+  // (`reclaimDead`, `purgeLease`).
   //
-  // Une lecture qui écrit demande à être justifiée : le balayage n'agit que
-  // sur une preuve positive — le marqueur de la tâche nomme un processus qui
-  // n'existe plus — et n'inscrit qu'un fait déjà vrai. Il ne doit pour autant
-  // jamais empêcher la liste de s'afficher : un `.caesar/state/` illisible est
-  // un ennui à signaler, pas une raison de ne plus rien montrer.
+  // A read that writes calls for justification: the sweep only acts on
+  // positive evidence — the task's marker names a process that no longer
+  // exists — and only records a fact already true. It must nonetheless
+  // never prevent the list from displaying: an unreadable `.caesar/state/`
+  // is a nuisance to flag, not a reason to show nothing anymore.
   try {
     await sweepAbandonedTasks(root, store);
   } catch (error) {
-    printWarning(io, `Tâches abandonnées non réconciliées : ${error instanceof Error ? error.message : String(error)}`);
+    printWarning(io, `Abandoned tasks not reconciled: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   let records: TaskRecord[];
@@ -94,7 +95,7 @@ export async function runPs(root: string, options: PsOptions, io: Io): Promise<n
     const statuses = options.status.split(",").map((s) => s.trim());
     const invalid = statuses.filter((s) => !KNOWN_STATUSES.includes(s as TaskStatus));
     if (invalid.length > 0) {
-      printError(io, `Statut(s) inconnu(s) : ${invalid.join(", ")} (attendu l'un de : ${KNOWN_STATUSES.join(", ")}).`);
+      printError(io, `Unknown status(es): ${invalid.join(", ")} (expected one of: ${KNOWN_STATUSES.join(", ")}).`);
       return EXIT_USAGE;
     }
     records = await store.list({ status: statuses as TaskStatus[] });
@@ -117,19 +118,20 @@ export async function runPs(root: string, options: PsOptions, io: Io): Promise<n
 
   sectionHeader(io, "ps");
   if (records.length === 0) {
-    writeLine(io.stdout, "Aucune tâche.");
+    writeLine(io.stdout, "No tasks.");
     return EXIT_OK;
   }
 
-  // Six colonnes, et non huit. L'agent porte son rôle, le mode porte son
-  // isolation : ces couples se lisent ensemble et se cherchent ensemble, et
-  // les séparer coûtait deux colonnes qu'un cadre à 80 caractères n'a pas.
+  // Six columns, not eight. The agent carries its role, the mode carries
+  // its isolation: these pairs are read together and looked up together,
+  // and separating them cost two columns an 80-character frame does not
+  // have.
   //
-  // "rapport" reste en revanche distinct de "statut" (I3 de la revue finale) :
-  // "statut" ne reflète que l'issue du processus, jamais ce que l'agent a
-  // déclaré dans son rapport — une tâche "succeeded" au niveau processus peut
-  // porter un rapport "failed"/"partial"/"blocked", et c'est précisément
-  // l'écart entre les deux qu'on vient lire ici.
+  // "report", on the other hand, stays distinct from "status" (I3 of the
+  // final review): "status" only reflects the process outcome, never what
+  // the agent declared in its report — a task "succeeded" at the process
+  // level can carry a "failed"/"partial"/"blocked" report, and it is
+  // precisely the gap between the two one comes to read here.
   const bullet = activeGlyphs().status.bullet;
   const now = Date.now();
   const rows: Cell[][] = records.map((r) => [
@@ -140,7 +142,7 @@ export async function runPs(root: string, options: PsOptions, io: Io): Promise<n
     `${r.isolation} ${bullet} ${r.mode}`,
     { text: age(r.created_at, now), token: "dim" },
   ]);
-  printTable(io, ["id", "agent", "statut", "rapport", "exécution", "âge"], rows);
+  printTable(io, ["id", "agent", "status", "report", "execution", "age"], rows);
   return EXIT_OK;
 }
 
@@ -163,12 +165,12 @@ async function readTextSafe(path: string): Promise<string> {
 }
 
 /**
- * Transmet à `onChunk` chaque nouveau segment de `path`, jusqu'à ce que la
- * tâche `id` ne soit plus active.
+ * Hands `onChunk` each new segment of `path`, until the task `id` is no
+ * longer active.
  *
- * Le suivi par décalage lui-même vit dans `../tail.js` : `caesar watch` en a
- * besoin aussi, avec une condition d'arrêt différente (plusieurs tâches, et
- * une fenêtre qui reste ouverte après leur fin).
+ * The offset-based following itself lives in `../tail.js`: `caesar watch`
+ * needs it too, with a different stop condition (several tasks, and a
+ * window that stays open after they finish).
  */
 async function tailFile(store: TaskStore, id: string, path: string, onChunk: (chunk: string) => void): Promise<void> {
   const tail = createFileTail(path);
@@ -191,48 +193,47 @@ async function tailFile(store: TaskStore, id: string, path: string, onChunk: (ch
 function formatEvent(event: CaesarEvent): string {
   switch (event.type) {
     case "started":
-      return `[${event.seq}] démarré — ${event.command}`;
+      return `[${event.seq}] started — ${event.command}`;
     case "thinking":
-      return `[${event.seq}] réflexion : ${event.text}`;
+      return `[${event.seq}] thinking: ${event.text}`;
     case "message":
-      return `[${event.seq}] message : ${event.text}`;
+      return `[${event.seq}] message: ${event.text}`;
     case "tool_use":
-      return `[${event.seq}] outil ${event.tool} (${event.status})${event.input_summary ? ` — ${event.input_summary}` : ""}`;
+      return `[${event.seq}] tool ${event.tool} (${event.status})${event.input_summary ? ` — ${event.input_summary}` : ""}`;
     case "file_changed":
-      return `[${event.seq}] fichier ${event.action} : ${event.path}`;
+      return `[${event.seq}] file ${event.action}: ${event.path}`;
     case "progress":
-      return `[${event.seq}] progression : ${event.message}${event.pct !== undefined ? ` (${event.pct}%)` : ""}`;
+      return `[${event.seq}] progress: ${event.message}${event.pct !== undefined ? ` (${event.pct}%)` : ""}`;
     case "question":
-      return `[${event.seq}] question : ${event.question}`;
+      return `[${event.seq}] question: ${event.question}`;
     case "answer":
-      return `[${event.seq}] réponse : ${event.answer}`;
+      return `[${event.seq}] answer: ${event.answer}`;
     case "error":
-      return `[${event.seq}] erreur : ${event.message}`;
+      return `[${event.seq}] error: ${event.message}`;
     case "finished":
-      return `[${event.seq}] terminé — statut ${event.status}`;
+      return `[${event.seq}] finished — status ${event.status}`;
   }
 }
 
 /**
- * Traite une ligne de `events.jsonl` pendant le suivi (`--follow`). Une ligne
- * JSON invalide ou ne validant pas `EventSchema` est abandonnée — le suivi ne
- * doit pas s'interrompre pour un événement isolé — mais signalée sur
- * `stderr` : un abandon muet masquerait un désalignement de schéma entre ce
- * qu'écrit le moteur et ce que ce CLI sait lire. `stdout` reste réservé au
- * NDJSON exploitable (`--json`) ou à l'affichage formaté : jamais de
- * diagnostic dessus.
+ * Processes one line of `events.jsonl` while following (`--follow`). A line
+ * with invalid JSON or one failing `EventSchema` is dropped — the follow
+ * must not stop over an isolated event — but flagged on `stderr`: a silent
+ * drop would mask a schema mismatch between what the engine writes and what
+ * this CLI knows how to read. `stdout` stays reserved for the usable NDJSON
+ * (`--json`) or the formatted display: never a diagnostic on it.
  */
 function printFollowedLine(io: Io, rawLine: string, json: boolean | undefined): void {
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawLine);
   } catch {
-    printWarning(io, `Ligne ignorée (JSON invalide) : ${rawLine}`);
+    printWarning(io, `Line dropped (invalid JSON): ${rawLine}`);
     return;
   }
   const result = EventSchema.safeParse(parsed);
   if (!result.success) {
-    printWarning(io, `Ligne ignorée (ne respecte pas le schéma d'événement) : ${rawLine}`);
+    printWarning(io, `Line dropped (does not match the event schema): ${rawLine}`);
     return;
   }
   if (json) printJson(io, result.data);
@@ -243,7 +244,7 @@ export async function runLogs(root: string, id: string, options: LogsOptions, io
   const store = fileTaskStore(root);
   const record = await store.get(id);
   if (!record) {
-    printError(io, `Tâche inconnue : "${id}".`);
+    printError(io, `Unknown task: "${id}".`);
     return EXIT_USAGE;
   }
   const paths = taskPaths(record.task_dir);
@@ -297,12 +298,12 @@ export async function runCancel(root: string, id: string, options: CancelOptions
   const store = fileTaskStore(root);
   const record = await store.get(id);
   if (!record) {
-    printError(io, `Tâche inconnue : "${id}".`);
+    printError(io, `Unknown task: "${id}".`);
     return EXIT_USAGE;
   }
 
   if (!isActive(record.status)) {
-    return reportCancel(io, options.json, id, false, `Tâche "${id}" déjà terminée (statut "${record.status}") : rien à annuler.`);
+    return reportCancel(io, options.json, id, false, `Task "${id}" already finished (status "${record.status}"): nothing to cancel.`);
   }
 
   if (record.pid === undefined) {
@@ -311,7 +312,7 @@ export async function runCancel(root: string, id: string, options: CancelOptions
       options.json,
       id,
       false,
-      `Tâche "${id}" en cours, mais aucun identifiant de processus n'est enregistré : impossible de l'annuler depuis ce processus.`,
+      `Task "${id}" is running, but no process identifier is recorded: cannot cancel it from this process.`,
     );
   }
 
@@ -320,21 +321,21 @@ export async function runCancel(root: string, id: string, options: CancelOptions
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ESRCH") {
       await store.update(id, { status: "cancelled", ended_at: new Date().toISOString(), pid: undefined });
-      return reportCancel(io, options.json, id, true, `Tâche "${id}" : le processus (pid ${record.pid}) n'existe déjà plus. Marquée annulée.`);
+      return reportCancel(io, options.json, id, true, `Task "${id}": the process (pid ${record.pid}) no longer exists. Marked cancelled.`);
     }
     throw error;
   }
 
   await store.update(id, { status: "cancelled", ended_at: new Date().toISOString() });
-  return reportCancel(io, options.json, id, true, `Tâche "${id}" annulée (SIGTERM envoyé au pid ${record.pid}).`);
+  return reportCancel(io, options.json, id, true, `Task "${id}" cancelled (SIGTERM sent to pid ${record.pid}).`);
 }
 
 // ---------------------------------------------------------------------------
 // diff / apply
 // ---------------------------------------------------------------------------
-// `loadWorktreeHandle` vit désormais dans `@caesar/core` (`engine/worktree.ts`)
-// — partagée avec le serveur MCP (`caesar_diff`/`caesar_apply`), voir le rapport
-// de correction de la tâche 7.
+// `loadWorktreeHandle` now lives in `@caesar/core` (`engine/worktree.ts`) —
+// shared with the MCP server (`caesar_diff`/`caesar_apply`), see the task 7
+// correction report.
 
 export interface DiffOptions {
   json?: boolean;
@@ -344,13 +345,13 @@ export async function runDiff(root: string, id: string, options: DiffOptions, io
   const store = fileTaskStore(root);
   const record = await store.get(id);
   if (!record) {
-    printError(io, `Tâche inconnue : "${id}".`);
+    printError(io, `Unknown task: "${id}".`);
     return EXIT_USAGE;
   }
 
   const handle = await loadWorktreeHandle(record);
   if (!handle) {
-    const message = `Tâche "${id}" : isolation "${record.isolation}", pas de worktree à diffuser.`;
+    const message = `Task "${id}": isolation "${record.isolation}", no worktree to diff.`;
     if (options.json) printJson(io, { id, is_empty: true, files: [], patch: "", message });
     else writeLine(io.stdout, message);
     return EXIT_OK;
@@ -360,7 +361,7 @@ export async function runDiff(root: string, id: string, options: DiffOptions, io
   if (options.json) {
     printJson(io, { id, files: diff.files, is_empty: diff.isEmpty, patch: diff.patch });
   } else if (diff.isEmpty) {
-    writeLine(io.stdout, "Aucune modification.");
+    writeLine(io.stdout, "No changes.");
   } else {
     writeLine(io.stdout, diff.patch);
   }
@@ -375,26 +376,26 @@ export async function runApply(root: string, id: string, options: ApplyOptions, 
   const store = fileTaskStore(root);
   const record = await store.get(id);
   if (!record) {
-    printError(io, `Tâche inconnue : "${id}".`);
+    printError(io, `Unknown task: "${id}".`);
     return EXIT_USAGE;
   }
 
   const result = await applyRecordedWorktree(root, store, record);
   if (result.outcome === "no_worktree") {
-    const message = `Tâche "${id}" : isolation "${record.isolation}", rien à appliquer.`;
+    const message = `Task "${id}": isolation "${record.isolation}", nothing to apply.`;
     if (options.json) printJson(io, { id, applied: false, conflicts: [], message });
     else writeLine(io.stdout, message);
     return EXIT_OK;
   }
 
   if (result.outcome === "conflicts") {
-    const message = `Conflits en appliquant la tâche "${id}" : ${result.conflicts.join(", ")}.`;
+    const message = `Conflicts while applying task "${id}": ${result.conflicts.join(", ")}.`;
     if (options.json) printJson(io, { id, applied: false, conflicts: result.conflicts });
     else printError(io, message);
     return EXIT_RUNTIME;
   }
 
   if (options.json) printJson(io, { id, applied: true, conflicts: [] });
-  else writeLine(io.stdout, `Tâche "${id}" appliquée au dépôt principal.`);
+  else writeLine(io.stdout, `Task "${id}" applied to the main repository.`);
   return EXIT_OK;
 }

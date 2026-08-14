@@ -1,19 +1,19 @@
 {
-  // Ce package tourne sous Bun, qui exécute le TypeScript directement : ce
-  // fichier ne sert qu'au typecheck (`tsc --noEmit`, voir le script
-  // "typecheck"), jamais à une compilation dont un autre package
-  // dépendrait. Volontairement absent des references de `tsconfig.json`
-  // racine (`pnpm exec tsc -b` ne le voit pas) et volontairement non composite
-  // : composite implique une émission de déclarations destinée à des
-  // consommateurs, ce qu'aucun package ne fait ici.
+  // This package runs under Bun, which executes TypeScript directly: this
+  // file serves only the typecheck (`tsc --noEmit`, see the "typecheck"
+  // script), never a compilation another package would depend on.
+  // Deliberately absent from the root `tsconfig.json` references
+  // (`pnpm exec tsc -b` does not see it) and deliberately non-composite:
+  // composite implies emitting declarations meant for consumers, which no
+  // package does here.
   //
-  // N'étend pas `tsconfig.base.json` (module: NodeNext) : OpenTUI publie son
-  // typage JSX (`box`, `text`, `select`…) sous l'export `@opentui/react`
-  // avec `moduleResolution: "bundler"`, la configuration que son propre
-  // README recommande — Bun la comprend nativement. Les options de rigueur
-  // du monorepo (`strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`…)
-  // sont reprises explicitement pour rester cohérentes avec les autres
-  // packages.
+  // Does not extend `tsconfig.base.json` (module: NodeNext): OpenTUI ships
+  // its JSX typings (`box`, `text`, `select`…) under the `@opentui/react`
+  // export with `moduleResolution: "bundler"`, the configuration its own
+  // README recommends — Bun understands it natively. The monorepo's
+  // strictness options (`strict`, `noUncheckedIndexedAccess`,
+  // `verbatimModuleSyntax`…) are restated explicitly to stay consistent
+  // with the other packages.
   "compilerOptions": {
     "target": "ESNext",
     "lib": ["ESNext", "DOM"],

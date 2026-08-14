@@ -1,53 +1,53 @@
 /**
- * Répartition de la largeur entre les colonnes d'un tableau, et découpe du
- * texte — la partie calculatoire de l'affichage, isolée du rendu pour être
- * testable seule.
+ * Distribution of the width among a table's columns, and text splitting —
+ * the computational part of the display, isolated from rendering to be
+ * testable on its own.
  *
- * Le défaut que ce module existe pour corriger : les tableaux du TUI
- * complétaient chaque cellule à une largeur *conventionnelle* écrite en dur
- * (`fitColumn(path, 26)`), sans gouttière et sans regarder la largeur réelle
- * du terminal. Deux conséquences, toutes deux visibles à l'usage :
+ * The defect this module exists to fix: the TUI's tables padded each cell
+ * to a *conventional* hard-coded width (`fitColumn(path, 26)`), with no
+ * gutter and without looking at the terminal's real width. Two
+ * consequences, both visible in use:
  *
- *  - une valeur tronquée collait à la cellule suivante — l'élision et la
- *    valeur voisine se lisaient comme un seul mot
- *    (`/Users/…/bin…codex-cli 0.1…7 notable(s)`) ;
- *  - sur un terminal large, le tableau restait tassé sur 80 colonnes pendant
- *    que les chemins, eux, étaient coupés faute de place.
+ *  - a truncated value stuck to the next cell — the elision and the
+ *    neighboring value read as a single word
+ *    (`/Users/…/bin…codex-cli 0.1…7 notable(s)`);
+ *  - on a wide terminal, the table stayed crammed into 80 columns while
+ *    the paths, for their part, were cut for lack of room.
  *
- * Ici, les largeurs se déduisent de la place disponible : chaque colonne
- * annonce un minimum et une part de l'excédent (`flex`), et la gouttière est
- * garantie parce qu'elle est retirée avant tout partage.
+ * Here, widths are derived from the available room: each column announces
+ * a minimum and a share of the surplus (`flex`), and the gutter is
+ * guaranteed because it is subtracted before any sharing.
  */
 
 export interface ColumnWidthSpec {
-  /** Largeur minimale. À défaut, la longueur de l'en-tête : une colonne n'est jamais plus étroite que son titre. */
+  /** Minimum width. Defaults to the header's length: a column is never narrower than its title. */
   min?: number;
-  /** Part de l'excédent de largeur. 0 (le défaut) : la colonne reste à son minimum. */
+  /** Share of the width surplus. 0 (the default): the column stays at its minimum. */
   flex?: number;
   /**
-   * Largeur au-delà de laquelle la colonne cesse de grandir. Sans plafond, une
-   * colonne flexible sur un terminal large s'étire bien au-delà de ce qu'elle
-   * a à montrer — quarante caractères pour afficher « 0.1.7 » — et éloigne
-   * inutilement ses voisines l'une de l'autre.
+   * Width beyond which the column stops growing. Without a cap, a flexible
+   * column on a wide terminal stretches far beyond what it has to show —
+   * forty characters to display "0.1.7" — and needlessly pushes its
+   * neighbors apart.
    */
   max?: number;
-  /** Longueur de l'en-tête, plancher implicite du minimum. */
+  /** Length of the header, implicit floor of the minimum. */
   header: string;
 }
 
-/** En deçà, une cellule ne porte plus que l'élision : on ne rétrécit jamais une colonne à moins que ça. */
+/** Below this, a cell carries nothing but the elision: a column is never shrunk to less. */
 const MIN_CELL = 4;
 
 /**
- * Largeur de chaque colonne pour `available` colonnes de terminal, gouttières
- * comprises. Le total rendu, augmenté des `(n - 1) * gutter` séparateurs,
- * n'excède jamais `available` — c'est la propriété qui empêche le terminal de
- * replier une ligne de tableau sur la suivante, ce qui rendait la vue
- * illisible précisément là où elle devait renseigner.
+ * Width of each column for `available` terminal columns, gutters included.
+ * The rendered total, augmented by the `(n - 1) * gutter` separators,
+ * never exceeds `available` — that is the property that keeps the
+ * terminal from wrapping a table line onto the next one, which made the
+ * view unreadable precisely where it was supposed to inform.
  *
- * Quand la place manque, les colonnes rétrécissent proportionnellement à leur
- * minimum plutôt qu'en sacrifiant la dernière : une colonne « autorisation »
- * amputée en bout de ligne est aussi inutile qu'un chemin amputé.
+ * When room runs out, the columns shrink proportionally to their minimum
+ * rather than by sacrificing the last one: a "permission" column amputated
+ * at the end of the line is as useless as an amputated path.
  */
 export function layoutColumns(specs: readonly ColumnWidthSpec[], available: number, gutter = 2): number[] {
   if (specs.length === 0) return [];
@@ -58,12 +58,12 @@ export function layoutColumns(specs: readonly ColumnWidthSpec[], available: numb
   const total = widths.reduce((sum, width) => sum + width, 0);
 
   if (total <= room) {
-    // Distribution par tours : chaque tour donne `flex` caractères à chaque
-    // colonne encore sous son plafond. Le rapport entre colonnes flexibles est
-    // ainsi respecté exactement, et une colonne qui atteint son plafond sort
-    // du partage sans bloquer les autres. La place qu'aucune colonne ne peut
-    // plus prendre reste inutilisée — un bord droit irrégulier vaut mieux
-    // qu'une colonne étirée pour rien.
+    // Distribution by rounds: each round gives `flex` characters to each
+    // column still under its cap. The ratio between flexible columns is
+    // thus respected exactly, and a column that reaches its cap leaves the
+    // sharing without blocking the others. The room no column can take
+    // anymore stays unused — a ragged right edge is better than a column
+    // stretched for nothing.
     let slack = room - total;
     while (slack > 0) {
       let given = 0;
@@ -81,8 +81,8 @@ export function layoutColumns(specs: readonly ColumnWidthSpec[], available: numb
     return widths;
   }
 
-  // Trop étroit : on rabote proportionnellement, sans jamais passer sous
-  // `MIN_CELL`. La boucle redistribue ce que ce plancher a empêché de retirer.
+  // Too narrow: we shave proportionally, without ever going below
+  // `MIN_CELL`. The loop redistributes what that floor prevented removing.
   let excess = total - room;
   while (excess > 0) {
     const shrinkable = widths.map((width, index) => (width > MIN_CELL ? index : -1)).filter((index) => index >= 0);
@@ -97,9 +97,8 @@ export function layoutColumns(specs: readonly ColumnWidthSpec[], available: numb
 }
 
 /**
- * `text` complété ou tronqué à exactement `width` caractères. Une valeur trop
- * longue perd sa fin au profit d'une élision — jamais au profit de la colonne
- * voisine.
+ * `text` padded or truncated to exactly `width` characters. A too-long
+ * value loses its end to an elision — never to the neighboring column.
  */
 export function cell(text: string, width: number): string {
   if (width <= 0) return "";
@@ -109,10 +108,10 @@ export function cell(text: string, width: number): string {
 }
 
 /**
- * `text` raccourci **par la gauche** à `width` caractères. Pour un chemin,
- * c'est la fin qui renseigne (`…/mon-projet/.caesar/config.toml`) : le tronquer
- * par la droite comme une valeur ordinaire laisserait le préfixe commun à
- * tous les chemins de la machine, c'est-à-dire rien.
+ * `text` shortened **from the left** to `width` characters. For a path,
+ * it is the end that informs (`…/my-project/.caesar/config.toml`):
+ * truncating it from the right like an ordinary value would leave the
+ * prefix common to every path on the machine, that is, nothing.
  */
 export function elideLeft(text: string, width: number): string {
   if (width <= 0) return "";
@@ -122,12 +121,12 @@ export function elideLeft(text: string, width: number): string {
 }
 
 /**
- * Découpe `text` en lignes d'au plus `width` caractères, sur les espaces. Un
- * mot plus long que la largeur est coupé plutôt que de déborder — un chemin
- * ou une commande n'a pas d'espace où se replier.
+ * Splits `text` into lines of at most `width` characters, on spaces. A
+ * word longer than the width is cut rather than overflowing — a path or a
+ * command has no space to wrap on.
  *
- * Utilisé par les panneaux de détail, où les phrases longues (le motif d'un
- * refus de politique, en particulier) partaient jusqu'ici hors de l'écran.
+ * Used by the detail panels, where long sentences (the reason for a
+ * policy denial, in particular) until now ran off screen.
  */
 export function wrap(text: string, width: number): string[] {
   if (width <= 0) return [text];
@@ -137,8 +136,8 @@ export function wrap(text: string, width: number): string[] {
     let current = "";
     for (const word of paragraph.split(/\s+/).filter((part) => part.length > 0)) {
       let piece = word;
-      // Un mot plus long que la ligne entière : on le débite par tranches
-      // pleines avant de reprendre l'accumulation normale.
+      // A word longer than the whole line: it is sliced in full chunks
+      // before resuming the normal accumulation.
       while (piece.length > width) {
         if (current.length > 0) {
           lines.push(current);

@@ -2,7 +2,7 @@
   "name": "caesar",
   "version": "0.1.0",
   "private": true,
-  "description": "Orchestrateur de sous-agents de code multi-providers (Antigravity, Codex, OpenCode, Copilot, Claude)",
+  "description": "Multi-provider coding sub-agent orchestrator (Antigravity, Codex, OpenCode, Copilot, Claude)",
   "type": "module",
   "engines": {
     "node": ">=22"

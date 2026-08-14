@@ -1,8 +1,7 @@
 /**
- * Résolution de la racine de projet : depuis le répertoire courant, en
- * remontant jusqu'au premier répertoire contenant `.caesar/` ou `.git/`
- * (voir les conventions du brief). L'option globale `--root <dir>` la
- * force explicitement.
+ * Project root resolution: from the current directory, walking up to the
+ * first directory containing `.caesar/` or `.git/` (see the brief's
+ * conventions). The global option `--root <dir>` forces it explicitly.
  */
 import { access } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -17,12 +16,11 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
- * `explicit`, s'il est fourni, l'emporte toujours (résolu contre `startDir`).
- * Sinon, remonte depuis `startDir` à la recherche de `.caesar/` ou `.git/`.
- * Si aucun des deux n'est trouvé avant la racine du système de fichiers,
- * replie sur `startDir` lui-même — c'est le cas d'un `caesar init` sur un
- * répertoire tout neuf, qui doit pouvoir s'exécuter sans configuration
- * préalable.
+ * `explicit`, when provided, always wins (resolved against `startDir`).
+ * Otherwise, walks up from `startDir` looking for `.caesar/` or `.git/`.
+ * If neither is found before the filesystem root, falls back to `startDir`
+ * itself — that is the case of a `caesar init` on a brand-new directory,
+ * which must be able to run without prior configuration.
  */
 export async function resolveRoot(explicit: string | undefined, startDir: string = process.cwd()): Promise<string> {
   if (explicit) return resolve(startDir, explicit);

@@ -1,7 +1,7 @@
 /**
- * Sémaphore simple : plafonne le nombre de tâches actives en parallèle.
- * Utilisé par le runner pour ne pas saturer la machine de processus fils
- * concurrents.
+ * Simple semaphore: caps the number of tasks active in parallel.
+ * Used by the runner to avoid saturating the machine with concurrent
+ * child processes.
  */
 export interface Queue {
   run<T>(task: () => Promise<T>): Promise<T>;
@@ -11,7 +11,7 @@ export interface Queue {
 
 export function createQueue(limit: number): Queue {
   if (limit < 1) {
-    throw new Error(`La limite de la file doit être au moins 1 (reçu ${limit}).`);
+    throw new Error(`The queue limit must be at least 1 (received ${limit}).`);
   }
 
   let activeCount = 0;
@@ -23,9 +23,9 @@ export function createQueue(limit: number): Queue {
       return;
     }
     await new Promise<void>((resolve) => waiting.push(resolve));
-    // Le réveil vient de `release()`, qui nous cède directement sa place
-    // sans jamais faire redescendre `activeCount` à zéro entre-temps : pas
-    // de fenêtre où un autre appelant pourrait s'y engouffrer en trop.
+    // The wake-up comes from `release()`, which hands us its place directly
+    // without ever letting `activeCount` drop to zero in between: no window
+    // in which another caller could slip in as an extra.
   }
 
   function release(): void {

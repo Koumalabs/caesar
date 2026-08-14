@@ -1,20 +1,20 @@
 /**
- * Ligne « libellé — valeur » alignée, brique des panneaux d'édition.
+ * Aligned "label — value" line, the building block of the editing panels.
  *
- * L'ancienne mise en forme posait la valeur *sous* son libellé, en retrait de
- * deux espaces : six champs occupaient dix-huit lignes, sans qu'aucune
- * colonne ne se lise verticalement. Ici le libellé tient une colonne de
- * largeur fixe et la valeur commence toujours au même endroit — on parcourt
- * les valeurs d'un seul regard.
+ * The old layout put the value *under* its label, indented by two spaces:
+ * six fields occupied eighteen lines, without any column reading
+ * vertically. Here the label holds a fixed-width column and the value
+ * always starts at the same place — the values are scanned in a single
+ * glance.
  *
- * Une valeur plus longue que la place restante se replie sous elle-même
- * (`wrap`), alignée sur la colonne des valeurs : c'est ce qui manquait au
- * motif d'un refus de politique, qui partait jusqu'ici hors de l'écran.
+ * A value longer than the remaining room wraps under itself (`wrap`),
+ * aligned on the values column: that is what the reason for a policy
+ * denial lacked, which until now ran off screen.
  *
- * L'explication du champ, elle, ne vit **pas** ici : elle s'affiche en pied
- * de panneau, à hauteur constante (`Explain`). Rendue en ligne, elle
- * décalait tous les champs suivants dès qu'elle apparaissait — la liste
- * entière sautait à chaque déplacement du curseur.
+ * The field's explanation does **not** live here: it is displayed at the
+ * foot of the panel, at constant height (`Explain`). Rendered inline, it
+ * shifted every following field as soon as it appeared — the whole list
+ * jumped on every cursor move.
  */
 import type { ReactNode } from "react";
 import { TextAttributes } from "@opentui/core";
@@ -23,19 +23,19 @@ import { ACCENT, DIM, FAINT } from "./theme";
 
 export interface FieldProps {
   label: string;
-  /** Largeur totale disponible pour la ligne (libellé + valeur). */
+  /** Total width available for the line (label + value). */
   width: number;
-  /** Largeur de la colonne des libellés — commune à tous les champs d'un même panneau. */
+  /** Width of the labels column — common to every field of a given panel. */
   labelWidth: number;
   selected?: boolean;
-  /** Marque d'héritage déjà formatée (« ← global »), affichée en fin de première ligne. */
+  /** Already formatted inheritance mark ("← global"), displayed at the end of the first line. */
   mark?: string;
   value?: string;
-  /** Couleur de la valeur, pour ce qui en porte une (activé/désactivé, retenu…). */
+  /** Color of the value, for what carries one (enabled/disabled, picked…). */
   valueFg?: string;
-  /** Rendu à la place de la valeur, sur la même ligne — un champ de saisie, typiquement. */
+  /** Rendered in place of the value, on the same line — typically an input field. */
   children?: ReactNode;
-  /** Rendu sous la ligne, aligné sur la colonne des valeurs — une sous-liste, typiquement. */
+  /** Rendered under the line, aligned on the values column — typically a sub-list. */
   below?: ReactNode;
 }
 

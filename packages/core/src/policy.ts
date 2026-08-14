@@ -1,90 +1,90 @@
 /**
- * Décisions d'autorisation : quels agents la politique du projet laisse-t-elle
- * déléguer, et à quelle profondeur.
+ * Authorization decisions: which agents the project's policy allows
+ * delegating to, and at what depth.
  *
- * Chaque refus porte une `reason` rédigée pour un humain, qui nomme l'agent
- * et la règle appliquée : ces messages remontent tels quels à l'agent
- * principal via MCP (tâche à venir), un refus sans motif y est inexploitable.
+ * Every refusal carries a `reason` written for a human, naming the agent
+ * and the rule applied: these messages travel as-is up to the main agent
+ * via MCP (upcoming task), and a refusal without a reason is unusable there.
  */
 import type { PolicyConfig, ProvenanceSource } from "./config.js";
 
 /**
- * Quelle règle a produit un refus — voir CONTRÔLEUR-1 de la revue finale :
- * `Decision` ne portait jusqu'ici qu'une phrase, ce qui a produit un remède
- * générique dans `caesar doctor` (« Autorisez-le avec "caesar agents enable X"
- * ou "caesar policy allow X" »), faux pour deux des trois motifs de refus —
- * ni l'un ni l'autre ne touche `allow_recursion`, seul motif du refus de
- * `claude` par défaut. `denied`/`allowlist`/`depth`/`recursion` permettent à
- * un appelant (CLI, TUI, tools MCP) de choisir le bon remède sans
- * réinterpréter le texte de `reason`.
+ * Which rule produced a refusal — see CONTROLLER-1 of the final review:
+ * `Decision` carried until now only a sentence, which produced a generic
+ * remedy in `caesar doctor` ("Allow it with 'caesar agents enable X'
+ * or 'caesar policy allow X'"), wrong for two of the three refusal
+ * reasons — neither of the two touches `allow_recursion`, the sole reason
+ * `claude` is refused by default. `denied`/`allowlist`/`depth`/`recursion`
+ * let a caller (CLI, TUI, MCP tools) pick the right remedy without
+ * reinterpreting the text of `reason`.
  */
 export type PolicyRule = "denied" | "allowlist" | "depth" | "recursion";
 
 export type Decision = { allowed: true } | { allowed: false; reason: string; rule: PolicyRule };
 
 /**
- * Règle des listes `allowed`/`denied` :
- * 1. `denied` l'emporte toujours sur `allowed` — un agent présent dans les
- *    deux listes est refusé.
- * 2. Si `allowed` est vide, tout agent non refusé passe. Sinon, seuls les
- *    agents listés passent.
+ * Rule of the `allowed`/`denied` lists:
+ * 1. `denied` always wins over `allowed` — an agent present in both
+ *    lists is refused.
+ * 2. If `allowed` is empty, any agent not denied passes. Otherwise, only
+ *    the listed agents pass.
  */
 export function isAgentAllowed(policy: PolicyConfig, agentId: string): Decision {
   if (policy.denied.includes(agentId)) {
     return {
       allowed: false,
       rule: "denied",
-      reason: `Agent "${agentId}" refusé : présent dans la liste "denied" de la politique.`,
+      reason: `Agent "${agentId}" refused: present in the policy's "denied" list.`,
     };
   }
   if (policy.allowed.length > 0 && !policy.allowed.includes(agentId)) {
     return {
       allowed: false,
       rule: "allowlist",
-      reason: `Agent "${agentId}" refusé : la politique restreint la délégation aux agents listés dans "allowed" (${policy.allowed.join(", ")}).`,
+      reason: `Agent "${agentId}" refused: the policy restricts delegation to the agents listed in "allowed" (${policy.allowed.join(", ")}).`,
     };
   }
   return { allowed: true };
 }
 
-/** `depth >= max_depth` est refusé. */
+/** `depth >= max_depth` is refused. */
 export function isDepthAllowed(policy: PolicyConfig, depth: number): Decision {
   if (depth >= policy.max_depth) {
     return {
       allowed: false,
       rule: "depth",
-      reason: `Profondeur de délégation ${depth} refusée : la politique limite à max_depth = ${policy.max_depth}.`,
+      reason: `Delegation depth ${depth} refused: the policy caps it at max_depth = ${policy.max_depth}.`,
     };
   }
   return { allowed: true };
 }
 
 /**
- * Si `allow_recursion` est faux, l'agent `claude` est refusé : déléguer à
- * Claude depuis Claude Code est la récursion que ce réglage protège. C'est
- * la seule règle de la politique qui vise un agent nommément — voir le
- * brief de la tâche 5.
+ * If `allow_recursion` is false, the `claude` agent is refused: delegating
+ * to Claude from Claude Code is the recursion this setting protects
+ * against. It is the only policy rule targeting an agent by name — see the
+ * brief of task 5.
  *
- * Exportée séparément (en plus de `checkDelegation`) car `pickAgentForRole`
- * (roles.ts) doit appliquer cette même règle sans disposer d'une profondeur
- * de tâche : elle réutilise cette fonction plutôt que de dupliquer la
- * logique.
+ * Exported separately (in addition to `checkDelegation`) because
+ * `pickAgentForRole` (roles.ts) must apply this same rule without having a
+ * task depth available: it reuses this function rather than duplicating
+ * the logic.
  */
 export function isRecursionAllowed(policy: PolicyConfig, agentId: string): Decision {
   if (!policy.allow_recursion && agentId === "claude") {
     return {
       allowed: false,
       rule: "recursion",
-      reason: `Agent "claude" refusé : allow_recursion est désactivé (déléguer à Claude depuis Claude Code serait une récursion).`,
+      reason: `Agent "claude" refused: allow_recursion is disabled (delegating to Claude from Claude Code would be recursion).`,
     };
   }
   return { allowed: true };
 }
 
 /**
- * Compose les quatre règles de la politique, dans l'ordre où le brief les
- * énonce : listes allowed/denied, puis profondeur, puis récursion. Le
- * premier refus rencontré est celui renvoyé.
+ * Composes the four policy rules, in the order the brief states them:
+ * allowed/denied lists, then depth, then recursion. The first refusal
+ * encountered is the one returned.
  */
 export function checkDelegation(policy: PolicyConfig, input: { agentId: string; depth: number }): Decision {
   const agentDecision = isAgentAllowed(policy, input.agentId);
@@ -97,18 +97,18 @@ export function checkDelegation(policy: PolicyConfig, input: { agentId: string; 
 }
 
 /**
- * Statut d'un agent vis-à-vis de la politique, hors profondeur de délégation
- * (qui n'a de sens que pour une tâche en cours — voir `pickAgentForRole`,
- * `roles.ts`, qui applique la même paire `isAgentAllowed`/`isRecursionAllowed`
- * sans profondeur non plus).
+ * Status of an agent with respect to the policy, delegation depth excluded
+ * (which only makes sense for an in-flight task — see `pickAgentForRole`,
+ * `roles.ts`, which applies the same `isAgentAllowed`/`isRecursionAllowed`
+ * pair without a depth either).
  *
- * Déplacée depuis `packages/cli/src/commands/agents.ts` (tâche 8, rapport de
- * correction) : `packages/tui` en avait besoin pour son écran Agents, et la
- * dupliquer dans le TUI ou faire dépendre `packages/tui` de `packages/cli`
- * pour deux fonctions pures était pire que de la ramener ici, à côté des
- * règles qu'elle compose — même raisonnement que `resolveDelegation`
- * (`delegation.ts`) à la tâche précédente. `packages/cli`
- * (`commands/agents.ts`, `commands/doctor.ts`) l'importe désormais d'ici.
+ * Moved from `packages/cli/src/commands/agents.ts` (task 8, correction
+ * report): `packages/tui` needed it for its Agents screen, and duplicating
+ * it in the TUI or making `packages/tui` depend on `packages/cli`
+ * for two pure functions was worse than bringing it back here, next to
+ * the rules it composes — same reasoning as `resolveDelegation`
+ * (`delegation.ts`) in the previous task. `packages/cli`
+ * (`commands/agents.ts`, `commands/doctor.ts`) now imports it from here.
  */
 export function describeAgentPolicy(policy: PolicyConfig, agentId: string): Decision {
   const allowedDecision = isAgentAllowed(policy, agentId);
@@ -117,46 +117,46 @@ export function describeAgentPolicy(policy: PolicyConfig, agentId: string): Deci
 }
 
 /**
- * Le remède qui vaut effectivement pour `rule` — voir CONTRÔLEUR-1 de la
- * revue finale. Centralisé ici plutôt que réécrit par chaque façade
- * (`caesar doctor`, l'écran Agents du TUI, un futur tool MCP de diagnostic) :
- * c'est la même logique de correspondance rule → remède partout.
+ * The remedy that actually applies for `rule` — see CONTROLLER-1 of the
+ * final review. Centralized here rather than rewritten by each facade
+ * (`caesar doctor`, the TUI's Agents screen, a future MCP diagnostic tool):
+ * it is the same rule → remedy mapping logic everywhere.
  *
- * - `"denied"` : seul `caesar agents enable` retire l'agent de `denied` —
- *   `caesar policy allow` ne le ferait pas passer pour autant (`denied`
- *   l'emporte toujours) et aurait l'effet de bord décrit sous `"allowlist"`.
- * - `"allowlist"` : `caesar policy allow` est le bon remède, mais avec
- *   l'avertissement de CONTRÔLEUR-2 — si `allowed` était vide, cette
- *   commande restreint désormais tous les autres agents non explicitement
- *   listés.
- * - `"recursion"` : aucune sous-commande CLI dédiée aujourd'hui ; seule
- *   l'édition de `allow_recursion` (TUI, onglet Politique, ou le TOML
- *   directement) lève ce refus.
- * - `"depth"` : ne se corrige pas par agent — c'est la profondeur de la
- *   délégation en cours qui dépasse `max_depth`, pas une propriété de
- *   l'agent lui-même ; sans objet pour un diagnostic statique par agent
- *   (`caesar doctor`), qui n'atteint jamais ce cas (il n'appelle pas
+ * - `"denied"`: only `caesar agents enable` removes the agent from `denied` —
+ *   `caesar policy allow` would not let it through anyway (`denied`
+ *   always wins) and would have the side effect described under `"allowlist"`.
+ * - `"allowlist"`: `caesar policy allow` is the right remedy, but with
+ *   the warning from CONTROLLER-2 — if `allowed` was empty, this
+ *   command from now on restricts all other agents not explicitly
+ *   listed.
+ * - `"recursion"`: no dedicated CLI subcommand today; only editing
+ *   `allow_recursion` (TUI, Policy tab, or the TOML directly) lifts this
+ *   refusal.
+ * - `"depth"`: cannot be fixed per agent — it is the depth of the
+ *   in-flight delegation that exceeds `max_depth`, not a property of the
+ *   agent itself; not applicable to a static per-agent diagnostic
+ *   (`caesar doctor`), which never reaches this case (it does not call
  *   `isDepthAllowed`).
  */
 export function remedyFor(agentId: string, rule: PolicyRule, scope: ProvenanceSource = "project"): string {
-  // Sans option, les commandes d'écriture visent la couche projet. Suggérer
-  // "caesar agents enable X" pour lever un refus déclaré par le global ne lève
-  // rien : cela écrit dans le projet, où la liste n'était pas déclarée, et la
-  // matérialise avec la valeur effective — refus compris. Le remède doit donc
-  // viser la couche qui porte la règle.
+  // Without an option, the write commands target the project layer. Suggesting
+  // "caesar agents enable X" to lift a refusal declared by the global layer
+  // lifts nothing: it writes to the project, where the list was not declared,
+  // and materializes it with the effective value — refusal included. The
+  // remedy must therefore target the layer that carries the rule.
   const layerFlag = scope === "global" ? " --global" : scope === "local" ? " --local" : "";
   switch (rule) {
     case "denied":
-      return `Autorisez-le avec "caesar agents enable ${agentId}${layerFlag}".`;
+      return `Allow it with "caesar agents enable ${agentId}${layerFlag}".`;
     case "allowlist":
       return (
-        `Ajoutez-le avec "caesar policy allow ${agentId}${layerFlag}" — attention, si la liste "allowed" est vide aujourd'hui, ` +
-        `cette commande la fera passer de "tout agent non refusé" à "seulement ${agentId}", refusant du même geste ` +
-        `tous les autres agents (voir "caesar policy show").`
+        `Add it with "caesar policy allow ${agentId}${layerFlag}" — careful: if the "allowed" list is empty today, ` +
+        `this command switches it from "any agent not denied" to "only ${agentId}", refusing in the same stroke ` +
+        `every other agent (see "caesar policy show").`
       );
     case "recursion":
-      return `Activez "allow_recursion" (onglet Politique du TUI "caesar config", ou éditez .caesar/config.toml — aucune sous-commande dédiée aujourd'hui).`;
+      return `Enable "allow_recursion" (Policy tab of the "caesar config" TUI, or edit .caesar/config.toml — no dedicated subcommand today).`;
     case "depth":
-      return `Sans objet par agent : c'est la profondeur de délégation en cours qui dépasse "max_depth", pas une propriété de l'agent.`;
+      return `Not applicable per agent: it is the depth of the in-flight delegation that exceeds "max_depth", not a property of the agent.`;
   }
 }

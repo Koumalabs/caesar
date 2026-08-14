@@ -1,12 +1,12 @@
 /**
- * Deux niveaux de test pour `bin.ts` :
- * - un test structurel, qui construit le programme (`buildProgram`) sans
- *   jamais parser `process.argv` ni toucher au disque ;
- * - une poignée de tests qui lancent le vrai binaire compilé
- *   (`dist/bin.js`) en sous-processus — le seul endroit de cette tâche où
- *   le comportement du binaire lui-même est en jeu (câblage commander,
- *   codes de sortie, séparation stdout/stderr), donc justifiant un vrai
- *   sous-processus plutôt qu'un appel direct de fonction.
+ * Two levels of testing for `bin.ts`:
+ * - a structural test, which builds the program (`buildProgram`) without
+ *   ever parsing `process.argv` or touching the disk;
+ * - a handful of tests that launch the real compiled binary
+ *   (`dist/bin.js`) as a subprocess — the only place in this task where
+ *   the binary's own behavior is at stake (commander wiring, exit codes,
+ *   stdout/stderr separation), hence justifying a real subprocess rather
+ *   than a direct function call.
  */
 import { execFile } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -22,8 +22,8 @@ import { makeIo, type CapturedIo } from "../test/support.js";
 const execFileAsync = promisify(execFile);
 const BIN_PATH = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
 
-describe("buildProgram (structurel)", () => {
-  it("expose toutes les sous-commandes du brief", () => {
+describe("buildProgram (structural)", () => {
+  it("exposes all the subcommands of the brief", () => {
     const io = makeIo();
     const program = buildProgram(io, { value: 0 });
     const names = program.commands.map((c) => c.name()).sort();
@@ -48,22 +48,22 @@ describe("buildProgram (structurel)", () => {
     expect(channel.commands.map((c) => c.name()).sort()).toEqual(["serve"]);
   });
 
-  it("\"config\" déclare --root/--json via withCommonOptions, comme les autres sous-commandes (tâche 10, C)", () => {
+  it("\"config\" declares --root/--json via withCommonOptions, like the other subcommands (task 10, C)", () => {
     const io = makeIo();
     const program = buildProgram(io, { value: 0 });
     const config = program.commands.find((c) => c.name() === "config")!;
     const flags = config.options.map((o) => o.long).sort();
     expect(flags).toEqual(["--json", "--root"]);
-    // "doctor" passe par le même `withCommonOptions` : on vérifie qu'il porte
-    // ces deux options, sans exiger qu'il n'en porte aucune autre — il déclare
-    // en propre un `--verbose`, et une commande qui gagne une option propre ne
-    // doit pas faire échouer un test qui parle des options *communes*.
+    // "doctor" goes through the same `withCommonOptions`: we check it
+    // carries these two options, without requiring it to carry no other —
+    // it declares a `--verbose` of its own, and a command gaining an option
+    // of its own must not fail a test that speaks of the *common* options.
     const doctor = program.commands.find((c) => c.name() === "doctor")!;
     expect(doctor.options.map((o) => o.long)).toEqual(expect.arrayContaining(["--json", "--root"]));
   });
 });
 
-describe("caesar (binaire compilé)", () => {
+describe("caesar (compiled binary)", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -74,25 +74,25 @@ describe("caesar (binaire compilé)", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("--help sort en code 0", async () => {
+  it("--help exits with code 0", async () => {
     const { stdout } = await execFileAsync("node", [BIN_PATH, "--help"]);
-    expect(stdout).toContain("Orchestrateur de sous-agents de code");
+    expect(stdout).toContain("Orchestrator of coding sub-agents");
   });
 
-  it("--version affiche la version du package.json, sort en code 0", async () => {
+  it("--version prints the package.json version, exits with code 0", async () => {
     const { stdout } = await execFileAsync("node", [BIN_PATH, "--version"]);
     expect(stdout.trim()).toBe(packageJson.version);
   });
 
-  it("\"channel\" est masqué de l'aide (tâche 12, sous-commande interne), mais reste joignable", async () => {
+  it("\"channel\" is masked from the help (task 12, internal subcommand), but stays reachable", async () => {
     const { stdout } = await execFileAsync("node", [BIN_PATH, "--help"]);
     expect(stdout).not.toContain("channel");
 
-    // Joignable explicitement malgré l'absence de l'aide : une option requise
-    // manquante (`--task-dir`) produit son erreur habituelle (code 2, comme
-    // tout argument/option requis manquant ailleurs dans ce CLI) plutôt
-    // qu'une commande inconnue — la sous-commande est bien câblée, seulement
-    // cachée.
+    // Reachable explicitly despite its absence from the help: a missing
+    // required option (`--task-dir`) produces its usual error (code 2, like
+    // any missing required argument/option elsewhere in this CLI) rather
+    // than an unknown command — the subcommand is properly wired, only
+    // hidden.
     await expect(execFileAsync("node", [BIN_PATH, "channel", "serve"])).rejects.toMatchObject({ code: 2 });
     try {
       await execFileAsync("node", [BIN_PATH, "channel", "serve"]);
@@ -101,7 +101,7 @@ describe("caesar (binaire compilé)", () => {
     }
   });
 
-  it("un argument requis manquant sort en code 2, message une seule fois sur stderr", async () => {
+  it("a missing required argument exits with code 2, message once only on stderr", async () => {
     await expect(execFileAsync("node", [BIN_PATH, "run"])).rejects.toMatchObject({ code: 2 });
     try {
       await execFileAsync("node", [BIN_PATH, "run"]);
@@ -112,37 +112,37 @@ describe("caesar (binaire compilé)", () => {
     }
   });
 
-  it("--root et --json fonctionnent placés après la sous-commande, sortie JSON pure sur stdout", async () => {
+  it("--root and --json work placed after the subcommand, pure JSON output on stdout", async () => {
     const { stdout, stderr } = await execFileAsync("node", [BIN_PATH, "protocol", "schema", "task", "--root", root, "--json"]);
     expect(() => JSON.parse(stdout)).not.toThrow();
     expect(stdout).not.toMatch(/\x1b\[/);
     expect(stderr).toBe("");
   });
 
-  // Tâche 10, C : le filet d'exception de `bin.ts` distingue désormais une
-  // erreur de configuration/usage (code 2, comportement historique) d'un
-  // vrai échec d'exécution (code 1) — les deux tests suivants prouvent
-  // chaque branche plutôt que de se fier à la seule lecture du code.
+  // Task 10, C: the exception net of `bin.ts` now distinguishes a
+  // configuration/usage error (code 2, historical behavior) from a real
+  // execution failure (code 1) — the two tests below prove each branch
+  // rather than relying on merely reading the code.
 
-  it("un fichier de configuration invalide sort en code 2 (erreur de configuration, pas d'exécution)", async () => {
+  it("an invalid configuration file exits with code 2 (configuration error, not execution)", async () => {
     await mkdir(join(root, ".caesar"), { recursive: true });
-    await writeFile(join(root, ".caesar", "config.toml"), "ceci n'est pas du toml valide [[[", "utf8");
+    await writeFile(join(root, ".caesar", "config.toml"), "this is not valid toml [[[", "utf8");
 
     await expect(execFileAsync("node", [BIN_PATH, "policy", "show", "--root", root])).rejects.toMatchObject({ code: 2 });
     try {
       await execFileAsync("node", [BIN_PATH, "policy", "show", "--root", root]);
     } catch (error) {
-      expect((error as { stderr: string }).stderr).toMatch(/TOML invalide/);
+      expect((error as { stderr: string }).stderr).toMatch(/invalid TOML/i);
     }
   });
 
-  it("une vraie erreur système non anticipée (répertoire non accessible en écriture) sort en code 1, pas 2", async () => {
+  it("a real unanticipated system error (directory not writable) exits with code 1, not 2", async () => {
     const caesarDir = join(root, ".caesar");
     await mkdir(caesarDir, { recursive: true });
-    // Lecture toujours possible (aucun config.toml : chemin "absent", pas une
-    // erreur), écriture impossible : `saveProjectConfig` (appelé par
-    // `policy allow`) échoue avec une vraie erreur système (`EACCES`), jamais
-    // ré-enveloppée en `Error` métier — contrairement à `loadConfig`.
+    // Reading always possible (no config.toml: the "absent" path, not an
+    // error), writing impossible: `saveProjectConfig` (called by
+    // `policy allow`) fails with a real system error (`EACCES`), never
+    // rewrapped into a business `Error` — unlike `loadConfig`.
     await chmod(caesarDir, 0o500);
     try {
       await expect(execFileAsync("node", [BIN_PATH, "policy", "allow", "codex", "--root", root])).rejects.toMatchObject({ code: 1 });
@@ -151,7 +151,7 @@ describe("caesar (binaire compilé)", () => {
     }
   });
 
-  it("\"config --json\" est refusé explicitement, pas silencieusement ignoré (revue de la tâche 10)", async () => {
+  it("\"config --json\" is refused explicitly, not silently ignored (task 10 review)", async () => {
     await expect(execFileAsync("node", [BIN_PATH, "config", "--root", root, "--json"])).rejects.toMatchObject({ code: 2 });
     try {
       await execFileAsync("node", [BIN_PATH, "config", "--root", root, "--json"]);

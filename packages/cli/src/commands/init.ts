@@ -1,39 +1,39 @@
 /**
- * `caesar init [--global]` : crée la couche projet (par défaut) ou la couche
- * globale (`--global`). N'écrase jamais une configuration existante sans
- * `--force`.
+ * `caesar init [--global]`: creates the project layer (default) or the
+ * global layer (`--global`). Never overwrites an existing configuration
+ * without `--force`.
  *
- * La couche **projet** ne déclare rien : `defaultConfig()` porte déjà la
- * politique et les rôles par défaut (`system_prompt_file` compris, une
- * convention de nom résolue par `resolveRole` indépendamment de toute
- * couche — voir `config.ts`) — écrire ces valeurs dans `.caesar/config.toml`
- * les y figerait, masquant toute configuration globale ultérieure (le
- * défaut I11 de la revue finale). Le rôle de cette commande, côté projet,
- * se limite donc à matérialiser les *fichiers* de prompt système
- * (`.caesar/roles/<name>.md`) et à compléter le `.gitignore`.
+ * The **project** layer declares nothing: `defaultConfig()` already carries
+ * the default policy and roles (`system_prompt_file` included, a naming
+ * convention resolved by `resolveRole` independently of any layer — see
+ * `config.ts`) — writing those values into `.caesar/config.toml` would
+ * freeze them there, masking any later global configuration (defect I11 of
+ * the final review). This command's role, on the project side, is thus
+ * limited to materializing the system prompt *files*
+ * (`.caesar/roles/<name>.md`) and completing the `.gitignore`.
  *
- * La couche **globale** (`--global`), à l'inverse, écrit `defaultConfig()`
- * intégralement : c'est le point de départ éditable d'un "preset" partagé
- * par tous les projets d'un même poste — voir le plan de la tâche 13.
+ * The **global** layer (`--global`), conversely, writes `defaultConfig()`
+ * in full: it is the editable starting point of a "preset" shared by all
+ * the projects of a machine — see the task 13 plan.
  *
- * ## Connaissance agentique (skill + commandes) et refresh
+ * ## Agentic knowledge (skill + commands) and refresh
  *
- * `caesar init` dépose aussi la skill Agent Skills et les commandes des
- * runtimes détectés (`installAgentAssets`, `@caesar/core`) — la façon dont un
- * agent principal (claude, codex, copilot, opencode, antigravity) apprend à
- * diriger `caesar` plutôt que d'exécuter lui-même.
+ * `caesar init` also deposits the Agent Skills skill and the commands of
+ * the detected runtimes (`installAgentAssets`, `@caesar/core`) — the way a
+ * main agent (claude, codex, copilot, opencode, antigravity) learns to
+ * direct `caesar` rather than executing itself.
  *
- * **Sur un projet déjà initialisé, sans `--force` : refresh.** Relancer
- * `caesar init` ne réécrit ni `.caesar/config.toml` ni `.caesar/roles/*.md` — ce
- * sont les fichiers que l'utilisateur édite (politique, rôles, prompts
- * système), et un `init` réexécuté par réflexe (ou par un script) les
- * écraserait sans le vouloir. Seuls les assets agentiques sont
- * réécrits/rafraîchis : ils sont, eux, entièrement dérivés du catalogue
- * (`AGENT_ASSETS`) et n'ont donc rien d'un contenu que l'utilisateur
- * possède — les réécrire à l'identique du catalogue n'efface jamais un
- * choix qu'il aurait fait. C'est ce qui remplace l'ancien garde-fou
- * `EXIT_USAGE` ("configuration déjà présente") : la commande réussit
- * toujours (code 0), et le dit.
+ * **On an already initialized project, without `--force`: refresh.**
+ * Rerunning `caesar init` rewrites neither `.caesar/config.toml` nor
+ * `.caesar/roles/*.md` — those are the files the user edits (policy, roles,
+ * system prompts), and an `init` rerun by reflex (or by a script) would
+ * overwrite them unintentionally. Only the agentic assets are
+ * rewritten/refreshed: they are, for their part, entirely derived from the
+ * catalog (`AGENT_ASSETS`) and thus nothing like content the user owns —
+ * rewriting them identical to the catalog never erases a choice they would
+ * have made. This is what replaces the old `EXIT_USAGE` guard
+ * ("configuration already present"): the command always succeeds (code 0),
+ * and says so.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -76,16 +76,16 @@ export interface InitOptions {
   force?: boolean;
   json?: boolean;
   global?: boolean;
-  /** `--agent <id>`, répétable : force la liste des cibles plutôt que la détection PATH. Déjà validé (contre `MCP_CLIENTS`) par `runInit` avant tout usage. */
+  /** `--agent <id>`, repeatable: forces the target list rather than PATH detection. Already validated (against `MCP_CLIENTS`) by `runInit` before any use. */
   agent?: readonly string[];
-  /** `--no-skills` (commander) : `false` coupe entièrement le dépôt/refresh des assets agentiques. Non persistant — à repasser à chaque `init`. */
+  /** `--no-skills` (commander): `false` fully disables depositing/refreshing the agentic assets. Not persisted — pass it again on each `init`. */
   skills?: boolean;
 }
 
 /**
- * Prompts système par défaut, un par rôle livré par `defaultConfig()`. En
- * anglais : c'est un texte injecté au modèle (voir les contraintes globales
- * du projet), pas un message du CLI.
+ * Default system prompts, one per role shipped by `defaultConfig()`. In
+ * English: this is text injected into the model (see the project's global
+ * constraints), not a CLI message.
  */
 const DEFAULT_ROLE_PROMPTS: Record<string, string> = {
   reviewer:
@@ -101,10 +101,10 @@ function defaultRolePrompt(name: string): string {
 }
 
 /**
- * Chemins que l'orchestrateur ne doit jamais versionner : la couche locale
- * (propre à chaque poste) et les répertoires d'exécution (tâches, worktrees,
- * état) — voir le constat I5 de la revue finale, repris ici puisque cette
- * commande est de toute façon réécrite par la tâche 13.
+ * Paths the orchestrator must never version: the local layer (specific to
+ * each machine) and the execution directories (tasks, worktrees, state) —
+ * see finding I5 of the final review, taken up here since this command is
+ * rewritten by task 13 anyway.
  */
 const GITIGNORE_ENTRIES = [".caesar/config.local.toml", ".caesar/tasks/", ".caesar/wt/", ".caesar/state/"];
 
@@ -114,19 +114,19 @@ interface GitignoreResult {
 }
 
 /**
- * Complète `<root>/.gitignore` avec `GITIGNORE_ENTRIES`. N'ajoute que les
- * lignes absentes, ne réécrit jamais un fichier existant depuis rien — un
- * `.gitignore` édité à la main garde son contenu. `isGitRepo` est calculé par
- * l'appelant (`repoRoot`, un sous-processus git) et réutilisé ici plutôt que
- * relancé : `runInitProject` en a de toute façon besoin pour son propre
- * avertissement, inutile de payer deux fois le sous-processus. `null` si
- * `root` n'est pas un dépôt git : rien n'est écrit, l'appelant le signale
- * dans sa propre sortie plutôt que cette fonction n'écrive un `.gitignore`
- * orphelin hors de tout dépôt.
+ * Completes `<root>/.gitignore` with `GITIGNORE_ENTRIES`. Only adds the
+ * missing lines, never rewrites an existing file from scratch — a
+ * hand-edited `.gitignore` keeps its content. `isGitRepo` is computed by
+ * the caller (`repoRoot`, a git subprocess) and reused here rather than
+ * relaunched: `runInitProject` needs it anyway for its own warning, no
+ * point paying for the subprocess twice. `null` if `root` is not a git
+ * repository: nothing is written, the caller flags it in its own output
+ * rather than this function writing an orphan `.gitignore` outside any
+ * repository.
  *
- * Écriture atomique (`writeFileAtomic`, `@caesar/core`) — même motif que
- * `saveLayer` (`config.ts`) et `packages/core/src/store.ts`, plutôt que
- * réécrire `.gitignore` en place.
+ * Atomic write (`writeFileAtomic`, `@caesar/core`) — same motive as
+ * `saveLayer` (`config.ts`) and `packages/core/src/store.ts`, rather than
+ * rewriting `.gitignore` in place.
  */
 async function completeGitignore(root: string, isGitRepo: boolean): Promise<GitignoreResult | null> {
   if (!isGitRepo) return null;
@@ -150,29 +150,29 @@ async function completeGitignore(root: string, isGitRepo: boolean): Promise<Giti
 }
 
 // ---------------------------------------------------------------------------
-// Connaissance agentique — sélection des cibles, dépôt, rendu
+// Agentic knowledge — target selection, deposit, rendering
 // ---------------------------------------------------------------------------
 
 /**
- * Cible interne, jamais annoncée dans `targets` : sert uniquement à déposer
- * le socle partagé (`.agents/skills/caesar/`, voir `ASSET_TARGETS` dans
- * `agent-assets.ts`) quand aucun runtime n'est détecté et qu'aucun `--agent`
- * n'a été donné. `codex` ne porte ni commandes ni fusion `settings.json` —
- * le choisir ne dépose donc jamais rien de plus que le socle partagé
- * lui-même. Le pari : les runtimes non-`claude` lisent tous ce même
- * répertoire, donc le déposer par avance profite au premier d'entre eux
- * qu'on installera — sans prétendre qu'un runtime précis est déjà servi.
+ * Internal target, never announced in `targets`: it only serves to deposit
+ * the shared base (`.agents/skills/caesar/`, see `ASSET_TARGETS` in
+ * `agent-assets.ts`) when no runtime was detected and no `--agent` was
+ * given. `codex` carries neither commands nor a `settings.json` merge —
+ * choosing it therefore never deposits anything beyond the shared base
+ * itself. The bet: non-`claude` runtimes all read this same directory, so
+ * depositing it in advance benefits the first of them that gets
+ * installed — without pretending a specific runtime is already served.
  */
 const SHARED_ONLY_CLIENT: McpClient = "codex";
 
 /**
- * Détecte, pour chaque client de `MCP_CLIENTS`, si son binaire est présent
- * dans le PATH — jamais `detectAgentInstallation` (qui sonde `--version`,
- * jusqu'à 3 s par agent : coûteux et hors de propos ici, on ne veut savoir
- * que "présent ou pas"), et jamais les agents génériques de la configuration
- * (`[[agent]]`) : `caesar init` dépose la connaissance des cinq runtimes
- * natifs, pas d'un agent personnalisé qui ne lira de toute façon aucune
- * skill standard.
+ * Detects, for each client of `MCP_CLIENTS`, whether its binary is present
+ * in the PATH — never `detectAgentInstallation` (which probes `--version`,
+ * up to 3 s per agent: costly and beside the point here, we only want to
+ * know "present or not"), and never the configuration's generic agents
+ * (`[[agent]]`): `caesar init` deposits the knowledge of the five native
+ * runtimes, not of a custom agent that will not read any standard skill
+ * anyway.
  */
 async function detectMcpClients(): Promise<McpClient[]> {
   const defs = listAgentDefinitions();
@@ -185,13 +185,13 @@ async function detectMcpClients(): Promise<McpClient[]> {
 }
 
 interface TargetSelection {
-  /** Cibles annoncées à l'utilisateur — vide seulement dans le cas "zéro détecté, pas de --agent". */
+  /** Targets announced to the user — empty only in the "zero detected, no --agent" case. */
   targets: readonly McpClient[];
-  /** Cibles réellement transmises à `installAgentAssets` — jamais vide (voir `SHARED_ONLY_CLIENT`). */
+  /** Targets actually passed to `installAgentAssets` — never empty (see `SHARED_ONLY_CLIENT`). */
   install: readonly McpClient[];
 }
 
-/** `agent` est déjà validé par `runInit` (chaque id est un `McpClient` connu) avant d'atteindre cette fonction. */
+/** `agent` is already validated by `runInit` (each id is a known `McpClient`) before reaching this function. */
 async function selectAssetTargets(agent: readonly string[] | undefined): Promise<TargetSelection> {
   if (agent && agent.length > 0) {
     const explicit = [...new Set(agent)].filter(isMcpClient);
@@ -208,12 +208,11 @@ interface AssetOutcome {
 }
 
 /**
- * Calcule les cibles puis dépose/rafraîchit la skill et les commandes.
- * Appelée aussi bien au premier `init` qu'au refresh — c'est la seule partie
- * de la commande qui s'exécute dans les deux cas (voir l'en-tête du
- * module) : les runtimes présents aujourd'hui ne sont pas forcément ceux
- * détectés au premier `init`, et rien n'empêche d'ajouter `--agent` entre
- * deux passages.
+ * Computes the targets then deposits/refreshes the skill and the commands.
+ * Called on the first `init` as on a refresh — it is the only part of the
+ * command that runs in both cases (see the module header): the runtimes
+ * present today are not necessarily those detected at the first `init`, and
+ * nothing prevents adding `--agent` between two passes.
  */
 async function depositAssets(root: string, scope: AssetScope, options: InitOptions): Promise<AssetOutcome> {
   const selection = await selectAssetTargets(options.agent);
@@ -226,56 +225,56 @@ function plural(n: number): string {
 }
 
 /**
- * Rend le résultat de `depositAssets` en sortie humaine : une ligne de
- * confirmation nommant les runtimes servis et le nombre de fichiers
- * déposés/rafraîchis, un avertissement agrégé pour les fichiers qui
- * différaient du catalogue et ont été remplacés, puis la suite logique : la
- * skill appelle les tools du serveur MCP `caesar`, qui n'existent pour un
- * runtime qu'une fois `caesar mcp install <client>` lancé pour lui.
+ * Renders the result of `depositAssets` as human output: a confirmation
+ * line naming the served runtimes and the number of files
+ * deposited/refreshed, an aggregated warning for the files that diverged
+ * from the catalog and got replaced, then the logical next step: the skill
+ * calls the tools of the `caesar` MCP server, which only exist for a
+ * runtime once `caesar mcp install <client>` has been run for it.
  *
- * Ne rend PAS `outcome.install.warnings` (`settings.json` malformé,
- * notamment) : ce sont les seuls avertissements du module qui doivent aussi
- * apparaître dans `--json`, donc l'appelant les fait passer par le tableau
- * `warnings` de premier niveau existant plutôt que par cette fonction — une
- * seule voie de rendu, jamais un doublon en sortie humaine entre cette
- * fonction et la boucle qui vide ce tableau.
+ * Does NOT render `outcome.install.warnings` (a malformed `settings.json`,
+ * notably): those are the only warnings of the module that must also appear
+ * in `--json`, so the caller routes them through the existing top-level
+ * `warnings` array rather than through this function — a single rendering
+ * path, never a human-output duplicate between this function and the loop
+ * that drains that array.
  */
 function printAssetsOutcome(io: Io, outcome: AssetOutcome): void {
   const changed = outcome.install.files.filter((f) => f.action !== "unchanged");
   const total = outcome.install.files.length;
   const label =
     outcome.targets.length > 0
-      ? `Connaissance agentique déposée pour ${outcome.targets.join(", ")}`
-      : "Aucun runtime détecté dans le PATH : socle partagé (.agents/skills/caesar/) déposé quand même";
+      ? `Agentic knowledge deposited for ${outcome.targets.join(", ")}`
+      : "No runtime detected in the PATH: shared base (.agents/skills/caesar/) deposited anyway";
   printDone(
     io,
-    `${label} — ${changed.length} fichier${plural(changed.length)} déposé${plural(changed.length)} ou rafraîchi${plural(changed.length)} (sur ${total} géré${plural(total)}).`,
+    `${label} — ${changed.length} file${plural(changed.length)} deposited or refreshed (out of ${total} managed).`,
   );
 
   const updated = outcome.install.files.filter((f) => f.action === "update");
   if (updated.length > 0) {
     printWarning(
       io,
-      `${updated.length} fichier${plural(updated.length)} géré${plural(updated.length)} par caesar remplacé${plural(updated.length)}, divergent${plural(updated.length)} du catalogue : ${updated.map((f) => homePath(f.path)).join(", ")}`,
+      `${updated.length} caesar-managed file${plural(updated.length)} replaced, diverging from the catalog: ${updated.map((f) => homePath(f.path)).join(", ")}`,
     );
   }
 
   printNote(
     io,
-    'La skill appelle les tools du serveur MCP "caesar" : ils n\'existent pour un runtime qu\'une fois "caesar mcp install <client>" lancé pour lui.',
+    'The skill calls the tools of the "caesar" MCP server: they only exist for a runtime once "caesar mcp install <client>" has been run for it.',
   );
 }
 
 // ---------------------------------------------------------------------------
-// init --global / init (projet)
+// init --global / init (project)
 // ---------------------------------------------------------------------------
 
 async function runInitGlobal(root: string, options: InitOptions, io: Io): Promise<number> {
   const loaded = await loadConfig(root);
-  // Sans --force, une couche globale déjà présente n'est plus un refus : la
-  // commande réussit, laisse `defaultConfig()` intact (l'utilisateur peut
-  // avoir édité ce "preset"), et se contente de rafraîchir les assets — même
-  // contrat de refresh que côté projet, voir l'en-tête du module.
+  // Without --force, an already present global layer is no longer a
+  // refusal: the command succeeds, leaves `defaultConfig()` intact (the
+  // user may have edited that "preset"), and merely refreshes the assets —
+  // same refresh contract as on the project side, see the module header.
   const refresh = loaded.sources.global !== undefined && !options.force;
   if (!refresh) {
     await saveLayer("global", root, defaultConfig());
@@ -288,11 +287,11 @@ async function runInitGlobal(root: string, options: InitOptions, io: Io): Promis
     printJson(io, {
       scope: "global",
       config_path: configPath,
-      // `true` sur un refresh (voir l'en-tête du module) : sans ce marqueur,
-      // un consommateur JSON ne distingue pas « rien à réécrire cette fois »
-      // de « ce champ n'a jamais rien eu à dire » (constat I3 de la revue
-      // finale) — l'ambiguïté pousse vers `--force`, le seul chemin
-      // destructeur.
+      // `true` on a refresh (see the module header): without this marker, a
+      // JSON consumer cannot distinguish "nothing to rewrite this time"
+      // from "this field never had anything to say" (finding I3 of the
+      // final review) — the ambiguity pushes toward `--force`, the only
+      // destructive path.
       refreshed: refresh,
       assets: assets ? { targets: assets.targets, files: assets.install.files, stale: assets.install.stale } : null,
     });
@@ -300,16 +299,16 @@ async function runInitGlobal(root: string, options: InitOptions, io: Io): Promis
     printDone(
       io,
       refresh
-        ? `Configuration globale laissée telle quelle : ${homePath(configPath)} (--force pour la réinitialiser).`
-        : `Configuration globale créée : ${homePath(configPath)}`,
+        ? `Global configuration left untouched: ${homePath(configPath)} (--force to reset it).`
+        : `Global configuration created: ${homePath(configPath)}`,
     );
     if (assets) {
       printAssetsOutcome(io, assets);
-      // `computeSettingsMerge` (agent-assets.ts) ne peut rien émettre en
-      // portée globale (elle sort tôt dès `scope !== "project"`) : ce
-      // tableau est donc toujours vide aujourd'hui, mais rendu quand même,
-      // pour ne pas dépendre silencieusement de cet invariant si le module
-      // apprenait un jour un autre avertissement en portée globale.
+      // `computeSettingsMerge` (agent-assets.ts) can emit nothing in global
+      // scope (it bails out early on `scope !== "project"`): this array is
+      // therefore always empty today, but rendered anyway, so as not to
+      // silently depend on that invariant if the module one day learned
+      // another global-scope warning.
       for (const warning of assets.install.warnings) printWarning(io, warning);
     }
   }
@@ -318,10 +317,10 @@ async function runInitGlobal(root: string, options: InitOptions, io: Io): Promis
 
 async function runInitProject(root: string, options: InitOptions, io: Io): Promise<number> {
   const loaded = await loadConfig(root);
-  // Sans --force, un projet déjà initialisé n'est plus un refus : c'est un
-  // refresh (voir l'en-tête du module) — `.caesar/config.toml` et
-  // `.caesar/roles/*.md` restent strictement intacts, seuls les assets
-  // agentiques sont réécrits/rafraîchis.
+  // Without --force, an already initialized project is no longer a refusal:
+  // it is a refresh (see the module header) — `.caesar/config.toml` and
+  // `.caesar/roles/*.md` remain strictly intact, only the agentic assets
+  // are rewritten/refreshed.
   const refresh = loaded.sources.project !== undefined && !options.force;
 
   const rolesDir = join(root, ".caesar", "roles");
@@ -331,10 +330,10 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
   if (!refresh) {
     await mkdir(rolesDir, { recursive: true });
 
-    // Les rôles par défaut portent déjà leur `system_prompt_file` (voir
-    // `defaultConfig()`) : il ne reste qu'à matérialiser le fichier lui-même,
-    // pas à déclarer le rôle dans la couche projet — voir l'en-tête de ce
-    // module.
+    // The default roles already carry their `system_prompt_file` (see
+    // `defaultConfig()`): all that remains is materializing the file
+    // itself, not declaring the role in the project layer — see this
+    // module's header.
     for (const role of defaultConfig().roles) {
       if (!role.system_prompt_file) continue;
       const absPath = join(root, ".caesar", role.system_prompt_file);
@@ -342,19 +341,19 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
       roleFiles.push(absPath);
     }
 
-    // La couche projet ne déclare rien de plus qu'elle-même à l'initialisation
-    // : écrire ici la politique et les rôles par défaut referait exactement le
-    // défaut I11 que cette tâche corrige (la couche figerait les valeurs par
-    // défaut, masquant toute configuration globale). Ce fichier vide marque
-    // simplement l'initialisation du projet.
+    // The project layer declares nothing more than itself at
+    // initialization: writing the default policy and roles here would redo
+    // exactly the defect I11 this task fixes (the layer would freeze the
+    // default values, masking any global configuration). This empty file
+    // simply marks the project's initialization.
     //
-    // `[worktree]` fait exception, et pour une raison précise : ce n'est pas une
-    // valeur par défaut mais un **fait de ce projet-ci** — ce que son worktree
-    // doit emporter pour qu'on puisse y travailler. Sans cette section, un
-    // worktree ne contient que les fichiers suivis, l'isolation devient
-    // inexploitable, et la contourner par `isolation = "inplace"` reste la seule
-    // issue praticable : le défaut d'origine. Rien n'est écrit quand rien n'est
-    // détecté — une section vide ferait croire à un réglage.
+    // `[worktree]` is the exception, and for a precise reason: it is not a
+    // default value but a **fact about this very project** — what its
+    // worktree must carry so that one can work in it. Without this section,
+    // a worktree contains only the tracked files, isolation becomes
+    // unusable, and bypassing it via `isolation = "inplace"` remains the
+    // only practicable way out: the original defect. Nothing is written
+    // when nothing is detected — an empty section would look like a setting.
     worktree = await detectUntrackedNeeds(root);
     await saveLayer("project", root, worktree ? { worktree } : {});
   }
@@ -363,24 +362,24 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
   const isGitRepo = (await repoRoot(root)) !== null;
   if (!isGitRepo) {
     warnings.push(
-      `"${root}" n'est pas un dépôt git : l'isolation "worktree" n'est pas disponible ici, l'orchestrateur repliera sur "inplace" pour les tâches en écriture, et le ".gitignore" n'a pas été complété. Lancez "git init" dans ce répertoire pour activer les deux.`,
+      `"${root}" is not a git repository: "worktree" isolation is not available here, the orchestrator will fall back to "inplace" for write tasks, and the ".gitignore" was not completed. Run "git init" in this directory to enable both.`,
     );
   }
   const gitignore = await completeGitignore(root, isGitRepo);
 
   const assets = options.skills === false ? null : await depositAssets(root, "project", options);
   if (assets) {
-    // Les avertissements du module (`settings.json` malformé ou de forme
-    // anormale, notamment — voir `computeSettingsMerge`, agent-assets.ts)
-    // rejoignent le même tableau que les avertissements ci-dessus plutôt que
-    // de ne vivre que dans la sortie humaine : sans ça, un consommateur
-    // `--json` verrait `assets.files` plein de succès sans jamais apprendre
-    // qu'une fusion de permissions a été sautée (`action: "skip"`).
+    // The module's warnings (a malformed or oddly shaped `settings.json`,
+    // notably — see `computeSettingsMerge`, agent-assets.ts) join the same
+    // array as the warnings above rather than living only in the human
+    // output: without that, a `--json` consumer would see `assets.files`
+    // full of successes without ever learning that a permissions merge was
+    // skipped (`action: "skip"`).
     warnings.push(...assets.install.warnings);
   }
   if (!isGitRepo && assets) {
     warnings.push(
-      `Hors dépôt git, les fichiers de connaissance agentique déposés (skill, commandes) ne seront pas versionnés : lancez "git init" dans ce répertoire pour les partager avec l'équipe.`,
+      `Outside a git repository, the deposited agentic knowledge files (skill, commands) will not be versioned: run "git init" in this directory to share them with the team.`,
     );
   }
 
@@ -393,48 +392,48 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
       role_files: roleFiles,
       gitignore: gitignore ? { path: gitignore.path, added: gitignore.added } : null,
       worktree,
-      // `true` sur un refresh (voir l'en-tête du module) : sur un refresh,
-      // `role_files` est `[]` et `worktree` est `null` sans qu'aucun rôle ni
-      // atelier n'ait disparu — sans ce marqueur, un consommateur JSON ne
-      // distingue pas « rien à réécrire cette fois » de « ce projet n'a ni
-      // rôles ni [worktree] » (constat I3 de la revue finale), et la
-      // réaction plausible à cette dernière lecture est `--force`, le seul
-      // chemin destructeur.
+      // `true` on a refresh (see the module header): on a refresh,
+      // `role_files` is `[]` and `worktree` is `null` without any role or
+      // workshop having disappeared — without this marker, a JSON consumer
+      // cannot distinguish "nothing to rewrite this time" from "this
+      // project has neither roles nor [worktree]" (finding I3 of the final
+      // review), and the plausible reaction to that latter reading is
+      // `--force`, the only destructive path.
       refreshed: refresh,
       warnings,
       assets: assets ? { targets: assets.targets, files: assets.install.files, stale: assets.install.stale } : null,
     });
   } else {
-    // Le logotype ouvre `caesar init` et rien d'autre : c'est la seule commande
-    // qu'on tape une fois, sans savoir encore ce que l'outil est. Ailleurs, il
-    // serait du bruit à chaque invocation.
-    for (const line of bannerLines(io.stdout, `orchestrateur de sous-agents · v${VERSION}`)) writeLine(io.stdout, line);
+    // The wordmark opens `caesar init` and nothing else: it is the only
+    // command one types once, without yet knowing what the tool is.
+    // Anywhere else it would be noise on every invocation.
+    for (const line of bannerLines(io.stdout, `sub-agent orchestrator · v${VERSION}`)) writeLine(io.stdout, line);
     writeLine(io.stdout);
     if (refresh) {
-      printDone(io, `Configuration et prompts système laissés tels quels : ${homePath(configPath)} (--force pour les réinitialiser).`);
+      printDone(io, `Configuration and system prompts left untouched: ${homePath(configPath)} (--force to reset them).`);
     } else {
-      printDone(io, `Configuration créée : ${homePath(configPath)}`);
-      printDone(io, `Prompts système par défaut : ${homePath(rolesDir)}`);
+      printDone(io, `Configuration created: ${homePath(configPath)}`);
+      printDone(io, `Default system prompts: ${homePath(rolesDir)}`);
     }
     if (gitignore) {
       writeLine(
         io.stdout,
         `${colorize(activeGlyphs().status.done, "ok", io.stdout)} ` +
           (gitignore.added.length > 0
-            ? `.gitignore complété : ${homePath(gitignore.path)} (+${gitignore.added.length} ligne${gitignore.added.length > 1 ? "s" : ""})`
-            : `.gitignore déjà à jour : ${homePath(gitignore.path)}`),
+            ? `.gitignore completed: ${homePath(gitignore.path)} (+${gitignore.added.length} line${gitignore.added.length > 1 ? "s" : ""})`
+            : `.gitignore already up to date: ${homePath(gitignore.path)}`),
       );
     }
     if (worktree) {
-      // Annoncé plutôt que déposé en silence : ces chemins seront recopiés
-      // dans chaque worktree et ces commandes y tourneront avant chaque
-      // sous-agent. C'est une supposition sur le projet, et elle se corrige
-      // dans le fichier.
+      // Announced rather than deposited in silence: these paths will be
+      // copied into each worktree and these commands will run there before
+      // each sub-agent. It is an assumption about the project, and it gets
+      // fixed in the file.
       const parts = [
-        worktree.copy.length > 0 ? `copie ${worktree.copy.join(", ")}` : "",
-        worktree.setup.length > 0 ? `lance ${worktree.setup.join(" ; ")}` : "",
+        worktree.copy.length > 0 ? `copies ${worktree.copy.join(", ")}` : "",
+        worktree.setup.length > 0 ? `runs ${worktree.setup.join(" ; ")}` : "",
       ].filter(Boolean);
-      printDone(io, `Atelier des sous-agents ([worktree]) : ${parts.join(" puis ")}`);
+      printDone(io, `Sub-agent workshop ([worktree]): ${parts.join(" then ")}`);
     }
     if (assets) printAssetsOutcome(io, assets);
     for (const warning of warnings) printWarning(io, warning);
@@ -443,15 +442,15 @@ async function runInitProject(root: string, options: InitOptions, io: Io): Promi
 }
 
 export async function runInit(root: string, options: InitOptions, io: Io): Promise<number> {
-  // Validé une seule fois, avant toute écriture et avant le choix
-  // projet/global : un `--agent` inconnu est une erreur d'usage pure,
-  // indépendante de l'état du projet ou de la portée visée.
+  // Validated once, before any write and before the project/global choice:
+  // an unknown `--agent` is a pure usage error, independent of the
+  // project's state or of the targeted scope.
   if (options.agent && options.agent.length > 0) {
     const invalid = options.agent.filter((id) => !isMcpClient(id));
     if (invalid.length > 0) {
       printError(
         io,
-        `Agent(s) inconnu(s) pour --agent : ${invalid.map((id) => `"${id}"`).join(", ")} (attendu l'un de : ${MCP_CLIENTS.join(", ")}).`,
+        `Unknown agent(s) for --agent: ${invalid.map((id) => `"${id}"`).join(", ")} (expected one of: ${MCP_CLIENTS.join(", ")}).`,
       );
       return EXIT_USAGE;
     }

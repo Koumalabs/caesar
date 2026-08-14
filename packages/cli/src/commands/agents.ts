@@ -1,17 +1,17 @@
 /**
  * `caesar agents list|enable|disable|test`.
  *
- * `describeAgentCapabilities`/`describeAgentPolicy` vivent dans `@caesar/core`
- * (`registry/index.ts`, `policy.ts`) depuis le rapport de correction de la
- * tâche 8 — `packages/tui` en avait besoin pour son écran Agents, et les y
- * dupliquer ou faire dépendre le TUI du CLI pour deux fonctions pures était
- * pire que de les déplacer à côté de ce qu'elles décrivent. Ce module se
- * contente désormais de les appeler, comme `doctor.ts`.
+ * `describeAgentCapabilities`/`describeAgentPolicy` live in `@caesar/core`
+ * (`registry/index.ts`, `policy.ts`) since the task 8 correction report —
+ * `packages/tui` needed them for its Agents screen, and duplicating them
+ * there or making the TUI depend on the CLI for two pure functions was
+ * worse than moving them next to what they describe. This module now merely
+ * calls them, like `doctor.ts`.
  *
- * `enable`/`disable` écrivent une seule couche (`--global`/`--local`, projet
- * par défaut) via `materializePolicyList` (`@caesar/core`, même mécanisme que
- * `caesar policy allow|deny` — "denied" est le même champ) : jamais la fusion,
- * voir le brief de la tâche 13.
+ * `enable`/`disable` write a single layer (`--global`/`--local`, project by
+ * default) via `materializePolicyList` (`@caesar/core`, same mechanism as
+ * `caesar policy allow|deny` — "denied" is the same field): never the merge,
+ * see the task 13 brief.
  */
 import type { ConfigScope, GenericAgentSpec } from "@caesar/core";
 import {
@@ -61,9 +61,9 @@ export interface AgentsListOptions {
 
 export async function runAgentsList(root: string, options: AgentsListOptions, io: Io): Promise<number> {
   const { config, layers } = await loadConfig(root);
-  // Catalogue natif étendu des agents de configuration ([[agent]]) : voir C1
-  // de la revue finale — sans quoi un agent déclaré en TOML restait invisible
-  // de "caesar agents list".
+  // Native catalog extended with the configuration's agents ([[agent]]): see
+  // C1 of the final review — without which an agent declared in TOML stayed
+  // invisible to "caesar agents list".
   const defs = listAgentDefinitions(config.agents);
 
   const rows = await Promise.all(
@@ -76,11 +76,11 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
         installed: path !== null,
         path: path ?? undefined,
         capabilities: describeAgentCapabilities(def),
-        // Seulement pour la mise en forme : `capabilities` reste ce que
-        // `--json` publie, en toutes lettres et inchangé.
+        // For formatting only: `capabilities` remains what `--json`
+        // publishes, spelled out and unchanged.
         capabilitiesShort: describeAgentCapabilitiesShort(def),
         policy: describeAgentPolicy(config.policy, def.id),
-        // "default" pour les cinq agents du catalogue natif : aucune couche ne les déclare, ils sont câblés dans le registre.
+        // "default" for the five agents of the native catalog: no layer declares them, they are wired into the registry.
         provenance: agentProvenance(layers, def.id),
       };
     }),
@@ -93,33 +93,33 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
 
   sectionHeader(io, "agents");
 
-  // La raison d'un refus est une phrase entière : dans une cellule, elle
-  // rognait la colonne « politique » à « refusé (Agent "c… » — donc à rien.
-  // Elle descend sous le tableau, où elle a la place de se lire, comme le
-  // fait déjà `caesar doctor`.
+  // The reason for a denial is a full sentence: in a cell, it trimmed the
+  // "policy" column down to "denied (Agent "c…" — hence to nothing. It goes
+  // below the table, where it has room to be read, as `caesar doctor`
+  // already does.
   const tableRows: Cell[][] = rows.map((r) => [
     r.id,
-    r.installed ? homePath(r.path ?? "trouvé") : { text: "absent", token: "bad" },
+    r.installed ? homePath(r.path ?? "found") : { text: "missing", token: "bad" },
     { text: r.capabilitiesShort.join(" ") || "-", token: "dim" },
-    r.policy.allowed ? { text: "autorisé", token: "ok" } : { text: "refusé", token: "bad" },
+    r.policy.allowed ? { text: "allowed", token: "ok" } : { text: "denied", token: "bad" },
     { text: r.provenance, token: "dim" },
   ]);
-  printTable(io, ["agent", "binaire", "capacités", "politique", "provenance"], tableRows);
+  printTable(io, ["agent", "binary", "capabilities", "policy", "provenance"], tableRows);
 
   const denied = rows.filter((r) => !r.policy.allowed);
   if (denied.length > 0) {
     writeLine(io.stdout);
-    printHeading(io, "refus");
+    printHeading(io, "denials");
     for (const r of denied) {
       if (r.policy.allowed) continue;
-      for (const line of wrapText(`"${r.id}" : ${r.policy.reason}`, terminalWidth(io.stdout), "  - ", "    ")) {
+      for (const line of wrapText(`"${r.id}": ${r.policy.reason}`, terminalWidth(io.stdout), "  - ", "    ")) {
         writeLine(io.stdout, line);
       }
     }
   }
   writeLine(io.stdout);
   for (const line of wrapText(
-    'Capacités en toutes lettres : "caesar doctor --verbose", ou "caesar agents list --json".',
+    'Capabilities spelled out: "caesar doctor --verbose", or "caesar agents list --json".',
     terminalWidth(io.stdout),
   )) {
     printNote(io, line);
@@ -158,8 +158,8 @@ function reportToggle(
     printDone(
       io,
       enabled
-        ? `Agent "${id}" retiré de la liste "denied" (couche ${scopeLabel(scope)}).`
-        : `Agent "${id}" ajouté à la liste "denied" (couche ${scopeLabel(scope)}).`,
+        ? `Agent "${id}" removed from the "denied" list (${scopeLabel(scope)} layer).`
+        : `Agent "${id}" added to the "denied" list (${scopeLabel(scope)} layer).`,
     );
     if (materialized) printNote(io, materializationNotice("denied", scope, denied));
   }
@@ -185,20 +185,20 @@ export async function runAgentsDisable(root: string, id: string, options: Agents
 }
 
 // ---------------------------------------------------------------------------
-// Déclaration d'un agent (`[[agent]]`)
+// Declaring an agent (`[[agent]]`)
 // ---------------------------------------------------------------------------
 
 /**
- * Les cinq agents câblés dans le registre. Déclarer une entrée `[[agent]]`
- * portant l'un de ces identifiants est légitime — `listAgentDefinitions` fait
- * gagner la configuration sur le natif, délibérément — mais assez lourd de
- * conséquences (l'adaptateur natif, ses capacités et sa traduction
- * d'événements disparaissent au profit d'un lancement générique) pour être
- * signalé plutôt que subi.
+ * The five agents wired into the registry. Declaring an `[[agent]]` entry
+ * carrying one of these identifiers is legitimate — `listAgentDefinitions`
+ * lets the configuration win over the native one, deliberately — but heavy
+ * enough in consequences (the native adapter, its capabilities and its
+ * event translation disappear in favor of a generic launch) to be flagged
+ * rather than endured.
  */
 const NATIVE_IDS = new Set(AGENT_DEFINITIONS.map((def) => def.id));
 
-/** Rappel des jetons substituables — l'aide de `--args` le cite (voir `program.ts`), plutôt qu'une seconde liste écrite à la main. */
+/** Reminder of the substitutable tokens — the `--args` help quotes it (see `program.ts`), rather than a second hand-written list. */
 export const ARG_TOKENS_HINT = GENERIC_ARG_TOKENS.map((name) => `{{${name}}}`).join(", ");
 
 export interface AgentsAddOptions extends ScopeOptions {
@@ -219,13 +219,13 @@ export async function runAgentsAdd(root: string, id: string, options: AgentsAddO
 
   const bin = options.bin?.trim();
   if (!bin) {
-    printError(io, 'Précisez --bin <commande> : le binaire à lancer pour cet agent (par exemple --bin aider).');
+    printError(io, 'Specify --bin <command>: the binary to launch for this agent (for example --bin aider).');
     return EXIT_USAGE;
   }
 
   const cwdMode = options.cwdMode ?? "process";
   if (cwdMode !== "process" && cwdMode !== "flag") {
-    printError(io, '--cwd-mode invalide (attendu "process" — le répertoire courant porte le workspace — ou "flag" — le workspace est déjà passé en argument).');
+    printError(io, 'Invalid --cwd-mode (expected "process" — the current directory carries the workspace — or "flag" — the workspace is already passed as an argument).');
     return EXIT_USAGE;
   }
 
@@ -252,10 +252,10 @@ export async function runAgentsAdd(root: string, id: string, options: AgentsAddO
   const agents = [...(layer.agents ?? []).filter((agent) => agent.id !== id), spec];
   await saveLayer(scope, root, { ...layer, agents });
 
-  // Vérification d'installation *après* l'écriture, et jamais bloquante :
-  // déclarer un agent pas encore installé est légitime (une machine, un
-  // fichier de configuration partagé), mais l'apprendre au premier `caesar run`
-  // ne l'est pas.
+  // Installation check *after* the write, and never blocking: declaring an
+  // agent not yet installed is legitimate (a machine, a shared
+  // configuration file), but learning about it on the first `caesar run` is
+  // not.
   const binPath = await findBinaryInPath(bin);
 
   if (options.json) {
@@ -263,22 +263,22 @@ export async function runAgentsAdd(root: string, id: string, options: AgentsAddO
     return EXIT_OK;
   }
 
-  printDone(io, `Agent "${id}" ${replaced ? "remplacé" : "déclaré"} (couche ${scopeLabel(scope)}).`);
-  printNote(io, `  Ligne de commande : ${bin} ${args.join(" ")}`);
+  printDone(io, `Agent "${id}" ${replaced ? "replaced" : "declared"} (${scopeLabel(scope)} layer).`);
+  printNote(io, `  Command line: ${bin} ${args.join(" ")}`);
   if (NATIVE_IDS.has(id)) {
     writeLine(
       io.stdout,
-      `Attention : "${id}" est un agent du catalogue natif. Cette déclaration le remplace — son adaptateur, ses capacités et sa traduction d'événements ne s'appliquent plus. Pour seulement l'autoriser ou le refuser, "caesar agents disable ${id}".`,
+      `Warning: "${id}" is an agent of the native catalog. This declaration replaces it — its adapter, its capabilities and its event translation no longer apply. To merely allow or deny it, "caesar agents disable ${id}".`,
     );
   }
   if (binPath === null) {
-    // Le PATH n'est consulté que pour un nom simple : un chemin explicite
-    // désigne un fichier (voir `findBinaryInPath`), et dire "introuvable dans
-    // le PATH" enverrait alors chercher au mauvais endroit.
+    // The PATH is only consulted for a bare name: an explicit path
+    // designates a file (see `findBinaryInPath`), and saying "not found in
+    // the PATH" would then send people looking in the wrong place.
     const why = bin.includes("/")
-      ? `n'existe pas ou n'est pas exécutable`
-      : `est introuvable dans le PATH`;
-    writeLine(io.stdout, `Le binaire "${bin}" ${why} : la déclaration est enregistrée, mais l'agent ne sera pas retenu tant qu'il ne le sera pas.`);
+      ? `does not exist or is not executable`
+      : `is not found in the PATH`;
+    writeLine(io.stdout, `The binary "${bin}" ${why}: the declaration is recorded, but the agent will not be picked until it is.`);
   }
   return EXIT_OK;
 }
@@ -296,21 +296,21 @@ export async function runAgentsRemove(root: string, id: string, options: AgentsR
 
   const layer = await loadLayer(scope, root);
   if (!layer.agents?.some((agent) => agent.id === id)) {
-    // Même limite que `caesar role remove` : la fusion par clé (`mergeConfig`)
-    // remplace, elle ne supprime jamais par absence. Retirer une entrée d'une
-    // couche qui ne la déclare pas ne la ferait pas disparaître de la fusion —
-    // un EXIT_OK mentirait sur ce qui vient de se passer.
+    // Same limit as `caesar role remove`: keyed merging (`mergeConfig`)
+    // replaces, it never deletes by absence. Removing an entry from a layer
+    // that does not declare it would not make it disappear from the merge —
+    // an EXIT_OK would lie about what just happened.
     const { layers } = await loadConfig(root);
     const actual = agentProvenance(layers, id);
     if (actual === "default") {
       const hint = NATIVE_IDS.has(id)
-        ? `il fait partie du catalogue natif : aucune couche ne le déclare, et rien ne le supprime. Pour l'écarter des délégations, "caesar agents disable ${id}".`
-        : `aucune couche ne le déclare : vérifiez l'identifiant avec "caesar agents list".`;
-      printError(io, `Rien à supprimer pour l'agent "${id}" : ${hint}`);
+        ? `it belongs to the native catalog: no layer declares it, and nothing removes it. To keep it out of delegations, "caesar agents disable ${id}".`
+        : `no layer declares it: check the identifier with "caesar agents list".`;
+      printError(io, `Nothing to remove for agent "${id}": ${hint}`);
     } else {
       printError(
         io,
-        `L'agent "${id}" n'est pas déclaré par la couche ${scopeLabel(scope)} : rien à supprimer ici, il vient de la couche ${scopeLabel(actual)} — réessayez avec ${scopeFlagHint(actual)}.`,
+        `Agent "${id}" is not declared by the ${scopeLabel(scope)} layer: nothing to remove here, it comes from the ${scopeLabel(actual)} layer — retry with ${scopeFlagHint(actual)}.`,
       );
     }
     return EXIT_USAGE;
@@ -323,8 +323,8 @@ export async function runAgentsRemove(root: string, id: string, options: AgentsR
     printJson(io, { id, removed: true, scope, restores_native: NATIVE_IDS.has(id) });
     return EXIT_OK;
   }
-  printDone(io, `Agent "${id}" retiré (couche ${scopeLabel(scope)}).`);
-  if (NATIVE_IDS.has(id)) printNote(io, `  L'adaptateur natif "${id}" reprend la main.`);
+  printDone(io, `Agent "${id}" removed (${scopeLabel(scope)} layer).`);
+  if (NATIVE_IDS.has(id)) printNote(io, `  The native "${id}" adapter takes over again.`);
   return EXIT_OK;
 }
 
@@ -333,19 +333,19 @@ export interface AgentsTestOptions {
   json?: boolean;
 }
 
-/** Micro-tâche en lecture seule, utilisée pour vérifier qu'un agent répond effectivement. */
-const PING_OBJECTIVE = "Réponds uniquement: OK";
+/** Read-only micro-task, used to check that an agent actually responds. */
+const PING_OBJECTIVE = "Reply with only: OK";
 
 export async function runAgentsTest(root: string, id: string, options: AgentsTestOptions, io: Io): Promise<number> {
   const { config } = await loadConfig(root);
   if (!findAgentDefinition(id, config.agents)) {
-    printError(io, `Agent inconnu : "${id}".`);
+    printError(io, `Unknown agent: "${id}".`);
     return EXIT_USAGE;
   }
   if (!options.yes) {
     printError(
       io,
-      `"caesar agents test" lance une vraie tâche et consomme le quota réel de l'agent "${id}". Ajoutez --yes pour confirmer.`,
+      `"caesar agents test" launches a real task and consumes the real quota of agent "${id}". Add --yes to confirm.`,
     );
     return EXIT_USAGE;
   }
@@ -357,8 +357,8 @@ export async function runAgentsTest(root: string, id: string, options: AgentsTes
   }
 
   const store = fileTaskStore(root);
-  // Même verrou que `caesar run` : cette sonde lance un vrai agent, elle compte
-  // donc dans `max_parallel` comme n'importe quelle délégation.
+  // Same lock as `caesar run`: this probe launches a real agent, so it
+  // counts against `max_parallel` like any delegation.
   const queue = createSlotQueue({ root, limit: config.policy.max_parallel, label: `caesar agents test ${id}` });
   const startedAt = Date.now();
   const outcome = await runTask(
@@ -367,12 +367,12 @@ export async function runAgentsTest(root: string, id: string, options: AgentsTes
       agentId: id,
       objective: PING_OBJECTIVE,
       mode: "read-only",
-      // "auto" plutôt que "inplace" codé en dur : la sonde n'a aucune raison
-      // d'imposer un emplacement d'exécution, et le faire court-circuitait la
-      // règle d'isolation pour la seule commande qui lance un agent sans
-      // passer par `resolveDelegation`. Le résultat est le même qu'avant pour
-      // les agents nativement en lecture seule ; pour les autres, `runTask`
-      // isole la sonde comme il isole toute tâche en lecture seule.
+      // "auto" rather than hardcoded "inplace": the probe has no reason to
+      // impose an execution location, and doing so bypassed the isolation
+      // rule for the only command that launches an agent without going
+      // through `resolveDelegation`. The result is the same as before for
+      // natively read-only agents; for the others, `runTask` isolates the
+      // probe as it isolates any read-only task.
       isolation: "auto",
       allowInplaceWrite: config.policy.allow_inplace_write,
       workspace: root,
@@ -396,12 +396,12 @@ export async function runAgentsTest(root: string, id: string, options: AgentsTes
   } else if (responded) {
     writeLine(
       io.stdout,
-      `Agent "${id}" a répondu en ${durationMs} ms (rapport récupéré au palier "${outcome.source}"). Résumé : ${outcome.report.summary}`,
+      `Agent "${id}" responded in ${durationMs} ms (report recovered at the "${outcome.source}" tier). Summary: ${outcome.report.summary}`,
     );
   } else {
     printError(
       io,
-      `Agent "${id}" n'a produit aucun rapport exploitable en ${durationMs} ms (rapport synthétisé par défaut).`,
+      `Agent "${id}" produced no usable report in ${durationMs} ms (report synthesized by default).`,
     );
   }
 

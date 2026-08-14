@@ -1,16 +1,16 @@
 /**
- * Le serveur MCP exposé au sous-agent par `caesar-channel` : quatre tools qui
- * transforment la délégation en dialogue — voir le brief de la tâche 9.
+ * The MCP server exposed to the subagent by `caesar-channel`: four tools that
+ * turn the delegation into a dialogue — see the task 9 brief.
  *
- * Chaque tool lit ou écrit exclusivement sous `taskDir`, le répertoire de la
- * tâche transmis en argument à `caesar-channel` (voir `bin.ts`) : ce processus
- * ne partage aucune mémoire avec l'agent principal, tout passe par le
- * système de fichiers, exactement comme le reste du standard.
+ * Each tool reads or writes exclusively under `taskDir`, the task directory
+ * passed as an argument to `caesar-channel` (see `bin.ts`): this process
+ * shares no memory with the main agent, everything goes through the
+ * filesystem, exactly like the rest of the standard.
  *
- * Chaque handler est exporté séparément de son `registerXxx` pour rester
- * testable sans transport (voir `packages/mcp-server`, dont c'est déjà la
- * convention) : seul `server.test.ts` a besoin d'un vrai transport stdio,
- * là où le transport lui-même est en jeu.
+ * Each handler is exported separately from its `registerXxx` to remain
+ * testable without a transport (see `packages/mcp-server`, where this is
+ * already the convention): only `server.test.ts` needs a real stdio
+ * transport, where the transport itself is what is being tested.
  */
 import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -29,15 +29,15 @@ export const REPORT_PROGRESS = "report_progress";
 export const ASK_ORCHESTRATOR = "ask_orchestrator";
 export const SUBMIT_REPORT = "submit_report";
 
-/** Cinq minutes par défaut (voir le brief) : assez long pour laisser l'agent principal répondre, jamais indéfini. */
+/** Five minutes by default (see the brief): long enough to let the main agent answer, never unbounded. */
 export const DEFAULT_ASK_TIMEOUT_MS = 5 * 60_000;
-/** Intervalle de scrutation de `answers/<id>.json`. */
+/** Polling interval for `answers/<id>.json`. */
 export const DEFAULT_POLL_INTERVAL_MS = 1_000;
 
 export interface ChannelServerOptions {
-  /** Délai par défaut de `ask_orchestrator`, en millisecondes — configurable, voir le brief. */
+  /** Default `ask_orchestrator` timeout, in milliseconds — configurable, see the brief. */
   askTimeoutMs?: number;
-  /** Intervalle de scrutation de la réponse — configurable pour que les tests restent rapides. */
+  /** Polling interval for the answer — configurable so tests stay fast. */
   pollIntervalMs?: number;
 }
 
@@ -46,15 +46,15 @@ function jsonResult(data: Record<string, unknown>): CallToolResult {
 }
 
 /**
- * Prochain numéro d'ordre pour un événement émis par ce processus. `seq` ne
- * sert qu'à l'affichage (`caesar logs`) — jamais à trier ni à dédupliquer,
- * voir `packages/protocol/src/event.ts` et les usages de `event.seq` dans
- * `packages/cli/src/commands/tasks.ts` — donc relire le journal existant à
- * chaque appel (peu fréquent, journal court) suffit, sans coordination avec
- * le compteur du processus principal qui écrit par ailleurs sur le même
- * fichier. Même méthode, dupliquée faute d'un point d'export commun, côté
- * `caesar_answer` (`@caesar/mcp-server`), qui écrit sur ce même journal depuis
- * l'autre bout du canal.
+ * Next sequence number for an event emitted by this process. `seq` is only
+ * used for display (`caesar logs`) — never for sorting or deduplication, see
+ * `packages/protocol/src/event.ts` and the uses of `event.seq` in
+ * `packages/cli/src/commands/tasks.ts` — so re-reading the existing log on
+ * every call (infrequent, short log) is enough, with no coordination with
+ * the main process's counter, which also writes to the same file. Same
+ * method, duplicated for lack of a shared export point, on the
+ * `caesar_answer` side (`@caesar/mcp-server`), which writes to this same log
+ * from the other end of the channel.
  */
 async function nextSeq(paths: TaskPaths): Promise<number> {
   const events = await readEvents(paths);
@@ -110,7 +110,7 @@ const askOrchestratorInputShape = {
   options: z.array(z.string()).optional().describe("Optional multiple-choice options, if the answer is one of a known set."),
 };
 
-/** Ce qu'il reste du budget de la tâche, en millisecondes — jamais négatif. `ask_orchestrator` n'attend jamais plus longtemps que ça (voir le brief). */
+/** What remains of the task's budget, in milliseconds — never negative. `ask_orchestrator` never waits longer than that (see the brief). */
 function remainingBudgetMs(task: { deadline_ms: number; created_at: string }): number {
   const elapsed = Date.now() - Date.parse(task.created_at);
   return Math.max(0, task.deadline_ms - elapsed);
@@ -178,17 +178,17 @@ function registerSubmitReport(server: McpServer, taskDir: string): void {
         "status and summary are required, everything else is optional. On success the report is written and " +
         "this should be your last action. On an invalid report, the call fails naming the offending field(s); " +
         "fix them and call submit_report again.",
-      // Réutilise le shape de `ReportSchema` tel quel plutôt que de le
-      // reformuler (voir la contrainte globale n°6) : la validation immédiate
-      // — y compris le message nommant le champ fautif — est alors assurée
-      // par le SDK MCP lui-même, avant même que ce handler ne soit invoqué.
+      // Reuses the `ReportSchema` shape as-is rather than restating it (see
+      // global constraint #6): immediate validation — including the message
+      // naming the offending field — is then handled by the MCP SDK itself,
+      // before this handler is even invoked.
       inputSchema: ReportSchema.shape,
     },
     (args) => submitReport(taskDir, args),
   );
 }
 
-/** Construit le serveur MCP branché sur `taskDir`, prêt à être connecté à un transport (voir `bin.ts`). */
+/** Builds the MCP server wired to `taskDir`, ready to be connected to a transport (see `bin.ts`). */
 export function buildChannelServer(taskDir: string, options: ChannelServerOptions = {}): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
   registerGetTask(server, taskDir);

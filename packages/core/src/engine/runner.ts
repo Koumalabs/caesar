@@ -1,8 +1,8 @@
 /**
- * Assemblage d'une exécution complète : résout l'agent, prépare l'isolation,
- * choisit le palier de rapport, lance le processus, recoupe le rapport avec
- * git, et met à jour le store. C'est la pièce qui transforme le registre en
- * orchestrateur.
+ * Assembly of a complete execution: resolves the agent, prepares isolation,
+ * picks the report tier, launches the process, reconciles the report with
+ * git, and updates the store. This is the piece that turns the registry into
+ * an orchestrator.
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -48,33 +48,33 @@ import { acquireLease, releaseLease } from "./lock.js";
 
 const DEFAULT_TIMEOUT_MS = 600_000;
 
-/** Nom sous lequel le canal retour est déclaré côté agent (voir `Channel.server_name`). Exporté : un lanceur alternatif (voir `ChannelLauncher`) doit pouvoir le reprendre sans le redéfinir. */
+/** Name under which the return channel is declared on the agent side (see `Channel.server_name`). Exported: an alternative launcher (see `ChannelLauncher`) must be able to reuse it without redefining it. */
 export const CHANNEL_SERVER_NAME = "caesar";
 
 /**
- * Chemin absolu de `dist/bin.js` dans `@caesar/mcp-channel`, résolu via la
- * résolution de module Node plutôt que supposé à un chemin relatif fixe —
- * voir le brief de la tâche 9 ("résous son chemin dynamiquement plutôt que
- * de le supposer"). Cette résolution survit à une installation en dehors de
- * ce dépôt (npm, un lien global…), tant que `@caesar/mcp-channel` reste une
- * dépendance déclarée de `@caesar/core` (voir son `package.json`) : c'est la
- * même méthode que `resolveTuiEntry` dans
- * `packages/cli/src/commands/config.ts` pour `@caesar/tui`.
+ * Absolute path of `dist/bin.js` inside `@caesar/mcp-channel`, resolved via
+ * Node module resolution rather than assumed at a fixed relative path —
+ * see the task 9 brief ("resolve its path dynamically rather than
+ * assuming it"). This resolution survives an installation outside this
+ * repository (npm, a global link…), as long as `@caesar/mcp-channel` remains a
+ * declared dependency of `@caesar/core` (see its `package.json`): it is the
+ * same method as `resolveTuiEntry` in
+ * `packages/cli/src/commands/config.ts` for `@caesar/tui`.
  *
- * `@caesar/mcp-channel` restreint son `"exports"` à `"."` (contrairement à
- * `@caesar/tui`, dépourvu d'`"exports"`, que `resolveTuiEntry` peut donc
- * résoudre jusqu'à `package.json` directement) : demander la résolution de
- * `"@caesar/mcp-channel/package.json"` échouerait (`ERR_PACKAGE_PATH_NOT_EXPORTED`).
- * On résout donc l'entrée principale (`"."` → `dist/index.js`) et on
- * descend vers son voisin `dist/bin.js`, toujours émis dans le même
- * répertoire par `tsc` puisque `src/index.ts` et `src/bin.ts` sont tous deux
- * à la racine de `src/`, sans sous-répertoire.
+ * `@caesar/mcp-channel` restricts its `"exports"` to `"."` (unlike
+ * `@caesar/tui`, which has no `"exports"`, so `resolveTuiEntry` can
+ * resolve all the way to its `package.json` directly): asking to resolve
+ * `"@caesar/mcp-channel/package.json"` would fail (`ERR_PACKAGE_PATH_NOT_EXPORTED`).
+ * We therefore resolve the main entry (`"."` → `dist/index.js`) and
+ * step over to its sibling `dist/bin.js`, always emitted in the same
+ * directory by `tsc` since `src/index.ts` and `src/bin.ts` both live
+ * at the root of `src/`, with no subdirectory.
  *
- * N'a de sens que sous Node : un binaire compilé (tâche 12) n'a plus de
- * `node_modules` où chercher quoi que ce soit — c'est précisément pourquoi
- * cette résolution n'est plus appelée en dur par `buildChannel`, seulement
- * depuis `defaultChannelLauncher`, le lanceur par défaut (comportement
- * historique, inchangé).
+ * Only meaningful under Node: a compiled binary (task 12) no longer has any
+ * `node_modules` to look anything up in — which is precisely why
+ * this resolution is no longer hard-called by `buildChannel`, only
+ * from `defaultChannelLauncher`, the default launcher (historical
+ * behavior, unchanged).
  */
 function resolveChannelEntry(): string {
   const require = createRequire(import.meta.url);
@@ -83,31 +83,31 @@ function resolveChannelEntry(): string {
 }
 
 /**
- * Construit les coordonnées du canal retour pour une tâche : un lanceur, `taskDir`
- * en entrée, un `Channel | undefined` en sortie (jamais d'erreur).
+ * Builds the return channel coordinates for a task: a launcher, `taskDir`
+ * as input, a `Channel | undefined` as output (never an error).
  *
- * Point d'extension de la tâche 12 : dans un binaire compilé (`bun build
- * --compile`), plus aucune résolution de module n'a de sens
- * (`resolveChannelEntry` échoue, il n'y a plus de `node_modules`) — le
- * binaire ne peut plus *déduire* comment lancer le canal, il doit se le
- * faire dire. `configureChannelLauncher`, appelée une fois par le point
- * d'entrée (voir `packages/cli/src/bun-entry.ts`), est ce point de
- * configuration — une fonction plutôt qu'une variable d'environnement :
- * testable directement (un test appelle `configureChannelLauncher` avec un
- * lanceur factice et observe `task.channel`), sans dépendre d'un état
- * ambiant que `vitest` devrait manipuler et restaurer à chaque test.
+ * Task 12's extension point: in a compiled binary (`bun build
+ * --compile`), no module resolution makes sense anymore
+ * (`resolveChannelEntry` fails, there is no `node_modules` left) — the
+ * binary can no longer *infer* how to launch the channel, it must be
+ * told. `configureChannelLauncher`, called once by the entry
+ * point (see `packages/cli/src/bun-entry.ts`), is that configuration
+ * point — a function rather than an environment variable:
+ * directly testable (a test calls `configureChannelLauncher` with a
+ * fake launcher and observes `task.channel`), without depending on ambient
+ * state that `vitest` would have to manipulate and restore for each test.
  */
 export type ChannelLauncher = (taskDir: string) => Channel | undefined;
 
 /**
- * Lanceur par défaut, jamais reconfiguré par le chemin Node (`bin.ts`) :
- * c'est le comportement historique de `buildChannel`, avant la tâche 12,
- * repris tel quel — `command` est le binaire Node lui-même
- * (`process.execPath`), jamais `caesar-channel` par son nom ni le fichier
- * résolu directement : ni l'un ni l'autre ne peuvent être supposés
- * exécutables ou présents dans le `PATH` du sous-agent qui le lancera — voir
- * le brief de la tâche 9. Lève si `resolveChannelEntry` échoue ;
- * `buildChannel`, son seul appelant, absorbe cette exception.
+ * Default launcher, never reconfigured by the Node path (`bin.ts`):
+ * it is the historical behavior of `buildChannel`, before task 12,
+ * taken as-is — `command` is the Node binary itself
+ * (`process.execPath`), never `caesar-channel` by name nor the resolved
+ * file directly: neither can be assumed executable or present in the
+ * sub-agent's `PATH` when it launches it — see
+ * the task 9 brief. Throws if `resolveChannelEntry` fails;
+ * `buildChannel`, its only caller, absorbs that exception.
  */
 export function defaultChannelLauncher(taskDir: string): Channel | undefined {
   const entry = resolveChannelEntry();
@@ -117,22 +117,22 @@ export function defaultChannelLauncher(taskDir: string): Channel | undefined {
 let channelLauncher: ChannelLauncher = defaultChannelLauncher;
 
 /**
- * Point d'entrée de l'extension de la tâche 12 : remplace le lanceur du
- * canal retour utilisé par tout `runTask` ultérieur. Le point d'entrée Bun
- * (`bun-entry.ts`) l'appelle une fois au démarrage avec un lanceur qui
- * auto-invoque le binaire compilé (`caesar channel serve --task-dir <dir>`) ;
- * le point d'entrée Node (`bin.ts`) ne l'appelle jamais, laissant
- * `defaultChannelLauncher` en place — comportement inchangé.
+ * Entry point of task 12's extension: replaces the return channel
+ * launcher used by every subsequent `runTask`. The Bun entry point
+ * (`bun-entry.ts`) calls it once at startup with a launcher that
+ * self-invokes the compiled binary (`caesar channel serve --task-dir <dir>`);
+ * the Node entry point (`bin.ts`) never calls it, leaving
+ * `defaultChannelLauncher` in place — behavior unchanged.
  */
 export function configureChannelLauncher(launcher: ChannelLauncher): void {
   channelLauncher = launcher;
 }
 
 /**
- * Ne lève jamais, quel que soit le lanceur configuré : une résolution en
- * échec (installation cassée, paquet introuvable, lanceur personnalisé qui
- * lève…) rend `undefined` plutôt que de faire échouer toute la tâche — le
- * canal n'est jamais un point de défaillance, dans aucun des deux mondes.
+ * Never throws, whatever launcher is configured: a failed resolution
+ * (broken installation, package not found, a custom launcher that
+ * throws…) yields `undefined` rather than failing the whole task — the
+ * channel is never a point of failure, in either of the two worlds.
  */
 function buildChannel(taskDir: string): Channel | undefined {
   try {
@@ -143,12 +143,12 @@ function buildChannel(taskDir: string): Channel | undefined {
 }
 
 /**
- * Nom du fichier où un CLI capable de `finalMessageFile` dépose son dernier
- * message, sous le répertoire de la tâche. Chemin fixe et prévisible : un
- * agent qui connaît son répertoire de tâche (`$CAESAR_TASK_DIR`) peut le
- * retrouver sans qu'aucun jeton dédié n'existe dans le gabarit générique
- * d'arguments (`GenericAgentSpec`, tâche 3) — c'est ce que fait l'agent
- * factice dans les tests.
+ * Name of the file where a CLI capable of `finalMessageFile` drops its last
+ * message, under the task directory. Fixed, predictable path: an
+ * agent that knows its task directory (`$CAESAR_TASK_DIR`) can find it
+ * without any dedicated token existing in the generic argument
+ * template (`GenericAgentSpec`, task 3) — this is what the fake agent
+ * does in the tests.
  */
 const FINAL_MESSAGE_FILE_NAME = "final-message.txt";
 
@@ -156,15 +156,15 @@ export interface RunnerDeps {
   store: TaskStore;
   root: string;
   /**
-   * Sémaphore partageant le plafond `policy.max_parallel` entre tous les
-   * `runTask` d'une même façade. Obligatoire — quitte à passer `undefined`
-   * explicitement — voir C4/le durcissement de typage de la revue finale :
-   * une propriété optionnelle est précisément ce qui a laissé les trois
-   * façades (`caesar run`, `caesar_delegate`, `caesar agents test`) omettre le
-   * câblage sans qu'aucune erreur de compilation ne le signale, rendant
-   * `max_parallel` inappliqué de bout en bout. `undefined` reste un choix
-   * légitime pour un appelant qui ne veut délibérément aucune limite (voir
-   * les tests) ; ce n'est plus un oubli silencieux.
+   * Semaphore sharing the `policy.max_parallel` cap between all the
+   * `runTask` calls of a single facade. Mandatory — even if it means passing
+   * `undefined` explicitly — see C4/the typing hardening of the final review:
+   * an optional property is precisely what let the three
+   * facades (`caesar run`, `caesar_delegate`, `caesar agents test`) omit the
+   * wiring without any compile error flagging it, leaving
+   * `max_parallel` unenforced end to end. `undefined` remains a
+   * legitimate choice for a caller that deliberately wants no limit (see
+   * the tests); it is no longer a silent omission.
    */
   queue: Queue | undefined;
 }
@@ -178,28 +178,28 @@ export interface RunTaskInput {
   mode: TaskMode;
   isolation?: Isolation | "auto";
   /**
-   * Autorise une tâche en écriture à s'exécuter en isolation `"inplace"` dans
-   * un dépôt git utilisable — ce que `decideInplaceWrite` (`isolation.ts`)
-   * refuse sinon.
+   * Allows a write task to run in `"inplace"` isolation inside
+   * a usable git repository — which `decideInplaceWrite` (`isolation.ts`)
+   * otherwise refuses.
    *
-   * Une permission **portée par l'appelant**, jamais lue depuis la
-   * configuration par le moteur, sur le modèle d'`extraAgents` : `runTask` n'a
-   * que `deps.root`, et un moteur qui irait chercher lui-même l'opt-in
-   * transformerait chaque appel direct en angle mort. Absente (le défaut), la
-   * réponse est non : un appelant qui oublie de transmettre
-   * `policy.allow_inplace_write` obtient un refus, jamais un contournement
-   * silencieux. C'est le sens même de la correction — voir l'en-tête
-   * d'`isolation.ts`.
+   * A permission **carried by the caller**, never read from the
+   * configuration by the engine, on the `extraAgents` model: `runTask` only
+   * has `deps.root`, and an engine that went to fetch the opt-in itself
+   * would turn every direct call into a blind spot. Absent (the default), the
+   * answer is no: a caller that forgets to pass along
+   * `policy.allow_inplace_write` gets a refusal, never a silent
+   * bypass. That is the very point of the fix — see the header
+   * of `isolation.ts`.
    */
   allowInplaceWrite?: boolean;
   /**
-   * Le réseau est-il disponible pour cette tâche ? Déjà résolu — la demande
-   * tri-état s'arrête chez `resolveDelegation`, qui l'a confrontée à ce que
-   * l'agent permet. Absent : vrai, comme le défaut du protocole, pour que les
-   * appelants qui n'en savent rien (`caesar agents test`) restent inchangés.
+   * Is the network available for this task? Already resolved — the tri-state
+   * request stops at `resolveDelegation`, which confronted it with what the
+   * agent allows. Absent: true, like the protocol default, so that
+   * callers that know nothing about it (`caesar agents test`) remain unchanged.
    */
   network?: boolean;
-  /** Avertissement issu de cette résolution, à verser au rapport (voir `ResolvedDelegation.networkWarning`). */
+  /** Warning produced by that resolution, to be added to the report (see `ResolvedDelegation.networkWarning`). */
   networkWarning?: string;
   workspace: string;
   role?: string;
@@ -207,67 +207,67 @@ export interface RunTaskInput {
   timeoutMs?: number;
   depth?: number;
   /**
-   * Agents génériques déclarés en configuration (`CaesarConfig.agents`,
-   * `[[agent]]` du TOML), consultés en plus du catalogue natif pour résoudre
-   * `agentId` — voir `resolveAgentDefinition` et C1 de la revue finale.
-   * Absent ou vide : catalogue natif seul (comportement inchangé). Les
-   * appelants qui disposent déjà de la configuration (`caesar run`,
-   * `caesar_delegate`, `caesar agents test`) la transmettent ici plutôt que de la
-   * faire recharger par `runTask`, qui n'a autrement que `deps.root`.
+   * Generic agents declared in the configuration (`CaesarConfig.agents`,
+   * `[[agent]]` in the TOML), consulted alongside the native catalog to resolve
+   * `agentId` — see `resolveAgentDefinition` and C1 of the final review.
+   * Absent or empty: native catalog only (behavior unchanged). Callers
+   * that already hold the configuration (`caesar run`,
+   * `caesar_delegate`, `caesar agents test`) pass it here rather than having
+   * `runTask` — which otherwise only has `deps.root` — reload it.
    */
   extraAgents?: GenericAgentSpec[];
   /**
-   * La section `[worktree]` du projet (`CaesarConfig.worktree`) : ce qu'il faut
-   * ajouter au worktree pour qu'on puisse y travailler, et ce qu'il faut y
-   * lancer avant l'agent.
+   * The project's `[worktree]` section (`CaesarConfig.worktree`): what must be
+   * added to the worktree so that one can work in it, and what must be
+   * run there before the agent.
    *
-   * Transmise par l'appelant plutôt que rechargée ici, comme `extraAgents` et
-   * pour la même raison : `runTask` n'a que `deps.root`, et les façades
-   * disposent déjà de la configuration fusionnée. Absente : le worktree reste
-   * ce que git en fait — les fichiers suivis, rien de plus. Sans effet en
-   * isolation `"inplace"`, où le workspace réel est déjà complet.
+   * Passed by the caller rather than reloaded here, like `extraAgents` and
+   * for the same reason: `runTask` only has `deps.root`, and the facades
+   * already hold the merged configuration. Absent: the worktree remains
+   * whatever git makes of it — the tracked files, nothing more. No effect in
+   * `"inplace"` isolation, where the real workspace is already complete.
    */
   worktreeSetup?: WorktreeConfig;
   extraArgs?: string[];
   /**
-   * Active le canal retour MCP bidirectionnel pour cette tâche, si l'agent
-   * cible sait charger un serveur MCP (`capabilities.mcpInjection !==
-   * "none"`) : le runner construit alors lui-même les coordonnées du
-   * `Channel` (voir `buildChannel`/`resolveChannelEntry` plus bas) — binaire
-   * `caesar-channel` résolu dynamiquement, argument `taskDir`, nom de serveur
-   * `"caesar"` — aucun appelant n'a besoin d'en connaître le détail. Absent ou
-   * faux (défaut) : comportement inchangé, aucun canal proposé — voir le
-   * brief de la tâche 9 : le canal ajoute un processus et une injection de
-   * configuration à chaque délégation, cela se choisit explicitement.
+   * Enables the bidirectional MCP return channel for this task, if the target
+   * agent knows how to load an MCP server (`capabilities.mcpInjection !==
+   * "none"`): the runner then builds the `Channel` coordinates
+   * itself (see `buildChannel`/`resolveChannelEntry` below) —
+   * `caesar-channel` binary resolved dynamically, `taskDir` argument, server
+   * name `"caesar"` — no caller needs to know the details. Absent or
+   * false (default): behavior unchanged, no channel offered — see the
+   * task 9 brief: the channel adds a process and a configuration
+   * injection to every delegation, that has to be chosen explicitly.
    *
-   * Sans effet, jamais une erreur, si l'agent ne sait pas charger de serveur
-   * MCP ou si la résolution du binaire échoue (installation cassée…) : le
-   * canal n'est jamais un point de défaillance, la tâche retombe alors sur
-   * le palier de rapport suivant (`defaultPreferredReportChannel`).
+   * No effect, never an error, if the agent cannot load an MCP
+   * server or if the binary resolution fails (broken installation…): the
+   * channel is never a point of failure, the task then falls back to
+   * the next report tier (`defaultPreferredReportChannel`).
    */
   channel?: boolean;
   /**
-   * Identifiant à utiliser pour cette tâche, plutôt que d'en générer un.
-   * Permet à l'appelant de connaître à l'avance le répertoire de la tâche
-   * (`<root>/.caesar/tasks/<taskId>`) — donc de la suivre (`events.jsonl`)
-   * pendant qu'elle tourne, ou de la référencer avant même que `runTask` ne
-   * résolve. Absent : comportement inchangé, un identifiant est généré ici
-   * comme avant. Sert notamment le CLI (`caesar run`, avancement en direct) et,
-   * à terme, le serveur MCP (`caesar_delegate`, qui doit rendre un identifiant
-   * immédiatement pour permettre plusieurs délégations en parallèle).
+   * Identifier to use for this task, rather than generating one.
+   * Lets the caller know the task directory in advance
+   * (`<root>/.caesar/tasks/<taskId>`) — hence follow it (`events.jsonl`)
+   * while it runs, or reference it before `runTask` even
+   * resolves. Absent: behavior unchanged, an identifier is generated here
+   * as before. Serves notably the CLI (`caesar run`, live progress) and,
+   * eventually, the MCP server (`caesar_delegate`, which must return an
+   * identifier immediately to allow several delegations in parallel).
    */
   taskId?: string;
   /**
-   * Transmis tel quel à `runAgentProcess`, qui le supporte déjà : permet à
-   * l'appelant d'annuler une tâche en cours sans attendre sa résolution, en
-   * garantissant qu'aucun sous-processus n'est laissé derrière (SIGTERM puis,
-   * à défaut de réponse, SIGKILL — voir `spawn.ts`).
+   * Passed as-is to `runAgentProcess`, which already supports it: lets the
+   * caller cancel a running task without waiting for its resolution, while
+   * guaranteeing that no sub-process is left behind (SIGTERM then,
+   * absent a response, SIGKILL — see `spawn.ts`).
    */
   signal?: AbortSignal;
   /**
-   * Transmis tel quel à `runAgentProcess`, qui le supporte déjà : permet à
-   * l'appelant d'observer les événements normalisés au fil de l'eau, plutôt
-   * que de devoir relire `events.jsonl` après coup.
+   * Passed as-is to `runAgentProcess`, which already supports it: lets the
+   * caller observe the normalized events as they stream, rather
+   * than having to re-read `events.jsonl` after the fact.
    */
   onEvent?: (event: CaesarEvent) => void;
 }
@@ -288,18 +288,18 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   const taskDir = join(deps.root, ".caesar", "tasks", id);
   const paths = taskPaths(taskDir);
 
-  // Vérifié ici, avant d'engager l'isolation : la préparation qui suit peut
-  // créer un worktree git, une opération qui n'est pas instantanée. Sans ce
-  // garde, un signal déjà déclenché à l'entrée serait ignoré jusqu'au bout —
-  // `runAgentProcess` (deuxième garde, juste avant de lancer le fils) ne
-  // couvre que l'annulation survenue *pendant* cette préparation.
+  // Checked here, before committing to isolation: the preparation that
+  // follows can create a git worktree, an operation that is not instant.
+  // Without this guard, a signal already triggered at entry would be ignored
+  // until the end — `runAgentProcess` (second guard, right before launching
+  // the child) only covers cancellation occurring *during* that preparation.
   if (input.signal?.aborted) {
     return abortBeforeStart(deps, input, id, paths, agentDef, depth);
   }
 
-  // Posé avant toute création possible de worktree et conservé jusqu'à la
-  // fin : `caesar gc` peut ainsi distinguer une vraie tâche en démarrage d'un
-  // orphelin, même pendant la fenêtre précédant `store.create`.
+  // Placed before any possible worktree creation and kept until the
+  // end: `caesar gc` can thus tell a genuine task that is starting up from an
+  // orphan, even during the window preceding `store.create`.
   const worktreeLease = await markWorktreeInUse(deps.root, id);
   try {
   const { isolation, warning, handle, materialization, missingSection, gitignoreWarning, worktreeWasPossible } = await prepareIsolation(
@@ -310,35 +310,36 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   );
   const workspace = handle ? handle.path : input.workspace;
 
-  // Exclusivité d'écriture sur un arbre partagé. Deux tâches `worktree` ont
-  // chacune le leur et ne peuvent pas se gêner ; deux tâches `inplace` en
-  // écriture partagent le même, et `diffWorkspaceStatus` — qui compare l'état
-  // git avant et après — attribuerait alors à chacune les modifications de
-  // l'autre. Le recoupement, qui est toute la valeur du système, deviendrait
-  // faux sans que rien ne le signale.
+  // Write exclusivity over a shared tree. Two `worktree` tasks each have
+  // their own and cannot get in each other's way; two `inplace` write tasks
+  // share the same one, and `diffWorkspaceStatus` — which compares the git
+  // state before and after — would then attribute each one's modifications
+  // to the other. The reconciliation, which is the whole value of the
+  // system, would become wrong without anything flagging it.
   //
-  // Seulement quand un worktree **était possible** : c'est ce qui sépare le
-  // `"inplace"` choisi (opt-in `allow_inplace_write`, où l'exclusivité est le
-  // prix assumé du choix) du `"inplace"` subi, faute de dépôt git utilisable.
-  // Verrouiller le second sérialiserait toute délégation en écriture sur un
-  // projet non versionné — au prix de la promesse de parallélisme que porte
-  // `caesar_delegate` — sans offrir la moindre alternative, puisqu'aucun
-  // worktree n'y est créable. Le constat d'isolation dégradée, lui, est déjà
-  // au rapport.
+  // Only when a worktree **was possible**: this is what separates the
+  // *chosen* `"inplace"` (opt-in `allow_inplace_write`, where exclusivity is
+  // the accepted price of the choice) from the `"inplace"` one is *stuck
+  // with*, for want of a usable git repository. Locking the latter would
+  // serialize every write delegation on an unversioned project — at the cost
+  // of the parallelism promise that `caesar_delegate` carries — while
+  // offering no alternative whatsoever, since no worktree can be created
+  // there. The degraded-isolation finding, for its part, is already in the
+  // report.
   //
-  // Ni `createSlotQueue` (qui borne un *nombre* de tâches, pas leur
-  // exclusivité) ni `markWorktreeInUse` (indexé par tâche) ne répondent à
-  // cette question : c'est le workspace qui est la ressource. Échec immédiat
-  // nommant l'occupant, jamais une file d'attente silencieuse — l'appelant
-  // saura mieux que nous s'il veut attendre ou reformuler.
+  // Neither `createSlotQueue` (which bounds a *number* of tasks, not their
+  // exclusivity) nor `markWorktreeInUse` (indexed by task) answers this
+  // question: the workspace is the resource. Immediate failure naming the
+  // occupant, never a silent waiting line — the caller knows better than us
+  // whether it wants to wait or rephrase.
   const writeLease =
     isolation === "inplace" && input.mode === "write" && worktreeWasPossible
       ? await acquireLease(join(deps.root, ".caesar", "state", "workspace-writers"), workspace, {
-          label: `tâche ${id} (${agentDef.id})`,
+          label: `task ${id} (${agentDef.id})`,
           describeHolder: (holder) =>
-            `Écriture en place impossible dans "${workspace}" : ${holder.label ?? `le processus ${holder.pid}`} y écrit déjà. ` +
-            `Deux tâches en écriture dans le même arbre rendraient leurs diffs inattribuables. Attendez sa fin, ` +
-            `ou laissez l'isolation à "worktree" pour que chacune ait le sien.`,
+            `Cannot write in place in "${workspace}": ${holder.label ?? `process ${holder.pid}`} is already writing there. ` +
+            `Two write tasks in the same tree would make their diffs unattributable. Wait for it to finish, ` +
+            `or leave isolation at "worktree" so that each task gets its own.`,
         })
       : null;
   try {
@@ -380,9 +381,9 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
 
   const prompt = renderTaskPrompt(task, { reportVia, channelServerName: task.channel?.server_name });
 
-  // Quand le CLI sait lui-même déposer son dernier message dans un fichier
-  // (Codex avec `-o`, par exemple), c'est plus fiable qu'une reconstitution
-  // depuis stdout : `resolveReport` le consulte en priorité au palier 2.
+  // When the CLI itself knows how to drop its last message into a file
+  // (Codex with `-o`, for example), that is more reliable than a
+  // reconstruction from stdout: `resolveReport` consults it first at tier 2.
   const finalMessageFile = agentDef.capabilities.finalMessageFile ? join(paths.dir, FINAL_MESSAGE_FILE_NAME) : undefined;
 
   const plan = agentDef.build({
@@ -392,16 +393,16 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     reportVia,
     schemaFile,
     finalMessageFile,
-    // C6 de la revue finale : `BuildContext.model` était laissé absent ici,
-    // silencieusement (champ jusqu'ici optionnel) — `--model`/`model:` était
-    // donc accepté par le CLI, le schéma zod du tool MCP et le README, sans
-    // jamais atteindre un seul des cinq adaptateurs qui le consomment.
+    // C6 of the final review: `BuildContext.model` was left absent here,
+    // silently (the field was optional until now) — `--model`/`model:` was
+    // therefore accepted by the CLI, the MCP tool's zod schema and the README,
+    // without ever reaching a single one of the five adapters that consume it.
     model: input.model,
     extraArgs: input.extraArgs ?? [],
   });
-  // Le contrat minimal d'un agent externe ($CAESAR_TASK_FILE, $CAESAR_REPORT_PATH…)
-  // ne dépend d'aucun adaptateur : c'est le moteur qui le garantit, ici, pour
-  // tout agent, générique ou non.
+  // The minimal contract of an external agent ($CAESAR_TASK_FILE, $CAESAR_REPORT_PATH…)
+  // depends on no adapter: the engine guarantees it, here, for
+  // every agent, generic or not.
   const finalPlan: SpawnPlan = { ...plan, env: { ...taskEnv(task, paths), ...plan.env } };
 
   await writeTask(paths, task);
@@ -419,25 +420,25 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     isolation,
     mode: input.mode,
     branch: handle?.branch,
-    // Persisté dès la création, et non à la fin : `caesar diff` peut être appelé
-    // sur une tâche encore en cours, et doit déjà exclure ce que
-    // l'orchestrateur a posé.
+    // Persisted at creation, not at the end: `caesar diff` can be called
+    // on a task still running, and must already exclude what the
+    // orchestrator placed.
     ...(handle?.excluded ? { excluded_paths: handle.excluded } : {}),
     report_via: reportVia,
     depth,
   };
   await deps.store.create(record);
 
-  // À partir d'ici, l'enregistrement existe dans le store avec le statut
-  // "running" : voir I13 de la revue finale. Sans ce `try/finally`, une
-  // exception inattendue entre `store.create` et le `store.update` final
-  // (E/S, sous-processus git...) laissait l'enregistrement bloqué "running"
-  // pour toujours — `caesar ps` le classe alors "actif" à vie, et un futur
-  // `caesar cancel` sur cet identifiant enverrait un signal à un pid que l'OS a
-  // pu réattribuer entre-temps (risque déjà identifié par le commentaire de
-  // `pid: undefined` plus bas, mais qui ne couvrait jusqu'ici que le chemin
-  // heureux). `finalized` évite un double `store.update` sur le chemin
-  // heureux : la mise à jour normale, plus bas, a déjà tout dit.
+  // From here on, the record exists in the store with the "running"
+  // status: see I13 of the final review. Without this `try/finally`, an
+  // unexpected exception between `store.create` and the final `store.update`
+  // (I/O, git sub-process...) left the record stuck as "running"
+  // forever — `caesar ps` then classifies it "active" for life, and a future
+  // `caesar cancel` on that identifier would signal a pid that the OS may
+  // have reassigned in the meantime (a risk already identified by the
+  // `pid: undefined` comment below, which until now only covered the happy
+  // path). `finalized` avoids a double `store.update` on the happy
+  // path: the normal update, below, has already said everything.
   let finalized = false;
   try {
     return await runTaskBody();
@@ -446,18 +447,18 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
       await deps.store
         .update(id, { status: "failed", ended_at: new Date().toISOString(), pid: undefined })
         .catch(() => {
-          // Au mieux : ne doit jamais masquer l'exception d'origine, déjà en cours de propagation.
+          // Best effort: must never mask the original exception, already propagating.
         });
     }
   }
 
   async function runTaskBody(): Promise<TaskOutcome> {
-  // Capturé juste avant le lancement, quand l'isolation est "inplace" : c'est
-  // le seul moyen de recouper `report.changes` avec la réalité git hors
-  // worktree — voir C2/C3 de la revue finale. `captureWorkspaceStatus` rend
-  // `null` sans lever si `workspace` n'est pas un dépôt git ; dans ce cas
-  // comme en isolation "worktree" (où le recoupement passe par
-  // `diffWorktree`), aucun recoupement n'est tenté plus bas.
+  // Captured right before the launch, when isolation is "inplace": it is
+  // the only way to reconcile `report.changes` with git reality outside a
+  // worktree — see C2/C3 of the final review. `captureWorkspaceStatus`
+  // returns `null` without throwing if `workspace` is not a git repository;
+  // in that case as in "worktree" isolation (where reconciliation goes
+  // through `diffWorktree`), no reconciliation is attempted below.
   const workspaceStatusBefore = isolation === "inplace" ? await captureWorkspaceStatus(workspace) : null;
 
   const execute = (): Promise<RunResult> =>
@@ -469,42 +470,42 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
       timeoutMs,
       signal: input.signal,
       onEvent: input.onEvent,
-      // Renseigne le pid dès qu'il est connu, pour qu'un autre processus
-      // (typiquement `caesar cancel`) puisse retrouver et signaler la tâche
-      // pendant qu'elle tourne encore — voir `TaskRecord.pid`.
+      // Records the pid as soon as it is known, so that another process
+      // (typically `caesar cancel`) can find and signal the task
+      // while it is still running — see `TaskRecord.pid`.
       onSpawn: async (pid) => {
         await deps.store.update(id, { pid });
       },
     });
   const run = deps.queue ? await deps.queue.run(execute) : await execute();
 
-  // "Le diff git fait foi" doit tenir dans les deux isolations, pas
-  // seulement "worktree" (voir C2 de la revue finale) : `diffWorkspaceStatus`
-  // rejoue la même logique que `diffWorktree` (recoupement + détection
-  // d'écriture ci-dessous) sans worktree, à partir de deux instantanés
-  // `git status --porcelain` du workspace réel.
+  // "The git diff is the source of truth" must hold in both isolations, not
+  // just "worktree" (see C2 of the final review): `diffWorkspaceStatus`
+  // replays the same logic as `diffWorktree` (reconciliation + write
+  // detection below) without a worktree, from two `git status --porcelain`
+  // snapshots of the real workspace.
   const rawDiff = handle
     ? await diffWorktree(handle)
     : workspaceStatusBefore !== null
       ? await diffWorkspaceStatus(workspace, workspaceStatusBefore)
       : undefined;
-  // Exclut les fichiers que l'orchestrateur lui-même a écrits dans le
-  // workspace de la tâche (p. ex. `opencode.json`, voir C5 de la revue
-  // finale) : sans ce filtre, un agent en lecture seule qui n'a jamais rien
-  // écrit se ferait accuser d'écriture par sa propre configuration MCP, et
-  // `reconcileChanges` ajouterait un constat "modification non déclarée"
-  // pour un fichier que l'agent n'a jamais touché.
+  // Excludes the files the orchestrator itself wrote into the
+  // task's workspace (e.g. `opencode.json`, see C5 of the final
+  // review): without this filter, a read-only agent that never wrote
+  // anything would be accused of writing by its own MCP configuration, and
+  // `reconcileChanges` would add an "undeclared modification" finding
+  // for a file the agent never touched.
   const diff = rawDiff ? excludePlanFiles(rawDiff, finalPlan.files, handle ? handle.path : workspace) : undefined;
 
   const resolved = await resolveReport({ task, paths, run, diff, reportVia, finalMessageFile });
   let report = resolved.report;
 
-  // Provenance de `report.changes` pour le consommateur en bout de chaîne
-  // (`ReportSummary.changes_verified_by`, `caesar_await`/`caesar_delegate`) :
-  // "git" dès qu'un recoupement a pu être tenté (worktree, ou inplace dans un
-  // dépôt git), "declaration" seulement quand aucun `git status`/`git diff`
-  // n'était possible (workspace hors dépôt git) — c'est alors la seule
-  // parole de l'agent, jamais présentée comme davantage.
+  // Provenance of `report.changes` for the consumer at the end of the chain
+  // (`ReportSummary.changes_verified_by`, `caesar_await`/`caesar_delegate`):
+  // "git" as soon as a reconciliation could be attempted (worktree, or inplace
+  // in a git repository), "declaration" only when no `git status`/`git diff`
+  // was possible (workspace outside a git repository) — it is then the
+  // agent's word alone, never presented as anything more.
   const changesVerifiedBy: ChangesVerifiedBy = diff ? "git" : "declaration";
 
   if (diff) {
@@ -514,33 +515,33 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   if (task.mode === "read-only" && diff && !diff.isEmpty) {
     report = withFinding(report, {
       severity: "high",
-      title: "Écriture détectée pendant une tâche en lecture seule",
-      detail: `Fichiers modifiés malgré le mode lecture seule : ${diff.files.map((f) => f.path).join(", ")}`,
+      title: "Write detected during a read-only task",
+      detail: `Files modified despite read-only mode: ${diff.files.map((f) => f.path).join(", ")}`,
     });
   }
 
   if (warning) {
-    report = withFinding(report, { severity: "low", title: "Isolation dégradée", detail: warning });
+    report = withFinding(report, { severity: "low", title: "Degraded isolation", detail: warning });
   }
 
-  // Le diagnostic qui manquait le jour du contournement : dire, dans le
-  // rapport, ce que l'atelier n'a pas pu contenir et par quelle clé le
-  // corriger. Sans lui, un worktree incomplet ne se manifeste que par une
-  // tâche qui échoue sans raison visible — et la réaction naturelle est de
-  // renoncer à l'isolation, pas de compléter `[worktree]`.
+  // The diagnostic that was missing the day of the workaround: saying, in the
+  // report, what the workshop could not carry and by which key to
+  // fix it. Without it, an incomplete worktree only shows up as a
+  // task that fails for no visible reason — and the natural reaction is to
+  // give up on isolation, not to fill in `[worktree]`.
   if (missingSection) {
-    report = withFinding(report, { severity: "low", title: "Worktree sans atelier", detail: missingSection });
+    report = withFinding(report, { severity: "low", title: "Worktree without a workshop", detail: missingSection });
   }
 
   if (gitignoreWarning) {
-    report = withFinding(report, { severity: "low", title: "Worktrees non ignorés par git", detail: gitignoreWarning });
+    report = withFinding(report, { severity: "low", title: "Worktrees not ignored by git", detail: gitignoreWarning });
   }
 
   if (materialization) {
     for (const entry of materialization.skipped) {
       report = withFinding(report, {
         severity: "low",
-        title: "Chemin non matérialisé dans le worktree",
+        title: "Path not materialized in the worktree",
         detail: entry.detail,
         file: entry.path,
       });
@@ -548,34 +549,34 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     if (materialization.shared.length > 0) {
       report = withFinding(report, {
         severity: "info",
-        title: "Chemins partagés avec le workspace",
+        title: "Paths shared with the workspace",
         detail:
-          `Posés en lien symbolique, donc NON isolés : ${materialization.shared.join(", ")}. ` +
-          `Ce que le sous-agent y écrit touche le workspace, et deux tâches simultanées s'y marchent dessus. ` +
-          `Passez ces chemins de "link" à "copy" sous [worktree] dès que le coût de la copie le permet.`,
+          `Placed as symlinks, hence NOT isolated: ${materialization.shared.join(", ")}. ` +
+          `Whatever the sub-agent writes there touches the workspace, and two simultaneous tasks step on each other. ` +
+          `Move these paths from "link" to "copy" under [worktree] as soon as the cost of the copy allows it.`,
       });
     }
   }
 
-  // `info` plutôt que `low` : rien n'a échoué, et ce cas est le quotidien des
-  // rôles en lecture seule sur codex. Déclarer `network = "off"` sur le rôle
-  // rend l'intention explicite et fait taire l'avertissement.
+  // `info` rather than `low`: nothing failed, and this case is everyday life
+  // for read-only roles on codex. Declaring `network = "off"` on the role
+  // makes the intent explicit and silences the warning.
   if (input.networkWarning) {
-    report = withFinding(report, { severity: "info", title: "Réseau non garanti", detail: input.networkWarning });
+    report = withFinding(report, { severity: "info", title: "Network not guaranteed", detail: input.networkWarning });
   }
 
-  // Persisté avant la mise à jour finale du store (voir C2 de la revue
-  // finale, second trou) : `writeReport` n'avait jusqu'ici qu'un seul
-  // appelant en production, `submit_report` du canal MCP
-  // (`packages/mcp-channel/src/server.ts`) — `runTask` calculait le rapport
-  // recoupé puis le laissait mourir avec le processus. Conséquence directe :
-  // `caesar_await` sur une tâche lancée par un autre processus
-  // (`describeFromStore`, `packages/mcp-server`) relisait le rapport brut de
-  // l'agent, jamais recoupé, ou rien du tout quand le palier retenu
-  // n'écrivait pas `report.json` (paliers "extracted"/"synthesized"). Écrit
-  // avant `deps.store.update` : un lecteur qui verrait le statut passer à
-  // "succeeded"/"failed" trouve alors déjà le rapport final sur disque,
-  // jamais une version encore non recoupée.
+  // Persisted before the final store update (see C2 of the final
+  // review, second gap): `writeReport` until now had only one
+  // production caller, `submit_report` on the MCP channel
+  // (`packages/mcp-channel/src/server.ts`) — `runTask` computed the
+  // reconciled report then let it die with the process. Direct consequence:
+  // `caesar_await` on a task launched by another process
+  // (`describeFromStore`, `packages/mcp-server`) re-read the agent's raw
+  // report, never reconciled, or nothing at all when the selected tier
+  // did not write `report.json` (the "extracted"/"synthesized" tiers). Written
+  // before `deps.store.update`: a reader who sees the status switch to
+  // "succeeded"/"failed" then already finds the final report on disk,
+  // never a still-unreconciled version.
   await writeReport(paths, report);
 
   const finalStatus = deriveTaskStatus(run);
@@ -585,16 +586,16 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
     exit_code: run.exitCode,
     report_source: resolved.source,
     changes_verified_by: changesVerifiedBy,
-    // I3 de la revue finale : `status` (ci-dessus) ne reflète que l'issue du
-    // processus, jamais ce que l'agent a déclaré dans son rapport — un agent
-    // qui écrit {"status":"failed"} puis sort en code 0 produisait
-    // `status: "succeeded"` sans que rien ne porte trace du rapport "failed"
-    // dans le store. `report_status` porte ce second niveau, pour que
-    // `caesar ps`, le code de sortie de `caesar run` et `caesar_status` puissent
-    // croiser les deux plutôt que d'ignorer le second.
+    // I3 of the final review: `status` (above) only reflects the outcome of
+    // the process, never what the agent declared in its report — an agent
+    // that writes {"status":"failed"} then exits with code 0 produced
+    // `status: "succeeded"` without anything keeping a trace of the "failed"
+    // report in the store. `report_status` carries that second level, so that
+    // `caesar ps`, the exit code of `caesar run` and `caesar_status` can
+    // cross-check the two rather than ignore the second.
     report_status: report.status,
-    // Le processus n'existe plus : un pid effacé évite à `caesar cancel` de
-    // signaler un pid réutilisé entre-temps par un tout autre processus.
+    // The process no longer exists: a cleared pid keeps `caesar cancel` from
+    // signaling a pid reused in the meantime by an entirely different process.
     pid: undefined,
   });
   finalized = true;
@@ -609,19 +610,19 @@ export async function runTask(deps: RunnerDeps, input: RunTaskInput): Promise<Ta
   }
 }
 
-/** Utilisée par `runTask` quand `input.taskId` est absent. Exportée pour que les
- * appelants qui préfèrent imposer leur propre identifiant (voir `RunTaskInput.taskId`)
- * réutilisent le même format plutôt que d'en tenir une seconde implémentation. */
+/** Used by `runTask` when `input.taskId` is absent. Exported so that
+ * callers that prefer to impose their own identifier (see `RunTaskInput.taskId`)
+ * reuse the same format rather than maintaining a second implementation. */
 export function generateTaskId(): string {
   return `t_${randomUUID().replace(/-/g, "")}`;
 }
 
 /**
- * Court-circuite `runTask` quand `input.signal` est déjà déclenché à l'entrée :
- * aucune isolation n'est préparée (pas de worktree git, potentiellement
- * lent), `agentDef.build` n'est pas appelé, et surtout aucun processus n'est
- * lancé. Le résultat reste un `TaskOutcome` valide, visible par
- * `caesar ps`/`caesar logs` comme n'importe quelle autre tâche annulée.
+ * Short-circuits `runTask` when `input.signal` is already triggered at entry:
+ * no isolation is prepared (no git worktree, potentially
+ * slow), `agentDef.build` is not called, and above all no process is
+ * launched. The result remains a valid `TaskOutcome`, visible to
+ * `caesar ps`/`caesar logs` like any other cancelled task.
  */
 async function abortBeforeStart(
   deps: RunnerDeps,
@@ -632,10 +633,10 @@ async function abortBeforeStart(
   depth: number,
 ): Promise<TaskOutcome> {
   const now = new Date().toISOString();
-  // Aucune décision d'isolation réelle n'a été prise puisque `prepareIsolation`
-  // n'a jamais tourné : "auto" n'a pas de sens ici, "inplace" est la valeur la
-  // plus honnête (pas de worktree créé), l'isolation explicitement demandée
-  // sinon.
+  // No real isolation decision was made since `prepareIsolation`
+  // never ran: "auto" makes no sense here, "inplace" is the most
+  // honest value (no worktree created), the explicitly requested isolation
+  // otherwise.
   const isolation: Isolation = input.isolation && input.isolation !== "auto" ? input.isolation : "inplace";
 
   const record: TaskRecord = {
@@ -661,7 +662,7 @@ async function abortBeforeStart(
     protocol: REPORT_PROTOCOL,
     task_id: id,
     status: "failed",
-    summary: "Tâche annulée avant le lancement : le signal d'abandon était déjà déclenché à l'entrée de runTask.",
+    summary: "Task cancelled before launch: the abort signal was already triggered when runTask was entered.",
   });
 
   return { record, report, source: "synthesized" };
@@ -672,12 +673,12 @@ function withFinding(report: Report, finding: Finding): Report {
 }
 
 /**
- * Retire du diff les fichiers que l'orchestrateur a lui-même déposés dans
- * l'arborescence diffée (`plan.files`, p. ex. `opencode.json` — voir C5 de
- * la revue finale). `diff.files[].path` est relatif à `base` (racine du
- * worktree ou workspace réel selon l'isolation) ; `plan.files[].path` est
- * absolu : la comparaison résout donc chaque chemin de diff contre `base`
- * avant de le confronter à l'ensemble des chemins du plan.
+ * Removes from the diff the files the orchestrator itself dropped into
+ * the diffed tree (`plan.files`, e.g. `opencode.json` — see C5 of
+ * the final review). `diff.files[].path` is relative to `base` (worktree
+ * root or real workspace depending on isolation); `plan.files[].path` is
+ * absolute: the comparison therefore resolves each diff path against `base`
+ * before checking it against the set of plan paths.
  */
 function excludePlanFiles(diff: WorktreeDiff, planFiles: readonly { path: string }[], base: string): WorktreeDiff {
   if (planFiles.length === 0) return diff;
@@ -698,51 +699,51 @@ interface IsolationPreparation {
   warning?: string;
   handle?: WorktreeHandle;
   /**
-   * Ce que la matérialisation de l'atelier a posé et écarté (`[worktree]`,
-   * voir `materializeUntracked`), à verser au rapport. Absent hors isolation
-   * worktree, ou quand le projet ne déclare rien.
+   * What the workshop materialization placed and set aside (`[worktree]`,
+   * see `materializeUntracked`), to be added to the report. Absent outside
+   * worktree isolation, or when the project declares nothing.
    */
   materialization?: MaterializeResult;
   /**
-   * Renseigné quand le projet n'a pas de section `[worktree]` mais semble en
-   * avoir besoin (dépendances installées et ignorées par git, détectées par
-   * `detectUntrackedNeeds`). Le worktree est alors vide de tout ce qui
-   * s'exécute, et c'est précisément ce que le rapport doit dire.
+   * Set when the project has no `[worktree]` section but seems to
+   * need one (installed dependencies ignored by git, detected by
+   * `detectUntrackedNeeds`). The worktree is then empty of everything that
+   * runs, and that is precisely what the report must say.
    */
   missingSection?: string;
-  /** Renseigné quand `.caesar/wt/` n'est pas ignoré par git — voir `worktreesDirIgnored`. */
+  /** Set when `.caesar/wt/` is not ignored by git — see `worktreesDirIgnored`. */
   gitignoreWarning?: string;
   /**
-   * Un worktree était-il possible ? Faux hors dépôt git, ou dans un dépôt sans
-   * le moindre commit.
+   * Was a worktree possible? False outside a git repository, or in a
+   * repository without a single commit.
    *
-   * Sert à distinguer les deux `"inplace"`, qui n'engagent pas la même
-   * responsabilité : celui qu'on a **choisi** alors qu'un worktree était à
-   * portée, et celui auquel on s'est **résigné** faute d'alternative. Voir le
-   * verrou d'écriture, dans `runTask`.
+   * Serves to distinguish the two `"inplace"` cases, which do not carry the
+   * same responsibility: the one that was **chosen** while a worktree was
+   * within reach, and the one that was **settled for** absent an alternative.
+   * See the write lock, in `runTask`.
    */
   worktreeWasPossible: boolean;
 }
 
 /**
- * Applique la règle d'isolation `"auto"` (voir le brief de la tâche) puis, si
- * le résultat est `"worktree"`, crée effectivement le worktree.
+ * Applies the `"auto"` isolation rule (see the task brief) then, if
+ * the result is `"worktree"`, actually creates the worktree.
  *
- * Le dernier cas de la table — lecture seule chez un agent dépourvu de mode
- * lecture seule appliqué par son CLI — est délibéré : le worktree jetable
- * transforme une promesse de prompt en garantie constatable.
+ * The last case in the table — read-only with an agent lacking a read-only
+ * mode enforced by its CLI — is deliberate: the disposable worktree
+ * turns a prompt promise into an observable guarantee.
  *
- * C3 de la revue finale : cette transformation était jusqu'ici un défaut de
- * la résolution `"auto"`, pas une contrainte — un `isolation: "inplace"`
- * explicite (argument de `caesar_delegate`, `role.isolation`,
- * `policy.default_isolation`) la défaisait silencieusement, y compris pour
- * le rôle `reviewer` livré par défaut. `mustForceWorktree` en fait une
- * contrainte non contournable : dès qu'un agent en lecture seule sans mode
- * natif tourne dans un dépôt git, l'isolation est forcée sur `"worktree"`
- * quelle que soit la valeur demandée — avec un `warning` explicite dans le
- * rapport quand cela contredit une demande explicite (silencieux seulement
- * quand la demande était déjà `"worktree"` ou `"auto"`, où c'était déjà le
- * résultat attendu).
+ * C3 of the final review: until now this transformation was a default of
+ * the `"auto"` resolution, not a constraint — an explicit
+ * `isolation: "inplace"` (argument of `caesar_delegate`, `role.isolation`,
+ * `policy.default_isolation`) silently undid it, including for
+ * the `reviewer` role shipped by default. `mustForceWorktree` makes it a
+ * non-bypassable constraint: as soon as a read-only agent without a native
+ * mode runs in a git repository, isolation is forced to `"worktree"`
+ * whatever the requested value — with an explicit `warning` in the
+ * report when this contradicts an explicit request (silent only
+ * when the request was already `"worktree"` or `"auto"`, where that was
+ * already the expected result).
  */
 async function prepareIsolation(
   root: string,
@@ -753,34 +754,35 @@ async function prepareIsolation(
   const requested = input.isolation ?? "auto";
   const base = await repoRoot(input.workspace);
 
-  // Un dépôt sans commit est un dépôt : `repoRoot` le résout. Mais aucune
-  // branche n'y est née, `HEAD` ne désigne rien, et il ne peut donc servir de
-  // point de départ à un worktree. Pour l'isolation, il compte comme un
-  // non-dépôt — avec un remède qui, lui, diffère : un premier commit.
+  // A repository without a commit is a repository: `repoRoot` resolves it. But
+  // no branch was born there, `HEAD` points to nothing, and it therefore
+  // cannot serve as the starting point of a worktree. For isolation, it
+  // counts as a non-repository — with a remedy that, for its part, differs: a
+  // first commit.
   const baseUsable = base !== null && (await hasCommits(base));
   const unusable =
     base === null
-      ? `le workspace "${input.workspace}" n'est pas un dépôt git`
-      : `le dépôt "${base}" n'a encore aucun commit : sa branche n'est pas née, "HEAD" ne désigne rien, ` +
-        `et git ne sait pas créer un worktree à partir de rien`;
+      ? `workspace "${input.workspace}" is not a git repository`
+      : `repository "${base}" has no commits yet: its branch is unborn, "HEAD" points to nothing, ` +
+        `and git cannot create a worktree out of nothing`;
   const remedy =
     base === null
-      ? `Initialisez un dépôt ("git init" puis un premier commit) pour isoler le travail, ou demandez explicitement "inplace" en connaissance de cause.`
-      : `Faites un premier commit ("git add -A && git commit -m …", au besoin "git commit --allow-empty -m init"), ou demandez explicitement "inplace" — l'agent travaillera alors directement dans le workspace.`;
+      ? `Initialize a repository ("git init" then a first commit) to isolate the work, or explicitly request "inplace" knowing what that entails.`
+      : `Make a first commit ("git add -A && git commit -m …", if needed "git commit --allow-empty -m init"), or explicitly request "inplace" — the agent will then work directly in the workspace.`;
 
-  // Avant toute décision, et non après : une tâche en écriture n'a pas le
-  // droit de s'exécuter dans l'arbre de travail de l'utilisateur sans opt-in
-  // assumé. Ce point-ci est le seul que *toutes* les façades traversent — y
-  // compris un appel direct à `runTask` qui court-circuiterait
-  // `resolveDelegation`, où le même verdict est déjà rendu, plus tôt et sans
-  // rien laisser sur le disque. `decideInplaceWrite` étant pure, les deux ne
-  // peuvent pas diverger.
+  // Before any decision, not after: a write task has no
+  // right to run in the user's working tree without a deliberate
+  // opt-in. This point is the only one *all* facades go through — including
+  // a direct call to `runTask` that would bypass
+  // `resolveDelegation`, where the same verdict is already rendered, earlier
+  // and without leaving anything on disk. `decideInplaceWrite` being pure,
+  // the two cannot diverge.
   //
-  // On lève au lieu de replier sur `"worktree"` : contrairement à
-  // `mustForceWorktree` juste en dessous — qui *contient* une écriture
-  // interdite — l'écriture est ici légitime et c'est son emplacement qui est
-  // en cause. Déplacer sans le dire les modifications attendues par
-  // l'appelant serait pire que de refuser.
+  // We throw instead of falling back to `"worktree"`: unlike
+  // `mustForceWorktree` just below — which *contains* a forbidden
+  // write — the write here is legitimate and it is its location that is
+  // at issue. Silently relocating the modifications the caller
+  // expects would be worse than refusing.
   const inplaceWrite = decideInplaceWrite({
     requested,
     mode: input.mode,
@@ -789,7 +791,7 @@ async function prepareIsolation(
     ...(base !== null ? { repo: base } : {}),
   });
   if (inplaceWrite.refused) {
-    throw new Error(`Tâche "${taskId}" : ${inplaceWrite.reason} ${inplaceWrite.remedy}`);
+    throw new Error(`Task "${taskId}": ${inplaceWrite.reason} ${inplaceWrite.remedy}`);
   }
 
   const mustForceWorktree = input.mode === "read-only" && !agentDef.capabilities.nativeReadOnly && baseUsable;
@@ -801,8 +803,8 @@ async function prepareIsolation(
     isolation = "worktree";
     if (requested !== "auto") {
       warning =
-        `Isolation "${requested}" demandée pour l'agent "${agentDef.id}" en lecture seule (sans mode natif) : ` +
-        `forcée sur "worktree" pour qu'une écriture éventuelle soit contenue et détectée plutôt que seulement promise par le prompt.`;
+        `Isolation "${requested}" requested for agent "${agentDef.id}" in read-only mode (no native mode): ` +
+        `forced to "worktree" so that any write is contained and detected rather than merely promised by the prompt.`;
     }
   } else if (requested !== "auto") {
     isolation = requested;
@@ -811,17 +813,17 @@ async function prepareIsolation(
       isolation = "worktree";
     } else {
       isolation = "inplace";
-      warning = `Isolation repliée sur "inplace" malgré le mode écriture : ${unusable}. ${remedy}`;
+      warning = `Isolation fell back to "inplace" despite write mode: ${unusable}. ${remedy}`;
     }
   } else if (agentDef.capabilities.nativeReadOnly) {
     isolation = "inplace";
   } else {
-    // mode === "read-only", agent sans mode natif, et mustForceWorktree est
-    // faux : `baseUsable` est donc nécessairement faux ici (sinon la branche
-    // ci-dessus l'aurait déjà pris en charge).
+    // mode === "read-only", agent without a native mode, and mustForceWorktree
+    // is false: `baseUsable` is therefore necessarily false here (otherwise
+    // the branch above would already have handled it).
     isolation = "inplace";
     warning =
-      `Isolation repliée sur "inplace" malgré l'absence de mode lecture seule natif chez "${agentDef.id}" : ${unusable}. ${remedy}`;
+      `Isolation fell back to "inplace" despite "${agentDef.id}" lacking a native read-only mode: ${unusable}. ${remedy}`;
   }
 
   if (isolation !== "worktree") {
@@ -829,43 +831,45 @@ async function prepareIsolation(
   }
 
   if (!baseUsable) {
-    // Le worktree a été demandé explicitement, ou imposé par
-    // `mustForceWorktree` : y renoncer en silence retirerait la garantie même
-    // pour laquelle il était exigé. On refuse, en nommant la cause et l'issue.
+    // The worktree was requested explicitly, or imposed by
+    // `mustForceWorktree`: silently giving up on it would remove the very
+    // guarantee it was required for. We refuse, naming the cause and the way
+    // out.
     throw new Error(
-      `Isolation "worktree" impossible pour la tâche "${taskId}" : ${unusable}. ${remedy}`,
+      `Isolation "worktree" impossible for task "${taskId}": ${unusable}. ${remedy}`,
     );
   }
 
-  // L'étape 0 du skill `superpowers:using-git-worktrees`, que le projet
-  // supposait acquise depuis `caesar init` — un `.gitignore` réécrit à la main
-  // suffit à défaire ce qu'il avait posé.
+  // Step 0 of the `superpowers:using-git-worktrees` skill, which the project
+  // assumed settled since `caesar init` — a hand-rewritten `.gitignore`
+  // is enough to undo what it had set up.
   //
-  // Un constat, pas un refus, et c'est délibéré : vérifié plutôt que supposé,
-  // git n'aspire *pas* le contenu d'un worktree non ignoré. Il le reconnaît
-  // comme un dépôt imbriqué et n'ajoute qu'une seule entrée (un gitlink), en
-  // avertissant lui-même. Le désagrément est réel, la catastrophe non — et
-  // faire échouer une délégation pour une ligne de `.gitignore` manquante
-  // coûterait plus cher que ce qu'elle protège.
+  // A finding, not a refusal, and deliberately so: verified rather than
+  // assumed, git does *not* suck in the contents of a non-ignored worktree.
+  // It recognizes it as a nested repository and adds only a single entry (a
+  // gitlink), warning about it itself. The nuisance is real, the catastrophe
+  // is not — and failing a delegation over a missing `.gitignore` line
+  // would cost more than what it protects.
   const gitignoreWarning = (await worktreesDirIgnored(base, taskId))
     ? undefined
-    : `Le répertoire des worktrees ".caesar/wt/" n'est pas ignoré par git dans "${base}" : un "git add -A" y ajouterait ` +
-      `une entrée de dépôt imbriqué. Ajoutez ".caesar/wt/" au ".gitignore" (ou relancez "caesar init --force", qui le fait).`;
+    : `The worktrees directory ".caesar/wt/" is not ignored by git in "${base}": a "git add -A" would add ` +
+      `a nested-repository entry there. Add ".caesar/wt/" to the ".gitignore" (or rerun "caesar init --force", which does it).`;
 
-  // Nommée pour être lue : dans un atelier, l'utilisateur relit ses branches.
-  // Le rôle quand il y en a un, l'agent sinon — c'est ce qui distingue deux
-  // ateliers ouverts en même temps sur le même objectif.
+  // Named to be read: in a workshop, the user re-reads their branches.
+  // The role when there is one, the agent otherwise — that is what tells
+  // apart two workshops opened at the same time on the same objective.
   const handle = await createWorktree(base, taskId, "HEAD", {
     objective: input.objective,
     label: input.role ?? agentDef.id,
   });
 
-  // L'atelier : le worktree que git vient de créer ne porte que les fichiers
-  // suivis. Ce qui suit y ajoute ce que le projet déclare sous `[worktree]` —
-  // dépendances, `.env`, répertoires ignorés — puis lance son setup. Ici, et
-  // pas ailleurs : avant `writeTask`, avant `agentDef.build`, avant tout
-  // lancement. Un agent qui démarrerait dans un atelier à moitié monté
-  // passerait son budget à réparer une installation au lieu de travailler.
+  // The workshop: the worktree git just created only carries the tracked
+  // files. What follows adds to it what the project declares under
+  // `[worktree]` — dependencies, `.env`, ignored directories — then runs its
+  // setup. Here, and nowhere else: before `writeTask`, before
+  // `agentDef.build`, before any launch. An agent starting in a half-mounted
+  // workshop would spend its budget repairing an installation instead of
+  // working.
   const request = input.worktreeSetup;
   let materialization: MaterializeResult | undefined;
   let missingSection: string | undefined;
@@ -873,39 +877,39 @@ async function prepareIsolation(
     materialization = await materializeUntracked(input.workspace, handle.path, request);
     if (materialization.excluded.length > 0) handle.excluded = materialization.excluded;
   } else {
-    // Aucune section, mais un projet qui en aurait manifestement besoin : le
-    // dire ici plutôt que de laisser l'agent buter sur un `node_modules`
-    // absent. Sans ce constat, un worktree vide ne se manifeste que par une
-    // tâche qui échoue sans raison visible — et la réaction naturelle est de
-    // renoncer à l'isolation, pas de compléter la configuration.
+    // No section, but a project that would obviously need one: say it
+    // here rather than let the agent trip over a missing
+    // `node_modules`. Without this finding, an empty worktree only shows up
+    // as a task that fails for no visible reason — and the natural reaction
+    // is to give up on isolation, not to fill in the configuration.
     const detected = await detectUntrackedNeeds(input.workspace);
     if (detected && detected.copy.length > 0) {
       missingSection =
-        `Le worktree ne contient que les fichiers suivis par git. Ce projet semble avoir besoin d'y emporter ` +
-        `${detected.copy.join(", ")} — sans quoi rien ne s'y installe ni ne s'y lance. Déclarez-les sous [worktree] ` +
-        `dans ".caesar/config.toml" (clé "copy"${detected.setup.length > 0 ? `, et "setup" pour ${detected.setup.join(" ; ")}` : ""}), ` +
-        `ou relancez "caesar init --force" qui les détectera.`;
+        `The worktree only contains the files tracked by git. This project seems to need to bring along ` +
+        `${detected.copy.join(", ")} — without which nothing installs or runs there. Declare them under [worktree] ` +
+        `in ".caesar/config.toml" (key "copy"${detected.setup.length > 0 ? `, and "setup" for ${detected.setup.join(" ; ")}` : ""}), ` +
+        `or rerun "caesar init --force", which will detect them.`;
     }
   }
 
   if (request && request.setup.length > 0) {
     const setup = await runSetup(handle.path, request.setup, input.signal);
     if (setup.failure) {
-      // Échec franc, avec la sortie collée : le motif doit suffire à
-      // comprendre sans avoir à relancer la commande à la main.
+      // Outright failure, with the output attached: the message must be
+      // enough to understand without rerunning the command by hand.
       throw new Error(
-        `Tâche "${taskId}" : la commande de préparation du worktree a échoué — "${setup.failure.command}" ` +
-          `(code ${setup.failure.exitCode ?? "inconnu"}).\n${setup.failure.output}\n` +
-          `Corrigez la commande sous [worktree] setup dans ".caesar/config.toml", ou retirez-la.`,
+        `Task "${taskId}": the worktree setup command failed — "${setup.failure.command}" ` +
+          `(code ${setup.failure.exitCode ?? "unknown"}).\n${setup.failure.output}\n` +
+          `Fix the command under [worktree] setup in ".caesar/config.toml", or remove it.`,
       );
     }
   }
 
-  // `warning` peut être défini ici : voir C3 de la revue finale, le cas où
-  // `mustForceWorktree` contredit une isolation explicitement demandée. Sans
-  // le propager, ce dernier `return` — seul chemin de sortie une fois
-  // `isolation === "worktree"` — le perdrait silencieusement, quand bien
-  // même le rapport doit en porter la trace (`withFinding`, plus haut dans
+  // `warning` may be defined here: see C3 of the final review, the case where
+  // `mustForceWorktree` contradicts an explicitly requested isolation. Without
+  // propagating it, this last `return` — the only exit path once
+  // `isolation === "worktree"` — would silently lose it, even though
+  // the report must carry a trace of it (`withFinding`, higher up in
   // `runTask`).
   return {
     isolation,

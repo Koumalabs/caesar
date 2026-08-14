@@ -17,22 +17,22 @@ function decide(
   return decideInplaceWrite({ requested, mode, repoUsable, allowed, ...extra });
 }
 
-describe("decideInplaceWrite — la seule combinaison refusée", () => {
-  it("refuse « inplace » en écriture dans un dépôt utilisable sans opt-in", () => {
-    // Le cas constaté en production : trois tâches `implementer` déléguées avec
-    // `isolation: "inplace"` ont écrit sur la branche de travail de
-    // l'utilisateur, en silence.
+describe("decideInplaceWrite — the only refused combination", () => {
+  it('refuses "inplace" in write mode in a usable repository without opt-in', () => {
+    // The case observed in production: three `implementer` tasks delegated with
+    // `isolation: "inplace"` wrote onto the user's working branch,
+    // silently.
     const decision = decide("inplace", "write", true, false, { source: "explicit", repo: "/w/support" });
     expect(decision.refused).toBe(true);
-    if (!decision.refused) throw new Error("attendu refusé");
-    expect(decision.reason).toContain("demandée explicitement");
+    if (!decision.refused) throw new Error("expected refused");
+    expect(decision.reason).toContain("explicitly requested");
     expect(decision.reason).toContain("/w/support");
     expect(decision.remedy).toContain("worktree");
     expect(decision.remedy).toContain("allow_inplace_write");
   });
 
-  it("n'accepte aucune autre combinaison comme motif de refus", () => {
-    // La table exhaustive : 3 × 2 × 2 × 2 = 24 cas, une seule case refusée.
+  it("accepts no other combination as grounds for refusal", () => {
+    // The exhaustive table: 3 × 2 × 2 × 2 = 24 cases, a single refused cell.
     let refusals = 0;
     for (const requested of REQUESTS) {
       for (const mode of MODES) {
@@ -50,54 +50,54 @@ describe("decideInplaceWrite — la seule combinaison refusée", () => {
   });
 });
 
-describe("decideInplaceWrite — les gardes, une par une", () => {
-  it("laisse passer « auto » : la décision revient à prepareIsolation, qui choisit déjà le worktree", () => {
+describe("decideInplaceWrite — the guards, one by one", () => {
+  it('lets "auto" through: the decision belongs to prepareIsolation, which already chooses the worktree', () => {
     expect(decide("auto", "write", true, false)).toEqual({ refused: false });
   });
 
-  it("laisse passer la lecture seule : c'est mustForceWorktree qui la gouverne", () => {
+  it("lets read-only mode through: mustForceWorktree governs it", () => {
     expect(decide("inplace", "read-only", true, false)).toEqual({ refused: false });
   });
 
-  it("laisse passer hors dépôt utilisable : refuser rendrait caesar inutilisable sur un projet non versionné", () => {
-    // Sans dépôt (ou sans le moindre commit), aucun worktree n'est créable :
-    // un refus n'offrirait aucune issue.
+  it("lets through outside a usable repository: refusing would make caesar unusable on an unversioned project", () => {
+    // Without a repository (or without a single commit), no worktree is
+    // creatable: a refusal would offer no way out.
     expect(decide("inplace", "write", false, false)).toEqual({ refused: false });
   });
 
-  it("laisse passer sous opt-in assumé", () => {
+  it("lets through under an assumed opt-in", () => {
     expect(decide("inplace", "write", true, true)).toEqual({ refused: false });
   });
 });
 
-describe("decideInplaceWrite — le motif envoie corriger le bon fichier", () => {
-  it("nomme le rôle quand la valeur en vient", () => {
+describe("decideInplaceWrite — the reason sends you to fix the right file", () => {
+  it("names the role when the value comes from it", () => {
     const decision = decide("inplace", "write", true, false, { source: "role", roleName: "implementer" });
-    if (!decision.refused) throw new Error("attendu refusé");
-    expect(decision.reason).toContain('rôle "implementer"');
+    if (!decision.refused) throw new Error("expected refused");
+    expect(decision.reason).toContain('role "implementer"');
   });
 
-  it("nomme la politique quand la valeur en vient", () => {
+  it("names the policy when the value comes from it", () => {
     const decision = decide("inplace", "write", true, false, { source: "policy" });
-    if (!decision.refused) throw new Error("attendu refusé");
+    if (!decision.refused) throw new Error("expected refused");
     expect(decision.reason).toContain("default_isolation");
   });
 
-  it("reste lisible sans provenance ni dépôt — un appel direct à runTask n'en fournit pas", () => {
+  it("stays readable without provenance or repository — a direct call to runTask provides neither", () => {
     const decision = decide("inplace", "write", true, false);
-    if (!decision.refused) throw new Error("attendu refusé");
-    expect(decision.reason).toContain("refusée");
+    if (!decision.refused) throw new Error("expected refused");
+    expect(decision.reason).toContain("refused");
     expect(decision.reason).not.toContain("undefined");
     expect(decision.remedy).not.toContain("undefined");
   });
 
-  it("rend toujours un motif et un remède non vides, quelle que soit la provenance", () => {
+  it("always returns a non-empty reason and remedy, whatever the provenance", () => {
     for (const source of SOURCES) {
       const decision = decide("inplace", "write", true, false, { source });
-      if (!decision.refused) throw new Error("attendu refusé");
+      if (!decision.refused) throw new Error("expected refused");
       expect(decision.reason.length).toBeGreaterThan(0);
       expect(decision.remedy.length).toBeGreaterThan(0);
-      // Le remède doit toujours désigner l'issue praticable avant l'opt-in.
+      // The remedy must always name the practicable way out before the opt-in.
       expect(decision.remedy).toContain("[worktree]");
     }
   });

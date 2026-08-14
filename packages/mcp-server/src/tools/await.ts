@@ -1,12 +1,13 @@
 /**
- * `caesar_await` : attend un ou plusieurs `taskId` lancés par `caesar_delegate`,
- * et rend le rapport normalisé de chacun — voir le brief de la tâche 7.
+ * `caesar_await`: waits for one or more `taskId`s started by
+ * `caesar_delegate`, and returns each one's normalized report — see the
+ * task 7 brief.
  *
- * N'attend jamais indéfiniment : passé `timeout_ms`, les tâches encore en
- * cours sont rendues telles quelles (`pending: true`), plutôt que de bloquer
- * l'appelant. Un second `caesar_await` avec les mêmes identifiants reprend
- * l'attente là où elle s'est arrêtée — la promesse de la session, elle,
- * continue de courir en arrière-plan entre-temps.
+ * Never waits indefinitely: once `timeout_ms` has elapsed, tasks still
+ * running are returned as-is (`pending: true`) rather than blocking the
+ * caller. A second `caesar_await` with the same ids resumes the wait where
+ * it left off — the session's promise, for its part, keeps running in the
+ * background in the meantime.
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -21,7 +22,7 @@ import { summarizeReport } from "./report-summary.js";
 
 export const CAESAR_AWAIT = "caesar_await";
 
-/** Défaut raisonnable : assez court pour rester réactif, assez long pour couvrir la plupart des tâches courtes. */
+/** Reasonable default: short enough to stay responsive, long enough to cover most short tasks. */
 const DEFAULT_AWAIT_TIMEOUT_MS = 30_000;
 
 export const caesarAwaitDescription =
@@ -53,20 +54,20 @@ export const caesarAwaitInputShape = {
 const CaesarAwaitInputSchema = z.object(caesarAwaitInputShape);
 export type CaesarAwaitInput = z.infer<typeof CaesarAwaitInputSchema>;
 
-/** Sentinelle distinguable de toute valeur métier (y compris `undefined`) que `Promise.resolve` pourrait produire. */
+/** Sentinel distinguishable from any domain value (including `undefined`) that `Promise.resolve` could produce. */
 const TIMED_OUT = Symbol("caesar_await:timed_out");
 
 function raceTimeout<T>(promise: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(TIMED_OUT), ms);
-    // Ne doit jamais empêcher le processus de se terminer si, par ailleurs,
-    // plus rien ne le retient — un `caesar_await` en cours n'est pas une raison
-    // de bloquer un arrêt propre du serveur.
+    // Must never keep the process from exiting if nothing else is holding it
+    // up — a `caesar_await` in flight is no reason to block a clean server
+    // shutdown.
     timer.unref?.();
-    // `promise` (celle conservée dans la session) ne rejette jamais par
-    // construction — voir `session.ts` — mais on s'en protège tout de même :
-    // un rejet ne doit jamais transformer une simple expiration en exception
-    // qui remonterait jusqu'au tool.
+    // `promise` (the one kept in the session) never rejects by construction
+    // — see `session.ts` — but we guard against it anyway: a rejection must
+    // never turn a mere expiry into an exception that would bubble up to
+    // the tool.
     promise.then(
       (value) => {
         clearTimeout(timer);
@@ -92,19 +93,20 @@ function outcomeToResult(taskId: string, outcome: TaskOutcome): Record<string, u
 }
 
 /**
- * Repli quand `taskId` est inconnu de la session en cours (tâche lancée par
- * un autre processus — un précédent serveur MCP, ou `caesar run`). Le rapport,
- * s'il existe, vient du fichier laissé par l'agent (palier "fichier") : il
- * n'est pas recoupé avec git ici, faute de reconstituer un `WorktreeHandle`
- * pour ce seul usage — limite documentée plutôt que rapprochée en silence.
+ * Fallback when `taskId` is unknown to the current session (task started by
+ * another process — a previous MCP server, or `caesar run`). The report, if
+ * it exists, comes from the file the agent left behind (the "file" tier):
+ * it is not reconciled with git here, short of rebuilding a
+ * `WorktreeHandle` for this sole purpose — a documented limitation rather
+ * than silently papered over.
  */
 async function describeFromStore(record: TaskRecord): Promise<Record<string, unknown>> {
   const base = { task_id: record.id, status: record.status, agent: record.agent, role: record.role };
   if (record.status === "pending" || record.status === "running") {
-    // Une tâche encore en cours n'est pas juste "pending" : si son sous-agent
-    // attend une réponse via ask_orchestrator, il faut le dire — et dire quoi
-    // — plutôt que de la rendre indiscernable d'une tâche qui travaille
-    // simplement encore (voir le brief de la tâche 9).
+    // A task still in flight is not just "pending": if its subagent is
+    // waiting on an answer via ask_orchestrator, that must be said — and
+    // what it asked — rather than leaving it indistinguishable from a task
+    // simply still working (see the task 9 brief).
     const pendingQuestions = await listPendingQuestions(taskPaths(record.task_dir).dir);
     return { ...base, pending: true, pending_questions: pendingQuestions };
   }
@@ -115,11 +117,11 @@ async function describeFromStore(record: TaskRecord): Promise<Record<string, unk
 async function awaitOne(session: McpSession, taskId: string, timeoutMs: number): Promise<Record<string, unknown>> {
   const entry = session.tasks.get(taskId);
   if (!entry) {
-    // Tâche d'un autre processus. S'il a été tué sans conclure, son
-    // enregistrement dit encore "running" : le rendre `pending: true`
-    // reviendrait à conseiller d'attendre une tâche que plus personne ne
-    // conduit, indéfiniment. Le balayage n'agit que sur la preuve que le
-    // processus a disparu — voir `sweepAbandonedTasks`.
+    // Task from another process. If it was killed without concluding, its
+    // record still says "running": returning it as `pending: true` would
+    // amount to advising the caller to wait, indefinitely, on a task nobody
+    // is driving anymore. The sweep only acts on proof that the process has
+    // disappeared — see `sweepAbandonedTasks`.
     await sweepAbandonedTasks(session.root, session.store);
     const record = await session.store.get(taskId);
     if (!record) return { task_id: taskId, status: "unknown" };

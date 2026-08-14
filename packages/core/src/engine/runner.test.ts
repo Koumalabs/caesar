@@ -13,14 +13,14 @@ import { createQueue } from "./queue.js";
 const execFileAsync = promisify(execFile);
 
 /**
- * Remplace le registre fixe (les cinq agents réels) par une version qui sait
- * en plus résoudre `"fake-agent"` / `"fake-agent-native-ro"` vers l'agent
- * factice de test, construit avec `createGenericAgent` — exactement comme le
- * brief le demande ("il se déclare au registre via GenericAgentSpec").
+ * Replaces the fixed registry (the five real agents) with a version that can
+ * additionally resolve `"fake-agent"` / `"fake-agent-native-ro"` to the test
+ * fake agent, built with `createGenericAgent` — exactly as the
+ * brief asks ("it declares itself to the registry via GenericAgentSpec").
  *
- * Le registre lui-même (`../registry/index.ts`) n'est pas modifié : task 3
- * l'a livré et testé, ce module se contente de le consommer, y compris dans
- * ce contournement de test.
+ * The registry itself (`../registry/index.ts`) is not modified: task 3
+ * shipped and tested it, this module merely consumes it, including in
+ * this test workaround.
  */
 vi.mock("../registry/index.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../registry/index.js")>();
@@ -46,12 +46,12 @@ vi.mock("../registry/index.js", async (importOriginal) => {
     args: [fakeAgentPath, "{{prompt}}"],
     capabilities: { finalMessageFile: true },
   });
-  // `mcpInjection: "flag"` : un agent qui sait charger un serveur MCP par
-  // ligne de commande — condition nécessaire pour que le runner construise
-  // un `Channel` (tâche 9). `createGenericAgent` ne sait pas injecter la
-  // configuration MCP lui-même (ce n'est pas un des cinq adaptateurs réels) ;
-  // seul `task.channel`, lu directement depuis `task.json`, importe ici —
-  // c'est ce que fait le nouveau mode "ask" de l'agent factice.
+  // `mcpInjection: "flag"`: an agent that can load an MCP server from the
+  // command line — a necessary condition for the runner to build a
+  // `Channel` (task 9). `createGenericAgent` does not know how to inject the
+  // MCP configuration itself (it is not one of the five real adapters);
+  // only `task.channel`, read directly from `task.json`, matters here —
+  // that is what the fake agent's new "ask" mode does.
   const fakeAgentChannelDefinition = createGenericAgent({
     id: "fake-agent-channel",
     bin: process.execPath,
@@ -72,22 +72,22 @@ vi.mock("../registry/index.js", async (importOriginal) => {
 });
 
 /**
- * `vi.hoisted` : un état mutable sûr à référencer depuis l'intérieur d'un
- * `vi.mock` hissé au-dessus de tout le reste du fichier (voir la doc
- * vitest) — un simple `let` déclaré ici serait lu avant son initialisation
- * (TDZ), puisque le mock qui le capture peut s'exécuter dès la résolution
- * des imports hissés, avant que ce module n'ait fini de s'évaluer.
+ * `vi.hoisted`: mutable state safe to reference from inside a
+ * `vi.mock` hoisted above everything else in the file (see the vitest
+ * docs) — a plain `let` declared here would be read before its
+ * initialization (TDZ), since the mock that captures it can run as soon as
+ * the hoisted imports resolve, before this module has finished evaluating.
  */
 const channelResolutionFailure = vi.hoisted(() => ({ active: false }));
 
 /**
- * Simule l'échec de résolution du binaire du canal retour (`resolveChannelEntry`,
- * `runner.ts`) sans toucher au vrai système de modules ni à l'installation
- * réelle de `@caesar/mcp-channel` : seule `require.resolve("@caesar/mcp-channel")`
- * est interceptée, et seulement quand `channelResolutionFailure.active` est
- * vrai (activé le temps d'un seul test ci-dessous) — tout le reste de ce
- * fichier continue de résoudre normalement, y compris les tests "canal
- * retour" qui précèdent celui-ci et qui ont besoin d'une résolution réussie.
+ * Simulates a failure to resolve the return channel binary (`resolveChannelEntry`,
+ * `runner.ts`) without touching the real module system or the actual
+ * installation of `@caesar/mcp-channel`: only `require.resolve("@caesar/mcp-channel")`
+ * is intercepted, and only while `channelResolutionFailure.active` is
+ * true (enabled for the duration of a single test below) — everything else in
+ * this file keeps resolving normally, including the "return channel" tests
+ * that precede this one and that need a successful resolution.
  */
 vi.mock("node:module", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:module")>();
@@ -100,7 +100,7 @@ vi.mock("node:module", async (importOriginal) => {
           if (prop === "resolve") {
             return (id: string, options?: { paths?: string[] | null }) => {
               if (id === "@caesar/mcp-channel" && channelResolutionFailure.active) {
-                throw new Error("résolution simulée en échec, pour le test de dégradation (tâche 9)");
+                throw new Error("simulated failed resolution, for the degradation test (task 9)");
               }
               return target.resolve(id, options);
             };
@@ -123,17 +123,17 @@ async function initGitRepo(root: string): Promise<void> {
   await git(root, ["init", "-q"]);
   await git(root, ["config", "user.email", "caesar-test@example.com"]);
   await git(root, ["config", "user.name", "Caesar Test"]);
-  // Ce que `caesar init` inscrit dans tout projet réel. Sans cette ligne, chaque
-  // tâche isolée porterait le constat « Worktrees non ignorés par git » —
-  // vrai, mais hors sujet pour les tests qui suivent. Le constat lui-même est
-  // vérifié par `initGitRepoWithoutIgnore`, plus bas.
+  // What `caesar init` writes into every real project. Without this line, each
+  // isolated task would carry the "Worktrees not ignored by git" finding —
+  // true, but off topic for the tests that follow. The finding itself is
+  // checked by `initGitRepoWithoutIgnore`, below.
   await writeFile(join(root, ".gitignore"), ".caesar/wt/\n", "utf8");
   await writeFile(join(root, "a.txt"), "hello\n", "utf8");
   await git(root, ["add", "-A"]);
   await git(root, ["commit", "-q", "-m", "init"]);
 }
 
-/** Le même dépôt, mais sans la ligne que `caesar init` pose — pour le constat d'étape 0. */
+/** The same repository, but without the line `caesar init` writes — for the step-0 finding. */
 async function initGitRepoWithoutIgnore(root: string): Promise<void> {
   await git(root, ["init", "-q"]);
   await git(root, ["config", "user.email", "caesar-test@example.com"]);
@@ -144,10 +144,10 @@ async function initGitRepoWithoutIgnore(root: string): Promise<void> {
 }
 
 /**
- * Un dépôt git tout juste initialisé, sans le moindre commit : sa branche
- * n'est pas née et `HEAD` ne désigne rien. `repoRoot` le résout comme n'importe
- * quel dépôt — c'est précisément ce qui rend le cas distinct du « pas un dépôt
- * git » testé juste à côté.
+ * A freshly initialized git repository, without a single commit: its branch
+ * is unborn and `HEAD` points to nothing. `repoRoot` resolves it like any
+ * other repository — that is precisely what makes this case distinct from
+ * the "not a git repository" case tested right next to it.
  */
 async function initGitRepoWithoutCommit(root: string): Promise<void> {
   await git(root, ["init", "-q"]);
@@ -168,26 +168,26 @@ describe("runTask", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  describe("règle d'isolation \"auto\"", () => {
-    it("write + dépôt git → worktree", async () => {
+  describe('"auto" isolation rule', () => {
+    it("write + git repository → worktree", async () => {
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root, queue: createQueue(2) },
-        { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root },
+        { agentId: "fake-agent", objective: "write", mode: "write", workspace: root },
       );
 
       expect(outcome.record.isolation).toBe("worktree");
-      // Nommée pour être lue : rôle ou agent, objectif, puis les huit
-      // premiers caractères de l'identifiant pour l'unicité. Le répertoire,
-      // lui, reste `.caesar/wt/<taskId>` — c'est la clé du store.
-      expect(outcome.record.branch).toBe(`caesar/fake-agent/ecrire-${outcome.record.id.replace("t_", "").slice(0, 8)}`);
+      // Named to be read: role or agent, objective, then the first eight
+      // characters of the identifier for uniqueness. The directory,
+      // for its part, remains `.caesar/wt/<taskId>` — it is the store key.
+      expect(outcome.record.branch).toBe(`caesar/fake-agent/write-${outcome.record.id.replace("t_", "").slice(0, 8)}`);
       expect(outcome.record.workspace).toBe(join(root, ".caesar", "wt", outcome.record.id));
       expect(outcome.record.status).toBe("succeeded");
       expect(outcome.report.status).toBe("success");
       expect(outcome.report.findings).toEqual([]);
     });
 
-    it("protège le worktree contre gc avant que son enregistrement running soit publié", async () => {
+    it("protects the worktree against gc before its running record is published", async () => {
       await initGitRepo(root);
       let releaseCreate!: () => void;
       let notifyCreate!: () => void;
@@ -211,9 +211,9 @@ describe("runTask", () => {
       const running = runTask(
         { store: delayedStore, root },
         {
-          taskId: "t_demarrage_concurrent",
+          taskId: "t_concurrent_startup",
           agentId: "fake-agent",
-          objective: "démarrer pendant gc",
+          objective: "start during gc",
           mode: "write",
           isolation: "worktree",
           workspace: root,
@@ -225,9 +225,9 @@ describe("runTask", () => {
         runTask(
           { store, root },
           {
-            taskId: "t_demarrage_concurrent",
+            taskId: "t_concurrent_startup",
             agentId: "fake-agent",
-            objective: "démarrage concurrent avec le même identifiant",
+            objective: "concurrent startup with the same identifier",
             mode: "write",
             isolation: "worktree",
             workspace: root,
@@ -237,7 +237,7 @@ describe("runTask", () => {
 
       const duringStartup = await garbageCollectWorktrees(root, { force: true });
       expect(duringStartup.entries).toEqual([
-        expect.objectContaining({ id: "t_demarrage_concurrent", action: "kept", reason: "active", orphan: true }),
+        expect.objectContaining({ id: "t_concurrent_startup", action: "kept", reason: "active", orphan: true }),
       ]);
 
       releaseCreate();
@@ -246,14 +246,14 @@ describe("runTask", () => {
 
       const afterCompletion = await garbageCollectWorktrees(root);
       expect(afterCompletion.entries).toEqual([
-        expect.objectContaining({ id: "t_demarrage_concurrent", action: "removed", reason: "clean", orphan: false }),
+        expect.objectContaining({ id: "t_concurrent_startup", action: "removed", reason: "clean", orphan: false }),
       ]);
     });
 
-    it("write + workspace hors dépôt git → inplace, avec un constat d'isolation dégradée", async () => {
+    it("write + workspace outside a git repository → inplace, with a degraded-isolation finding", async () => {
       const outcome = await runTask(
         { store, root, queue: createQueue(2) },
-        { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root },
+        { agentId: "fake-agent", objective: "write", mode: "write", workspace: root },
       );
 
       expect(outcome.record.isolation).toBe("inplace");
@@ -262,31 +262,32 @@ describe("runTask", () => {
       expect(outcome.report.findings).toEqual([expect.objectContaining({ severity: "low" })]);
     });
 
-    it("lecture seule + mode natif appliqué par le CLI → inplace, avec un diff constaté par git status (C2 de la revue finale)", async () => {
+    it("read-only + native mode enforced by the CLI → inplace, with a diff observed via git status (C2 of the final review)", async () => {
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent-native-ro", objective: "lire", mode: "read-only", workspace: root },
+        { agentId: "fake-agent-native-ro", objective: "read", mode: "read-only", workspace: root },
       );
 
       expect(outcome.record.isolation).toBe("inplace");
       expect(outcome.record.workspace).toBe(root);
-      // Avant C2 de la revue finale, `outcome.diff` restait `undefined` en
-      // isolation "inplace" — aucun recoupement n'y était jamais tenté,
-      // c'était précisément le trou que "le diff git fait foi" promettait de
-      // ne jamais avoir. `diffWorkspaceStatus` (git status avant/après,
-      // `worktree.ts`) comble ce trou dès qu'un dépôt git est disponible :
-      // ici l'agent n'a rien écrit, le diff est donc défini mais vide.
+      // Before C2 of the final review, `outcome.diff` remained `undefined` in
+      // "inplace" isolation — no reconciliation was ever attempted there,
+      // which was precisely the gap "the git diff is the source of truth"
+      // promised never to have. `diffWorkspaceStatus` (git status
+      // before/after, `worktree.ts`) fills that gap as soon as a git
+      // repository is available: here the agent wrote nothing, so the diff is
+      // defined but empty.
       expect(outcome.diff).toBeDefined();
       expect(outcome.diff!.isEmpty).toBe(true);
       expect(outcome.record.changes_verified_by).toBe("git");
     });
 
-    it("lecture seule + agent sans mode natif → worktree forcé", async () => {
+    it("read-only + agent without a native mode → worktree forced", async () => {
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent", objective: "lire", mode: "read-only", workspace: root },
+        { agentId: "fake-agent", objective: "read", mode: "read-only", workspace: root },
       );
 
       expect(outcome.record.isolation).toBe("worktree");
@@ -294,70 +295,71 @@ describe("runTask", () => {
       expect(outcome.diff!.isEmpty).toBe(true);
     });
 
-    it("worktree demandé explicitement hors dépôt git : échoue clairement plutôt que de dégrader silencieusement", async () => {
+    it("worktree explicitly requested outside a git repository: fails clearly rather than degrading silently", async () => {
       await expect(
         runTask(
           { store, root },
-          { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "worktree" },
+          { agentId: "fake-agent", objective: "write", mode: "write", workspace: root, isolation: "worktree" },
         ),
-      ).rejects.toThrow(/dépôt git/);
+      ).rejects.toThrow(/git repository/);
     });
 
-    it("worktree demandé sur un dépôt sans commit : l'erreur nomme la cause et le remède, pas HEAD", async () => {
-      // Constaté à l'usage sur un dépôt fraîchement initialisé : la commande
-      // échouait sur le message brut de git, « Command failed: git worktree
-      // add … HEAD / fatal: invalid reference: HEAD », qui ne dit ni pourquoi
-      // ni quoi faire. `repoRoot` réussit ici — c'est bien un dépôt —, seul
-      // le point de départ manque.
+    it("worktree requested on a repository without a commit: the error names the cause and the remedy, not HEAD", async () => {
+      // Observed in practice on a freshly initialized repository: the command
+      // failed with git's raw message, "Command failed: git worktree
+      // add … HEAD / fatal: invalid reference: HEAD", which says neither why
+      // nor what to do. `repoRoot` succeeds here — it really is a repository —,
+      // only the starting point is missing.
       await initGitRepoWithoutCommit(root);
       await expect(
         runTask(
           { store, root },
-          { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "worktree" },
+          { agentId: "fake-agent", objective: "write", mode: "write", workspace: root, isolation: "worktree" },
         ),
-      ).rejects.toThrow(/aucun commit[\s\S]*premier commit/);
+      ).rejects.toThrow(/no commits[\s\S]*first commit/);
     });
 
-    it("write + \"auto\" sur un dépôt sans commit → inplace, avec un constat qui explique le repli", async () => {
+    it('write + "auto" on a repository without a commit → inplace, with a finding explaining the fallback', async () => {
       await initGitRepoWithoutCommit(root);
       const outcome = await runTask(
         { store, root, queue: createQueue(2) },
-        { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root },
+        { agentId: "fake-agent", objective: "write", mode: "write", workspace: root },
       );
 
       expect(outcome.record.isolation).toBe("inplace");
       expect(outcome.record.branch).toBeUndefined();
       expect(outcome.report.findings).toEqual([
-        expect.objectContaining({ severity: "low", detail: expect.stringMatching(/aucun commit/) }),
+        expect.objectContaining({ severity: "low", detail: expect.stringMatching(/no commits/) }),
       ]);
     });
 
-    it("lecture seule sans mode natif sur un dépôt sans commit → inplace, le constat disant que la garantie manque et pourquoi", async () => {
-      // Même traitement que le cas jumeau « workspace hors dépôt git » : le
-      // worktree que `mustForceWorktree` impose d'ordinaire est ici hors
-      // d'atteinte, et la tâche se poursuit sans lui. Ce qui compte alors est
-      // que le rapport porte la trace de la garantie manquante, et sa cause.
+    it("read-only without a native mode on a repository without a commit → inplace, the finding saying the guarantee is missing and why", async () => {
+      // Same treatment as the twin "workspace outside a git repository" case:
+      // the worktree that `mustForceWorktree` normally imposes is out of
+      // reach here, and the task proceeds without it. What matters then is
+      // that the report carries a trace of the missing guarantee, and its
+      // cause.
       await initGitRepoWithoutCommit(root);
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent", objective: "lire", mode: "read-only", workspace: root },
+        { agentId: "fake-agent", objective: "read", mode: "read-only", workspace: root },
       );
 
       expect(outcome.record.isolation).toBe("inplace");
       expect(outcome.report.findings).toEqual([
-        expect.objectContaining({ detail: expect.stringMatching(/aucun commit[\s\S]*premier commit/) }),
+        expect.objectContaining({ detail: expect.stringMatching(/no commits[\s\S]*first commit/) }),
       ]);
     });
   });
 
   /**
-   * L'atelier, de bout en bout : le worktree que git crée ne porte que les
-   * fichiers suivis, et c'est ce qui rendait l'isolation inexploitable sur un
-   * projet réel — donc contournée. Ces tests vérifient qu'un sous-agent y
-   * trouve ce dont il a besoin, et que ce que l'orchestrateur y a posé ne
-   * ressort ni dans le diff, ni dans `caesar apply`.
+   * The workshop, end to end: the worktree git creates only carries the
+   * tracked files, and that is what made isolation unusable on a real
+   * project — hence bypassed. These tests verify that a sub-agent finds
+   * there what it needs, and that what the orchestrator placed there shows
+   * up neither in the diff, nor in `caesar apply`.
    */
-  describe("l'atelier ([worktree])", () => {
+  describe("the workshop ([worktree])", () => {
     async function seedIgnored(): Promise<void> {
       await writeFile(join(root, ".gitignore"), "node_modules/\n.env\n", "utf8");
       await git(root, ["add", ".gitignore"]);
@@ -367,7 +369,7 @@ describe("runTask", () => {
       await writeFile(join(root, ".env"), "SECRET=1\n", "utf8");
     }
 
-    it("livre au sous-agent un worktree contenant ses dépendances", async () => {
+    it("delivers the sub-agent a worktree containing its dependencies", async () => {
       await initGitRepo(root);
       await seedIgnored();
 
@@ -375,7 +377,7 @@ describe("runTask", () => {
         { store, root },
         {
           agentId: "fake-agent",
-          objective: "travailler",
+          objective: "work",
           mode: "write",
           workspace: root,
           worktreeSetup: { copy: ["node_modules", ".env"], link: [], setup: [] },
@@ -388,10 +390,10 @@ describe("runTask", () => {
       expect(await readFile(join(workspace, ".env"), "utf8")).toBe("SECRET=1\n");
     });
 
-    it("ce que l'orchestrateur a posé ne ressort pas comme travail de l'agent", async () => {
-      // Sans exclusion, un `.env` recopié redeviendrait applicable au dépôt
-      // principal par `caesar apply` — l'orchestrateur reprocherait à l'agent ce
-      // qu'il a lui-même déposé.
+    it("what the orchestrator placed does not show up as the agent's work", async () => {
+      // Without exclusion, a copied `.env` would become applicable to the main
+      // repository again via `caesar apply` — the orchestrator would blame the
+      // agent for what it deposited itself.
       await initGitRepo(root);
       await seedIgnored();
 
@@ -399,70 +401,70 @@ describe("runTask", () => {
         { store, root },
         {
           agentId: "fake-agent",
-          objective: "écrire un fichier",
+          objective: "write a file",
           mode: "write",
           workspace: root,
           worktreeSetup: { copy: ["node_modules", ".env"], link: [], setup: [] },
-          context: JSON.stringify({ files: [{ path: "vrai-travail.txt", content: "de l'agent" }] }),
+          context: JSON.stringify({ files: [{ path: "real-work.txt", content: "from the agent" }] }),
         },
       );
 
       expect(outcome.record.excluded_paths).toEqual(["node_modules", ".env"]);
       const paths = outcome.diff!.files.map((f) => f.path);
-      expect(paths).toContain("vrai-travail.txt");
+      expect(paths).toContain("real-work.txt");
       expect(paths).not.toContain(".env");
       expect(paths.some((p) => p.startsWith("node_modules"))).toBe(false);
     });
 
-    it("lance les commandes de setup dans le worktree avant l'agent", async () => {
+    it("runs the setup commands in the worktree before the agent", async () => {
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
         {
           agentId: "fake-agent",
-          objective: "travailler",
+          objective: "work",
           mode: "write",
           workspace: root,
-          worktreeSetup: { copy: [], link: [], setup: ["echo monté > .preparation"] },
+          worktreeSetup: { copy: [], link: [], setup: ["echo mounted > .preparation"] },
         },
       );
 
-      expect((await readFile(join(outcome.record.workspace, ".preparation"), "utf8")).trim()).toBe("monté");
+      expect((await readFile(join(outcome.record.workspace, ".preparation"), "utf8")).trim()).toBe("mounted");
     });
 
-    it("un setup en échec fait échouer la tâche, avec la sortie collée", async () => {
-      // Mieux vaut ne pas démarrer qu'ouvrir à l'agent un atelier à moitié
-      // monté, où il passerait son budget à réparer une installation.
+    it("a failing setup fails the task, with the output attached", async () => {
+      // Better not to start than to open for the agent a half-mounted
+      // workshop, where it would spend its budget repairing an installation.
       await initGitRepo(root);
       await expect(
         runTask(
           { store, root },
           {
             agentId: "fake-agent",
-            objective: "travailler",
+            objective: "work",
             mode: "write",
             workspace: root,
-            worktreeSetup: { copy: [], link: [], setup: ["echo 'dépendance introuvable' >&2; exit 1"] },
+            worktreeSetup: { copy: [], link: [], setup: ["echo 'dependency not found' >&2; exit 1"] },
           },
         ),
-      ).rejects.toThrow(/dépendance introuvable[\s\S]*\[worktree\]/);
+      ).rejects.toThrow(/dependency not found[\s\S]*\[worktree\]/);
     });
 
-    it("un chemin déclaré mais non ignoré par git produit un constat nommant le remède", async () => {
-      // Le diagnostic qui manquait le jour du contournement : sans lui, un
-      // worktree incomplet ne se manifeste que par une tâche qui échoue sans
-      // raison visible, et la réaction naturelle est de renoncer à l'isolation.
+    it("a declared path not ignored by git produces a finding naming the remedy", async () => {
+      // The diagnostic that was missing the day of the workaround: without it,
+      // an incomplete worktree only shows up as a task that fails for no
+      // visible reason, and the natural reaction is to give up on isolation.
       await initGitRepo(root);
-      await writeFile(join(root, "brouillon.txt"), "ni suivi ni ignoré\n", "utf8");
+      await writeFile(join(root, "draft.txt"), "neither tracked nor ignored\n", "utf8");
 
       const outcome = await runTask(
         { store, root },
         {
           agentId: "fake-agent",
-          objective: "travailler",
+          objective: "work",
           mode: "write",
           workspace: root,
-          worktreeSetup: { copy: ["brouillon.txt"], link: [], setup: [] },
+          worktreeSetup: { copy: ["draft.txt"], link: [], setup: [] },
         },
       );
 
@@ -470,14 +472,14 @@ describe("runTask", () => {
         expect.arrayContaining([
           expect.objectContaining({
             severity: "low",
-            title: "Chemin non matérialisé dans le worktree",
+            title: "Path not materialized in the worktree",
             detail: expect.stringMatching(/\.gitignore/),
           }),
         ]),
       );
     });
 
-    it("un chemin lié est signalé comme non isolé", async () => {
+    it("a linked path is flagged as not isolated", async () => {
       await initGitRepo(root);
       await seedIgnored();
 
@@ -485,7 +487,7 @@ describe("runTask", () => {
         { store, root },
         {
           agentId: "fake-agent",
-          objective: "travailler",
+          objective: "work",
           mode: "write",
           workspace: root,
           worktreeSetup: { copy: [], link: ["node_modules"], setup: [] },
@@ -496,23 +498,23 @@ describe("runTask", () => {
         expect.arrayContaining([
           expect.objectContaining({
             severity: "info",
-            title: "Chemins partagés avec le workspace",
-            detail: expect.stringMatching(/NON isolés[\s\S]*node_modules/),
+            title: "Paths shared with the workspace",
+            detail: expect.stringMatching(/NOT isolated[\s\S]*node_modules/),
           }),
         ]),
       );
     });
 
-    it("signale — sans refuser — que .caesar/wt/ n'est pas ignoré par git", async () => {
-      // L'étape 0 du skill `superpowers:using-git-worktrees`, adaptée : un
-      // constat, pas un refus. Vérifié plutôt que supposé, git n'aspire pas le
-      // contenu d'un worktree non ignoré — il le reconnaît comme dépôt
-      // imbriqué et n'ajoute qu'un gitlink. Faire échouer une délégation pour
-      // une ligne de .gitignore coûterait plus cher que ce qu'elle protège.
+    it("flags — without refusing — that .caesar/wt/ is not ignored by git", async () => {
+      // Step 0 of the `superpowers:using-git-worktrees` skill, adapted: a
+      // finding, not a refusal. Verified rather than assumed, git does not
+      // suck in the contents of a non-ignored worktree — it recognizes it as
+      // a nested repository and adds only a gitlink. Failing a delegation
+      // over a .gitignore line would cost more than what it protects.
       await initGitRepoWithoutIgnore(root);
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent", objective: "travailler", mode: "write", workspace: root },
+        { agentId: "fake-agent", objective: "work", mode: "write", workspace: root },
       );
 
       expect(outcome.record.isolation).toBe("worktree");
@@ -520,18 +522,18 @@ describe("runTask", () => {
         expect.arrayContaining([
           expect.objectContaining({
             severity: "low",
-            title: "Worktrees non ignorés par git",
+            title: "Worktrees not ignored by git",
             detail: expect.stringMatching(/\.gitignore/),
           }),
         ]),
       );
     });
 
-    it("sans section [worktree], rien ne change : le worktree reste ce que git en fait", async () => {
+    it("without a [worktree] section, nothing changes: the worktree remains what git makes of it", async () => {
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent", objective: "travailler", mode: "write", workspace: root },
+        { agentId: "fake-agent", objective: "work", mode: "write", workspace: root },
       );
       expect(outcome.record.isolation).toBe("worktree");
       expect(outcome.record.excluded_paths).toBeUndefined();
@@ -540,32 +542,33 @@ describe("runTask", () => {
   });
 
   /**
-   * Le durcissement dont ce bloc est la garantie : `prepareIsolation` est le
-   * seul point que toutes les façades traversent, y compris un appel direct à
-   * `runTask`. `resolveDelegation` rend le même verdict plus tôt, mais rien
-   * n'oblige un appelant à passer par lui — ces tests-ci portent sur le filet.
+   * The hardening this block guarantees: `prepareIsolation` is the only
+   * point that all facades go through, including a direct call to
+   * `runTask`. `resolveDelegation` renders the same verdict earlier, but
+   * nothing forces a caller to go through it — these tests here are about the
+   * safety net.
    */
-  describe("écriture en place : refusée sans opt-in", () => {
-    it('refuse "inplace" + write dans un dépôt utilisable, en nommant le remède', async () => {
-      // Le cas constaté en production : trois tâches `implementer` déléguées
-      // avec `isolation: "inplace"` ont écrit sur la branche de travail de
-      // l'utilisateur, sans que rien ne le dise.
+  describe("in-place write: refused without opt-in", () => {
+    it('refuses "inplace" + write in a usable repository, naming the remedy', async () => {
+      // The case observed in production: three `implementer` tasks delegated
+      // with `isolation: "inplace"` wrote onto the user's working branch,
+      // without anything saying so.
       await initGitRepo(root);
       await expect(
         runTask(
           { store, root },
-          { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "inplace" },
+          { agentId: "fake-agent", objective: "write", mode: "write", workspace: root, isolation: "inplace" },
         ),
-      ).rejects.toThrow(/refusée[\s\S]*allow_inplace_write/);
+      ).rejects.toThrow(/refused[\s\S]*allow_inplace_write/);
     });
 
-    it("laisse passer sous opt-in porté par l'appelant", async () => {
+    it("lets it through under a caller-carried opt-in", async () => {
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
         {
           agentId: "fake-agent",
-          objective: "écrire",
+          objective: "write",
           mode: "write",
           workspace: root,
           isolation: "inplace",
@@ -575,42 +578,43 @@ describe("runTask", () => {
       expect(outcome.record.isolation).toBe("inplace");
     });
 
-    it("ne refuse pas hors dépôt utilisable : un projet non versionné reste accessible", async () => {
-      // Sans dépôt, aucun worktree n'est créable : refuser n'offrirait aucune
-      // issue et mettrait `caesar` hors service là où il fonctionnait.
+    it("does not refuse outside a usable repository: an unversioned project remains accessible", async () => {
+      // Without a repository, no worktree can be created: refusing would offer
+      // no way out and would put `caesar` out of service where it used to work.
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "inplace" },
+        { agentId: "fake-agent", objective: "write", mode: "write", workspace: root, isolation: "inplace" },
       );
       expect(outcome.record.isolation).toBe("inplace");
     });
 
-    it('ne refuse pas la lecture seule : elle relève de "mustForceWorktree", qui contient au lieu d\'interdire', async () => {
+    it('does not refuse read-only: that belongs to "mustForceWorktree", which contains instead of forbidding', async () => {
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent", objective: "lire", mode: "read-only", workspace: root, isolation: "inplace" },
+        { agentId: "fake-agent", objective: "read", mode: "read-only", workspace: root, isolation: "inplace" },
       );
-      // Forcée sur worktree par `mustForceWorktree`, pas refusée.
+      // Forced to worktree by `mustForceWorktree`, not refused.
       expect(outcome.record.isolation).toBe("worktree");
     });
 
-    it('ne refuse pas "auto" : la résolution choisit déjà le worktree en écriture', async () => {
+    it('does not refuse "auto": the resolution already picks the worktree for writes', async () => {
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "auto" },
+        { agentId: "fake-agent", objective: "write", mode: "write", workspace: root, isolation: "auto" },
       );
       expect(outcome.record.isolation).toBe("worktree");
     });
 
-    it("deux écritures en place simultanées : la seconde échoue en nommant l'occupante", async () => {
-      // Sous opt-in, deux tâches partagent le même arbre —
-      // `diffWorkspaceStatus` compare l'état git avant/après et attribuerait
-      // alors à chacune les modifications de l'autre. Le recoupement, qui est
-      // toute la valeur du système, deviendrait faux sans rien signaler.
+    it("two simultaneous in-place writes: the second fails naming the occupant", async () => {
+      // Under opt-in, two tasks share the same tree —
+      // `diffWorkspaceStatus` compares the git state before/after and would
+      // then attribute each one's modifications to the other. The
+      // reconciliation, which is the whole value of the system, would become
+      // wrong without flagging anything.
       await initGitRepo(root);
-      const commun = {
+      const common = {
         agentId: "fake-agent",
         mode: "write" as const,
         isolation: "inplace" as const,
@@ -618,22 +622,22 @@ describe("runTask", () => {
         workspace: root,
       };
 
-      const premiere = runTask(
+      const first = runTask(
         { store, root },
-        { ...commun, objective: "première", context: JSON.stringify({ mode: "hang", sleepMs: 700 }) },
+        { ...common, objective: "first", context: JSON.stringify({ mode: "hang", sleepMs: 700 }) },
       );
-      // Laisse la première prendre le verrou avant de lancer la seconde.
+      // Lets the first take the lock before launching the second.
       await new Promise((r) => setTimeout(r, 150));
       await expect(
-        runTask({ store, root }, { ...commun, objective: "seconde" }),
-      ).rejects.toThrow(/y écrit déjà[\s\S]*worktree/);
+        runTask({ store, root }, { ...common, objective: "second" }),
+      ).rejects.toThrow(/already writing there[\s\S]*worktree/);
 
-      await premiere;
+      await first;
     }, 20_000);
 
-    it("le verrou est rendu à la fin : une écriture en place peut en suivre une autre", async () => {
+    it("the lock is returned at the end: one in-place write can follow another", async () => {
       await initGitRepo(root);
-      const commun = {
+      const common = {
         agentId: "fake-agent",
         mode: "write" as const,
         isolation: "inplace" as const,
@@ -641,33 +645,34 @@ describe("runTask", () => {
         workspace: root,
       };
 
-      await runTask({ store, root }, { ...commun, objective: "première" });
-      const seconde = await runTask({ store, root }, { ...commun, objective: "seconde" });
-      expect(seconde.record.status).toBe("succeeded");
+      await runTask({ store, root }, { ...common, objective: "first" });
+      const second = await runTask({ store, root }, { ...common, objective: "second" });
+      expect(second.record.status).toBe("succeeded");
     });
 
-    it("ne verrouille pas quand aucun worktree n'était possible : le parallélisme reste entier", async () => {
-      // Hors dépôt git, `inplace` n'est pas un choix mais la seule option.
-      // Verrouiller sérialiserait toute délégation en écriture sur un projet
-      // non versionné, sans offrir d'alternative — et c'est justement la
-      // promesse de parallélisme de `caesar_delegate` qui en paierait le prix.
-      const commun = { agentId: "fake-agent", mode: "write" as const, workspace: root };
+    it("does not lock when no worktree was possible: parallelism remains intact", async () => {
+      // Outside a git repository, `inplace` is not a choice but the only
+      // option. Locking would serialize every write delegation on an
+      // unversioned project, without offering an alternative — and it is
+      // precisely `caesar_delegate`'s parallelism promise that would pay the
+      // price.
+      const common = { agentId: "fake-agent", mode: "write" as const, workspace: root };
       const [a, b] = await Promise.all([
-        runTask({ store, root }, { ...commun, objective: "a" }),
-        runTask({ store, root }, { ...commun, objective: "b" }),
+        runTask({ store, root }, { ...common, objective: "a" }),
+        runTask({ store, root }, { ...common, objective: "b" }),
       ]);
       expect(a.record.isolation).toBe("inplace");
       expect(b.record.isolation).toBe("inplace");
     }, 20_000);
 
-    it("refuse avant d'avoir rien créé : ni worktree, ni répertoire de tâche", async () => {
-      // Un refus qui laisserait derrière lui un worktree ou une tâche fantôme
-      // ferait payer au dépôt le prix d'une décision négative.
+    it("refuses before creating anything: neither a worktree, nor a task directory", async () => {
+      // A refusal that left behind a worktree or a ghost task would make
+      // the repository pay the price of a negative decision.
       await initGitRepo(root);
       await expect(
         runTask(
           { store, root },
-          { agentId: "fake-agent", objective: "écrire", mode: "write", workspace: root, isolation: "inplace" },
+          { agentId: "fake-agent", objective: "write", mode: "write", workspace: root, isolation: "inplace" },
         ),
       ).rejects.toThrow();
 
@@ -677,107 +682,107 @@ describe("runTask", () => {
     });
   });
 
-  it("une tâche read-only dont l'agent écrit produit un finding de sévérité high, nommant le fichier", async () => {
+  it("a read-only task whose agent writes produces a high-severity finding, naming the file", async () => {
     await initGitRepo(root);
     const outcome = await runTask(
       { store, root },
       {
         agentId: "fake-agent",
-        objective: "lecture seule qui n'en est pas une",
+        objective: "read-only that is not one",
         mode: "read-only",
         workspace: root,
-        context: JSON.stringify({ files: [{ path: "sournois.txt", content: "je n'aurais pas dû écrire ça" }] }),
+        context: JSON.stringify({ files: [{ path: "sneaky.txt", content: "I should not have written this" }] }),
       },
     );
 
     expect(outcome.diff!.isEmpty).toBe(false);
     const high = outcome.report.findings.filter((f) => f.severity === "high");
     expect(high).toHaveLength(1);
-    expect(high[0]!.detail).toContain("sournois.txt");
+    expect(high[0]!.detail).toContain("sneaky.txt");
   });
 
   /**
-   * Les quatre tests de couture demandés par la revue finale : ils auraient
-   * attrapé C1 à C4 avant fusion. C1 (un agent déclaré en `[[agent]]` tourne
-   * de bout en bout via `caesar run`) vit dans `packages/cli/src/commands/run.test.ts`,
-   * seul niveau où le CLI/`.caesar/config.toml` a un sens ; les trois autres
-   * sont ici, au niveau du moteur qu'ils exercent directement.
+   * The four seam tests requested by the final review: they would have
+   * caught C1 through C4 before merge. C1 (an agent declared via `[[agent]]`
+   * runs end to end through `caesar run`) lives in `packages/cli/src/commands/run.test.ts`,
+   * the only level where the CLI/`.caesar/config.toml` makes sense; the other
+   * three are here, at the level of the engine they exercise directly.
    */
-  describe("tests de couture — revue finale", () => {
-    it("C2 : report.changes diffère du diff git réel ⇒ un finding apparaît, aussi en isolation \"inplace\" (pas seulement \"worktree\")", async () => {
-      // Le pendant "worktree" de ce test existe déjà plus bas
-      // ("recoupe une déclaration mensongère avec le diff réel de bout en
-      // bout") : avant C2 de la revue finale, aucun recoupement n'était
-      // jamais tenté en isolation "inplace" — `report.changes` y restait la
-      // déclaration brute de l'agent, sans qu'aucun finding ne signale un
-      // mensonge dans un sens ou dans l'autre.
+  describe("seam tests — final review", () => {
+    it('C2: report.changes differs from the real git diff ⇒ a finding appears, also in "inplace" isolation (not just "worktree")', async () => {
+      // The "worktree" counterpart of this test already exists further down
+      // ("reconciles a lying declaration with the real diff end to
+      // end"): before C2 of the final review, no reconciliation was
+      // ever attempted in "inplace" isolation — `report.changes` remained the
+      // agent's raw declaration there, with no finding flagging a lie in
+      // either direction.
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
         {
           agentId: "fake-agent",
-          objective: "agent qui ment sur ses changements, en inplace",
+          objective: "agent lying about its changes, inplace",
           mode: "write",
           isolation: "inplace",
-          // `inplace` + écriture dans un dépôt utilisable est désormais refusé
-          // par défaut (`decideInplaceWrite`) : ce test porte sur le
-          // recoupement du diff, pas sur la règle d'isolation, il assume donc
-          // l'opt-in comme le ferait un utilisateur ayant posé
-          // `allow_inplace_write = true`.
+          // `inplace` + write in a usable repository is now refused by
+          // default (`decideInplaceWrite`): this test is about diff
+          // reconciliation, not the isolation rule, so it assumes the
+          // opt-in the way a user who set
+          // `allow_inplace_write = true` would.
           allowInplaceWrite: true,
           workspace: root,
           context: JSON.stringify({
-            files: [{ path: "reel.txt", content: "vraiment écrit" }],
-            declaredChanges: [{ path: "invente.txt", action: "modified", summary: "n'existe pas" }],
+            files: [{ path: "real.txt", content: "actually written" }],
+            declaredChanges: [{ path: "invented.txt", action: "modified", summary: "does not exist" }],
           }),
         },
       );
 
       expect(outcome.record.isolation).toBe("inplace");
       expect(outcome.record.changes_verified_by).toBe("git");
-      expect(outcome.report.changes).toEqual([{ path: "reel.txt", action: "created", summary: "" }]);
+      expect(outcome.report.changes).toEqual([{ path: "real.txt", action: "created", summary: "" }]);
       const files = outcome.report.findings.map((f) => f.file).sort();
-      expect(files).toEqual(["invente.txt", "reel.txt"]);
+      expect(files).toEqual(["invented.txt", "real.txt"]);
     });
 
-    it('C3 : un agent read-only qui écrit est détecté même si "inplace" est explicitement demandé (isolation forcée sur "worktree")', async () => {
+    it('C3: a read-only agent that writes is detected even if "inplace" is explicitly requested (isolation forced to "worktree")', async () => {
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
         {
           agentId: "fake-agent", // capabilities.nativeReadOnly === false
-          objective: "lecture seule, inplace explicitement demandé malgré tout",
+          objective: "read-only, inplace explicitly requested regardless",
           mode: "read-only",
-          isolation: "inplace", // avant C3, cette valeur explicite défaisait silencieusement la contrainte.
+          isolation: "inplace", // before C3, this explicit value silently undid the constraint.
           workspace: root,
-          context: JSON.stringify({ files: [{ path: "sournois2.txt", content: "toujours pas censé écrire" }] }),
+          context: JSON.stringify({ files: [{ path: "sneaky2.txt", content: "still not supposed to write" }] }),
         },
       );
 
-      // La contrainte l'emporte sur la demande explicite : isolation réellement forcée sur "worktree".
+      // The constraint wins over the explicit request: isolation genuinely forced to "worktree".
       expect(outcome.record.isolation).toBe("worktree");
       const high = outcome.report.findings.filter((f) => f.severity === "high");
       expect(high).toHaveLength(1);
-      expect(high[0]!.detail).toContain("sournois2.txt");
-      // Le contournement contredit est signalé, pas seulement absorbé en silence.
-      expect(outcome.report.findings.some((f) => f.title === "Isolation dégradée")).toBe(true);
+      expect(high[0]!.detail).toContain("sneaky2.txt");
+      // The contradicted bypass is flagged, not merely absorbed in silence.
+      expect(outcome.report.findings.some((f) => f.title === "Degraded isolation")).toBe(true);
     });
 
-    it('C3 : un agent read-only nativement lecture-seule qui écrit quand même est détecté en isolation "inplace" réelle (jamais forcée sur "worktree")', async () => {
-      // Cas le plus dur du "quelle que soit l'isolation demandée" : ici
-      // l'isolation reste authentiquement "inplace" (agent nativement
-      // lecture seule, `mustForceWorktree` ne s'applique pas) — la détection
-      // doit donc venir du recoupement `git status` avant/après (C2),
-      // jamais d'un worktree.
+    it('C3: a natively read-only agent that writes anyway is detected in genuine "inplace" isolation (never forced to "worktree")', async () => {
+      // The hardest case of "whatever isolation is requested": here
+      // isolation genuinely remains "inplace" (natively read-only
+      // agent, `mustForceWorktree` does not apply) — detection must
+      // therefore come from the before/after `git status` reconciliation (C2),
+      // never from a worktree.
       await initGitRepo(root);
       const outcome = await runTask(
         { store, root },
         {
           agentId: "fake-agent-native-ro", // capabilities.nativeReadOnly === true
-          objective: "lecture seule native qui ment sur sa promesse",
+          objective: "native read-only lying about its promise",
           mode: "read-only",
           workspace: root,
-          context: JSON.stringify({ files: [{ path: "sournois3.txt", content: "le CLI a un bug" }] }),
+          context: JSON.stringify({ files: [{ path: "sneaky3.txt", content: "the CLI has a bug" }] }),
         },
       );
 
@@ -785,10 +790,10 @@ describe("runTask", () => {
       expect(outcome.record.changes_verified_by).toBe("git");
       const high = outcome.report.findings.filter((f) => f.severity === "high");
       expect(high).toHaveLength(1);
-      expect(high[0]!.detail).toContain("sournois3.txt");
+      expect(high[0]!.detail).toContain("sneaky3.txt");
     });
 
-    it("C4 : max_parallel = 1 (Queue partagée, limite 1) ⇒ deux délégations s'exécutent en série, jamais simultanément", async () => {
+    it("C4: max_parallel = 1 (shared Queue, limit 1) ⇒ two delegations run in series, never simultaneously", async () => {
       const queue = createQueue(1);
       const concurrentRunningCounts: number[] = [];
       let polling = true;
@@ -802,7 +807,7 @@ describe("runTask", () => {
 
       const makeInput = (label: string) => ({
         agentId: "fake-agent",
-        objective: `tâche ${label}`,
+        objective: `task ${label}`,
         mode: "write" as const,
         isolation: "inplace" as const,
         workspace: root,
@@ -818,25 +823,25 @@ describe("runTask", () => {
 
       expect(a.record.status).toBe("succeeded");
       expect(b.record.status).toBe("succeeded");
-      // Preuve par constat d'état, pas par chronomètre (même méthode que
-      // `packages/mcp-server/src/tools/await.test.ts:79-98`) : jamais plus
-      // d'une tâche "running" avec un pid actif à la fois, malgré deux
-      // `runTask` lancés en parallèle avec `Promise.all` — exactement la
-      // garantie que `policy.max_parallel` doit fournir, et que
-      // `RunnerDeps.queue` ne câblait jusqu'ici nulle part (C4).
+      // Proof by state observation, not by stopwatch (same method as
+      // `packages/mcp-server/src/tools/await.test.ts:79-98`): never more
+      // than one "running" task with an active pid at a time, despite two
+      // `runTask` calls launched in parallel with `Promise.all` — exactly the
+      // guarantee `policy.max_parallel` must provide, and that
+      // `RunnerDeps.queue` was until now wired nowhere (C4).
       expect(Math.max(...concurrentRunningCounts)).toBeLessThanOrEqual(1);
-      // Le test n'a de sens que s'il a effectivement observé une tâche
-      // active pendant l'exécution : sinon "jamais plus d'une" serait vrai
-      // par défaut d'observation, pas par la garantie testée.
+      // The test is only meaningful if it actually observed an active
+      // task during execution: otherwise "never more than one" would be true
+      // by default of observation, not by the guarantee under test.
       expect(concurrentRunningCounts.some((n) => n === 1)).toBe(true);
     });
 
-    it("quatre tâches simultanées obtiennent chacune leur worktree, sans se marcher dessus", async () => {
-      // Le test C4 ci-dessus ne couvre que l'isolation `inplace` : la
-      // création concurrente de worktrees — `git worktree add` lancé quatre
-      // fois de front sur le même dépôt — n'était vérifiée nulle part, alors
-      // que c'est le cas d'usage normal du serveur MCP (max_parallel = 4 par
-      // défaut, toutes les délégations partageant une seule file).
+    it("four simultaneous tasks each get their own worktree, without stepping on each other", async () => {
+      // The C4 test above only covers `inplace` isolation: concurrent
+      // worktree creation — `git worktree add` launched four times
+      // at once on the same repository — was verified nowhere, even
+      // though it is the normal use case of the MCP server (max_parallel = 4
+      // by default, all delegations sharing a single queue).
       await initGitRepo(root);
       const queue = createQueue(4);
 
@@ -846,7 +851,7 @@ describe("runTask", () => {
             { store, root, queue },
             {
               agentId: "fake-agent",
-              objective: `tâche ${label}`,
+              objective: `task ${label}`,
               mode: "write" as const,
               isolation: "worktree" as const,
               workspace: root,
@@ -858,9 +863,9 @@ describe("runTask", () => {
 
       for (const outcome of outcomes) expect(outcome.record.status).toBe("succeeded");
 
-      // Chaque tâche a son propre répertoire et sa propre branche : l'identifiant
-      // vient d'un UUID (`generateTaskId`), donc aucune collision possible —
-      // mais c'est la commande git concurrente qui devait être éprouvée.
+      // Each task has its own directory and its own branch: the identifier
+      // comes from a UUID (`generateTaskId`), so no collision is possible —
+      // but it was the concurrent git command that needed exercising.
       const workspaces = outcomes.map((o) => o.record.workspace);
       expect(new Set(workspaces).size).toBe(4);
       for (const workspace of workspaces) expect(workspace).toContain(join(".caesar", "wt"));
@@ -869,7 +874,7 @@ describe("runTask", () => {
       expect(stdout.split("\n").filter((line) => line.trim() !== "")).toHaveLength(4);
     }, 30_000);
 
-    it("C4 (témoin) : sans limite partagée, les deux mêmes délégations tournent bien simultanément — la Queue de limite 1 ci-dessus est donc bien ce qui sérialise", async () => {
+    it("C4 (control): without a shared limit, the same two delegations do run simultaneously — the limit-1 Queue above is thus indeed what serializes", async () => {
       const concurrentRunningCounts: number[] = [];
       let polling = true;
       const pollLoop = (async () => {
@@ -882,15 +887,15 @@ describe("runTask", () => {
 
       const makeInput = (label: string) => ({
         agentId: "fake-agent",
-        objective: `tâche témoin ${label}`,
+        objective: `control task ${label}`,
         mode: "write" as const,
         isolation: "inplace" as const,
         workspace: root,
         context: JSON.stringify({ sleepMs: 200 }),
       });
 
-      // Aucune Queue partagée (`{ store, root, queue: undefined }`) : les deux
-      // délégations ne sont bridées par rien.
+      // No shared Queue (`{ store, root, queue: undefined }`): the two
+      // delegations are throttled by nothing.
       await Promise.all([
         runTask({ store, root, queue: undefined }, makeInput("a")),
         runTask({ store, root, queue: undefined }, makeInput("b")),
@@ -902,13 +907,13 @@ describe("runTask", () => {
     });
   });
 
-  it("une tâche dont l'agent n'écrit aucun rapport produit un rapport synthétisé", async () => {
+  it("a task whose agent writes no report produces a synthesized report", async () => {
     await initGitRepo(root);
     const outcome = await runTask(
       { store, root },
       {
         agentId: "fake-agent",
-        objective: "agent qui ignore le contrat",
+        objective: "agent ignoring the contract",
         mode: "write",
         workspace: root,
         context: JSON.stringify({ mode: "silent" }),
@@ -920,38 +925,38 @@ describe("runTask", () => {
     expect(outcome.report.status).toBe("success");
   });
 
-  it("un agent capable de finalMessageFile est câblé de bout en bout : le runner lui désigne le fichier, il l'utilise", async () => {
+  it("an agent capable of finalMessageFile is wired end to end: the runner points it at the file, it uses it", async () => {
     await initGitRepo(root);
     const embedded = {
       protocol: REPORT_PROTOCOL,
-      task_id: "peu importe, resolveReport ne s'y fie pas",
+      task_id: "does not matter, resolveReport does not trust it",
       status: "success",
-      summary: "déposé par le CLI dans final-message.txt, jamais dans report.json",
+      summary: "dropped by the CLI into final-message.txt, never into report.json",
       changes: [],
     };
     const outcome = await runTask(
       { store, root },
       {
         agentId: "fake-agent-final-message",
-        objective: "agent qui rapporte par fichier de message final",
+        objective: "agent reporting via final message file",
         mode: "write",
         workspace: root,
-        // "silent" : aucun report.json écrit, pour prouver que le rapport
-        // vient bien de final-message.txt et de rien d'autre.
+        // "silent": no report.json written, to prove the report
+        // really comes from final-message.txt and nothing else.
         context: JSON.stringify({ mode: "silent", finalMessage: JSON.stringify(embedded) }),
       },
     );
 
     expect(outcome.source).toBe("extracted");
-    expect(outcome.report.summary).toBe("déposé par le CLI dans final-message.txt, jamais dans report.json");
+    expect(outcome.report.summary).toBe("dropped by the CLI into final-message.txt, never into report.json");
   });
 
-  it("renseigne le pid du sous-processus pendant l'exécution puis l'efface à la fin", async () => {
+  it("records the sub-process pid during execution then clears it at the end", async () => {
     const runPromise = runTask(
       { store, root },
       {
         agentId: "fake-agent",
-        objective: "vérifie le cycle de vie du pid",
+        objective: "checks the pid lifecycle",
         mode: "write",
         workspace: root,
         isolation: "inplace",
@@ -960,7 +965,7 @@ describe("runTask", () => {
       },
     );
 
-    // Attend que le pid apparaisse dans le store, pendant que la tâche tourne encore.
+    // Waits for the pid to appear in the store, while the task is still running.
     let seenPid: number | undefined;
     for (let i = 0; i < 100 && seenPid === undefined; i++) {
       const records = await store.list({ status: ["running"] });
@@ -973,10 +978,10 @@ describe("runTask", () => {
     expect(outcome.record.pid).toBeUndefined();
   });
 
-  it("taskId fourni par l'appelant : utilisé tel quel, sans en générer un autre", async () => {
+  it("caller-provided taskId: used as-is, without generating another", async () => {
     const outcome = await runTask(
       { store, root },
-      { agentId: "fake-agent", objective: "identifiant imposé", mode: "write", workspace: root, taskId: "t_imposed" },
+      { agentId: "fake-agent", objective: "imposed identifier", mode: "write", workspace: root, taskId: "t_imposed" },
     );
 
     expect(outcome.record.id).toBe("t_imposed");
@@ -984,7 +989,7 @@ describe("runTask", () => {
     expect(await store.get("t_imposed")).not.toBeNull();
   });
 
-  it("un signal déjà déclenché à l'entrée n'engage même pas l'isolation : aucun worktree créé, statut cancelled", async () => {
+  it("a signal already triggered at entry does not even engage isolation: no worktree created, status cancelled", async () => {
     await initGitRepo(root);
     const controller = new AbortController();
     controller.abort();
@@ -993,9 +998,9 @@ describe("runTask", () => {
       { store, root },
       {
         agentId: "fake-agent",
-        objective: "signal déjà abandonné avant le lancement",
-        // write + dépôt git : la règle d'isolation "auto" aurait normalement
-        // créé un worktree. Le garde doit intervenir avant que cela n'arrive.
+        objective: "signal already aborted before launch",
+        // write + git repository: the "auto" isolation rule would normally
+        // have created a worktree. The guard must step in before that happens.
         mode: "write",
         workspace: root,
         signal: controller.signal,
@@ -1009,7 +1014,7 @@ describe("runTask", () => {
     await expect(access(join(root, ".caesar", "wt"))).rejects.toThrow();
   });
 
-  it("onEvent reçoit les événements au fil de l'eau, avant que runTask ne résolve", async () => {
+  it("onEvent receives the events as they stream, before runTask resolves", async () => {
     const seenBeforeResolution: string[] = [];
     let resolved = false;
 
@@ -1017,7 +1022,7 @@ describe("runTask", () => {
       { store, root },
       {
         agentId: "fake-agent",
-        objective: "événements en direct",
+        objective: "live events",
         mode: "write",
         workspace: root,
         onEvent: (event) => seenBeforeResolution.push(event.type),
@@ -1027,9 +1032,9 @@ describe("runTask", () => {
       return outcome;
     });
 
-    // Le premier événement ("started") doit être observable avant même que
-    // `runTask` ait fini de résoudre — c'est ce qui distingue un flux en
-    // direct d'une relecture après coup.
+    // The first event ("started") must be observable before `runTask` has
+    // even finished resolving — that is what distinguishes a live stream
+    // from an after-the-fact replay.
     for (let i = 0; i < 100 && seenBeforeResolution.length === 0; i++) {
       await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 5));
     }
@@ -1041,13 +1046,13 @@ describe("runTask", () => {
     expect(seenBeforeResolution).toContain("finished");
   });
 
-  it("un AbortSignal annulé pendant l'exécution interrompt la tâche sans laisser de processus fils", async () => {
+  it("an AbortSignal cancelled during execution interrupts the task without leaving a child process", async () => {
     const controller = new AbortController();
     const runPromise = runTask(
       { store, root },
       {
         agentId: "fake-agent",
-        objective: "tâche interrompue via AbortSignal",
+        objective: "task interrupted via AbortSignal",
         mode: "write",
         workspace: root,
         signal: controller.signal,
@@ -1055,7 +1060,7 @@ describe("runTask", () => {
       },
     );
 
-    // Laisse le sous-processus réellement démarrer avant d'annuler.
+    // Lets the sub-process actually start before cancelling.
     for (let i = 0; i < 100; i++) {
       const [record] = await store.list({ status: ["running"] });
       if (record?.pid !== undefined) break;
@@ -1068,33 +1073,33 @@ describe("runTask", () => {
     expect(outcome.record.pid).toBeUndefined();
   });
 
-  it("recoupe une déclaration mensongère avec le diff réel de bout en bout", async () => {
+  it("reconciles a lying declaration with the real diff end to end", async () => {
     await initGitRepo(root);
     const outcome = await runTask(
       { store, root },
       {
         agentId: "fake-agent",
-        objective: "agent qui ment sur ses changements",
+        objective: "agent lying about its changes",
         mode: "write",
         workspace: root,
         context: JSON.stringify({
-          files: [{ path: "reel.txt", content: "vraiment écrit" }],
-          declaredChanges: [{ path: "invente.txt", action: "modified", summary: "n'existe pas" }],
+          files: [{ path: "real.txt", content: "actually written" }],
+          declaredChanges: [{ path: "invented.txt", action: "modified", summary: "does not exist" }],
         }),
       },
     );
 
     expect(outcome.source).toBe("file");
-    expect(outcome.report.changes).toEqual([{ path: "reel.txt", action: "created", summary: "" }]);
+    expect(outcome.report.changes).toEqual([{ path: "real.txt", action: "created", summary: "" }]);
     const files = outcome.report.findings.map((f) => f.file).sort();
-    expect(files).toEqual(["invente.txt", "reel.txt"]);
+    expect(files).toEqual(["invented.txt", "real.txt"]);
   });
 
-  describe("canal retour (tâche 9)", () => {
-    it("channel: true + agent qui sait charger un serveur MCP : task.channel est construit, le palier de rapport devient \"channel\"", async () => {
+  describe("return channel (task 9)", () => {
+    it('channel: true + agent that can load an MCP server: task.channel is built, the report tier becomes "channel"', async () => {
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent-channel", objective: "avec canal", mode: "write", workspace: root, channel: true },
+        { agentId: "fake-agent-channel", objective: "with channel", mode: "write", workspace: root, channel: true },
       );
 
       expect(outcome.record.report_via).toBe("channel");
@@ -1107,10 +1112,10 @@ describe("runTask", () => {
       });
     });
 
-    it("channel absent (défaut) : task.channel reste vide même pour un agent qui le supporterait", async () => {
+    it("channel absent (default): task.channel remains empty even for an agent that would support it", async () => {
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent-channel", objective: "sans canal demandé", mode: "write", workspace: root },
+        { agentId: "fake-agent-channel", objective: "no channel requested", mode: "write", workspace: root },
       );
 
       expect(outcome.record.report_via).not.toBe("channel");
@@ -1118,10 +1123,10 @@ describe("runTask", () => {
       expect(task.channel).toBeFalsy();
     });
 
-    it("dégradation : channel: true pour un agent sans mcpInjection est ignoré silencieusement, la tâche aboutit quand même", async () => {
+    it("degradation: channel: true for an agent without mcpInjection is silently ignored, the task still completes", async () => {
       const outcome = await runTask(
         { store, root },
-        { agentId: "fake-agent", objective: "canal demandé mais non supporté", mode: "write", workspace: root, channel: true },
+        { agentId: "fake-agent", objective: "channel requested but unsupported", mode: "write", workspace: root, channel: true },
       );
 
       expect(outcome.record.status).toBe("succeeded");
@@ -1130,18 +1135,19 @@ describe("runTask", () => {
       expect(task.channel).toBeFalsy();
     });
 
-    it("dégradation : une résolution du binaire du canal en échec n'empêche pas la tâche d'aboutir, par un palier inférieur", async () => {
-      // Cas distinct des deux précédents : ici, l'agent supporte bien
-      // mcpInjection et le canal est bien demandé — c'est sa construction
-      // elle-même (`buildChannel`/`resolveChannelEntry`, `runner.ts`) qui
-      // échoue (installation cassée, simulée via le mock `node:module`
-      // ci-dessus), exerçant réellement la branche `catch` plutôt qu'un cas
-      // voisin où l'agent ignore un canal par ailleurs construit avec succès.
+    it("degradation: a failed resolution of the channel binary does not keep the task from completing, via a lower tier", async () => {
+      // A case distinct from the two previous ones: here, the agent does
+      // support mcpInjection and the channel is indeed requested — it is its
+      // very construction (`buildChannel`/`resolveChannelEntry`, `runner.ts`)
+      // that fails (broken installation, simulated via the `node:module` mock
+      // above), genuinely exercising the `catch` branch rather than a
+      // neighboring case where the agent ignores a channel otherwise built
+      // successfully.
       channelResolutionFailure.active = true;
       try {
         const outcome = await runTask(
           { store, root },
-          { agentId: "fake-agent-channel", objective: "résolution du binaire cassée", mode: "write", workspace: root, channel: true },
+          { agentId: "fake-agent-channel", objective: "broken binary resolution", mode: "write", workspace: root, channel: true },
         );
 
         expect(outcome.record.status).toBe("succeeded");
@@ -1154,12 +1160,12 @@ describe("runTask", () => {
       }
     });
 
-    it("configureChannelLauncher (tâche 12) : un lanceur personnalisé remplace la résolution par défaut", async () => {
-      // Exerce le point d'extension à travers la vraie façade (`runTask`),
-      // pas en appelant une fonction interne directement — voir le rapport
-      // de la tâche 12 : un test qui contournerait `configureChannelLauncher`
-      // pour construire `task.channel` à la main ne protégerait rien de ce
-      // que `bun-entry.ts` fait réellement en production.
+    it("configureChannelLauncher (task 12): a custom launcher replaces the default resolution", async () => {
+      // Exercises the extension point through the real facade (`runTask`),
+      // not by calling an internal function directly — see the task 12
+      // report: a test that bypassed `configureChannelLauncher`
+      // to build `task.channel` by hand would protect nothing of what
+      // `bun-entry.ts` actually does in production.
       configureChannelLauncher((taskDir): Channel => ({
         transport: "mcp-stdio",
         command: "caesar",
@@ -1169,7 +1175,7 @@ describe("runTask", () => {
       try {
         const outcome = await runTask(
           { store, root },
-          { agentId: "fake-agent-channel", objective: "lanceur personnalisé", mode: "write", workspace: root, channel: true },
+          { agentId: "fake-agent-channel", objective: "custom launcher", mode: "write", workspace: root, channel: true },
         );
 
         expect(outcome.record.report_via).toBe("channel");
@@ -1185,18 +1191,18 @@ describe("runTask", () => {
       }
     });
 
-    it("configureChannelLauncher (tâche 12) : un lanceur personnalisé qui lève dégrade sans faire échouer la tâche", async () => {
-      // Même garantie que pour `resolveChannelEntry` (test précédent), mais
-      // côté lanceur injecté : le brief l'exige explicitement ("la garantie
-      // […] doit tenir dans les deux mondes"), donc dans les deux sources
-      // d'échec possibles, pas seulement la résolution par défaut.
+    it("configureChannelLauncher (task 12): a custom launcher that throws degrades without failing the task", async () => {
+      // Same guarantee as for `resolveChannelEntry` (previous test), but on
+      // the injected-launcher side: the brief demands it explicitly ("the
+      // guarantee […] must hold in both worlds"), hence in both possible
+      // failure sources, not just the default resolution.
       configureChannelLauncher(() => {
-        throw new Error("lanceur personnalisé cassé, simulé pour ce test");
+        throw new Error("broken custom launcher, simulated for this test");
       });
       try {
         const outcome = await runTask(
           { store, root },
-          { agentId: "fake-agent-channel", objective: "lanceur personnalisé cassé", mode: "write", workspace: root, channel: true },
+          { agentId: "fake-agent-channel", objective: "broken custom launcher", mode: "write", workspace: root, channel: true },
         );
 
         expect(outcome.record.status).toBe("succeeded");

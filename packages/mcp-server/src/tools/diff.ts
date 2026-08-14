@@ -1,9 +1,9 @@
 /**
- * `caesar_diff` : le diff git du worktree d'une tâche isolée — voir le brief
- * de la tâche 7. C'est le détail complet (patch compris) que
- * `caesar_status`/`caesar_await` gardent hors de leurs réponses compactes :
- * exactement ce qu'il faut pour comparer les diffs de plusieurs providers
- * lancés sur le même objectif avant de n'en appliquer qu'un (`caesar_apply`).
+ * `caesar_diff`: the git diff of an isolated task's worktree — see the
+ * task 7 brief. This is the full detail (patch included) that
+ * `caesar_status`/`caesar_await` keep out of their compact responses:
+ * exactly what is needed to compare the diffs of several providers launched
+ * on the same objective before applying only one (`caesar_apply`).
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -30,7 +30,7 @@ export type CaesarDiffInput = z.infer<typeof CaesarDiffInputSchema>;
 
 export async function caesarDiff(session: McpSession, input: CaesarDiffInput): Promise<CallToolResult> {
   const record = await session.store.get(input.task_id);
-  if (!record) return errorResult(`Tâche inconnue : "${input.task_id}".`);
+  if (!record) return errorResult(`Unknown task: "${input.task_id}".`);
 
   const handle = await loadWorktreeHandle(record);
   if (!handle) {

@@ -37,7 +37,7 @@ describe("caesar_list_roles", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("reflète les rôles configurés et l'agent qui serait retenu, aucun binaire installé", async () => {
+  it("reflects the configured roles and the agent that would be picked, no binary installed", async () => {
     await withFakeHome(() =>
       withEmptyPath(root, async () => {
         const session = await createSession(root);
@@ -48,21 +48,21 @@ describe("caesar_list_roles", () => {
         const names = roles.map((r) => r.name).sort();
         expect(names).toEqual(["implementer", "investigator", "reviewer"]);
 
-        // Aucun binaire installé sur ce PATH réduit : aucun agent ne peut être retenu.
+        // No binary installed on this reduced PATH: no agent can be picked.
         for (const role of roles) {
           expect(role.would_pick).toBeNull();
-          expect(role.reason).toMatch(/non installé/);
+          expect(role.reason).toMatch(/not installed/);
         }
       }),
     );
   });
 
-  it("l'agent retenu tient compte à la fois de l'installation et de la politique", async () => {
+  it("the picked agent accounts for both installation and policy", async () => {
     await withFakeHome(() =>
-      // "codex" est "installé" (un binaire exécutable de ce nom existe sur le
-      // PATH) mais refusé par la politique : le rôle "reviewer" (agents :
-      // codex, antigravity) doit retomber sur "antigravity" — non installé ici
-      // mais pas refusé, donc lui aussi écarté, avec un motif différent.
+      // "codex" is "installed" (an executable binary of that name exists on
+      // the PATH) but refused by policy: the "reviewer" role (agents:
+      // codex, antigravity) must fall back on "antigravity" — not installed
+      // here but not refused, so it too is skipped, with a different reason.
       withFakeAgentAsBin("codex", async () => {
         const { config } = await loadConfig(root);
         await saveLayer("project", root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
@@ -72,12 +72,12 @@ describe("caesar_list_roles", () => {
         const roles = (result.structuredContent as { roles: RoleRow[] }).roles;
         const reviewer = roles.find((r) => r.name === "reviewer");
 
-        // Aucun agent retenu : `pickAgentForRole` (@caesar/core) ne rend alors
-        // qu'un message unique concaténant chaque motif d'écart — pas de
-        // tableau `skipped` structuré dans ce cas (voir `roles.ts`).
+        // No agent picked: `pickAgentForRole` (@caesar/core) then returns
+        // only a single message concatenating each skip reason — no
+        // structured `skipped` array in that case (see `roles.ts`).
         expect(reviewer?.would_pick).toBeNull();
-        expect(reviewer?.reason).toMatch(/codex.*refusé/);
-        expect(reviewer?.reason).toMatch(/antigravity.*non installé/);
+        expect(reviewer?.reason).toMatch(/codex.*refused/);
+        expect(reviewer?.reason).toMatch(/antigravity.*not installed/);
       }),
     );
   });

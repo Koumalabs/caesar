@@ -10,7 +10,7 @@ import { nextDelegationDepth, resolveDelegation } from "./delegation.js";
 function role(overrides: Partial<RoleConfig> = {}): RoleConfig {
   return {
     name: "reviewer",
-    purpose: "Relit un diff.",
+    purpose: "Reviews a diff.",
     agents: ["codex", "antigravity"],
     mode: "read-only",
     isolation: "inplace",
@@ -31,46 +31,46 @@ describe("resolveDelegation", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("ni agent ni rôle : refus", async () => {
+  it("neither agent nor role: refusal", async () => {
     const result = await resolveDelegation(defaultConfig(), root, {});
     expect("error" in result).toBe(true);
   });
 
-  it("--agent l'emporte sur le choix issu du rôle", async () => {
+  it("--agent wins over the choice derived from the role", async () => {
     const config: CaesarConfig = { ...defaultConfig(), roles: [role()] };
     const result = await resolveDelegation(config, root, { role: "reviewer", agent: "copilot" });
     expect("error" in result).toBe(false);
     if (!("error" in result)) {
       expect(result.agentId).toBe("copilot");
-      // Le rôle reste résolu pour ses valeurs par défaut malgré l'agent explicite.
+      // The role still resolves for its defaults despite the explicit agent.
       expect(result.mode).toBe("read-only");
       expect(result.isolation).toBe("inplace");
       expect(result.role).toBe("reviewer");
     }
   });
 
-  it("rôle inconnu : refus nommant le rôle", async () => {
-    const result = await resolveDelegation(defaultConfig(), root, { role: "inexistant" });
+  it("unknown role: refusal naming the role", async () => {
+    const result = await resolveDelegation(defaultConfig(), root, { role: "nonexistent" });
     expect("error" in result).toBe(true);
-    if ("error" in result) expect(result.error).toMatch(/inexistant/);
+    if ("error" in result) expect(result.error).toMatch(/nonexistent/);
   });
 
-  it("agent inconnu du catalogue : refus", async () => {
-    const result = await resolveDelegation(defaultConfig(), root, { agent: "agent-fantome" });
+  it("agent unknown to the catalog: refusal", async () => {
+    const result = await resolveDelegation(defaultConfig(), root, { agent: "ghost-agent" });
     expect("error" in result).toBe(true);
-    if ("error" in result) expect(result.error).toMatch(/inconnu/);
+    if ("error" in result) expect(result.error).toMatch(/nknown/);
   });
 
-  it("agent refusé par la politique : motif exact de checkDelegation", async () => {
+  it("agent refused by the policy: exact reason from checkDelegation", async () => {
     const config: CaesarConfig = { ...defaultConfig(), policy: { ...defaultConfig().policy, denied: ["codex"] } };
     const result = await resolveDelegation(config, root, { agent: "codex" });
     expect("error" in result).toBe(true);
     if ("error" in result) {
-      expect(result.error).toBe('Agent "codex" refusé : présent dans la liste "denied" de la politique.');
+      expect(result.error).toBe('Agent "codex" refused: present in the policy\'s "denied" list.');
     }
   });
 
-  it("mode/isolation/timeout explicites l'emportent sur ceux du rôle", async () => {
+  it("explicit mode/isolation/timeout win over the role's", async () => {
     const config: CaesarConfig = { ...defaultConfig(), roles: [role({ mode: "read-only", isolation: "inplace", timeout_ms: 60_000 })] };
     const result = await resolveDelegation(config, root, { role: "reviewer", agent: "copilot", mode: "write", isolation: "worktree", timeout: "5m" });
     expect("error" in result).toBe(false);
@@ -81,7 +81,7 @@ describe("resolveDelegation", () => {
     }
   });
 
-  it("aucun mode/isolation fourni : retombe sur les valeurs par défaut de la politique quand il n'y a pas de rôle", async () => {
+  it("no mode/isolation given: falls back to the policy defaults when there is no role", async () => {
     const result = await resolveDelegation(defaultConfig(), root, { agent: "codex" });
     expect("error" in result).toBe(false);
     if (!("error" in result)) {
@@ -91,37 +91,37 @@ describe("resolveDelegation", () => {
     }
   });
 
-  it("durée invalide : motif de parseDuration, tel quel", async () => {
+  it("invalid duration: reason from parseDuration, as-is", async () => {
     const result = await resolveDelegation(defaultConfig(), root, { agent: "codex", timeout: "3 fortnights" });
     expect("error" in result).toBe(true);
-    if ("error" in result) expect(result.error).toMatch(/Durée invalide/);
+    if ("error" in result) expect(result.error).toMatch(/Invalid duration/);
   });
 
-  it("fusionne le contexte donné avec le prompt système du rôle", async () => {
+  it("merges the given context with the role's system prompt", async () => {
     await mkdir(join(root, ".caesar"), { recursive: true });
-    await writeFile(join(root, ".caesar", "system.md"), "Tu es un relecteur strict.", "utf8");
+    await writeFile(join(root, ".caesar", "system.md"), "You are a strict reviewer.", "utf8");
     const config: CaesarConfig = { ...defaultConfig(), roles: [role({ system_prompt_file: "system.md" })] };
 
-    const result = await resolveDelegation(config, root, { role: "reviewer", agent: "copilot", context: "Contexte additionnel." });
+    const result = await resolveDelegation(config, root, { role: "reviewer", agent: "copilot", context: "Additional context." });
     expect("error" in result).toBe(false);
     if (!("error" in result)) {
-      expect(result.context).toBe("Tu es un relecteur strict.\n\n---\n\nContexte additionnel.");
+      expect(result.context).toBe("You are a strict reviewer.\n\n---\n\nAdditional context.");
     }
   });
 
-  it("aucun rôle, aucun contexte fourni : context absent du résultat", async () => {
+  it("no role, no context given: context absent from the result", async () => {
     const result = await resolveDelegation(defaultConfig(), root, { agent: "codex" });
     expect("error" in result).toBe(false);
     if (!("error" in result)) expect(result.context).toBeUndefined();
   });
 
-  it("rôle sans agent choisi explicitement : la résolution passe bien par pickAgentForRole (@caesar/core)", async () => {
-    // PATH réduit à un répertoire vide : aucun agent du catalogue n'y est
-    // "installé", quelle que soit la machine de développement — le mécanisme
-    // de repli lui-même (ordre des candidats, formulation du motif) est déjà
-    // couvert en détail par `roles.test.ts` ; ce test vérifie seulement que
-    // `resolveDelegation` délègue bien à `pickAgentForRole` plutôt que de
-    // choisir un agent par un autre chemin.
+  it("role without an explicitly chosen agent: resolution does go through pickAgentForRole (@caesar/core)", async () => {
+    // PATH reduced to an empty directory: no catalog agent is "installed"
+    // there, whatever the development machine — the fallback mechanism
+    // itself (candidate order, reason wording) is already covered in
+    // detail by `roles.test.ts`; this test only checks that
+    // `resolveDelegation` does delegate to `pickAgentForRole` rather than
+    // picking an agent through another path.
     const emptyPathDir = await mkdtemp(join(tmpdir(), "caesar-delegation-emptypath-"));
     const previousPath = process.env["PATH"];
     process.env["PATH"] = emptyPathDir;
@@ -131,7 +131,7 @@ describe("resolveDelegation", () => {
       expect("error" in result).toBe(true);
       if ("error" in result) {
         expect(result.error).toContain("reviewer");
-        expect(result.error).toMatch(/non installé/);
+        expect(result.error).toMatch(/not installed/);
       }
     } finally {
       if (previousPath === undefined) delete process.env["PATH"];
@@ -141,7 +141,7 @@ describe("resolveDelegation", () => {
   });
 });
 
-describe("resolveDelegation — réseau", () => {
+describe("resolveDelegation — network", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -152,10 +152,10 @@ describe("resolveDelegation — réseau", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("refuse — sans rien écrire sur le disque — un « on » que codex ne peut pas honorer en lecture seule", async () => {
-    // Le cas qui a motivé le chantier. Le refus tombe avant toute création de
-    // répertoire de tâche : c'est ce que la position de `decideNetwork` dans
-    // `resolveDelegation`, juste après `checkDelegation`, garantit.
+  it("refuses — without writing anything to disk — an \"on\" that codex cannot honor in read-only", async () => {
+    // The case that motivated the effort. The refusal falls before any task
+    // directory is created: that is what the position of `decideNetwork` in
+    // `resolveDelegation`, right after `checkDelegation`, guarantees.
     const result = await resolveDelegation(defaultConfig(), root, {
       agent: "codex",
       mode: "read-only",
@@ -163,13 +163,13 @@ describe("resolveDelegation — réseau", () => {
       depth: 0,
     });
     expect("error" in result).toBe(true);
-    if (!("error" in result)) throw new Error("attendu un refus");
+    if (!("error" in result)) throw new Error("expected a refusal");
     expect(result.error).toContain("codex");
     expect(result.error).toContain("--mode write");
     expect(await readdir(root)).toEqual([]);
   });
 
-  it("accorde le même « on » dès que le mode passe en écriture", async () => {
+  it("grants the same \"on\" as soon as the mode switches to write", async () => {
     const result = await resolveDelegation(defaultConfig(), root, {
       agent: "codex",
       mode: "write",
@@ -181,9 +181,9 @@ describe("resolveDelegation — réseau", () => {
     expect(result.networkWarning).toBeUndefined();
   });
 
-  it("sous « auto », une tâche codex en lecture seule part quand même — mais avec un avertissement", async () => {
-    // Sans cette nuance entre `auto` et `on`, les rôles `reviewer` et
-    // `investigator` livrés par défaut seraient tous deux hors service.
+  it("under \"auto\", a read-only codex task still departs — but with a warning", async () => {
+    // Without this nuance between `auto` and `on`, the `reviewer` and
+    // `investigator` roles shipped by default would both be out of service.
     const result = await resolveDelegation(defaultConfig(), root, {
       agent: "codex",
       mode: "read-only",
@@ -191,25 +191,25 @@ describe("resolveDelegation — réseau", () => {
     });
     if ("error" in result) throw new Error(result.error);
     expect(result.network).toBe(false);
-    expect(result.networkWarning).toContain("Réseau indisponible");
+    expect(result.networkWarning).toContain("Network unavailable");
   });
 
-  it("hérite du rôle, puis de la politique", async () => {
+  it("inherits from the role, then from the policy", async () => {
     const config: CaesarConfig = { ...defaultConfig(), roles: [role({ agents: ["codex"], network: "on" })] };
-    const parRole = await resolveDelegation(config, root, { role: "reviewer", mode: "write", depth: 0 });
-    if ("error" in parRole) throw new Error(parRole.error);
-    expect(parRole.network).toBe(true);
+    const fromRole = await resolveDelegation(config, root, { role: "reviewer", mode: "write", depth: 0 });
+    if ("error" in fromRole) throw new Error(fromRole.error);
+    expect(fromRole.network).toBe(true);
 
-    const parPolitique: CaesarConfig = {
+    const policyConfig: CaesarConfig = {
       ...defaultConfig(),
       policy: { ...defaultConfig().policy, default_network: "off" },
     };
-    const result = await resolveDelegation(parPolitique, root, { agent: "codex", mode: "write", depth: 0 });
+    const result = await resolveDelegation(policyConfig, root, { agent: "codex", mode: "write", depth: 0 });
     if ("error" in result) throw new Error(result.error);
     expect(result.network).toBe(false);
   });
 
-  it("la demande explicite l'emporte sur le rôle", async () => {
+  it("the explicit request wins over the role", async () => {
     const config: CaesarConfig = { ...defaultConfig(), roles: [role({ agents: ["codex"], network: "on" })] };
     const result = await resolveDelegation(config, root, {
       role: "reviewer",
@@ -221,7 +221,7 @@ describe("resolveDelegation — réseau", () => {
     expect(result.network).toBe(false);
   });
 
-  it("avoue ne pas savoir refermer le réseau d'un agent qu'il ne confine pas", async () => {
+  it("admits it cannot close the network of an agent it does not confine", async () => {
     const result = await resolveDelegation(defaultConfig(), root, {
       agent: "opencode",
       mode: "write",
@@ -230,19 +230,19 @@ describe("resolveDelegation — réseau", () => {
     });
     if ("error" in result) throw new Error(result.error);
     expect(result.network).toBe(true);
-    expect(result.networkWarning).toContain("ne sait pas le refermer");
+    expect(result.networkWarning).toContain("does not know how to close it");
   });
 });
 
 /**
- * Le refus d'écriture en place, vu depuis la première des deux portes.
+ * The in-place write refusal, seen from the first of the two gates.
  *
- * `prepareIsolation` rend le même verdict — c'est le filet que traverse tout
- * appel direct à `runTask` — mais après avoir créé le répertoire de tâche.
- * Ici, un refus ne laisse rien derrière lui : c'est ce que le dernier test de
- * ce bloc vérifie, et c'est la raison d'être de cette porte-ci.
+ * `prepareIsolation` renders the same verdict — it is the net that every
+ * direct call to `runTask` goes through — but after creating the task
+ * directory. Here, a refusal leaves nothing behind it: that is what the
+ * last test of this block checks, and it is this gate's reason for being.
  */
-describe("resolveDelegation — écriture en place", () => {
+describe("resolveDelegation — in-place write", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -265,7 +265,7 @@ describe("resolveDelegation — écriture en place", () => {
     await run("git", ["commit", "-q", "-m", "init"], { cwd: dir });
   }
 
-  it('refuse "inplace" + write dans un dépôt utilisable, en nommant la provenance explicite', async () => {
+  it('refuses "inplace" + write in a usable repository, naming the explicit provenance', async () => {
     await initGitRepo(root);
     const result = await resolveDelegation(defaultConfig(), root, {
       agent: "codex",
@@ -275,14 +275,14 @@ describe("resolveDelegation — écriture en place", () => {
     });
     expect("error" in result).toBe(true);
     if ("error" in result) {
-      expect(result.error).toMatch(/demandée explicitement/);
+      expect(result.error).toMatch(/explicitly requested/);
       expect(result.error).toMatch(/allow_inplace_write/);
     }
   });
 
-  it("nomme le rôle quand l'isolation en vient, plutôt que la demande", async () => {
-    // Le cas réel : un rôle `implementer` mal configuré en `inplace`. Un motif
-    // disant « demandée explicitement » enverrait corriger le mauvais endroit.
+  it("names the role when the isolation comes from it, rather than the request", async () => {
+    // The real case: an `implementer` role misconfigured as `inplace`. A
+    // reason saying "explicitly requested" would send one to fix the wrong place.
     await initGitRepo(root);
     const config: CaesarConfig = {
       ...defaultConfig(),
@@ -290,10 +290,10 @@ describe("resolveDelegation — écriture en place", () => {
     };
     const result = await resolveDelegation(config, root, { role: "implementer", agent: "codex", depth: 0 });
     expect("error" in result).toBe(true);
-    if ("error" in result) expect(result.error).toMatch(/rôle "implementer"/);
+    if ("error" in result) expect(result.error).toMatch(/role "implementer"/);
   });
 
-  it("nomme la politique quand l'isolation vient de son défaut", async () => {
+  it("names the policy when the isolation comes from its default", async () => {
     await initGitRepo(root);
     const config: CaesarConfig = {
       ...defaultConfig(),
@@ -304,7 +304,7 @@ describe("resolveDelegation — écriture en place", () => {
     if ("error" in result) expect(result.error).toMatch(/default_isolation/);
   });
 
-  it("accepte sous opt-in, et rend la permission à transmettre au moteur", async () => {
+  it("accepts under opt-in, and returns the permission to pass to the engine", async () => {
     await initGitRepo(root);
     const config: CaesarConfig = {
       ...defaultConfig(),
@@ -319,14 +319,14 @@ describe("resolveDelegation — écriture en place", () => {
     expect("error" in result).toBe(false);
     if (!("error" in result)) {
       expect(result.isolation).toBe("inplace");
-      // Sans cette transmission, `prepareIsolation` refuserait ce que
-      // `resolveDelegation` vient d'accorder — le défaut par défaut fermé
-      // n'a de sens que si la permission voyage.
+      // Without this handoff, `prepareIsolation` would refuse what
+      // `resolveDelegation` just granted — the closed-by-default default
+      // only makes sense if the permission travels.
       expect(result.allowInplaceWrite).toBe(true);
     }
   });
 
-  it("accepte hors dépôt git : aucun worktree n'y serait possible", async () => {
+  it("accepts outside a git repository: no worktree would be possible there", async () => {
     const result = await resolveDelegation(defaultConfig(), root, {
       agent: "codex",
       mode: "write",
@@ -336,9 +336,9 @@ describe("resolveDelegation — écriture en place", () => {
     expect("error" in result).toBe(false);
   });
 
-  it("refuse sans rien écrire sur le disque", async () => {
-    // Même promesse que le refus réseau, qui précède déjà toute écriture :
-    // une délégation refusée ne doit pas laisser de répertoire de tâche.
+  it("refuses without writing anything to disk", async () => {
+    // Same promise as the network refusal, which already precedes any
+    // write: a refused delegation must not leave a task directory behind.
     await initGitRepo(root);
     const before = await readdir(root);
     await resolveDelegation(defaultConfig(), root, {
@@ -352,28 +352,28 @@ describe("resolveDelegation — écriture en place", () => {
 });
 
 /**
- * `nextDelegationDepth` — voir C4 de la revue finale : `$CAESAR_DEPTH` était
- * bien exporté vers les sous-processus (`taskEnv`, `@caesar/protocol`) mais
- * jamais relu par personne, ce qui rendait `max_depth` inapplicable dès
- * qu'un agent délégant tournait lui-même comme sous-agent. Testée
- * directement plutôt que via l'environnement réel du process de test (voir
- * les tests d'intégration de `run.test.ts`, `@caesar/cli`, qui couvrent le
- * câblage bout en bout) : ici, seule la fonction de calcul.
+ * `nextDelegationDepth` — see C4 of the final review: `$CAESAR_DEPTH` was
+ * indeed exported to subprocesses (`taskEnv`, `@caesar/protocol`) but
+ * never read back by anyone, which made `max_depth` unenforceable as soon
+ * as a delegating agent was itself running as a sub-agent. Tested
+ * directly rather than via the test process's real environment (see
+ * the integration tests of `run.test.ts`, `@caesar/cli`, which cover the
+ * end-to-end wiring): here, only the computation function.
  */
 describe("nextDelegationDepth", () => {
-  it("aucune variable héritée : profondeur 1 (premier niveau de délégation)", () => {
+  it("no inherited variable: depth 1 (first level of delegation)", () => {
     expect(nextDelegationDepth({})).toBe(1);
   });
 
-  it("profondeur héritée n : rend n + 1", () => {
+  it("inherited depth n: returns n + 1", () => {
     expect(nextDelegationDepth({ [ENV.depth]: "3" })).toBe(4);
   });
 
-  it("valeur non numérique héritée : retombe sur 0 avant d'ajouter 1, plutôt que NaN", () => {
-    // Un NaN propagé jusqu'à `isDepthAllowed` (`depth >= max_depth`) serait
-    // toujours faux : le garde-fou anti-récursion se désarmerait en
-    // silence sur la moindre variable malformée. Vérifié explicitement.
-    expect(nextDelegationDepth({ [ENV.depth]: "pas-un-nombre" })).toBe(1);
-    expect(Number.isNaN(nextDelegationDepth({ [ENV.depth]: "pas-un-nombre" }))).toBe(false);
+  it("non-numeric inherited value: falls back to 0 before adding 1, rather than NaN", () => {
+    // A NaN propagated all the way to `isDepthAllowed` (`depth >= max_depth`)
+    // would always be false: the anti-recursion safeguard would disarm
+    // itself silently on the slightest malformed variable. Checked explicitly.
+    expect(nextDelegationDepth({ [ENV.depth]: "not-a-number" })).toBe(1);
+    expect(Number.isNaN(nextDelegationDepth({ [ENV.depth]: "not-a-number" }))).toBe(false);
   });
 });

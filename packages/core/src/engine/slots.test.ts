@@ -19,7 +19,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-/** Une tâche qui se déclare active, attend d'être relâchée, puis rend. */
+/** A task that declares itself active, waits to be released, then returns. */
 function gate() {
   let release!: () => void;
   const opened = new Promise<void>((resolve) => {
@@ -29,10 +29,10 @@ function gate() {
 }
 
 /**
- * Occupe un créneau et ne rend la main qu'une fois la tâche *effectivement*
- * démarrée. Nécessaire parce que l'acquisition n'est pas FIFO : lancer deux
- * `run` à la suite ne dit rien de leur ordre d'entrée (voir l'en-tête du
- * module), et un test qui le supposerait mesurerait le hasard.
+ * Occupies a slot and only hands back control once the task has *actually*
+ * started. Necessary because acquisition is not FIFO: launching two `run`
+ * calls in a row says nothing about their entry order (see the module
+ * header), and a test assuming it would be measuring chance.
  */
 async function occupy(queue: ReturnType<typeof createSlotQueue>) {
   const held = gate();
@@ -48,8 +48,8 @@ async function occupy(queue: ReturnType<typeof createSlotQueue>) {
   return { release: held.release, done };
 }
 
-describe("createSlotQueue — dans un seul processus", () => {
-  it("sérialise au-delà de la limite", async () => {
+describe("createSlotQueue — within a single process", () => {
+  it("serializes beyond the limit", async () => {
     const queue = createSlotQueue({ root, limit: 1, pollMs: 10 });
     const occupant = await occupy(queue);
 
@@ -58,7 +58,7 @@ describe("createSlotQueue — dans un seul processus", () => {
       secondRan = true;
     });
 
-    // Tant que le premier tient le créneau unique, le second n'a pas commencé.
+    // As long as the first holds the single slot, the second has not started.
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(secondRan).toBe(false);
 
@@ -68,13 +68,13 @@ describe("createSlotQueue — dans un seul processus", () => {
     expect(await countOccupiedSlots(root)).toBe(0);
   });
 
-  it("rend chaque créneau à la fin, y compris quand la tâche échoue", async () => {
+  it("returns every slot at the end, including when the task fails", async () => {
     const queue = createSlotQueue({ root, limit: 2, pollMs: 10 });
-    await expect(queue.run(async () => { throw new Error("échec délibéré"); })).rejects.toThrow("échec délibéré");
+    await expect(queue.run(async () => { throw new Error("deliberate failure"); })).rejects.toThrow("deliberate failure");
     expect(await countOccupiedSlots(root)).toBe(0);
   });
 
-  it("laisse `limit` tâches courir de front, pas une de plus", async () => {
+  it("lets `limit` tasks run abreast, not one more", async () => {
     const queue = createSlotQueue({ root, limit: 3, pollMs: 10 });
     let concurrent = 0;
     let peak = 0;
@@ -98,8 +98,8 @@ describe("createSlotQueue — dans un seul processus", () => {
   });
 });
 
-describe("createSlotQueue — reprise après un processus mort", () => {
-  /** Écrit un créneau à la main, comme l'aurait laissé un processus tué. */
+describe("createSlotQueue — reclaim after a dead process", () => {
+  /** Writes a slot by hand, as a killed process would have left it. */
   async function plantSlot(index: number, holder: Record<string, unknown>): Promise<string> {
     await mkdir(join(root, SLOTS), { recursive: true });
     const path = join(root, SLOTS, `${index}.json`);
@@ -107,9 +107,9 @@ describe("createSlotQueue — reprise après un processus mort", () => {
     return path;
   }
 
-  it("reprend le créneau d'un pid qui n'existe plus — sinon un kill -9 condamnerait le projet", async () => {
-    // Un pid libre : 2^22 dépasse le maximum de toute machine courante.
-    await plantSlot(0, { pid: 4_194_303, host: hostname(), token: "mort", startedAt: new Date().toISOString() });
+  it("reclaims the slot of a pid that no longer exists — otherwise a kill -9 would doom the project", async () => {
+    // A free pid: 2^22 exceeds the maximum of any current machine.
+    await plantSlot(0, { pid: 4_194_303, host: hostname(), token: "dead", startedAt: new Date().toISOString() });
     const queue = createSlotQueue({ root, limit: 1, pollMs: 10 });
 
     let ran = false;
@@ -119,31 +119,31 @@ describe("createSlotQueue — reprise après un processus mort", () => {
     expect(ran).toBe(true);
   });
 
-  it("ne touche pas au créneau d'un processus vivant", async () => {
-    await plantSlot(0, { pid: process.pid, host: hostname(), token: "vivant", startedAt: new Date().toISOString() });
+  it("does not touch the slot of a living process", async () => {
+    await plantSlot(0, { pid: process.pid, host: hostname(), token: "alive", startedAt: new Date().toISOString() });
     const controller = new AbortController();
-    const waiting = createSlotQueue({ root, limit: 1, pollMs: 10, signal: controller.signal }).run(async () => "jamais");
+    const waiting = createSlotQueue({ root, limit: 1, pollMs: 10, signal: controller.signal }).run(async () => "never");
     await new Promise((resolve) => setTimeout(resolve, 60));
-    // Le créneau planté est toujours là, avec son jeton d'origine.
+    // The planted slot is still there, with its original token.
     const holders = await describeSlotHolders(root, 1);
-    expect(holders[0]?.token).toBe("vivant");
+    expect(holders[0]?.token).toBe("alive");
 
     controller.abort();
     await expect(waiting).rejects.toThrow();
   });
 
-  it("ne reprend pas un pid d'une autre machine — il n'y est pas testable", async () => {
-    await plantSlot(0, { pid: 4_194_303, host: "une-autre-machine", token: "ailleurs", startedAt: new Date().toISOString() });
+  it("does not reclaim a pid from another machine — it cannot be tested there", async () => {
+    await plantSlot(0, { pid: 4_194_303, host: "another-machine", token: "elsewhere", startedAt: new Date().toISOString() });
     const controller = new AbortController();
-    const waiting = createSlotQueue({ root, limit: 1, pollMs: 10, signal: controller.signal }).run(async () => "jamais");
+    const waiting = createSlotQueue({ root, limit: 1, pollMs: 10, signal: controller.signal }).run(async () => "never");
     await new Promise((resolve) => setTimeout(resolve, 60));
-    expect((await describeSlotHolders(root, 1))[0]?.token).toBe("ailleurs");
+    expect((await describeSlotHolders(root, 1))[0]?.token).toBe("elsewhere");
     controller.abort();
     await expect(waiting).rejects.toThrow();
   });
 
-  it("explique l'attente en nommant les détenteurs", async () => {
-    await plantSlot(0, { pid: process.pid, host: hostname(), token: "t", startedAt: new Date().toISOString(), label: "caesar run — relire le parseur" });
+  it("explains the wait by naming the holders", async () => {
+    await plantSlot(0, { pid: process.pid, host: hostname(), token: "t", startedAt: new Date().toISOString(), label: "caesar run — reread the parser" });
     const controller = new AbortController();
     let announced: string | undefined;
     const waiting = createSlotQueue({
@@ -154,21 +154,21 @@ describe("createSlotQueue — reprise après un processus mort", () => {
       onWait: (holders) => {
         announced = holders[0]?.label;
       },
-    }).run(async () => "jamais");
+    }).run(async () => "never");
 
     await new Promise((resolve) => setTimeout(resolve, 60));
-    expect(announced).toBe("caesar run — relire le parseur");
+    expect(announced).toBe("caesar run — reread the parser");
     controller.abort();
     await expect(waiting).rejects.toThrow();
   });
 });
 
-describe("createSlotQueue — abandon", () => {
-  it("un signal déclenché pendant l'attente ne prend jamais le créneau", async () => {
+describe("createSlotQueue — abort", () => {
+  it("a signal fired during the wait never takes the slot", async () => {
     const occupant = await occupy(createSlotQueue({ root, limit: 1, pollMs: 10 }));
 
     const controller = new AbortController();
-    const waiting = createSlotQueue({ root, limit: 1, pollMs: 10, signal: controller.signal }).run(async () => "jamais");
+    const waiting = createSlotQueue({ root, limit: 1, pollMs: 10, signal: controller.signal }).run(async () => "never");
     await new Promise((resolve) => setTimeout(resolve, 40));
     controller.abort();
     await expect(waiting).rejects.toThrow();
@@ -179,15 +179,15 @@ describe("createSlotQueue — abandon", () => {
   });
 });
 
-describe("createSlotQueue — entre processus", () => {
+describe("createSlotQueue — across processes", () => {
   /**
-   * La seule preuve qui vaille pour ce module : le sémaphore en mémoire
-   * (`createQueue`) passerait tous les tests ci-dessus. Deux processus Node
-   * distincts, une limite de 1, et l'on constate qu'ils ne se chevauchent
-   * jamais — ce que six `caesar run` dans six terminaux ne respectaient pas.
+   * The only proof that counts for this module: the in-memory semaphore
+   * (`createQueue`) would pass all the tests above. Two distinct Node
+   * processes, a limit of 1, and we observe that they never overlap — which
+   * six `caesar run` in six terminals did not respect.
    */
-  it("deux processus distincts se partagent la même limite", async () => {
-    const script = join(root, "prend-un-creneau.mjs");
+  it("two distinct processes share the same limit", async () => {
+    const script = join(root, "take-a-slot.mjs");
     await writeFile(
       script,
       `
@@ -195,9 +195,9 @@ import { createSlotQueue } from ${JSON.stringify(new URL("./slots.js", import.me
 const [root, label, holdMs] = process.argv.slice(2);
 const queue = createSlotQueue({ root, limit: 1, pollMs: 10, label });
 await queue.run(async () => {
-  process.stdout.write(JSON.stringify({ label, event: "début", at: Date.now() }) + "\\n");
+  process.stdout.write(JSON.stringify({ label, event: "start", at: Date.now() }) + "\\n");
   await new Promise((r) => setTimeout(r, Number(holdMs)));
-  process.stdout.write(JSON.stringify({ label, event: "fin", at: Date.now() }) + "\\n");
+  process.stdout.write(JSON.stringify({ label, event: "end", at: Date.now() }) + "\\n");
 });
 `,
       "utf8",
@@ -214,29 +214,29 @@ await queue.run(async () => {
       .sort((x, y) => x.at - y.at);
 
     expect(events).toHaveLength(4);
-    // Sans chevauchement, la séquence est nécessairement « début X, fin X,
-    // début Y, fin Y » : jamais deux « début » consécutifs.
-    expect(events.map((e) => e.event)).toEqual(["début", "fin", "début", "fin"]);
+    // Without overlap, the sequence is necessarily "start X, end X,
+    // start Y, end Y": never two consecutive "start".
+    expect(events.map((e) => e.event)).toEqual(["start", "end", "start", "end"]);
     expect(events[0]!.label).toBe(events[1]!.label);
     expect(events[2]!.label).toBe(events[3]!.label);
     expect(events[0]!.label).not.toBe(events[2]!.label);
 
-    // Chaque processus a rendu son créneau en sortant.
+    // Each process returned its slot on exit.
     expect(await readdir(join(root, SLOTS))).toEqual([]);
   }, 20_000);
 
-  it("un processus tué en cours de route ne bloque pas le suivant", async () => {
-    // Le scénario qui rend la reprise indispensable : SIGKILL n'exécute
-    // aucun `finally`, le fichier-créneau survit à son détenteur.
-    const script = join(root, "tient-et-meurt.mjs");
+  it("a process killed midway does not block the next one", async () => {
+    // The scenario that makes the reclaim indispensable: SIGKILL runs no
+    // `finally`, the slot file outlives its holder.
+    const script = join(root, "hold-and-die.mjs");
     await writeFile(
       script,
       `
 import { createSlotQueue } from ${JSON.stringify(new URL("./slots.js", import.meta.url).href.replace("/src/", "/dist/"))};
 const [root] = process.argv.slice(2);
-const queue = createSlotQueue({ root, limit: 1, pollMs: 10, label: "condamné" });
+const queue = createSlotQueue({ root, limit: 1, pollMs: 10, label: "doomed" });
 queue.run(async () => {
-  process.stdout.write("pris\\n");
+  process.stdout.write("taken\\n");
   await new Promise(() => {});
 });
 `,
@@ -249,7 +249,7 @@ queue.run(async () => {
 
     child.kill("SIGKILL");
     await new Promise<void>((resolve) => child.once("exit", () => resolve()));
-    // Le créneau est toujours là — c'est bien un cadavre, pas une libération.
+    // The slot is still there — it really is a corpse, not a release.
     expect(await countOccupiedSlots(root)).toBe(1);
 
     let ran = false;
@@ -260,24 +260,24 @@ queue.run(async () => {
   }, 20_000);
 });
 
-describe("createSlotQueue — hygiène", () => {
-  it("refuse une limite absurde, comme le sémaphore en mémoire", () => {
-    expect(() => createSlotQueue({ root, limit: 0 })).toThrow(/au moins 1/);
+describe("createSlotQueue — hygiene", () => {
+  it("refuses an absurd limit, like the in-memory semaphore", () => {
+    expect(() => createSlotQueue({ root, limit: 0 })).toThrow(/at least 1/);
   });
 
-  it("crée son répertoire sans que le projet soit initialisé", async () => {
+  it("creates its directory without the project being initialized", async () => {
     await createSlotQueue({ root, limit: 1, pollMs: 10 }).run(async () => undefined);
-    // Le répertoire existe, et il est vide : le créneau a été rendu.
+    // The directory exists, and it is empty: the slot was returned.
     expect(await readdir(join(root, SLOTS))).toEqual([]);
   });
 
-  it("le fichier-créneau nomme son détenteur de façon exploitable", async () => {
-    const occupant = await occupy(createSlotQueue({ root, limit: 1, pollMs: 10, label: "caesar run — objectif" }));
+  it("the slot file names its holder in a usable way", async () => {
+    const occupant = await occupy(createSlotQueue({ root, limit: 1, pollMs: 10, label: "caesar run — objective" }));
 
     const holder = JSON.parse(await readFile(join(root, SLOTS, "0.json"), "utf8")) as Record<string, unknown>;
     expect(holder["pid"]).toBe(process.pid);
     expect(holder["host"]).toBe(hostname());
-    expect(holder["label"]).toBe("caesar run — objectif");
+    expect(holder["label"]).toBe("caesar run — objective");
     expect(typeof holder["token"]).toBe("string");
 
     occupant.release();

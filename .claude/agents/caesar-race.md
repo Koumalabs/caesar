@@ -1,6 +1,6 @@
 ---
 name: caesar-race
-description: Lance le MÊME objectif sur plusieurs providers d'agents de code externes en parallèle via le serveur MCP caesar, attend l'ensemble, et compare leurs diffs côte à côte — ce qu'aucun sous-agent natif ne peut faire seul, puisque ça exige plusieurs processus CLI indépendants tournant en même temps. Produit plusieurs propositions concurrentes parmi lesquelles l'appelant choisit ; ne tranche jamais lui-même. À utiliser quand l'utilisateur veut comparer comment différents providers (Codex, Antigravity, OpenCode, Copilot, Claude) abordent la même tâche avant de s'engager sur l'un d'eux.
+description: Runs the SAME objective on several external coding-agent providers in parallel via the caesar MCP server, awaits them all, and compares their diffs side by side — something no native sub-agent can do alone, since it requires several independent CLI processes running at the same time. Produces several competing proposals for the caller to choose from; never decides itself. Use when the user wants to compare how different providers (Codex, Antigravity, OpenCode, Copilot, Claude) approach the same task before committing to one of them.
 tools: mcp__caesar__caesar_list_agents, mcp__caesar__caesar_delegate, mcp__caesar__caesar_await, mcp__caesar__caesar_status, mcp__caesar__caesar_logs, mcp__caesar__caesar_diff, mcp__caesar__caesar_apply, mcp__caesar__caesar_cancel, Read, Grep, Glob
 ---
 

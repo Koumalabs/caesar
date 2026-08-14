@@ -1,14 +1,13 @@
 /**
- * Utilitaires partagés par les tests du CLI.
+ * Utilities shared by the CLI tests.
  *
- * Deux garde-fous du brief de la tâche 6 à respecter systématiquement :
- * aucun test ne doit toucher le `~/.config/caesar/` réel, et aucun ne doit
- * invoquer un vrai CLI d'agent. `withFakeHome` isole le premier ;
- * `withShimmedPath` permet le second en substituant, sur un `PATH`
- * entièrement maîtrisé, un script factice au binaire d'un agent du
- * catalogue — le moteur (registre, adaptateur réel, contrat d'environnement)
- * tourne alors pour de vrai, seul le processus externe est un agent
- * factice.
+ * Two guardrails from the task 6 brief to honor systematically: no test
+ * must touch the real `~/.config/caesar/`, and none must invoke a real
+ * agent CLI. `withFakeHome` isolates the former; `withShimmedPath` enables
+ * the latter by substituting, on a fully controlled `PATH`, a fake script
+ * for the binary of an agent of the catalog — the engine (registry, real
+ * adapter, environment contract) then runs for real, only the external
+ * process is a fake agent.
  */
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -22,7 +21,7 @@ export interface CapturedIo extends Io {
   stderrText(): string;
 }
 
-/** Un `Io` dont les flux sont capturés en mémoire plutôt qu'écrits sur le terminal — jamais de `isTTY`, donc jamais de couleur. */
+/** An `Io` whose streams are captured in memory rather than written to the terminal — never any `isTTY`, hence never any color. */
 export function makeIo(): CapturedIo {
   const stdoutChunks: string[] = [];
   const stderrChunks: string[] = [];
@@ -47,9 +46,9 @@ export function makeIo(): CapturedIo {
 }
 
 /**
- * Exécute `fn` avec `HOME` pointé vers un répertoire temporaire fraîchement
- * créé, garantissant qu'aucun `~/.config/caesar/config.toml` réel n'est lu ni
- * écrit — même motif que `packages/core/src/config.test.ts`.
+ * Runs `fn` with `HOME` pointed at a freshly created temporary directory,
+ * guaranteeing no real `~/.config/caesar/config.toml` is read or written —
+ * same motive as `packages/core/src/config.test.ts`.
  */
 export async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
   const home = await mkdtemp(join(tmpdir(), "caesar-cli-home-"));
@@ -65,11 +64,11 @@ export async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise
 }
 
 /**
- * Exécute `fn` avec un `PATH` entièrement remplacé par `shimDir` plus les
- * répertoires strictement nécessaires à la résolution de `/usr/bin/env` (les
- * scripts factices utilisent tous ce shebang) et de `node` lui-même. Résultat :
- * seuls les binaires explicitement déposés dans `shimDir` sont "installés" —
- * aucun agent réellement présent sur la machine ne peut fausser le test.
+ * Runs `fn` with a `PATH` entirely replaced by `shimDir` plus the
+ * directories strictly needed to resolve `/usr/bin/env` (the fake scripts
+ * all use that shebang) and `node` itself. Result: only the binaries
+ * explicitly deposited in `shimDir` are "installed" — no agent actually
+ * present on the machine can skew the test.
  */
 export async function withShimmedPath<T>(shimDir: string, fn: () => Promise<T>): Promise<T> {
   const previous = process.env["PATH"];
@@ -84,12 +83,12 @@ export async function withShimmedPath<T>(shimDir: string, fn: () => Promise<T>):
 }
 
 /**
- * Écrit, sous `dir/bin`, un redirecteur d'une ligne vers `sourcePath` plutôt
- * qu'une copie de son contenu : une copie casserait la résolution de module
- * de tout import que le script ferait lui-même (le mode "ask" de l'agent
- * factice, tâche 9, importe dynamiquement `@modelcontextprotocol/sdk` — une
- * copie déposée dans ce répertoire de shim temporaire, sans rapport avec le
- * monorepo, ne le résoudrait pas). Même correction que `packages/mcp-server/test/support.ts` (tâche 10, A4).
+ * Writes, under `dir/bin`, a one-line redirector to `sourcePath` rather
+ * than a copy of its content: a copy would break the module resolution of
+ * any import the script does itself (the fake agent's "ask" mode, task 9,
+ * dynamically imports `@modelcontextprotocol/sdk` — a copy deposited in
+ * this temporary shim directory, unrelated to the monorepo, would not
+ * resolve it). Same fix as `packages/mcp-server/test/support.ts` (task 10, A4).
  */
 async function shimFrom(dir: string, bin: string, sourcePath: string): Promise<void> {
   const target = join(dir, bin);
@@ -98,16 +97,16 @@ async function shimFrom(dir: string, bin: string, sourcePath: string): Promise<v
   await chmod(target, 0o755);
 }
 
-/** Chemin de l'agent factice partagé par `@caesar/core` (voir son brief : réutilisé tel quel, jamais dupliqué). */
+/** Path of the fake agent shared by `@caesar/core` (see its brief: reused as-is, never duplicated). */
 export const FAKE_AGENT_PATH = fileURLToPath(new URL("../../core/test/fixtures/fake-agent.mjs", import.meta.url));
 
 /**
- * Crée un répertoire de shim temporaire où `bin` (p. ex. "codex") est en
- * réalité une copie de l'agent factice de `@caesar/core`. Le vrai adaptateur du
- * registre construit ses arguments spécifiques (flags Codex, etc.), mais le
- * script factice les ignore et ne regarde que les variables d'environnement
- * du contrat minimal ($CAESAR_TASK_FILE, $CAESAR_REPORT_PATH…) — un aller-retour
- * complet et réaliste, sans jamais toucher au vrai binaire de l'agent.
+ * Creates a temporary shim directory where `bin` (e.g. "codex") is in
+ * reality a copy of the `@caesar/core` fake agent. The registry's real
+ * adapter builds its specific arguments (Codex flags, etc.), but the fake
+ * script ignores them and only looks at the minimal contract's environment
+ * variables ($CAESAR_TASK_FILE, $CAESAR_REPORT_PATH…) — a complete and
+ * realistic round trip, without ever touching the agent's real binary.
  */
 export async function withFakeAgentAsBin<T>(bin: string, fn: (shimDir: string) => Promise<T>): Promise<T> {
   const shimDir = await mkdtemp(join(tmpdir(), "caesar-cli-shim-"));
@@ -120,19 +119,19 @@ export async function withFakeAgentAsBin<T>(bin: string, fn: (shimDir: string) =
 }
 
 /**
- * Pose `allow_inplace_write = true` dans la couche projet de `root`.
+ * Sets `allow_inplace_write = true` in `root`'s project layer.
  *
- * Une tâche en écriture demandant explicitement `isolation = "inplace"` dans un
- * dépôt git utilisable est refusée par défaut (voir `decideInplaceWrite`,
- * `@caesar/core`) : c'est la correction du défaut qui laissait des délégations
- * écrire sur la branche de travail de l'utilisateur en silence. Les tests qui
- * exercent *autre chose* que cette règle — un aller-retour complet, un timeout,
- * un code de sortie — n'ont pas à la subir, mais ils doivent l'assumer
- * explicitement, exactement comme un utilisateur le ferait.
+ * A write task explicitly asking for `isolation = "inplace"` in a usable
+ * git repository is refused by default (see `decideInplaceWrite`,
+ * `@caesar/core`): it is the fix for the defect that let delegations write
+ * on the user's working branch silently. Tests exercising *something else*
+ * than that rule — a full round trip, a timeout, an exit code — do not have
+ * to endure it, but they must assume it explicitly, exactly as a user
+ * would.
  *
- * Insère la clé dans un `[policy]` existant plutôt que d'écraser le fichier :
- * plusieurs tests écrivent déjà leur propre couche projet (`[[agent]]`, …), et
- * deux tables `[policy]` dans un même TOML seraient une erreur de parsing.
+ * Inserts the key into an existing `[policy]` rather than overwriting the
+ * file: several tests already write their own project layer (`[[agent]]`,
+ * …), and two `[policy]` tables in a single TOML would be a parse error.
  */
 export async function allowInplaceWrite(root: string): Promise<void> {
   const path = join(root, ".caesar", "config.toml");
@@ -140,7 +139,7 @@ export async function allowInplaceWrite(root: string): Promise<void> {
   try {
     existing = await readFile(path, "utf8");
   } catch {
-    // Aucune couche projet : on en crée une.
+    // No project layer: we create one.
   }
   const line = "allow_inplace_write = true\n";
   const next = existing.includes("[policy]")
@@ -150,7 +149,7 @@ export async function allowInplaceWrite(root: string): Promise<void> {
   await writeFile(path, next, "utf8");
 }
 
-/** Dépose un script minimal répondant `--version` avec succès, pour les tests de `caesar doctor`. */
+/** Deposits a minimal script answering `--version` successfully, for the `caesar doctor` tests. */
 export async function writeVersionOkShim(dir: string, bin: string, version: string): Promise<void> {
   const target = join(dir, bin);
   await writeFile(
@@ -161,7 +160,7 @@ export async function writeVersionOkShim(dir: string, bin: string, version: stri
   await chmod(target, 0o755);
 }
 
-/** Dépose un script minimal qui échoue systématiquement (y compris sur --version), pour les tests de `caesar doctor`. */
+/** Deposits a minimal script that always fails (including on --version), for the `caesar doctor` tests. */
 export async function writeVersionFailShim(dir: string, bin: string): Promise<void> {
   const target = join(dir, bin);
   await writeFile(target, `#!/usr/bin/env node\nprocess.exit(1);\n`, "utf8");

@@ -1,12 +1,11 @@
 /**
- * Fabrique de `ConfigState` pour les tests de rendu (`*.render.test.tsx`) et
- * les tests purs de `config-state.test.ts` qui n'ont pas besoin de toucher le
- * disque : les trois couches vides, la fusion effective vaut alors
- * exactement `defaultConfig()` (voir `mergeConfig`, `@caesar/core` — fusionner
- * avec un override vide est un no-op). Centralisé ici plutôt que recopié
- * dans chaque fichier de test (c'était le cas jusqu'à la tâche 15, avec le
- * risque qu'une correction faite dans un fichier ne soit pas reportée dans
- * les autres).
+ * `ConfigState` factory for the render tests (`*.render.test.tsx`) and the
+ * pure tests of `config-state.test.ts` that do not need to touch the
+ * disk: the three layers empty, the effective merge is then exactly
+ * `defaultConfig()` (see `mergeConfig`, `@caesar/core` — merging with an
+ * empty override is a no-op). Centralized here rather than copied into
+ * each test file (which was the case until task 15, with the risk that a
+ * fix made in one file would not be carried over to the others).
  */
 import type { ConfigLayer, ConfigScope } from "@caesar/core";
 import type { ConfigState } from "./config-state";

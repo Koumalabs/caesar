@@ -1,13 +1,13 @@
 /**
- * Utilitaires partagés par les tests du serveur MCP.
+ * Utilities shared by the MCP server tests.
  *
- * Mêmes garde-fous que `packages/cli/test/support.ts` (dont ce fichier
- * reprend le motif, faute d'un point d'export commun entre les deux
- * packages de test) : aucun test ne doit toucher `~/.config/caesar/` ni un
- * autre fichier de configuration réel, ni invoquer un vrai CLI d'agent —
- * `withFakeHome` isole le premier, `withFakeAgentAsBin`/`withShimmedPath` le
- * second, en substituant l'agent factice de `@caesar/core` au binaire réel
- * d'un agent du catalogue, sur un `PATH` entièrement maîtrisé.
+ * Same guardrails as `packages/cli/test/support.ts` (whose pattern this
+ * file reprises, for lack of a shared export point between the two test
+ * packages): no test may touch `~/.config/caesar/` or any other real
+ * configuration file, nor invoke a real agent CLI — `withFakeHome` isolates
+ * the former, `withFakeAgentAsBin`/`withShimmedPath` the latter, by
+ * substituting the fake agent from `@caesar/core` for a catalog agent's
+ * real binary, on a fully controlled `PATH`.
  */
 import { execFile } from "node:child_process";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -44,14 +44,14 @@ export async function withShimmedPath<T>(shimDir: string, fn: () => Promise<T>):
 }
 
 /**
- * Écrit, sous `dir/bin`, un redirecteur d'une ligne vers `sourcePath` plutôt
- * qu'une copie de son contenu : une copie casserait la résolution de module
- * de tout import que le script ferait lui-même (le mode "ask" de l'agent
- * factice, tâche 9, importe dynamiquement `@modelcontextprotocol/sdk` — une
- * copie déposée dans ce répertoire de shim temporaire, sans rapport avec le
- * monorepo, ne le résoudrait pas). `import(...)` est valide qu'un fichier
- * soit interprété comme ESM ou CommonJS ; comportement inchangé pour tout
- * usage existant, qui n'importait rien lui-même.
+ * Writes, under `dir/bin`, a one-line redirector to `sourcePath` rather
+ * than a copy of its content: a copy would break module resolution for any
+ * import the script does itself (the fake agent's "ask" mode, task 9,
+ * dynamically imports `@modelcontextprotocol/sdk` — a copy dropped into
+ * this temporary shim directory, unrelated to the monorepo, would not
+ * resolve it). `import(...)` is valid whether a file is interpreted as ESM
+ * or CommonJS; behavior unchanged for every existing usage, which imported
+ * nothing itself.
  */
 async function shimFrom(dir: string, bin: string, sourcePath: string): Promise<void> {
   const target = join(dir, bin);
@@ -60,7 +60,7 @@ async function shimFrom(dir: string, bin: string, sourcePath: string): Promise<v
   await chmod(target, 0o755);
 }
 
-/** Chemin de l'agent factice partagé par `@caesar/core` — réutilisé tel quel, jamais dupliqué (voir son brief). */
+/** Path of the fake agent shared by `@caesar/core` — reused as-is, never duplicated (see its brief). */
 export const FAKE_AGENT_PATH = fileURLToPath(new URL("../../core/test/fixtures/fake-agent.mjs", import.meta.url));
 
 export async function withFakeAgentAsBin<T>(bin: string, fn: (shimDir: string) => Promise<T>): Promise<T> {
@@ -73,7 +73,7 @@ export async function withFakeAgentAsBin<T>(bin: string, fn: (shimDir: string) =
   }
 }
 
-/** Dépôt git minimal, pour les tests qui exercent l'isolation "worktree" (`caesar_diff`/`caesar_apply`). */
+/** Minimal git repository, for tests that exercise "worktree" isolation (`caesar_diff`/`caesar_apply`). */
 export async function initGitRepo(root: string): Promise<void> {
   await execFileAsync("git", ["init", "-q"], { cwd: root });
   await execFileAsync("git", ["config", "user.email", "caesar-test@example.com"], { cwd: root });

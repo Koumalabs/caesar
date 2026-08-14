@@ -1,9 +1,8 @@
 /**
- * Le défaut que ce tableau existe pour corriger se vérifie à l'œil sur la
- * grille rendue : deux cellules voisines ne doivent jamais se toucher, et
- * aucune ligne ne doit dépasser la largeur du terminal (au-delà, le terminal
- * replie, et la vue d'ensemble devient illisible là où elle devait
- * renseigner).
+ * The defect this table exists to fix is checked by eye on the rendered
+ * grid: two neighboring cells must never touch, and no line must exceed
+ * the terminal width (beyond it, the terminal wraps, and the overview
+ * becomes unreadable exactly where it was supposed to inform).
  */
 import { describe, expect, it } from "bun:test";
 import { act } from "react";
@@ -18,17 +17,17 @@ interface Row {
 }
 
 const ROWS: Row[] = [
-  { id: "codex", path: "/Users/quelquun/.local/share/mise/installs/node/22.11.0/bin/codex", version: "0.1.7" },
-  { id: "antigravity", path: "/Users/quelquun/.local/bin/antigravity", version: "1.1.11" },
+  { id: "codex", path: "/Users/someone/.local/share/mise/installs/node/22.11.0/bin/codex", version: "0.1.7" },
+  { id: "antigravity", path: "/Users/someone/.local/bin/antigravity", version: "1.1.11" },
 ];
 
 const COLUMNS = [
   { header: "agent", min: 12, cell: (row: Row) => row.id },
-  { header: "binaire", flex: 1, cell: (row: Row) => row.path },
+  { header: "binary", flex: 1, cell: (row: Row) => row.path },
   { header: "version", min: 10, cell: (row: Row) => row.version },
 ];
 
-/** Le composant sous test lit la largeur réelle du terminal, comme les écrans. */
+/** The component under test reads the terminal's real width, like the screens do. */
 function Harness() {
   const { width } = useTerminalDimensions();
   return <Table columns={COLUMNS} rows={ROWS} keyOf={(row) => row.id} selectedIndex={0} width={width} />;
@@ -41,32 +40,32 @@ async function frameAt(width: number): Promise<{ frame: string; destroy: () => v
 }
 
 describe("Table", () => {
-  it("sépare toujours deux colonnes, même quand la valeur de gauche est tronquée", async () => {
+  it("always separates two columns, even when the left value is truncated", async () => {
     const { frame, destroy } = await frameAt(60);
     const line = frame.split("\n").find((candidate) => candidate.includes("codex"))!;
 
-    // Le chemin ne tient pas : il est coupé. L'élision doit être suivie d'un
-    // espace, jamais directement de la version — c'est exactement le défaut
-    // constaté ("…codex-cli 0.1…7 notable(s)").
+    // The path does not fit: it is cut. The elision must be followed by a
+    // space, never directly by the version — exactly the observed defect
+    // ("…codex-cli 0.1…7 notable(s)").
     expect(line).toContain("…");
     expect(line).not.toMatch(/…\S/);
     expect(line).toContain("0.1.7");
     destroy();
   });
 
-  it("occupe la largeur disponible plutôt qu'une largeur écrite en dur", async () => {
-    const étroit = await frameAt(60);
-    const large = await frameAt(160);
+  it("occupies the available width rather than a hard-coded one", async () => {
+    const narrow = await frameAt(60);
+    const wide = await frameAt(160);
 
-    // Sur un terminal large, la colonne flexible s'étend : le chemin qui
-    // était tronqué à 60 colonnes tient en entier à 160.
-    expect(étroit.frame).not.toContain("/Users/quelquun/.local/bin/antigravity");
-    expect(large.frame).toContain("/Users/quelquun/.local/bin/antigravity");
-    étroit.destroy();
-    large.destroy();
+    // On a wide terminal, the flexible column expands: the path that was
+    // truncated at 60 columns fits in full at 160.
+    expect(narrow.frame).not.toContain("/Users/someone/.local/bin/antigravity");
+    expect(wide.frame).toContain("/Users/someone/.local/bin/antigravity");
+    narrow.destroy();
+    wide.destroy();
   });
 
-  it("aucune ligne ne dépasse la largeur du terminal", async () => {
+  it("no line exceeds the terminal width", async () => {
     for (const width of [40, 80, 200]) {
       const { frame, destroy } = await frameAt(width);
       for (const line of frame.split("\n")) expect(line.trimEnd().length).toBeLessThanOrEqual(width);

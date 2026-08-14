@@ -21,7 +21,7 @@ function sampleTask(overrides: Partial<Task> = {}): Task {
     id: "t_0001",
     created_at: "2026-08-09T10:00:00.000Z",
     agent: "codex",
-    objective: "Corriger la régression sur le parseur",
+    objective: "Fix the regression in the parser",
     mode: "write",
     isolation: "worktree",
     workspace: "/tmp/wt",
@@ -32,93 +32,93 @@ function sampleTask(overrides: Partial<Task> = {}): Task {
   });
 }
 
-describe("mission", () => {
-  it("complète les champs facultatifs avec des valeurs neutres", () => {
+describe("task", () => {
+  it("fills the optional fields with neutral values", () => {
     const task = sampleTask();
     expect(task.context).toBe("");
     expect(task.constraints).toEqual([]);
     expect(task.depth).toBe(0);
   });
 
-  it("refuse une version de protocole inconnue", () => {
+  it("rejects an unknown protocol version", () => {
     const result = TaskSchema.safeParse({ ...sampleTask(), protocol: "caesar.task/v2" });
     expect(result.success).toBe(false);
   });
 
-  it("relit une mission écrite avant l'existence du champ « network »", () => {
-    // Les task.json déjà présents dans .caesar/tasks/ sont rouverts par
-    // `caesar ps`, `caesar logs` et `caesar diff` : sans défaut, ce champ les aurait
-    // tous rendus illisibles d'un coup.
-    const { network, ...ancienne } = sampleTask();
+  it('reads back a task written before the "network" field existed', () => {
+    // The task.json files already present in .caesar/tasks/ are reopened by
+    // `caesar ps`, `caesar logs` and `caesar diff`: without a default, this field
+    // would have made them all unreadable at once.
+    const { network, ...old } = sampleTask();
     expect(network).toBe(true);
-    expect(TaskSchema.parse(ancienne).network).toBe(true);
+    expect(TaskSchema.parse(old).network).toBe(true);
   });
 });
 
-describe("rapport", () => {
-  it("accepte un rapport minimal, tel qu'un agent extérieur le produirait", () => {
+describe("report", () => {
+  it("accepts a minimal report, such as an outside agent would produce", () => {
     const report = ReportSchema.parse({
       protocol: REPORT_PROTOCOL,
       status: "success",
-      summary: "Fait.",
+      summary: "Done.",
     });
     expect(report.changes).toEqual([]);
     expect(report.findings).toEqual([]);
     expect(report.task_id).toBe("");
   });
 
-  it("rejette un statut hors vocabulaire", () => {
+  it("rejects a status outside the vocabulary", () => {
     const result = ReportSchema.safeParse({
       protocol: REPORT_PROTOCOL,
-      status: "presque",
+      status: "almost",
       summary: "…",
     });
     expect(result.success).toBe(false);
   });
 });
 
-describe("extraction du rapport depuis du texte libre", () => {
+describe("report extraction from free-form text", () => {
   const valid = JSON.stringify({
     protocol: REPORT_PROTOCOL,
     status: "success",
-    summary: "Deux fichiers modifiés.",
+    summary: "Two files modified.",
   });
 
-  it("lit un bloc de code balisé", () => {
-    const text = ["Voilà le résultat.", "", "```json caesar:report", valid, "```"].join("\n");
-    expect(extractReportFromText(text)?.summary).toBe("Deux fichiers modifiés.");
+  it("reads a fenced code block", () => {
+    const text = ["Here is the result.", "", "```json caesar:report", valid, "```"].join("\n");
+    expect(extractReportFromText(text)?.summary).toBe("Two files modified.");
   });
 
-  it("lit un bloc json ordinaire", () => {
-    const text = ["Terminé.", "```json", valid, "```", "Bonne journée."].join("\n");
+  it("reads an ordinary json block", () => {
+    const text = ["Finished.", "```json", valid, "```", "Have a nice day."].join("\n");
     expect(extractReportFromText(text)?.status).toBe("success");
   });
 
-  it("retrouve un objet JSON noyé dans la prose", () => {
-    const text = `blah blah ${valid} et voilà`;
-    expect(extractReportFromText(text)?.summary).toBe("Deux fichiers modifiés.");
+  it("recovers a JSON object drowned in prose", () => {
+    const text = `blah blah ${valid} and there you go`;
+    expect(extractReportFromText(text)?.summary).toBe("Two files modified.");
   });
 
-  it("ne se laisse pas piéger par une accolade dans une chaîne", () => {
+  it("is not fooled by a brace inside a string", () => {
     const tricky = JSON.stringify({
       protocol: REPORT_PROTOCOL,
       status: "partial",
-      summary: 'contient une accolade } et une "citation"',
+      summary: 'contains a brace } and a "quote"',
     });
-    expect(extractReportFromText(`prose ${tricky} fin`)?.status).toBe("partial");
+    expect(extractReportFromText(`prose ${tricky} end`)?.status).toBe("partial");
   });
 
-  it("retient le dernier rapport quand l'agent se reprend", () => {
-    const first = JSON.stringify({ protocol: REPORT_PROTOCOL, status: "failed", summary: "raté" });
-    const second = JSON.stringify({ protocol: REPORT_PROTOCOL, status: "success", summary: "finalement bon" });
+  it("keeps the last report when the agent corrects itself", () => {
+    const first = JSON.stringify({ protocol: REPORT_PROTOCOL, status: "failed", summary: "missed" });
+    const second = JSON.stringify({ protocol: REPORT_PROTOCOL, status: "success", summary: "good in the end" });
     expect(extractReportFromText(`${first}\n\nCorrection:\n${second}`)?.status).toBe("success");
   });
 
-  it("I1 (revue finale) : retrouve un rapport valide même quand \"protocol\" n'est pas la première clé, avec un objet imbriqué avant lui", () => {
-    // Repro littéral du rapport de revue : un objet imbriqué (changes[0])
-    // précède le champ "protocol" dans le même objet — avant I1, la
-    // première "{" remontée depuis le marqueur était celle de cet objet
-    // imbriqué, pas celle du rapport, et extractReportFromText rendait null.
+  it("I1 (final review): recovers a valid report even when \"protocol\" is not the first key, with a nested object before it", () => {
+    // Literal repro from the review report: a nested object (changes[0])
+    // precedes the "protocol" field in the same object — before I1, the
+    // first "{" walked back from the marker was that nested object's,
+    // not the report's, and extractReportFromText returned null.
     const text = JSON.stringify({
       task_id: "t1",
       status: "success",
@@ -132,21 +132,21 @@ describe("extraction du rapport depuis du texte libre", () => {
     expect(parsed?.changes).toEqual([{ path: "a.ts", action: "modified", summary: "x" }]);
   });
 
-  it("renvoie null quand il n'y a rien d'exploitable", () => {
-    expect(extractReportFromText("j'ai fini, tout va bien")).toBeNull();
+  it("returns null when there is nothing usable", () => {
+    expect(extractReportFromText("I am done, everything is fine")).toBeNull();
     expect(extractReportFromText(`{"protocol":"${REPORT_PROTOCOL}"`)).toBeNull();
   });
 });
 
-describe("événements", () => {
-  it("construit un événement complet à partir des seuls champs utiles", () => {
+describe("events", () => {
+  it("builds a complete event from only the useful fields", () => {
     const event = makeEvent("t_1", 3, "tool_use", { tool: "bash", input_summary: "ls" });
     expect(event.protocol).toBe(EVENT_PROTOCOL);
     expect(event.seq).toBe(3);
     if (event.type === "tool_use") expect(event.status).toBe("started");
   });
 
-  it("discrimine correctement les variantes", () => {
+  it("discriminates the variants correctly", () => {
     const result = EventSchema.safeParse({
       protocol: EVENT_PROTOCOL,
       seq: 0,
@@ -159,14 +159,14 @@ describe("événements", () => {
   });
 });
 
-describe("publication du standard", () => {
-  it("produit un JSON Schema pour chaque document", () => {
+describe("publishing the standard", () => {
+  it("produces a JSON Schema for each document", () => {
     for (const name of ["task", "report", "event"] as const) {
       expect(jsonSchemaFor(name)).toHaveProperty("$schema");
     }
   });
 
-  it("verrouille le schéma strict pour les sorties structurées natives", () => {
+  it("locks down the strict schema for native structured outputs", () => {
     const schema = strictReportJsonSchema() as {
       additionalProperties: boolean;
       required: string[];
@@ -176,11 +176,11 @@ describe("publication du standard", () => {
     expect(schema.required).toContain("changes");
   });
 
-  it("tout objet déclare `required` sur l'intégralité de ses propriétés, à toute profondeur", () => {
-    // L'invariant que le fournisseur applique, et que rien ne vérifiait : une
-    // seule propriété absente de `required`, si profonde soit-elle, fait
-    // refuser la requête entière avant que le modèle ne réponde. Constaté sur
-    // une délégation réelle à Codex, sur `commands_run.items.exit_code` :
+  it("every object declares `required` over the entirety of its properties, at any depth", () => {
+    // The invariant the provider enforces, and that nothing was checking: a
+    // single property missing from `required`, however deep, gets the
+    // entire request rejected before the model answers. Observed on a real
+    // delegation to Codex, on `commands_run.items.exit_code`:
     //   Invalid schema for response_format 'codex_output_schema':
     //   In context=('properties', 'commands_run', 'items'), 'required' is
     //   required to be supplied and to be an array including every key in
@@ -207,12 +207,12 @@ describe("publication du standard", () => {
     expect(incomplete).toEqual([]);
   });
 
-  it("I2 (revue finale) : un champ purement optionnel est nullable plutôt qu'omis de `required`", () => {
-    // L'intention d'I2 tient toujours — ne pas contraindre le modèle à
-    // fabriquer un `usage.cost_usd` (un coût mesuré inventé) ni une
-    // `findings[].line` (un `0` de repli échouait ensuite à la revalidation
-    // par ReportSchema, exclusiveMinimum: 0) — mais elle se tient désormais
-    // par la nullabilité, seul moyen compatible avec l'invariant ci-dessus.
+  it("I2 (final review): a purely optional field is nullable rather than omitted from `required`", () => {
+    // I2's intent still holds — not forcing the model to fabricate a
+    // `usage.cost_usd` (an invented measured cost) nor a `findings[].line`
+    // (a fallback `0` then failed revalidation by ReportSchema,
+    // exclusiveMinimum: 0) — but it now holds through nullability, the only
+    // means compatible with the invariant above.
     const schema = strictReportJsonSchema() as {
       properties: {
         findings: { items: { properties: Record<string, unknown>; required: string[] } };
@@ -234,21 +234,21 @@ describe("publication du standard", () => {
     expect(acceptsNull(finding.properties["file"])).toBe(true);
     expect(acceptsNull(finding.properties["line"])).toBe(true);
 
-    // Un champ porteur d'un défaut ne devient pas nullable : répéter le défaut
-    // n'est jamais une fabrication.
+    // A field carrying a default does not become nullable: repeating the
+    // default is never a fabrication.
     expect(acceptsNull(schema.properties.details)).toBe(false);
     expect(schema.required).toContain("changes");
     expect(schema.required).toContain("details");
   });
 
-  it("un rapport dont les champs facultatifs valent `null` est accepté", () => {
-    // La contrepartie du schéma nullable : ce que le modèle renvoie
-    // effectivement doit rester validable, sans quoi le palier « schéma de
-    // sortie natif » retomberait sur un palier dégradé pour rien.
+  it("accepts a report whose optional fields are `null`", () => {
+    // The counterpart of the nullable schema: what the model actually
+    // returns must remain validatable, otherwise the "native output schema"
+    // tier would fall back to a degraded tier for nothing.
     const report = parseReport({
       protocol: REPORT_PROTOCOL,
       status: "success",
-      summary: "Fait.",
+      summary: "Done.",
       usage: null,
       findings: [{ severity: "info", title: "Note", file: null, line: null, detail: "" }],
       commands_run: [{ command: "ls", exit_code: null, note: "" }],
@@ -261,33 +261,33 @@ describe("publication du standard", () => {
   });
 });
 
-describe("prompt de mission", () => {
-  it("interdit explicitement l'écriture en mode lecture seule", () => {
+describe("task prompt", () => {
+  it("explicitly forbids writing in read-only mode", () => {
     const prompt = renderTaskPrompt(sampleTask({ mode: "read-only" }), { reportVia: "file" });
     expect(prompt).toContain("read-only investigation");
   });
 
-  it("indique le chemin du rapport au palier fichier", () => {
+  it("states the report path on the file tier", () => {
     const prompt = renderTaskPrompt(sampleTask(), { reportVia: "file" });
     expect(prompt).toContain("/tmp/task/report.json");
   });
 
-  it("oriente vers le canal retour quand il est disponible", () => {
+  it("points to the return channel when it is available", () => {
     const prompt = renderTaskPrompt(sampleTask(), { reportVia: "channel", channelServerName: "caesar" });
     expect(prompt).toContain("submit_report");
     expect(prompt).toContain("ask_orchestrator");
   });
 
-  it("prévient l'agent quand le réseau est coupé, plutôt que de le laisser s'y user", () => {
+  it("warns the agent when the network is cut off, rather than letting it wear itself out on it", () => {
     const prompt = renderTaskPrompt(sampleTask({ network: false }), { reportVia: "file" });
     expect(prompt).toContain("No network access");
     expect(prompt).toContain("install packages");
   });
 
-  it("n'affirme rien sur le réseau quand il est disponible", () => {
-    // L'orchestrateur ne dit du réseau que ce qu'il garantit : pour un agent
-    // dont il ne pilote pas le confinement, le champ reste vrai et le brief
-    // reste muet.
+  it("asserts nothing about the network when it is available", () => {
+    // The orchestrator only says about the network what it can guarantee:
+    // for an agent whose confinement it does not control, the field stays
+    // true and the brief stays silent.
     expect(renderTaskPrompt(sampleTask(), { reportVia: "file" })).not.toContain("network");
   });
 });

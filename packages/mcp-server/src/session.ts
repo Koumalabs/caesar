@@ -1,15 +1,15 @@
 /**
- * État vivant du serveur MCP, pour la durée d'une connexion : la racine du
- * projet, le store de tâches qui en découle, et les tâches lancées par
- * `caesar_delegate` — chacune avec son `AbortController` (pour `caesar_cancel`)
- * et la promesse de son issue (pour `caesar_await`/`caesar_status`).
+ * Live state of the MCP server, for the lifetime of a connection: the project
+ * root, the task store derived from it, and the tasks launched by
+ * `caesar_delegate` — each with its `AbortController` (for `caesar_cancel`)
+ * and the promise of its outcome (for `caesar_await`/`caesar_status`).
  *
- * Point de vigilance du brief de la tâche 7 : `caesar_delegate` lance `runTask`
- * sans l'attendre. Une promesse non attendue qui rejette produirait un rejet
- * non intercepté — `launchTask` s'en protège en interceptant systématiquement
- * l'échec de `runTask` et en le transformant en `TaskOutcome` synthétique,
- * dont la trace est déposée dans le store : c'est `caesar_await` qui la
- * rapportera, jamais une exception qui remonte dans le vide.
+ * Watch point from the task 7 brief: `caesar_delegate` launches `runTask`
+ * without awaiting it. An unawaited promise that rejects would produce an
+ * unhandled rejection — `launchTask` guards against this by systematically
+ * intercepting `runTask`'s failure and turning it into a synthetic
+ * `TaskOutcome` whose trace is dropped into the store: it is `caesar_await`
+ * that will report it, never an exception bubbling up into the void.
  */
 import type { Queue, RunTaskInput, TaskOutcome, TaskRecord, TaskStore } from "@caesar/core";
 import { createSlotQueue, fileTaskStore, loadConfig, runTask } from "@caesar/core";
@@ -19,7 +19,7 @@ export interface SessionTask {
   agentId: string;
   startedAt: string;
   controller: AbortController;
-  /** Ne rejette jamais : voir `launchTask`. */
+  /** Never rejects: see `launchTask`. */
   promise: Promise<TaskOutcome>;
 }
 
@@ -28,30 +28,30 @@ export interface McpSession {
   store: TaskStore;
   tasks: Map<string, SessionTask>;
   /**
-   * Sémaphore partagé par tous les `caesar_delegate` de cette session — voir
-   * C4 de la revue finale : `RunnerDeps.queue` n'était câblé par aucune
-   * façade, `max_parallel` n'était donc appliqué nulle part alors que
-   * `caesarDelegateDescription` encourage explicitement le modèle à appeler
-   * `caesar_delegate` "repeatedly back to back". Sa limite est celle de
-   * `policy.max_parallel` au moment de la connexion (`createSession`) :
-   * comme la détection d'installation du TUI ("chargée une seule fois, pas à
-   * chaque frappe"), une édition ultérieure de la politique en cours de
-   * session ne redimensionne pas cette file — limite assumée plutôt que de
-   * reconstruire une file qui pourrait avoir des tâches en attente.
+   * Semaphore shared by every `caesar_delegate` of this session — see C4 of
+   * the final review: `RunnerDeps.queue` was wired by no facade, so
+   * `max_parallel` was enforced nowhere even though
+   * `caesarDelegateDescription` explicitly encourages the model to call
+   * `caesar_delegate` "repeatedly back to back". Its limit is that of
+   * `policy.max_parallel` at connection time (`createSession`): like the
+   * TUI's install detection ("loaded once, not on every keystroke"), a later
+   * edit of the policy mid-session does not resize this queue — an accepted
+   * limitation rather than rebuilding a queue that might have tasks waiting.
    *
-   * Depuis, ce sémaphore est adossé à des fichiers-créneaux
-   * (`createSlotQueue`) plutôt qu'à la mémoire : la limite vaut désormais
-   * entre processus, donc entre cette session et les `caesar run` lancés à la
-   * main sous la même racine.
+   * Since then, this semaphore is backed by slot files (`createSlotQueue`)
+   * rather than memory: the limit now holds across processes, hence between
+   * this session and the `caesar run` invocations launched by hand under the
+   * same root.
    */
   queue: Queue;
 }
 
 export async function createSession(root: string): Promise<McpSession> {
   const { config } = await loadConfig(root);
-  // Créneaux sur disque, partagés avec tout ce qui délègue sous cette racine :
-  // sans eux, une session MCP à quatre tâches et un `caesar run` lancé dans un
-  // terminal s'ignoraient, et `max_parallel = 4` autorisait cinq agents.
+  // Slots on disk, shared with everything that delegates under this root:
+  // without them, an MCP session with four tasks and a `caesar run` launched
+  // in a terminal ignored each other, and `max_parallel = 4` allowed five
+  // agents.
   const queue = createSlotQueue({
     root,
     limit: config.policy.max_parallel,
@@ -61,27 +61,26 @@ export async function createSession(root: string): Promise<McpSession> {
 }
 
 /**
- * Construit le `TaskOutcome` de repli quand `runTask` rejette avant d'avoir
- * pu produire le sien. Deux cas, selon l'endroit où l'échec est survenu :
+ * Builds the fallback `TaskOutcome` when `runTask` rejects before it could
+ * produce its own. Two cases, depending on where the failure occurred:
  *
- * - avant même `store.create` (p. ex. isolation "worktree" demandée hors
- *   d'un dépôt git, ou "inplace" refusée en écriture) : aucun enregistrement
- *   n'existe encore, on en crée un ;
- * - après (p. ex. `diffWorktree` qui échoue de façon inattendue) : on
- *   termine l'enregistrement existant plutôt que de le dupliquer. `pid` est
- *   explicitement effacé : le processus fils, s'il a été lancé, est déjà
- *   sorti par construction (`runAgentProcess` ne résout qu'une fois le fils
- *   terminé), un pid encore renseigné à ce stade serait obsolète.
+ * - before `store.create` even ran (e.g. "worktree" isolation requested
+ *   outside a git repository, or "inplace" refused for writing): no record
+ *   exists yet, so one is created;
+ * - after (e.g. `diffWorktree` failing unexpectedly): the existing record is
+ *   finalized rather than duplicated. `pid` is explicitly cleared: the child
+ *   process, if it was launched, has already exited by construction
+ *   (`runAgentProcess` only resolves once the child has terminated), so a
+ *   pid still set at this point would be stale.
  *
- * L'enregistrement neuf décrit ce que l'appelant a **demandé**, pas des
- * valeurs de remplissage : `isolation: "inplace"` et `mode: "read-only"`
- * étaient codés en dur ici, si bien qu'une délégation en écriture refusée
- * laissait dans le store la trace exactement inverse de sa demande. Le refus
- * d'écriture en place (voir `isolation.ts`) rend ce chemin ordinaire plutôt
- * qu'exceptionnel : il ne peut plus se permettre de mentir. Faute de décision
- * d'isolation prise — `prepareIsolation` n'a pas abouti — `"auto"` est
- * rabattu sur `"inplace"`, seule valeur constatable : aucun worktree n'a été
- * créé.
+ * The fresh record describes what the caller **asked for**, not filler
+ * values: `isolation: "inplace"` and `mode: "read-only"` used to be
+ * hard-coded here, so a refused write delegation left in the store the exact
+ * opposite trace of what it requested. The refusal of in-place writing (see
+ * `isolation.ts`) makes this path ordinary rather than exceptional: it can
+ * no longer afford to lie. Absent an isolation decision — `prepareIsolation`
+ * did not complete — `"auto"` falls back to `"inplace"`, the only observable
+ * value: no worktree was created.
  */
 async function synthesizeFailure(
   store: TaskStore,
@@ -121,19 +120,19 @@ async function synthesizeFailure(
     protocol: REPORT_PROTOCOL,
     task_id: taskId,
     status: "failed",
-    summary: `Tâche interrompue avant son terme : ${message}`,
+    summary: `Task interrupted before completion: ${message}`,
   });
 
   return { record, report, source: "synthesized" };
 }
 
 /**
- * Dernier filet, sans aucune entrée/sortie : si même `synthesizeFailure` a
- * échoué (le store lui-même en E/S — disque plein, permissions…), on
- * construit tout de même un `TaskOutcome` valide en mémoire pure. Le
- * résultat ne reflète alors plus forcément ce que contient le store sur
- * disque, mais la promesse de la session, elle, ne rejette jamais — c'est la
- * garantie que ce module porte (voir l'en-tête du fichier).
+ * Last safety net, with no I/O at all: if even `synthesizeFailure` failed
+ * (the store itself failing on I/O — disk full, permissions…), a valid
+ * `TaskOutcome` is still built in pure memory. The result may then no longer
+ * reflect what the store holds on disk, but the session's promise, for its
+ * part, never rejects — that is the guarantee this module carries (see the
+ * file header).
  */
 function buildInMemoryFailureOutcome(input: RunTaskInput & { taskId: string }, error: unknown): TaskOutcome {
   const message = error instanceof Error ? error.message : String(error);
@@ -158,25 +157,25 @@ function buildInMemoryFailureOutcome(input: RunTaskInput & { taskId: string }, e
     protocol: REPORT_PROTOCOL,
     task_id: input.taskId,
     status: "failed",
-    summary: `Tâche interrompue avant son terme, et la trace elle-même n'a pas pu être écrite dans le store : ${message}`,
+    summary: `Task interrupted before completion, and the trace itself could not be written to the store: ${message}`,
   });
   return { record, report, source: "synthesized" };
 }
 
 /**
- * Lance `runTask` sans l'attendre, et conserve la promesse et son
- * `AbortController` dans la session, indexés par `input.taskId` — l'appelant
- * (voir `tools/delegate.ts`) l'a généré lui-même, justement pour pouvoir le
- * rendre avant que cette promesse ne se résolve.
+ * Launches `runTask` without awaiting it, and keeps the promise and its
+ * `AbortController` in the session, indexed by `input.taskId` — the caller
+ * (see `tools/delegate.ts`) generated it itself, precisely so it can return
+ * it before this promise resolves.
  */
 export function launchTask(session: McpSession, input: RunTaskInput & { taskId: string }, controller: AbortController): SessionTask {
   const promise = runTask({ store: session.store, root: session.root, queue: session.queue }, input).catch(async (error: unknown) => {
     try {
       return await synthesizeFailure(session.store, input, error);
     } catch (storeError) {
-      // Même la trace de repli n'a pas pu être déposée dans le store : on ne
-      // laisse jamais cette promesse rejeter pour autant (voir le point de
-      // vigilance du brief).
+      // Even the fallback trace could not be dropped into the store: this
+      // promise is still never allowed to reject (see the watch point in
+      // the brief).
       return buildInMemoryFailureOutcome(input, storeError);
     }
   });

@@ -21,9 +21,9 @@ const CAPABILITIES: AgentCapabilities = {
   addDir: true,
   mcpInjection: "flag",
   model: true,
-  // Le bac à sable de codex n'expose son réglage réseau que sous
-  // `sandbox_workspace_write` : il n'existe aucun `sandbox_read_only`, donc
-  // `-s read-only` coupe le réseau sans recours. Vérifié sur codex 0.147.0.
+  // Codex's sandbox exposes its network setting only under
+  // `sandbox_workspace_write`: there is no `sandbox_read_only`, so
+  // `-s read-only` cuts the network with no recourse. Verified on codex 0.147.0.
   network: "write-only",
 };
 
@@ -38,14 +38,13 @@ function build(ctx: BuildContext): SpawnPlan {
     ctx.task.mode === "read-only" ? "read-only" : "workspace-write",
   ];
 
-  // Le répertoire de tâche héberge le rapport et le message final ; il doit
-  // rester accessible en écriture même quand le workspace, lui, est en lecture
-  // seule.
+  // The task directory hosts the report and the final message; it must
+  // remain writable even when the workspace itself is read-only.
   args.push("--add-dir", ctx.paths.dir);
 
-  // `decideNetwork` ne laisse jamais `network` à vrai en lecture seule pour
-  // cet agent : la clé n'existe que sous `sandbox_workspace_write`, et la
-  // poser en `-s read-only` serait sans effet.
+  // `decideNetwork` never leaves `network` true in read-only mode for this
+  // agent: the key exists only under `sandbox_workspace_write`, and setting
+  // it under `-s read-only` would have no effect.
   if (ctx.task.network) args.push("-c", "sandbox_workspace_write.network_access=true");
 
   if (ctx.model) args.push("-m", ctx.model);
@@ -60,25 +59,25 @@ function build(ctx: BuildContext): SpawnPlan {
     args.push("-c", `mcp_servers.${server_name}.args=${JSON.stringify(channelArgs)}`);
   }
 
-  // Le prompt est positionnel et final dans la grammaire de codex ; les
-  // arguments bruts de l'utilisateur passent après lui, en toute fin de ligne.
+  // The prompt is positional and final in codex's grammar; the user's raw
+  // arguments go after it, at the very end of the line.
   args.push(ctx.prompt);
   args.push(...ctx.extraArgs);
 
   return { command: "codex", args, cwd: ctx.task.workspace, env: {}, files: [] };
 }
 
-/** `kind` d'un `file_change` de codex → action du protocole. */
+/** `kind` of a codex `file_change` → protocol action. */
 function fileAction(kind: unknown): "created" | "modified" | "deleted" | "renamed" {
   if (kind === "add") return "created";
   if (kind === "delete") return "deleted";
   if (kind === "rename") return "renamed";
-  // "update" est la valeur observée pour une modification ; tout `kind`
-  // inconnu tombe ici plutôt que de faire disparaître le fichier du journal.
+  // "update" is the value observed for a modification; any unknown `kind`
+  // falls here rather than making the file vanish from the log.
   return "modified";
 }
 
-/** Traduit `item.status` en statut d'outil. Les deux premières valeurs sont observées. */
+/** Translates `item.status` into a tool status. The first two values are observed. */
 function toolStatus(status: unknown): "started" | "succeeded" | "failed" {
   if (status === "completed") return "succeeded";
   if (status === "failed") return "failed";
@@ -86,20 +85,20 @@ function toolStatus(status: unknown): "started" | "succeeded" | "failed" {
 }
 
 /**
- * Traduit le flux `codex exec --json`.
+ * Translates the `codex exec --json` stream.
  *
- * Formes observées dans la capture réelle (`test/fixtures/codex.jsonl`, une
- * tâche qui écrit un fichier et lance deux commandes) : `thread.started`,
- * `turn.started`, `item.started` et `item.completed` pour les items
- * `agent_message`, `command_execution` et `file_change`, et `turn.completed`.
- * L'item `error` vient d'une capture antérieure. `turn.failed` et
- * l'événement `error` de premier niveau restent dérivés de la documentation
- * publique, jamais observés, traités de façon strictement défensive.
+ * Shapes observed in the real capture (`test/fixtures/codex.jsonl`, a task
+ * that writes a file and runs two commands): `thread.started`,
+ * `turn.started`, `item.started` and `item.completed` for the
+ * `agent_message`, `command_execution` and `file_change` items, and
+ * `turn.completed`. The `error` item comes from an earlier capture.
+ * `turn.failed` and the top-level `error` event remain derived from the
+ * public documentation, never observed, handled strictly defensively.
  *
- * Volontairement absent : l'item `reasoning`. La capture porte bien
- * `reasoning_output_tokens: 91` dans son `turn.completed`, mais **aucun item
- * de ce type n'a été émis** — écrire la branche à l'aveugle est exactement
- * l'erreur qui a rendu inopérante celle d'opencode pendant des mois.
+ * Deliberately absent: the `reasoning` item. The capture does carry
+ * `reasoning_output_tokens: 91` in its `turn.completed`, but **no item of
+ * that type was ever emitted** — writing the branch blind is exactly the
+ * mistake that left opencode's branch inoperative for months.
  */
 function translate(line: string): Translation {
   const data = parseJsonLine(line);
@@ -108,9 +107,9 @@ function translate(line: string): Translation {
   const type = data["type"];
   if (typeof type !== "string") return { events: [] };
 
-  // `item.started` autant qu'`item.completed` : c'est toute la différence
-  // entre voir partir un `npm install` de trois minutes et le découvrir à la
-  // troisième. `item.updated` suit la même forme et est traité pareil.
+  // `item.started` as much as `item.completed`: that is the whole difference
+  // between seeing a three-minute `npm install` start and discovering it at
+  // the third minute. `item.updated` follows the same shape, handled alike.
   if (type === "item.started" || type === "item.updated" || type === "item.completed") {
     const completed = type === "item.completed";
     const item = data["item"];
@@ -143,9 +142,9 @@ function translate(line: string): Translation {
     }
 
     if (itemType === "file_change") {
-      // Seulement à l'achèvement : un `file_change` est instantané et sa forme
-      // `item.started` porte exactement les mêmes changements — les émettre
-      // deux fois ferait apparaître chaque fichier en double dans le journal.
+      // Only on completion: a `file_change` is instantaneous and its
+      // `item.started` shape carries exactly the same changes — emitting them
+      // twice would make every file appear duplicated in the log.
       if (!completed) return { events: [] };
       const changes = item["changes"];
       if (!Array.isArray(changes)) return { events: [] };

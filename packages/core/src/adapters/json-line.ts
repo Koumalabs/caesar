@@ -1,12 +1,12 @@
 /**
- * Analyse d'une ligne de sortie CLI, commune aux cinq adaptateurs : chacun
- * reçoit un flux de lignes potentiellement vides, mal formées ou hors-JSON
- * (bannières, avertissements, progression non structurée), et doit s'en
- * accommoder sans jamais lever. Un futur correctif sur cette analyse (BOM,
- * `\r\n`, etc.) se fait ici une seule fois plutôt que cinq fois à l'identique.
+ * Parsing of a CLI output line, shared by all five adapters: each one
+ * receives a stream of lines that may be empty, malformed or non-JSON
+ * (banners, warnings, unstructured progress), and must cope with them
+ * without ever throwing. A future fix to this parsing (BOM, `\r\n`, etc.)
+ * is made here once rather than five times identically.
  */
 
-/** Parse une ligne JSON ; renvoie `undefined` si elle est vide ou invalide. */
+/** Parses a JSON line; returns `undefined` if it is empty or invalid. */
 export function parseJsonLine(line: string): unknown {
   const trimmed = line.trim();
   if (!trimmed) return undefined;
@@ -17,7 +17,7 @@ export function parseJsonLine(line: string): unknown {
   }
 }
 
-/** Vrai pour un objet JSON simple (ni tableau, ni null). */
+/** True for a plain JSON object (neither array nor null). */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -1,6 +1,6 @@
 ---
 name: caesar-reviewer
-description: Délègue une relecture en lecture seule à un CLI d'agent de code externe (Codex, Antigravity, OpenCode, Copilot ou Claude) via le serveur MCP caesar, et rend ses constats classés par sévérité. Ne modifie jamais aucun fichier. À utiliser pour obtenir un second avis sur un diff, un changement ou un morceau de code, depuis un provider autre que le modèle de la conversation principale — le sous-agent tourne en mode lecture seule et n'a pas le droit d'écrire.
+description: Delegates a read-only review to an external coding-agent CLI (Codex, Antigravity, OpenCode, Copilot or Claude) via the caesar MCP server, and returns its findings sorted by severity. Never modifies any file. Use to get a second opinion on a diff, a change or a piece of code from a provider other than the main conversation's model — the sub-agent runs in read-only mode and is not allowed to write.
 tools: mcp__caesar__caesar_list_agents, mcp__caesar__caesar_delegate, mcp__caesar__caesar_await, mcp__caesar__caesar_status, mcp__caesar__caesar_logs, Read, Grep, Glob
 ---
 

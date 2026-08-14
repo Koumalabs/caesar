@@ -1,20 +1,20 @@
 /**
- * L'aide de `caesar`, mise en forme.
+ * The `caesar` help, laid out.
  *
- * C'est la porte d'entrée, et c'était la surface la moins soignée : commander
- * rendait sa présentation par défaut, avec ses libellés anglais au milieu du
- * français (« Usage: », « Options: », « output the version number »), les
- * commandes dans leur ordre de déclaration, et les descriptions débordant la
- * largeur du terminal sans se replier.
+ * It is the front door, and it was the least polished surface: commander
+ * rendered its default presentation, with its stock labels ("Usage:",
+ * "Options:", "output the version number"), the commands in declaration
+ * order, and the descriptions overflowing the terminal width without
+ * wrapping.
  *
- * Deux partis pris tiennent cette version :
+ * Two commitments hold this version together:
  *
- *  - **Les commandes sont groupées par usage, pas par ordre de déclaration.**
- *    Seize commandes en liste plate n'apprennent rien à qui découvre l'outil ;
- *    cinq groupes de trois disent l'ordre dans lequel on s'en sert.
- *  - **La description est repliée avec un retrait pendant.** Sans lui, la
- *    suite d'une description revient en colonne zéro et se confond avec la
- *    commande suivante.
+ *  - **Commands are grouped by usage, not by declaration order.** Sixteen
+ *    commands in a flat list teach nothing to whoever discovers the tool;
+ *    five groups of three tell the order in which they get used.
+ *  - **The description is wrapped with a hanging indent.** Without it, the
+ *    continuation of a description comes back to column zero and blends
+ *    into the next command.
  */
 import type { Command, Help } from "commander";
 import type { Io } from "./output.js";
@@ -22,43 +22,43 @@ import { bannerLines, colorize, terminalWidth, wrapText } from "./output.js";
 import { VERSION } from "./version.js";
 
 /**
- * L'ordre dans lequel on rencontre les commandes, et non celui dans lequel
- * elles ont été écrites.
+ * The order in which one encounters the commands, not the one in which they
+ * were written.
  *
- * Une commande absente de cette table n'est pas perdue : elle atterrit dans
- * un groupe « autres ». Oublier d'y inscrire une commande neuve doit se voir,
- * jamais la faire disparaître de l'aide.
+ * A command missing from this table is not lost: it lands in an "other"
+ * group. Forgetting to register a new command must be visible, never make
+ * it disappear from the help.
  */
 const GROUPS: ReadonlyArray<{ title: string; commands: readonly string[] }> = [
-  { title: "démarrer", commands: ["init", "doctor", "config"] },
-  { title: "déléguer", commands: ["run", "watch"] },
-  { title: "suivre", commands: ["ps", "logs", "cancel", "diff", "apply", "gc"] },
-  { title: "configurer", commands: ["agents", "policy", "role"] },
-  { title: "intégrer", commands: ["mcp", "protocol"] },
+  { title: "start", commands: ["init", "doctor", "config"] },
+  { title: "delegate", commands: ["run", "watch"] },
+  { title: "follow", commands: ["ps", "logs", "cancel", "diff", "apply", "gc"] },
+  { title: "configure", commands: ["agents", "policy", "role"] },
+  { title: "integrate", commands: ["mcp", "protocol"] },
 ];
 
-/** Largeur de la colonne de gauche. Au delà, le terme prend sa ligne et la description suit. */
+/** Width of the left column. Beyond it, the term takes its own line and the description follows. */
 const TERM_WIDTH = 24;
 const INDENT = "  ";
 
 /**
- * Une entrée « terme + description ». Le terme est coloré **après** le calage,
- * sinon les séquences ANSI compteraient comme des colonnes.
+ * A "term + description" entry. The term is colored **after** padding,
+ * otherwise the ANSI sequences would count as columns.
  *
- * Un terme plus long que la colonne prend sa propre ligne, et la description
- * s'écrit dessous : le coller à son terme donnait
- * `[extra_args...]Délègue un objectif…`, sans même un espace.
+ * A term longer than the column takes its own line, and the description is
+ * written below it: gluing it to its term produced
+ * `[extra_args...]Delegates an objective…`, without even a space.
  */
 function entry(term: string, description: string, width: number, io: Io, token: "accent" | "strong" = "accent"): string[] {
-  const peint = INDENT + colorize(term.padEnd(TERM_WIDTH), token, io.stdout);
+  const painted = INDENT + colorize(term.padEnd(TERM_WIDTH), token, io.stdout);
   if (description === "") return [(INDENT + term).trimEnd()];
 
-  const retrait = " ".repeat(INDENT.length + TERM_WIDTH);
-  const lignes = wrapText(description, Math.max(20, width - retrait.length)).map((l) => colorize(l, "dim", io.stdout));
+  const indent = " ".repeat(INDENT.length + TERM_WIDTH);
+  const lines = wrapText(description, Math.max(20, width - indent.length)).map((l) => colorize(l, "dim", io.stdout));
   if (term.length >= TERM_WIDTH) {
-    return [INDENT + colorize(term, token, io.stdout), ...lignes.map((l) => retrait + l)];
+    return [INDENT + colorize(term, token, io.stdout), ...lines.map((l) => indent + l)];
   }
-  return lignes.map((ligne, i) => (i === 0 ? peint + ligne : retrait + ligne));
+  return lines.map((line, i) => (i === 0 ? painted + line : indent + line));
 }
 
 function title(text: string, io: Io): string {
@@ -66,19 +66,19 @@ function title(text: string, io: Io): string {
 }
 
 /**
- * La mise en forme de l'aide, pour la commande racine comme pour chaque
- * sous-commande — une seule présentation, sinon `caesar --help` et
- * `caesar run --help` se répondraient dans deux langues.
+ * The help layout, for the root command as for each subcommand — a single
+ * presentation, otherwise `caesar --help` and `caesar run --help` would
+ * answer each other in two languages.
  */
 export function formatHelp(cmd: Command, helper: Help, io: Io): string {
   const width = terminalWidth(io.stdout);
   const lines: string[] = [];
-  const racine = cmd.parent === null || cmd.parent === undefined;
+  const isRoot = cmd.parent === null || cmd.parent === undefined;
 
-  if (racine) {
-    // Le logotype porte la version ; la description du programme suit, en
-    // toutes lettres — c'est elle qui nomme les agents pris en charge, et
-    // aucune accroche plus courte ne le dirait.
+  if (isRoot) {
+    // The wordmark carries the version; the program description follows, in
+    // full — it is the one that names the supported agents, and no shorter
+    // tagline would say it.
     lines.push(...bannerLines(io.stdout, `v${VERSION}`), "");
     const description = helper.commandDescription(cmd);
     if (description) lines.push(...wrapText(description, width, INDENT).map((l) => colorize(l, "dim", io.stdout)), "");
@@ -88,9 +88,9 @@ export function formatHelp(cmd: Command, helper: Help, io: Io): string {
     if (description) lines.push(...wrapText(description, width, INDENT).map((l) => colorize(l, "dim", io.stdout)), "");
   }
 
-  if (racine) {
+  if (isRoot) {
     lines.push(title("usage", io));
-    lines.push(...entry("caesar <commande> [options]", "", width, io, "strong"));
+    lines.push(...entry("caesar <command> [options]", "", width, io, "strong"));
     lines.push("");
   }
 
@@ -105,34 +105,34 @@ export function formatHelp(cmd: Command, helper: Help, io: Io): string {
 
   const commands = helper.visibleCommands(cmd);
   if (commands.length > 0) {
-    const restantes = new Map(commands.map((sub) => [sub.name(), sub]));
-    // À la racine, le nom seul : `[options]` figure sur chacune des seize
-    // commandes, donc n'en distingue aucune, et les arguments sont détaillés
-    // par `caesar <commande> --help`. Dans un sous-groupe (`caesar agents
-    // --help`), le terme complet reprend sa place — il y a alors trois
-    // entrées, et leur forme est ce qu'on vient lire.
-    const terme = (sub: Command): string => (racine ? sub.name() : helper.subcommandTerm(sub));
-    const rendre = (titre: string, sous: readonly Command[]): void => {
-      if (sous.length === 0) return;
-      lines.push(title(titre, io));
-      for (const sub of sous) {
-        lines.push(...entry(terme(sub), helper.subcommandDescription(sub), width, io));
+    const remaining = new Map(commands.map((sub) => [sub.name(), sub]));
+    // At the root, the name alone: `[options]` appears on each of the
+    // sixteen commands, so it distinguishes none, and the arguments are
+    // detailed by `caesar <command> --help`. In a subgroup (`caesar agents
+    // --help`), the full term takes its place back — there are three
+    // entries then, and their shape is what one comes to read.
+    const term = (sub: Command): string => (isRoot ? sub.name() : helper.subcommandTerm(sub));
+    const render = (heading: string, subs: readonly Command[]): void => {
+      if (subs.length === 0) return;
+      lines.push(title(heading, io));
+      for (const sub of subs) {
+        lines.push(...entry(term(sub), helper.subcommandDescription(sub), width, io));
       }
       lines.push("");
     };
 
-    if (racine) {
-      for (const groupe of GROUPS) {
-        const sous = groupe.commands.map((name) => restantes.get(name)).filter((c): c is Command => c !== undefined);
-        for (const sub of sous) restantes.delete(sub.name());
-        rendre(groupe.title, sous);
+    if (isRoot) {
+      for (const group of GROUPS) {
+        const subs = group.commands.map((name) => remaining.get(name)).filter((c): c is Command => c !== undefined);
+        for (const sub of subs) remaining.delete(sub.name());
+        render(group.title, subs);
       }
-      // Ce qui n'a pas été classé — une commande neuve, le plus souvent.
-      rendre("autres", [...restantes.values()].filter((sub) => sub.name() !== "help"));
-      const aide = restantes.get("help");
-      if (aide) rendre("aide", [aide]);
+      // What was not classified — a new command, most of the time.
+      render("other", [...remaining.values()].filter((sub) => sub.name() !== "help"));
+      const help = remaining.get("help");
+      if (help) render("help", [help]);
     } else {
-      rendre("commandes", commands);
+      render("commands", commands);
     }
   }
 
@@ -142,23 +142,23 @@ export function formatHelp(cmd: Command, helper: Help, io: Io): string {
     for (const option of options) {
       lines.push(...entry(helper.optionTerm(option), helper.optionDescription(option), width, io, "strong"));
     }
-    if (racine) {
-      // `--root` et `--json` sont posées commande par commande
-      // (`withCommonOptions`), donc absentes des options du programme : les
-      // ranger sous un titre « options communes » aurait laissé croire
-      // qu'elles figuraient dans la liste ci-dessus.
-      lines.push(...entry("--root <dir>", "Racine du projet. Acceptée par toutes les commandes.", width, io, "strong"));
-      lines.push(...entry("--json", "Sortie machine, sans couleur ni mise en forme. Acceptée par toutes les commandes.", width, io, "strong"));
+    if (isRoot) {
+      // `--root` and `--json` are set command by command
+      // (`withCommonOptions`), so absent from the program's options: filing
+      // them under a "common options" heading would have implied they
+      // appeared in the list above.
+      lines.push(...entry("--root <dir>", "Project root. Accepted by every command.", width, io, "strong"));
+      lines.push(...entry("--json", "Machine output, without color or formatting. Accepted by every command.", width, io, "strong"));
     }
     lines.push("");
   }
 
-  if (racine) {
-    lines.push(colorize('  "caesar <commande> --help" pour le détail d\'une commande.', "dim", io.stdout));
+  if (isRoot) {
+    lines.push(colorize('  "caesar <command> --help" for the details of a command.', "dim", io.stdout));
     lines.push("");
   }
 
-  // Une seule ligne vide finale, quel que soit le nombre de sections rendues.
+  // A single trailing blank line, whatever the number of sections rendered.
   while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
   return lines.join("\n") + "\n";
 }

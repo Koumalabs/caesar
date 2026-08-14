@@ -1,6 +1,6 @@
 /**
- * `caesar_list_agents` : le catalogue des providers connus, avec présence,
- * capacités et autorisation — voir le brief de la tâche 7.
+ * `caesar_list_agents`: the catalog of known providers, with presence,
+ * capabilities and authorization — see the task 7 brief.
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -19,8 +19,8 @@ export const caesarListAgentsDescription =
 
 export async function caesarListAgents(session: McpSession): Promise<CallToolResult> {
   const { config } = await loadConfig(session.root);
-  // Catalogue natif étendu des agents de configuration ([[agent]]) : voir C1
-  // de la revue finale.
+  // Native catalog extended with configuration agents ([[agent]]): see C1
+  // of the final review.
   const defs = listAgentDefinitions(config.agents);
 
   const agents = await Promise.all(

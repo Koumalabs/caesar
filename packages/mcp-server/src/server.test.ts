@@ -1,10 +1,9 @@
 /**
- * Test au niveau du transport (la seule exception au brief : « le serveur se
- * teste en appelant les fonctions de tool directement, sans passer par un
- * transport, sauf là où le transport lui-même est en jeu ») : rien d'autre
- * que le protocole JSON-RPC ne doit apparaître sur le flux de sortie du
- * transport stdio — l'erreur classique qui casse ce genre de serveur de
- * façon obscure.
+ * Transport-level test (the sole exception to the brief: "the server is
+ * tested by calling the tool functions directly, without going through a
+ * transport, except where the transport itself is at stake"): nothing but
+ * the JSON-RPC protocol may appear on the stdio transport's output stream —
+ * the classic mistake that breaks this kind of server in obscure ways.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -29,7 +28,7 @@ function nextLine(stream: PassThrough): Promise<string> {
   });
 }
 
-describe("buildServer sur le transport stdio", () => {
+describe("buildServer over the stdio transport", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -40,7 +39,7 @@ describe("buildServer sur le transport stdio", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("ne laisse rien d'autre que du JSON-RPC transiter sur le flux de sortie", async () => {
+  it("lets nothing but JSON-RPC travel on the output stream", async () => {
     const { server } = await buildServer(root);
     const stdin = new PassThrough();
     const stdout = new PassThrough();
@@ -52,8 +51,8 @@ describe("buildServer sur le transport stdio", () => {
     stdin.write(JSON.stringify(initRequest) + "\n");
     const initResponseLine = await responsePromise;
 
-    // Chaque ligne du flux doit être un JSON-RPC valide — aucun message de
-    // diagnostic, aucun `console.log`, rien d'autre ne s'y glisse.
+    // Every line on the stream must be valid JSON-RPC — no diagnostic
+    // message, no `console.log`, nothing else slips in.
     expect(() => JSON.parse(initResponseLine)).not.toThrow();
     const initResponse = JSON.parse(initResponseLine) as { jsonrpc: string; id: number; result: unknown };
     expect(initResponse.jsonrpc).toBe("2.0");
@@ -79,23 +78,23 @@ describe("buildServer sur le transport stdio", () => {
       "caesar_status",
     ]);
 
-    // Un appel de tool réel, à travers le protocole : preuve que le schéma
-    // zod 4 de chaque tool (dont `caesar_status`, qui prend un argument) est
-    // effectivement converti et validé côté SDK, pas seulement construit
-    // sans erreur (voir le point de vigilance du brief sur la compatibilité
-    // zod du SDK MCP).
+    // A real tool call, through the protocol: proof that each tool's zod 4
+    // schema (including `caesar_status`, which takes an argument) is
+    // actually converted and validated on the SDK side, not merely built
+    // without error (see the brief's watch point on the MCP SDK's zod
+    // compatibility).
     const callRequest = {
       jsonrpc: "2.0",
       id: 3,
       method: "tools/call",
-      params: { name: "caesar_status", arguments: { task_id: "t_inexistant" } },
+      params: { name: "caesar_status", arguments: { task_id: "t_nonexistent" } },
     };
     const callResponsePromise = nextLine(stdout);
     stdin.write(JSON.stringify(callRequest) + "\n");
     const callResponseLine = await callResponsePromise;
     const callResponse = JSON.parse(callResponseLine) as { result: { isError?: boolean; content: Array<{ type: string; text: string }> } };
     expect(callResponse.result.isError).toBe(true);
-    expect(callResponse.result.content[0]?.text).toMatch(/inconnue/);
+    expect(callResponse.result.content[0]?.text).toMatch(/unknown task/i);
 
     await server.close();
     stdin.end();

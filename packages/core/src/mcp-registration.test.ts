@@ -1,10 +1,10 @@
 /**
- * Déplacé depuis `packages/cli/src/commands/mcp.test.ts` (tâche 8, rapport
- * de correction) : cette logique vit maintenant dans `@caesar/core`, elle est
- * donc testée ici — comme tout autre module du package (voir `policy.ts`,
- * `roles.ts`, `config.ts`). `packages/cli/src/commands/mcp.test.ts` continue
- * de vérifier l'habillage (`Io`, `--json`, codes de sortie) au-dessus, sans
- * réécriture : ses tests passent toujours, inchangés.
+ * Moved from `packages/cli/src/commands/mcp.test.ts` (task 8, correction
+ * report): this logic now lives in `@caesar/core`, so it is
+ * tested here — like any other module of the package (see `policy.ts`,
+ * `roles.ts`, `config.ts`). `packages/cli/src/commands/mcp.test.ts` keeps
+ * verifying the dressing (`Io`, `--json`, exit codes) on top, without
+ * rewriting: its tests still pass, unchanged.
  */
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { homeDirectory } from "./config.js";
 import { applyPlan, buildPlan, checkMcpStatus, isMcpClient, MCP_CLIENTS } from "./mcp-registration.js";
 
-/** Même motif que `config.test.ts` : `buildPlan`/`checkMcpStatus` lisent `$HOME` (via `node:os#homedir`) pour les clients à fichier. */
+/** Same pattern as `config.test.ts`: `buildPlan`/`checkMcpStatus` read `$HOME` (via `node:os#homedir`) for the file-based clients. */
 async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
   const home = await mkdtemp(join(tmpdir(), "caesar-mcp-home-"));
   const previous = process.env["HOME"];
@@ -28,11 +28,11 @@ async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
 }
 
 describe("MCP_CLIENTS / isMcpClient", () => {
-  it("liste les cinq clients dans un ordre stable", () => {
+  it("lists the five clients in a stable order", () => {
     expect(MCP_CLIENTS).toEqual(["claude", "codex", "copilot", "opencode", "antigravity"]);
   });
 
-  it("isMcpClient reconnaît un client connu, rejette le reste", () => {
+  it("isMcpClient recognizes a known client, rejects the rest", () => {
     expect(isMcpClient("claude")).toBe(true);
     expect(isMcpClient("bogus")).toBe(false);
   });
@@ -49,7 +49,7 @@ describe("buildPlan", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("claude et codex : plan \"command\", sous-commande native", async () => {
+  it("claude and codex: \"command\" plan, native subcommand", async () => {
     await withFakeHome(async () => {
       const claude = buildPlan("claude", root);
       expect(claude).toEqual({ client: "claude", kind: "command", bin: "claude", args: ["mcp", "add", "caesar", "--", "caesar", "mcp", "serve", "--root", root] });
@@ -60,7 +60,7 @@ describe("buildPlan", () => {
     });
   });
 
-  it("copilot, antigravity, opencode : plan \"file\", sous $HOME", async () => {
+  it("copilot, antigravity, opencode: \"file\" plan, under $HOME", async () => {
     await withFakeHome(async (home) => {
       const copilot = buildPlan("copilot", root);
       expect(copilot).toEqual({
@@ -81,13 +81,13 @@ describe("buildPlan", () => {
     });
   });
 
-  it("les trois chemins \"file\" suivent homeDirectory() (@caesar/core), jamais os.homedir() en clair (revue de la tâche 15)", async () => {
-    // Passe trivialement sous Node (vitest, ce fichier) : os.homedir() y respecte déjà $HOME. La valeur de ce
-    // test est de figer l'implémentation pour Bun (packages/tui, qui consomme ce module compilé et neutralise
-    // $HOME dans IntegrationsScreen.render.test.tsx) : un homedir() direct régresserait silencieusement sous
-    // Bun uniquement, sans qu'aucun test Node ne le détecte — exactement le défaut que la revue a signalé
-    // (buildPlan lisait encore os.homedir() en clair pour copilot/antigravity/opencode après le premier
-    // correctif, qui n'avait routé que globalConfigPath()).
+  it("the three \"file\" paths follow homeDirectory() (@caesar/core), never bare os.homedir() (task 15 review)", async () => {
+    // Passes trivially under Node (vitest, this file): os.homedir() already respects $HOME there. The value of this
+    // test is to pin the implementation for Bun (packages/tui, which consumes this compiled module and neutralizes
+    // $HOME in IntegrationsScreen.render.test.tsx): a direct homedir() would regress silently under
+    // Bun only, without any Node test detecting it — exactly the defect the review flagged
+    // (buildPlan still read bare os.homedir() for copilot/antigravity/opencode after the first
+    // fix, which had only routed globalConfigPath()).
     await withFakeHome(async () => {
       const expectedHome = homeDirectory();
       const copilot = buildPlan("copilot", root);
@@ -113,21 +113,21 @@ describe("applyPlan", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("plan \"file\" : fusionne dans un fichier existant, sans perdre les autres entrées", async () => {
+  it("\"file\" plan: merges into an existing file, without losing the other entries", async () => {
     await withFakeHome(async (home) => {
       const path = join(home, ".copilot", "mcp-config.json");
       await mkdir(join(home, ".copilot"), { recursive: true });
-      await writeFile(path, JSON.stringify({ mcpServers: { autre: { command: "autre-cli" } } }), "utf8");
+      await writeFile(path, JSON.stringify({ mcpServers: { other: { command: "other-cli" } } }), "utf8");
 
       await applyPlan(buildPlan("copilot", root));
 
       const written = JSON.parse(await readFile(path, "utf8"));
-      expect(written.mcpServers.autre).toEqual({ command: "autre-cli" });
+      expect(written.mcpServers.other).toEqual({ command: "other-cli" });
       expect(written.mcpServers.caesar).toEqual({ type: "stdio", command: "caesar", args: ["mcp", "serve", "--root", root] });
     });
   });
 
-  it("plan \"file\" : crée le fichier (et son répertoire) s'il n'existe pas", async () => {
+  it("\"file\" plan: creates the file (and its directory) if it does not exist", async () => {
     await withFakeHome(async (home) => {
       await applyPlan(buildPlan("copilot", root));
       const written = JSON.parse(await readFile(join(home, ".copilot", "mcp-config.json"), "utf8"));
@@ -135,7 +135,7 @@ describe("applyPlan", () => {
     });
   });
 
-  it("plan \"command\" : exécute réellement le binaire (ici un faux \"claude\" sous un PATH maîtrisé)", async () => {
+  it("\"command\" plan: actually executes the binary (here a fake \"claude\" under a controlled PATH)", async () => {
     await withFakeHome(async () => {
       const shimDir = await mkdtemp(join(tmpdir(), "caesar-mcp-shim-"));
       const captureFile = join(shimDir, "capture.json");
@@ -145,9 +145,9 @@ describe("applyPlan", () => {
       await chmod(target, 0o755);
 
       const previousPath = process.env["PATH"];
-      // Comme `packages/cli/test/support.ts` (`withShimmedPath`) : les
-      // scripts factices ont pour shebang `/usr/bin/env node`, il faut donc
-      // aussi le répertoire du binaire node courant, pas seulement le shim.
+      // Like `packages/cli/test/support.ts` (`withShimmedPath`): the fake
+      // scripts have `/usr/bin/env node` as shebang, so the directory of the
+      // current node binary is needed too, not just the shim.
       process.env["PATH"] = [shimDir, "/usr/bin", "/bin", dirname(process.execPath)].join(delimiter);
       try {
         await applyPlan(buildPlan("claude", root));
@@ -173,14 +173,14 @@ describe("checkMcpStatus", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("\"not-registered\" quand le fichier n'existe pas encore", async () => {
+  it("\"not-registered\" when the file does not exist yet", async () => {
     await withFakeHome(async () => {
       const status = await checkMcpStatus("copilot", root);
-      expect(status).toEqual({ client: "copilot", registered: "not-registered", detail: expect.stringContaining("Absent de") });
+      expect(status).toEqual({ client: "copilot", registered: "not-registered", detail: expect.stringContaining("Absent from") });
     });
   });
 
-  it("\"registered\" une fois l'entrée présente, sans passer par applyPlan", async () => {
+  it("\"registered\" once the entry is present, without going through applyPlan", async () => {
     await withFakeHome(async (home) => {
       const path = join(home, ".copilot", "mcp-config.json");
       await mkdir(join(home, ".copilot"), { recursive: true });
@@ -191,7 +191,7 @@ describe("checkMcpStatus", () => {
     });
   });
 
-  it("claude et codex : \"unknown\", sans lancer le moindre sous-processus", async () => {
+  it("claude and codex: \"unknown\", without launching a single subprocess", async () => {
     await withFakeHome(async () => {
       const claude = await checkMcpStatus("claude", root);
       expect(claude.registered).toBe("unknown");

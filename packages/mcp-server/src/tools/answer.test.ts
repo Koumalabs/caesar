@@ -21,7 +21,7 @@ describe("caesar_answer", () => {
     await session.store.create({
       id: "t_test",
       agent: "codex",
-      objective: "objectif",
+      objective: "objective",
       status: "running",
       created_at: new Date().toISOString(),
       started_at: new Date().toISOString(),
@@ -38,43 +38,43 @@ describe("caesar_answer", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("écrit la réponse et émet un événement `answer`", async () => {
-    await writeQuestion(taskDir, { id: "q1", question: "Continuer ?", options: [], asked_at: new Date().toISOString() });
+  it("writes the answer and emits an `answer` event", async () => {
+    await writeQuestion(taskDir, { id: "q1", question: "Continue?", options: [], asked_at: new Date().toISOString() });
 
-    const result = await caesarAnswer(session, { task_id: "t_test", question_id: "q1", answer: "oui" });
+    const result = await caesarAnswer(session, { task_id: "t_test", question_id: "q1", answer: "yes" });
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toEqual({ task_id: "t_test", question_id: "q1", answered: true });
 
     const stored = await readAnswer(taskDir, "q1");
-    expect(stored?.answer).toBe("oui");
+    expect(stored?.answer).toBe("yes");
 
     const events = await readEvents(taskPaths(taskDir));
-    expect(events).toEqual([expect.objectContaining({ type: "answer", id: "q1", answer: "oui" })]);
+    expect(events).toEqual([expect.objectContaining({ type: "answer", id: "q1", answer: "yes" })]);
   });
 
-  it("question inconnue : erreur claire, rien n'est écrit", async () => {
-    const result = await caesarAnswer(session, { task_id: "t_test", question_id: "q-fantome", answer: "oui" });
+  it("unknown question: clear error, nothing is written", async () => {
+    const result = await caesarAnswer(session, { task_id: "t_test", question_id: "q-ghost", answer: "yes" });
     expect(result.isError).toBe(true);
-    expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);
-    expect(await readAnswer(taskDir, "q-fantome")).toBeNull();
+    expect((result.content?.[0] as { text: string }).text).toMatch(/unknown question/i);
+    expect(await readAnswer(taskDir, "q-ghost")).toBeNull();
   });
 
-  it("réponse en double : erreur claire, la première réponse n'est pas modifiée", async () => {
-    await writeQuestion(taskDir, { id: "q1", question: "Continuer ?", options: [], asked_at: new Date().toISOString() });
+  it("duplicate answer: clear error, the first answer is left untouched", async () => {
+    await writeQuestion(taskDir, { id: "q1", question: "Continue?", options: [], asked_at: new Date().toISOString() });
 
-    const first = await caesarAnswer(session, { task_id: "t_test", question_id: "q1", answer: "oui" });
+    const first = await caesarAnswer(session, { task_id: "t_test", question_id: "q1", answer: "yes" });
     expect(first.isError).toBeFalsy();
 
-    const second = await caesarAnswer(session, { task_id: "t_test", question_id: "q1", answer: "non" });
+    const second = await caesarAnswer(session, { task_id: "t_test", question_id: "q1", answer: "no" });
     expect(second.isError).toBe(true);
-    expect((second.content?.[0] as { text: string }).text).toMatch(/déjà/);
+    expect((second.content?.[0] as { text: string }).text).toMatch(/already/);
 
-    expect((await readAnswer(taskDir, "q1"))?.answer).toBe("oui");
+    expect((await readAnswer(taskDir, "q1"))?.answer).toBe("yes");
   });
 
-  it("tâche inconnue : erreur claire", async () => {
-    const result = await caesarAnswer(session, { task_id: "t_inexistant", question_id: "q1", answer: "oui" });
+  it("unknown task: clear error", async () => {
+    const result = await caesarAnswer(session, { task_id: "t_nonexistent", question_id: "q1", answer: "yes" });
     expect(result.isError).toBe(true);
-    expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);
+    expect((result.content?.[0] as { text: string }).text).toMatch(/unknown task/i);
   });
 });

@@ -1,6 +1,6 @@
 /**
- * `caesar_list_roles` : les rôles configurés, leur intention, et l'agent qui
- * serait retenu aujourd'hui pour chacun — voir le brief de la tâche 7.
+ * `caesar_list_roles`: the configured roles, their intent, and the agent
+ * that would be picked today for each one — see the task 7 brief.
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -25,9 +25,9 @@ export async function caesarListRoles(session: McpSession): Promise<CallToolResu
       const installed = new Map<string, boolean>();
       await Promise.all(
         role.agents.map(async (id) => {
-          // `config.agents` : un rôle peut nommer un agent générique déclaré
-          // en configuration, pas seulement le catalogue natif — voir C1 de
-          // la revue finale.
+          // `config.agents`: a role may name a generic agent declared in
+          // the configuration, not only the native catalog — see C1 of the
+          // final review.
           const def = findAgentDefinition(id, config.agents);
           installed.set(id, def ? (await findBinaryInPath(def.bin)) !== null : false);
         }),

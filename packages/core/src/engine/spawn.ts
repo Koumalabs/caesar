@@ -1,10 +1,10 @@
 /**
- * Lancement du processus d'un sous-agent et normalisation de son flux de
- * sortie vers le vocabulaire commun d'`@caesar/protocol`.
+ * Launching a sub-agent's process and normalizing its output stream
+ * into the common vocabulary of `@caesar/protocol`.
  *
- * C'est ici, et seulement ici, qu'un processus fils existe : le reste du
- * moteur ne connaît que des `SpawnPlan` en entrée et des `RunResult` en
- * sortie.
+ * Here, and only here, does a child process exist: the rest of the
+ * engine only knows `SpawnPlan` as input and `RunResult` as
+ * output.
  */
 import { spawn } from "node:child_process";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
@@ -15,7 +15,7 @@ import type { CaesarEvent, TaskPaths } from "@caesar/protocol";
 import { appendEvent, makeEvent } from "@caesar/protocol";
 import type { AgentDefinition, PartialEvent, PreparedFile, SpawnPlan } from "../registry/types.js";
 
-/** Délai de grâce entre le SIGTERM et le SIGKILL, en cas d'absence de sortie. */
+/** Grace period between SIGTERM and SIGKILL, when there is no exit. */
 const KILL_GRACE_MS = 5000;
 
 export interface RunOptions {
@@ -27,10 +27,10 @@ export interface RunOptions {
   signal?: AbortSignal;
   onEvent?: (event: CaesarEvent) => void;
   /**
-   * Appelé dès que le pid du sous-processus est connu, avant tout traitement
-   * de sa sortie. Sert uniquement à `runner.ts` pour renseigner `TaskRecord.pid`
-   * au plus tôt (voir le brief de la tâche 6, extension `caesar cancel`) ; ignoré
-   * si le processus échoue à démarrer (pas de pid dans ce cas).
+   * Called as soon as the sub-process pid is known, before any processing
+   * of its output. Serves only `runner.ts` to record `TaskRecord.pid`
+   * as early as possible (see the task 6 brief, `caesar cancel` extension); ignored
+   * if the process fails to start (no pid in that case).
    */
   onSpawn?: (pid: number) => void | Promise<void>;
 }
@@ -49,11 +49,11 @@ export async function runAgentProcess(options: RunOptions): Promise<RunResult> {
   const { agent, plan, paths, taskId, timeoutMs, signal, onEvent, onSpawn } = options;
   const startedAt = Date.now();
 
-  // Un signal déjà déclenché à l'entrée (annulation survenue pendant une
-  // étape antérieure, plus lente — préparation de l'isolation, par exemple)
-  // ne doit jamais aboutir à un lancement : un écouteur `abort` posé après
-  // coup, plus loin dans cette fonction, ne se déclencherait jamais pour un
-  // signal déjà abandonné.
+  // A signal already triggered at entry (cancellation that occurred during an
+  // earlier, slower step — isolation preparation, for example)
+  // must never lead to a launch: an `abort` listener attached after
+  // the fact, further down this function, would never fire for a
+  // signal already aborted.
   if (signal?.aborted) {
     return { exitCode: null, signal: null, timedOut: false, aborted: true, eventCount: 0, durationMs: Date.now() - startedAt };
   }
@@ -72,7 +72,7 @@ interface FileBackup {
   content: string;
 }
 
-/** Écrit chaque fichier du plan ; sauvegarde d'abord le contenu précédent de ceux marqués `restoreAfter` (voir `PreparedFile`, C5 de la revue finale). */
+/** Writes each file of the plan; first backs up the previous content of those marked `restoreAfter` (see `PreparedFile`, C5 of the final review). */
 async function prepareFiles(files: readonly PreparedFile[]): Promise<FileBackup[]> {
   const backups: FileBackup[] = [];
   for (const file of files) {
@@ -89,14 +89,14 @@ async function prepareFiles(files: readonly PreparedFile[]): Promise<FileBackup[
   return backups;
 }
 
-/** Restaure le contenu précédent de chaque fichier sauvegardé, ou le supprime s'il n'existait pas avant. Best-effort : un échec de restauration ne doit jamais faire échouer la fin de la tâche. */
+/** Restores the previous content of each backed-up file, or deletes it if it did not exist before. Best-effort: a restoration failure must never fail the end of the task. */
 async function restoreFiles(backups: readonly FileBackup[]): Promise<void> {
   for (const backup of backups) {
     try {
       if (backup.existed) await writeFile(backup.path, backup.content, "utf8");
       else await unlink(backup.path);
     } catch {
-      // Volontairement ignoré : voir la documentation de la fonction.
+      // Deliberately ignored: see the function's documentation.
     }
   }
 }
@@ -136,10 +136,10 @@ async function runWithFiles(options: RunOptions, startedAt: number): Promise<Run
   if (plan.stdin !== undefined) child.stdin?.write(plan.stdin);
   child.stdin?.end();
 
-  // Chaque ligne de sortie déclenche un traitement asynchrone (traduction +
-  // écriture du journal) : on les sérialise sur une chaîne de promesses pour
-  // ne jamais réordonner les événements ni laisser un traitement en vol
-  // lorsque le flux se termine.
+  // Each output line triggers asynchronous processing (translation +
+  // journal write): they are serialized onto a promise chain so as to
+  // never reorder events nor leave in-flight processing behind
+  // when the stream ends.
   let chain: Promise<void> = Promise.resolve();
 
   const stdoutRl = createInterface({ input: child.stdout!, crlfDelay: Infinity });
@@ -191,9 +191,9 @@ async function runWithFiles(options: RunOptions, startedAt: number): Promise<Run
     child.once("close", (code, sig) => resolve({ code, signal: sig }));
   });
 
-  // Le fils est sorti : plus aucun risque d'orphelin à partir d'ici. On peut
-  // désarmer les minuteries et attendre la fin du traitement des dernières
-  // lignes déjà émises par les flux.
+  // The child has exited: no more orphan risk from here on. We can
+  // disarm the timers and wait for the processing of the last
+  // lines already emitted by the streams to finish.
   clearTimeout(timeoutTimer);
   clearTimeout(hardKillTimer);
   signal?.removeEventListener("abort", onAbort);
@@ -206,9 +206,9 @@ async function runWithFiles(options: RunOptions, startedAt: number): Promise<Run
   if (spawnError) {
     await emit({ type: "error", message: spawnError.message, fatal: true });
   } else if (aborted) {
-    await emit({ type: "error", message: "Tâche annulée avant la fin de l'exécution.", fatal: true });
+    await emit({ type: "error", message: "Task cancelled before execution finished.", fatal: true });
   } else if (timedOut) {
-    await emit({ type: "error", message: `Délai dépassé (${timeoutMs} ms).`, fatal: true });
+    await emit({ type: "error", message: `Timeout exceeded (${timeoutMs} ms).`, fatal: true });
   } else {
     await emit({
       type: "finished",
@@ -230,46 +230,46 @@ async function runWithFiles(options: RunOptions, startedAt: number): Promise<Run
 }
 
 /**
- * Invoque `onEvent` sans jamais laisser une exception qu'il lèverait remonter
- * jusqu'à l'appelant : le tout premier événement (`started`) est émis avant
- * même que le minuteur de timeout et l'écouteur d'abandon ne soient posés —
- * un callback d'affichage qui casse à cet instant ne doit pas transformer un
- * problème de présentation en sous-processus orphelin.
+ * Invokes `onEvent` without ever letting an exception it throws bubble
+ * up to the caller: the very first event (`started`) is emitted before
+ * the timeout timer and the abort listener are even in place —
+ * a display callback breaking at that instant must not turn a
+ * presentation problem into an orphan sub-process.
  */
 function safeOnEvent(onEvent: RunOptions["onEvent"], event: CaesarEvent): void {
   if (!onEvent) return;
   try {
     onEvent(event);
   } catch {
-    // Volontairement ignoré : voir la documentation de la fonction.
+    // Deliberately ignored: see the function's documentation.
   }
 }
 
 /**
- * Invoque `onSpawn` sans jamais laisser une exception (synchrone ou dans la
- * promesse qu'il renvoie) remonter jusqu'à l'appelant — même profil de
- * risque que `safeOnEvent` : un callback cassé à cet instant précis
- * laisserait sinon le sous-processus déjà lancé orphelin, faute d'atteindre
- * la suite de la fonction qui le pilote.
+ * Invokes `onSpawn` without ever letting an exception (synchronous or in the
+ * promise it returns) bubble up to the caller — same risk profile
+ * as `safeOnEvent`: a callback broken at that precise instant
+ * would otherwise leave the already-launched sub-process orphaned, unable to
+ * reach the rest of the function that drives it.
  */
 async function safeOnSpawn(onSpawn: RunOptions["onSpawn"], pid: number): Promise<void> {
   if (!onSpawn) return;
   try {
     await onSpawn(pid);
   } catch {
-    // Volontairement ignoré : voir la documentation de la fonction.
+    // Deliberately ignored: see the function's documentation.
   }
 }
 
-/** Complète un événement partiel avec les champs communs (protocole, seq, horodatage, tâche). */
+/** Completes a partial event with the common fields (protocol, seq, timestamp, task). */
 function toCaesarEvent(taskId: string, seq: number, partial: PartialEvent): CaesarEvent {
   const { type, ...fields } = partial;
-  // `makeEvent` est générique sur un type précis de l'union ; `partial` porte
-  // un type déjà restreint à cette même union sans les champs communs
-  // (`PartialEvent`, distribué variante par variante côté registre). Le
-  // caster ici en `never` reporte la garantie de correspondance sur le
-  // typage de `PartialEvent` lui-même plutôt que de la reperdre dans une
-  // inférence générique qui ne peut pas se faire à partir d'une valeur de
-  // type union.
+  // `makeEvent` is generic over one precise type of the union; `partial`
+  // carries a type already narrowed to that same union without the common
+  // fields (`PartialEvent`, distributed variant by variant on the registry
+  // side). Casting it here to `never` shifts the correspondence guarantee
+  // onto the typing of `PartialEvent` itself rather than losing it again in
+  // a generic inference that cannot be made from a value of
+  // union type.
   return makeEvent(taskId, seq, type, fields as never);
 }

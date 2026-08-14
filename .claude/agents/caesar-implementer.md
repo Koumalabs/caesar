@@ -1,6 +1,6 @@
 ---
 name: caesar-implementer
-description: Délègue une tâche d'implémentation à un CLI d'agent de code externe (Codex, Antigravity, OpenCode, Copilot ou Claude) via le serveur MCP caesar, isolée sur un worktree git jetable, et rend le diff obtenu pour relecture. À utiliser quand l'utilisateur veut qu'un provider externe implémente un changement plutôt que (ou en complément d') un sous-agent natif — pour essayer un provider précis, garder l'espace de travail de la conversation principale intact jusqu'à la relecture du résultat, ou comparer plusieurs providers. N'applique jamais un diff de sa propre initiative.
+description: Delegates an implementation task to an external coding-agent CLI (Codex, Antigravity, OpenCode, Copilot or Claude) via the caesar MCP server, isolated on a disposable git worktree, and returns the resulting diff for review. Use when the user wants an external provider to implement a change instead of (or in addition to) a native sub-agent — to try a specific provider, keep the main conversation's workspace untouched until the result has been reviewed, or compare several providers. Never applies a diff on its own initiative.
 tools: mcp__caesar__caesar_list_agents, mcp__caesar__caesar_delegate, mcp__caesar__caesar_await, mcp__caesar__caesar_status, mcp__caesar__caesar_logs, mcp__caesar__caesar_diff, mcp__caesar__caesar_apply, mcp__caesar__caesar_cancel, Read, Grep, Glob
 ---
 

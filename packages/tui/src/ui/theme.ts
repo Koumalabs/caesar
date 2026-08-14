@@ -1,16 +1,16 @@
 /**
- * La palette du TUI — désormais celle de tout l'outil.
+ * The TUI's palette — now the whole tool's.
  *
- * Ces constantes vivaient ici, et n'étaient connues que d'ici : la ligne de
- * commande choisissait ses couleurs de son côté, parmi sept codes ANSI de
- * base. Les deux moitiés du même outil ne se ressemblaient donc pas à
- * l'écran. Elles ont été déplacées dans `@caesar/theme`, **sans qu'aucune
- * valeur ne change**, et ce fichier les ré-exporte : les écrans du TUI
- * continuent d'importer `../ui/theme.js` et rendent exactement la même image.
+ * These constants lived here, and were known only here: the command line
+ * chose its colors on its own side, from seven base ANSI codes. The two
+ * halves of the same tool thus did not look alike on screen. They were
+ * moved into `@caesar/theme`, **without a single value changing**, and
+ * this file re-exports them: the TUI screens keep importing
+ * `../ui/theme.js` and render exactly the same image.
  *
- * Les deux règles qui la tiennent sont documentées à la source
- * (`packages/theme/src/palette.ts`) : le texte principal ne porte jamais de
- * couleur, et tout ce qui pose un fond pose aussi son avant-plan.
+ * The two rules that hold it together are documented at the source
+ * (`packages/theme/src/palette.ts`): primary text never carries a color,
+ * and anything that sets a background also sets its foreground.
  */
 export {
   ACCENT,

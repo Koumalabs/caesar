@@ -1,36 +1,36 @@
 /**
- * Câblage commander des sous-commandes décrites par le brief de la tâche 6,
- * autour de `@caesar/core` : `buildProgram` construit le programme, `runCli`
- * l'enveloppe (parse `argv`, traduit les `CommanderError` en code de sortie).
- * Aucune des deux ne parse `process.argv` ni n'appelle `process.exit` — ce
- * sont des fonctions pures du point de vue du processus, ce qui les rend
- * importables sans effet de bord par un test, ou par un point d'entrée.
+ * Commander wiring of the subcommands described by the task 6 brief, around
+ * `@caesar/core`: `buildProgram` builds the program, `runCli` wraps it
+ * (parses `argv`, translates `CommanderError`s into an exit code). Neither
+ * parses `process.argv` nor calls `process.exit` — they are pure functions
+ * from the process's point of view, which makes them importable without
+ * side effects by a test, or by an entry point.
  *
- * Deux points d'entrée les importent (tâche 12) :
- *  - `bin.ts`, le point d'entrée Node (`node dist/bin.js`), qui les enveloppe
- *    d'un garde d'auto-invocation (`isMain`) ;
- *  - `bun-entry.ts`, le point d'entrée du binaire autonome compilé par Bun,
- *    qui les enveloppe d'un garde différent — voir plus bas.
+ * Two entry points import them (task 12):
+ *  - `bin.ts`, the Node entry point (`node dist/bin.js`), which wraps them
+ *    in a self-invocation guard (`isMain`);
+ *  - `bun-entry.ts`, the entry point of the standalone binary compiled by
+ *    Bun, which wraps them in a different guard — see below.
  *
- * Ce module vivait à l'origine dans `bin.ts` lui-même, `isMain` compris.
- * Séparé ici en revue de la tâche 12 : `bin.ts` importé par `bun-entry.ts`
- * (pour réutiliser `runCli` "le programme commander existant" plutôt que de
- * le dupliquer) exécutait alors *deux fois* le CLI dans le binaire compilé —
- * un double `caesar --version`/`caesar doctor` constaté en vérifiant le binaire
- * réel, jamais dans les tests `vitest`, qui n'assemblent jamais un binaire
- * Bun. La cause : dans un exécutable produit par `bun build --compile`,
- * `import.meta.url` vaut la même URL virtuelle (`file:///$bunfs/root/<nom
- * du binaire>`) pour *tous* les modules du bundle, quel que soit leur
- * fichier source d'origine — et `process.argv[1]` vaut cette même URL. Le
- * garde `fileURLToPath(import.meta.url) === process.argv[1]` de `bin.ts`,
- * pensé pour Node (où chaque module garde son propre `import.meta.url`),
- * devenait donc vrai pour n'importe quel module du bundle, y compris
- * `bin.ts` importé comme simple bibliothèque par `bun-entry.ts` : son bloc
- * d'auto-invocation se déclenchait une seconde fois, en plus de l'appel
- * explicite de `bun-entry.ts`. En sortant `buildProgram`/`runCli` de
- * `bin.ts` vers ce module neutre, `bun-entry.ts` n'importe plus jamais le
- * fichier qui porte ce garde : `bin.ts` reste le seul à s'auto-invoquer, et
- * seulement quand Node le charge comme point d'entrée réel.
+ * This module originally lived in `bin.ts` itself, `isMain` included.
+ * Separated here during the task 12 review: `bin.ts` imported by
+ * `bun-entry.ts` (to reuse `runCli` "the existing commander program" rather
+ * than duplicating it) then ran the CLI *twice* in the compiled binary — a
+ * double `caesar --version`/`caesar doctor` observed by checking the real
+ * binary, never in the `vitest` tests, which never assemble a Bun binary.
+ * The cause: in an executable produced by `bun build --compile`,
+ * `import.meta.url` is the same virtual URL (`file:///$bunfs/root/<binary
+ * name>`) for *all* modules of the bundle, whatever their original source
+ * file — and `process.argv[1]` is that same URL. The guard
+ * `fileURLToPath(import.meta.url) === process.argv[1]` of `bin.ts`,
+ * designed for Node (where each module keeps its own `import.meta.url`),
+ * thus became true for any module of the bundle, including `bin.ts`
+ * imported as a plain library by `bun-entry.ts`: its self-invocation block
+ * fired a second time, on top of `bun-entry.ts`'s explicit call. By moving
+ * `buildProgram`/`runCli` out of `bin.ts` into this neutral module,
+ * `bun-entry.ts` never imports the file carrying that guard anymore:
+ * `bin.ts` remains the only one to self-invoke, and only when Node loads it
+ * as the real entry point.
  */
 import { Command, CommanderError } from "commander";
 import {
@@ -66,81 +66,80 @@ interface GlobalOptions {
   json?: boolean;
 }
 
-/** Vrai si `error` porte un `.code` système (erreur `fs`, sous-processus…) plutôt qu'un `Error` métier écrit à la main. */
+/** True if `error` carries a system `.code` (`fs` error, subprocess…) rather than a hand-written business `Error`. */
 function hasSystemErrorCode(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error;
 }
 
-/** Options communes à toute commande : `--root` (racine explicite) et `--json` (sortie machine). */
+/** Options common to every command: `--root` (explicit root) and `--json` (machine output). */
 function withCommonOptions(command: Command): Command {
   return command
-    .option("--root <dir>", "Racine du projet (défaut : recherche automatique depuis le répertoire courant)")
-    .option("--json", "Sortie JSON, sans couleur ni mise en forme");
+    .option("--root <dir>", "Project root (default: automatic search from the current directory)")
+    .option("--json", "JSON output, without color or formatting");
 }
 
 /**
- * `--global`/`--local` : la couche visée par une commande qui écrit (`policy
- * allow|deny`, `agents enable|disable`, `role add|remove`). Sans l'une ou
- * l'autre : couche projet, comme avant la tâche 13. Mutuellement exclusives
- * — `resolveScope` (`../scope.js`) le vérifie à l'exécution et le dit
- * clairement plutôt que de laisser la dernière lue l'emporter en silence.
+ * `--global`/`--local`: the layer targeted by a command that writes
+ * (`policy allow|deny`, `agents enable|disable`, `role add|remove`).
+ * Without one or the other: the project layer, as before task 13. Mutually
+ * exclusive — `resolveScope` (`../scope.js`) checks it at runtime and says
+ * it clearly rather than letting the last one read win silently.
  */
 function withScopeOptions(command: Command): Command {
   return command
-    .option("--global", "Cible la couche globale (~/.config/caesar/config.toml) plutôt que la couche projet.")
-    .option("--local", "Cible la couche locale du projet (.caesar/config.local.toml, non versionnée) plutôt que la couche projet.");
+    .option("--global", "Target the global layer (~/.config/caesar/config.toml) rather than the project layer.")
+    .option("--local", "Target the project's local layer (.caesar/config.local.toml, unversioned) rather than the project layer.");
 }
 
 /**
- * Construit le programme commander. Ne parse rien : `exitCodeRef` reçoit le
- * code de sortie de la commande exécutée, lu par l'appelant après
- * `parseAsync`.
+ * Builds the commander program. Parses nothing: `exitCodeRef` receives the
+ * exit code of the executed command, read by the caller after `parseAsync`.
  *
- * `argv` sert uniquement à savoir si un « -- » figurait dans la ligne de
- * commande (voir la commande `run`). Commander ne le conserve pas dans son
- * API publique — il porte bien un `rawArgs`, mais hors typages, donc hors
- * contrat. Le passer explicitement coûte un paramètre et ne dépend de rien
- * d'interne.
+ * `argv` is only used to know whether a "--" appeared on the command line
+ * (see the `run` command). Commander does not keep it in its public API —
+ * it does carry a `rawArgs`, but outside the typings, hence outside the
+ * contract. Passing it explicitly costs one parameter and depends on
+ * nothing internal.
  */
 export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: readonly string[] = []): Command {
   const program = new Command();
   program
     .name("caesar")
-    .description("Orchestrateur de sous-agents de code (Antigravity, Codex, OpenCode, Copilot, Claude).")
-    // Les libellés par défaut de commander sont en anglais : sans ces trois
-    // remplacements, « output the version number » et « display help for
-    // command » figuraient au milieu d'une aide entièrement française.
-    .version(VERSION, "-V, --version", "Affiche la version de caesar.")
-    .helpOption("-h, --help", "Affiche cette aide.")
-    .helpCommand("help [commande]", "Affiche l'aide d'une commande.")
+    .description("Orchestrator of coding sub-agents (Antigravity, Codex, OpenCode, Copilot, Claude).")
+    // Commander's default labels get in the way here: without these three
+    // replacements, "output the version number" and "display help for
+    // command" appeared in the middle of an otherwise curated help.
+    .version(VERSION, "-V, --version", "Print the caesar version.")
+    .helpOption("-h, --help", "Show this help.")
+    .helpCommand("help [command]", "Show the help of a command.")
     .exitOverride()
     .configureOutput({
       writeOut: (str) => io.stdout.write(str),
       writeErr: (str) => io.stderr.write(str),
     })
-    // Posé **avant** la création des sous-commandes : commander copie la
-    // configuration d'aide au moment du `.command()`, jamais après. Réglée
-    // plus bas, elle ne s'appliquerait qu'à `caesar --help` et laisserait
-    // `caesar run --help` en anglais.
+    // Set **before** the subcommands are created: commander copies the help
+    // configuration at `.command()` time, never afterwards. Configured
+    // further down, it would only apply to `caesar --help` and leave
+    // `caesar run --help` with the stock rendering.
     .configureHelp({ formatHelp: (cmd, helper) => formatHelp(cmd, helper, io) });
 
   async function run(action: () => Promise<number>): Promise<void> {
     try {
       exitCodeRef.value = await action();
     } catch (error) {
-      // Filet de sécurité : chaque commande retourne déjà son propre code
-      // pour ses échecs attendus (refus de politique, argument invalide,
-      // tâche inconnue…). Une exception qui remonte jusqu'ici est donc
-      // inattendue, et de deux natures possibles, distinguées ici plutôt que
-      // toutes deux mappées sur le code 2 (tâche 10, C) :
-      //  - le plus souvent, `loadConfig` qui échoue sur un fichier de
-      //    configuration mal formé (TOML invalide, schéma non respecté) — ce
-      //    reste, par nature, une erreur de configuration/usage : code 2.
-      //    Ces erreurs sont toujours des `Error` écrites à la main, sans
-      //    `.code` (voir `config.ts`, qui réenveloppe systématiquement les
-      //    erreurs système avant de les relever).
-      //  - un vrai échec d'exécution (E/S, sous-processus git, etc.) porte
-      //    au contraire un `.code` système — celui-là relève du code 1.
+      // Safety net: each command already returns its own code for its
+      // expected failures (policy refusal, invalid argument, unknown
+      // task…). An exception rising all the way here is therefore
+      // unexpected, and of two possible natures, distinguished here rather
+      // than both mapped to code 2 (task 10, C):
+      //  - most often, `loadConfig` failing on a malformed configuration
+      //    file (invalid TOML, schema not honored) — that remains, by
+      //    nature, a configuration/usage error: code 2. These errors are
+      //    always hand-written `Error`s, without a `.code` (see
+      //    `config.ts`, which systematically rewraps system errors before
+      //    rethrowing them).
+      //  - a real execution failure (I/O, git subprocess, etc.) on the
+      //    contrary carries a system `.code` — that one belongs to code 1.
       printError(io, error instanceof Error ? error.message : String(error));
       exitCodeRef.value = !(error instanceof CommanderError) && hasSystemErrorCode(error) ? EXIT_RUNTIME : EXIT_USAGE;
     }
@@ -152,16 +151,16 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
 
   withCommonOptions(program.command("init"))
     .description(
-      'Crée <root>/.caesar/config.toml et les prompts système par défaut de chaque rôle, et dépose la connaissance agentique (skill + commandes) pour les runtimes détectés. Sur un projet déjà initialisé, rafraîchit les assets sans toucher à la configuration ni aux rôles (--force pour tout réinitialiser). --global : ~/.config/caesar/config.toml, jamais versionné — le niveau projet, lui, l\'est, donc partagé avec l\'équipe.',
+      'Creates <root>/.caesar/config.toml and each role\'s default system prompts, and deposits the agentic knowledge (skill + commands) for the detected runtimes. On an already initialized project, refreshes the assets without touching the configuration or the roles (--force to reset everything). --global: ~/.config/caesar/config.toml, never versioned — the project level, on the other hand, is, hence shared with the team.',
     )
-    .option("--force", "Réinitialise complètement : réécrit la configuration et les prompts système existants (les assets, eux, sont de toute façon toujours rafraîchis).")
-    .option("--global", "Crée/rafraîchit la couche globale (~/.config/caesar/config.toml) plutôt que la couche projet — jamais versionnée, propre à ce poste.")
+    .option("--force", "Fully reinitializes: rewrites the existing configuration and system prompts (the assets, for their part, are always refreshed anyway).")
+    .option("--global", "Creates/refreshes the global layer (~/.config/caesar/config.toml) rather than the project layer — never versioned, specific to this machine.")
     .option(
       "--agent <id>",
-      'Force le dépôt pour ce runtime plutôt que la détection automatique (répétable) : claude, codex, copilot, opencode ou antigravity — le runtime qui LIT la skill (donneur d\'ordre), pas l\'exécutant choisi par "caesar run --agent".',
+      'Forces the deposit for this runtime rather than automatic detection (repeatable): claude, codex, copilot, opencode or antigravity — the runtime that READS the skill (the ordering side), not the executor chosen by "caesar run --agent".',
       (value: string, previous: string[] = []) => [...previous, value],
     )
-    .option("--no-skills", 'Ne dépose ni ne rafraîchit la skill ou les commandes agentiques. Non mémorisé : à repasser à chaque "init".')
+    .option("--no-skills", 'Neither deposits nor refreshes the skill or the agentic commands. Not remembered: pass it again on each "init".')
     .action(async (_options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions & { force?: boolean; global?: boolean; agent?: string[]; skills?: boolean }>();
       await run(async () => {
@@ -171,8 +170,8 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     });
 
   withCommonOptions(program.command("doctor"))
-    .description("Diagnostic d'installation : présence, version, capacités et statut de chaque agent du catalogue.")
-    .option("--verbose", "Ajoute le chemin du binaire et les capacités en toutes lettres.")
+    .description("Installation diagnosis: presence, version, capabilities and status of each agent of the catalog.")
+    .option("--verbose", "Adds the binary path and the capabilities spelled out.")
     .action(async (_options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions & { verbose?: boolean }>();
       await run(async () => {
@@ -182,23 +181,23 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     });
 
   withCommonOptions(program.command("config"))
-    // La description parlait de Bun et d'un repli « sans Bun » : vrai du seul
-    // chemin Node du monorepo, faux du binaire compilé — qui embarque Bun et
-    // monte le TUI dans son propre processus (voir `commands/config.ts`).
-    // Elle décrit maintenant ce que la commande fait, non par quoi elle est
-    // rendue : la contrainte Bun, quand elle s'applique, est déjà expliquée
-    // au moment où elle bloque.
-    .description("Configure agents, rôles, politique et intégrations dans un écran interactif.")
+    // The description used to speak of Bun and a "without Bun" fallback:
+    // true of the monorepo's Node path only, false of the compiled binary —
+    // which embeds Bun and mounts the TUI in its own process (see
+    // `commands/config.ts`). It now describes what the command does, not
+    // what powers it: the Bun constraint, when it applies, is already
+    // explained at the moment it blocks.
+    .description("Configures agents, roles, policy and integrations in an interactive screen.")
     .action(async (_options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => {
-        // `withCommonOptions` aligne cette commande sur toutes les autres
-        // (tâche 10, C2), ce qui lui fait accepter `--json` — mais cette
-        // commande lance un TUI interactif, sans sortie machine à produire.
-        // L'accepter en silence laisserait croire qu'il a été honoré :
-        // refusé explicitement plutôt qu'ignoré (revue de la tâche 10).
+        // `withCommonOptions` aligns this command with all the others
+        // (task 10, C2), which makes it accept `--json` — but this command
+        // launches an interactive TUI, with no machine output to produce.
+        // Accepting it silently would imply it was honored: refused
+        // explicitly rather than ignored (task 10 review).
         if (opts.json) {
-          printError(io, '--json n\'a pas de sens pour "caesar config" : cette commande lance un TUI interactif, pas une sortie machine.');
+          printError(io, '--json makes no sense for "caesar config": this command launches an interactive TUI, not machine output.');
           return EXIT_USAGE;
         }
         return runConfig(await resolveRoot(opts.root), io);
@@ -209,18 +208,18 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   // agents
   // ---------------------------------------------------------------------
 
-  const agents = program.command("agents").description("Catalogue des agents : présence, autorisation, capacités.");
+  const agents = program.command("agents").description("Agent catalog: presence, authorization, capabilities.");
 
   withCommonOptions(agents.command("list"))
-    .description("Liste le catalogue des agents.")
+    .description("Lists the agent catalog.")
     .action(async (_options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => runAgentsList(await resolveRoot(opts.root), { json: opts.json }, io));
     });
 
   withScopeOptions(withCommonOptions(agents.command("enable")))
-    .description("Retire un agent de la liste \"denied\" de la politique (couche projet par défaut ; --global/--local).")
-    .argument("<id>", "Identifiant de l'agent")
+    .description("Removes an agent from the policy's \"denied\" list (project layer by default; --global/--local).")
+    .argument("<id>", "Agent identifier")
     .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () =>
@@ -229,8 +228,8 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     });
 
   withScopeOptions(withCommonOptions(agents.command("disable")))
-    .description("Ajoute un agent à la liste \"denied\" de la politique (couche projet par défaut ; --global/--local).")
-    .argument("<id>", "Identifiant de l'agent")
+    .description("Adds an agent to the policy's \"denied\" list (project layer by default; --global/--local).")
+    .argument("<id>", "Agent identifier")
     .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () =>
@@ -239,23 +238,23 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     });
 
   withScopeOptions(withCommonOptions(agents.command("add")))
-    .description("Déclare un agent : un CLI hors catalogue, décrit par sa commande et son gabarit d'arguments.")
-    .argument("<id>", "Identifiant de l'agent, tel qu'on l'écrira dans --agent et dans les rôles")
-    .requiredOption("--bin <commande>", "Binaire à lancer (cherché dans le PATH, ou chemin absolu).")
+    .description("Declares an agent: a CLI outside the catalog, described by its command and its argument template.")
+    .argument("<id>", "Agent identifier, as it will be written in --agent and in the roles")
+    .requiredOption("--bin <command>", "Binary to launch (looked up in the PATH, or an absolute path).")
     .option(
-      "--args <gabarit>",
-      `Ligne d'arguments, guillemets respectés. Jetons substitués : ${ARG_TOKENS_HINT}. Le premier est obligatoire — sans lui, l'agent ne reçoit jamais l'objectif.`,
+      "--args <template>",
+      `Argument line, quotes honored. Substituted tokens: ${ARG_TOKENS_HINT}. The first is mandatory — without it, the agent never receives the objective.`,
       "{{prompt}}",
     )
-    .option("--display-name <nom>", "Nom lisible affiché à la place de l'identifiant.")
+    .option("--display-name <name>", "Readable name shown instead of the identifier.")
     .option(
       "--cwd-mode <mode>",
-      '"process" (défaut) : le répertoire courant porte le workspace. "flag" : le workspace est déjà passé en argument.',
+      '"process" (default): the current directory carries the workspace. "flag": the workspace is already passed as an argument.',
       "process",
     )
     .option(
       "--read-only-native",
-      "Déclare que ce CLI applique lui-même un mode lecture seule : une tâche en lecture seule n'aura pas besoin d'être isolée dans un worktree.",
+      "Declares that this CLI enforces a read-only mode itself: a read-only task will not need to be isolated in a worktree.",
     )
     .action(
       async (
@@ -285,8 +284,8 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     );
 
   withScopeOptions(withCommonOptions(agents.command("remove")))
-    .description("Retire une déclaration d'agent de la couche visée (couche projet par défaut ; --global/--local).")
-    .argument("<id>", "Identifiant de l'agent déclaré")
+    .description("Removes an agent declaration from the targeted layer (project layer by default; --global/--local).")
+    .argument("<id>", "Identifier of the declared agent")
     .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () =>
@@ -295,9 +294,9 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     });
 
   withCommonOptions(agents.command("test"))
-    .description("Lance une micro-tâche en lecture seule pour vérifier qu'un agent répond. Consomme son quota réel.")
-    .argument("<id>", "Identifiant de l'agent")
-    .option("--yes", "Confirme l'exécution réelle (obligatoire, sans confirmation interactive).")
+    .description("Launches a read-only micro-task to check that an agent responds. Consumes its real quota.")
+    .argument("<id>", "Agent identifier")
+    .option("--yes", "Confirms the real execution (mandatory, no interactive confirmation).")
     .action(async (id: string, options: GlobalOptions & { yes?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions & { yes?: boolean }>();
       await run(async () => runAgentsTest(await resolveRoot(opts.root), id, { yes: opts.yes, json: opts.json }, io));
@@ -307,18 +306,18 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   // policy
   // ---------------------------------------------------------------------
 
-  const policy = program.command("policy").description("Politique de délégation : listes allow/deny, provenance.");
+  const policy = program.command("policy").description("Delegation policy: allow/deny lists, provenance.");
 
   withCommonOptions(policy.command("show"))
-    .description("Affiche la politique effective, avec la provenance de chaque valeur (global, projet, défaut).")
+    .description("Shows the effective policy, with the provenance of each value (global, project, default).")
     .action(async (_options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => runPolicyShow(await resolveRoot(opts.root), { json: opts.json }, io));
     });
 
   withScopeOptions(withCommonOptions(policy.command("allow")))
-    .description("Ajoute un agent à la liste \"allowed\" (couche projet par défaut ; --global/--local).")
-    .argument("<id>", "Identifiant de l'agent")
+    .description("Adds an agent to the \"allowed\" list (project layer by default; --global/--local).")
+    .argument("<id>", "Agent identifier")
     .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () =>
@@ -327,8 +326,8 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     });
 
   withScopeOptions(withCommonOptions(policy.command("deny")))
-    .description("Ajoute un agent à la liste \"denied\" (couche projet par défaut ; --global/--local).")
-    .argument("<id>", "Identifiant de l'agent")
+    .description("Adds an agent to the \"denied\" list (project layer by default; --global/--local).")
+    .argument("<id>", "Agent identifier")
     .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () =>
@@ -340,26 +339,26 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   // role
   // ---------------------------------------------------------------------
 
-  const role = program.command("role").description("Rôles : agents de repli, mode, isolation, prompt système.");
+  const role = program.command("role").description("Roles: fallback agents, mode, isolation, system prompt.");
 
   withCommonOptions(role.command("list"))
-    .description("Liste les rôles, avec l'agent qui serait retenu aujourd'hui.")
+    .description("Lists the roles, with the agent that would be picked today.")
     .action(async (_options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => runRoleList(await resolveRoot(opts.root), { json: opts.json }, io));
     });
 
   withCommonOptions(role.command("show"))
-    .description("Détail d'un rôle, prompt système compris.")
-    .argument("<name>", "Nom du rôle")
+    .description("Details of a role, system prompt included.")
+    .argument("<name>", "Role name")
     .action(async (name: string, _options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => runRoleShow(await resolveRoot(opts.root), name, { json: opts.json }, io));
     });
 
   withScopeOptions(withCommonOptions(role.command("remove")))
-    .description("Supprime un rôle (couche projet par défaut ; --global/--local — uniquement si cette couche le déclare).")
-    .argument("<name>", "Nom du rôle")
+    .description("Deletes a role (project layer by default; --global/--local — only if that layer declares it).")
+    .argument("<name>", "Role name")
     .action(async (name: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () =>
@@ -368,17 +367,17 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
     });
 
   withScopeOptions(withCommonOptions(role.command("add")))
-    .description("Crée ou remplace un rôle (couche projet par défaut ; --global/--local). Non interactif — l'édition confortable relève du TUI.")
-    .argument("<name>", "Nom du rôle")
-    .option("--purpose <text>", "Intention du rôle, en une phrase.")
-    .option("--agents <ids>", "Agents candidats, dans l'ordre de repli, séparés par des virgules (a,b,c).")
-    .option("--mode <mode>", "\"read-only\" ou \"write\".")
+    .description("Creates or replaces a role (project layer by default; --global/--local). Non-interactive — comfortable editing belongs to the TUI.")
+    .argument("<name>", "Role name")
+    .option("--purpose <text>", "The role's intent, in one sentence.")
+    .option("--agents <ids>", "Candidate agents, in fallback order, comma-separated (a,b,c).")
+    .option("--mode <mode>", "\"read-only\" or \"write\".")
     .option(
       "--isolation <isolation>",
-      "\"worktree\" (atelier dédié sur une branche jetable), \"auto\" (défaut, choisit le worktree en écriture) ou \"inplace\" — ce dernier refusé en écriture dans un dépôt git sans allow_inplace_write.",
+      "\"worktree\" (dedicated workshop on a disposable branch), \"auto\" (default, picks the worktree for writes) or \"inplace\" — the latter refused for writes in a git repository without allow_inplace_write.",
     )
-    .option("--network <network>", "\"auto\" (défaut), \"on\" (refuse la délégation si l'agent ne sait pas ouvrir le réseau) ou \"off\".")
-    .option("--timeout <durée>", "Délai maximal, p. ex. \"10m\" (défaut : 10m).")
+    .option("--network <network>", "\"auto\" (default), \"on\" (refuses the delegation if the agent cannot open the network) or \"off\".")
+    .option("--timeout <duration>", "Maximum delay, e.g. \"10m\" (default: 10m).")
     .action(
       async (
         name: string,
@@ -421,26 +420,26 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   // ---------------------------------------------------------------------
 
   withCommonOptions(program.command("run"))
-    .description("Délègue un objectif à un sous-agent, un aller-retour complet.")
-    .argument("<objective>", "L'objectif confié à l'agent, en une phrase.")
+    .description("Delegates an objective to a sub-agent, one full round trip.")
+    .argument("<objective>", "The objective entrusted to the agent, in one sentence.")
     .argument(
       "[extra_args...]",
-      "Arguments bruts transmis tels quels au CLI de l'agent, après « -- ». Échappatoire pour ce que caesar n'expose pas : caesar run --agent codex \"…\" -- --enable feature_x",
+      "Raw arguments passed as-is to the agent's CLI, after \"--\". Escape hatch for what caesar does not expose: caesar run --agent codex \"…\" -- --enable feature_x",
     )
-    .option("--role <name>", "Rôle à travers lequel choisir l'agent.")
-    .option("--agent <id>", "Agent à utiliser directement (l'emporte sur --role).")
-    .option("--mode <mode>", "\"read-only\" ou \"write\".")
+    .option("--role <name>", "Role through which to pick the agent.")
+    .option("--agent <id>", "Agent to use directly (wins over --role).")
+    .option("--mode <mode>", "\"read-only\" or \"write\".")
     .option(
       "--isolation <isolation>",
-      "\"worktree\" : atelier dédié — branche jetable, plus les fichiers non suivis déclarés sous [worktree] et son setup déjà lancé. \"auto\" (défaut) le choisit en écriture dès qu'un dépôt git le permet. \"inplace\" écrit dans votre arbre de travail, et est refusé en écriture dans un dépôt git utilisable sans allow_inplace_write ; si le worktree paraît incomplet, complétez [worktree] plutôt que d'y renoncer.",
+      "\"worktree\": dedicated workshop — a disposable branch, plus the untracked files declared under [worktree] and its setup already run. \"auto\" (default) picks it for writes as soon as a git repository allows it. \"inplace\" writes into your working tree, and is refused for writes in a usable git repository without allow_inplace_write; if the worktree seems incomplete, complete [worktree] rather than giving up on it.",
     )
-    .option("--network <network>", "\"auto\" (défaut), \"on\" (refuse la délégation si l'agent ne sait pas ouvrir le réseau) ou \"off\".")
-    .option("--timeout <durée>", "Délai maximal, p. ex. \"10m\".")
-    .option("--model <model>", "Modèle à demander à l'agent, s'il le supporte.")
-    .option("--context <texte>", "Contexte additionnel. Préfixer par @ pour lire un fichier (@chemin).")
+    .option("--network <network>", "\"auto\" (default), \"on\" (refuses the delegation if the agent cannot open the network) or \"off\".")
+    .option("--timeout <duration>", "Maximum delay, e.g. \"10m\".")
+    .option("--model <model>", "Model to request from the agent, if it supports it.")
+    .option("--context <text>", "Additional context. Prefix with @ to read a file (@path).")
     .option(
       "--channel",
-      "Active le canal retour MCP : le sous-agent peut interroger l'agent principal en cours de route (ask_orchestrator) au lieu de deviner ou d'abandonner. Ajoute un processus par délégation.",
+      "Enables the MCP return channel: the sub-agent can query the main agent along the way (ask_orchestrator) instead of guessing or giving up. Adds one process per delegation.",
     )
     .action(
       async (
@@ -461,15 +460,15 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
       ) => {
         const opts = command.optsWithGlobals<typeof options>();
         await run(async () => {
-          // Commander ne distingue pas les opérandes en trop de ce qui suit
-          // « -- » : les deux atterrissent dans le même variadique. Sans cette
-          // vérification, `caesar run "obj" coquille` partirait silencieusement
-          // vers l'agent, alors que commander le refusait jusqu'ici (« too many
-          // arguments »). C'est ce refus qu'on préserve, sauf intention écrite.
+          // Commander does not distinguish excess operands from what follows
+          // "--": both land in the same variadic. Without this check,
+          // `caesar run "obj" typo` would silently head to the agent, whereas
+          // commander used to refuse it ("too many arguments"). It is that
+          // refusal we preserve, absent written intent.
           if (extraArgs.length > 0 && !argv.includes("--")) {
             printError(
               io,
-              `Arguments inattendus : ${extraArgs.join(" ")}. Pour les transmettre au CLI de l'agent, séparez-les par « -- ».`,
+              `Unexpected arguments: ${extraArgs.join(" ")}. To pass them to the agent's CLI, separate them with "--".`,
             );
             return EXIT_USAGE;
           }
@@ -500,60 +499,60 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   // ---------------------------------------------------------------------
 
   withCommonOptions(program.command("watch"))
-    .description("Regarde les sous-agents travailler, en direct.")
-    .argument("[ids...]", "Tâches à suivre. Par défaut : toutes celles en cours.")
-    .option("--once", "Une seule image, puis sortie — pour un script ou un coup d'œil.")
+    .description("Watch the sub-agents work, live.")
+    .argument("[ids...]", "Tasks to follow. Default: all those in progress.")
+    .option("--once", "A single frame, then exit — for a script or a quick glance.")
     .action(async (ids: string[], options: GlobalOptions & { once?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () => runWatch(await resolveRoot(opts.root), ids, { json: opts.json, once: opts.once }, io));
     });
 
   withCommonOptions(program.command("ps"))
-    .description("Liste les tâches du store (par défaut : en cours + dernières terminées).")
-    .option("--status <statuts>", "Filtre par statut(s), séparés par des virgules.")
+    .description("Lists the store's tasks (default: in progress + latest finished).")
+    .option("--status <statuses>", "Filter by status(es), comma-separated.")
     .action(async (options: GlobalOptions & { status?: string }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () => runPs(await resolveRoot(opts.root), { status: opts.status, json: opts.json }, io));
     });
 
   withCommonOptions(program.command("logs"))
-    .description("Affiche les événements normalisés d'une tâche.")
-    .argument("<id>", "Identifiant de la tâche")
-    .option("--raw", "Sortie brute du CLI de l'agent, plutôt que les événements normalisés.")
-    .option("--follow", "Suit la tâche en direct.")
+    .description("Shows the normalized events of a task.")
+    .argument("<id>", "Task identifier")
+    .option("--raw", "Raw output of the agent's CLI, rather than the normalized events.")
+    .option("--follow", "Follows the task live.")
     .action(async (id: string, options: GlobalOptions & { raw?: boolean; follow?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () => runLogs(await resolveRoot(opts.root), id, { raw: opts.raw, follow: opts.follow, json: opts.json }, io));
     });
 
   withCommonOptions(program.command("cancel"))
-    .description("Annule une tâche en cours (SIGTERM au processus enregistré).")
-    .argument("<id>", "Identifiant de la tâche")
+    .description("Cancels a running task (SIGTERM to the recorded process).")
+    .argument("<id>", "Task identifier")
     .action(async (id: string, _options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => runCancel(await resolveRoot(opts.root), id, { json: opts.json }, io));
     });
 
   withCommonOptions(program.command("diff"))
-    .description("Affiche le diff du worktree d'une tâche.")
-    .argument("<id>", "Identifiant de la tâche")
+    .description("Shows the diff of a task's worktree.")
+    .argument("<id>", "Task identifier")
     .action(async (id: string, _options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => runDiff(await resolveRoot(opts.root), id, { json: opts.json }, io));
     });
 
   withCommonOptions(program.command("apply"))
-    .description("Applique le diff du worktree d'une tâche au dépôt principal.")
-    .argument("<id>", "Identifiant de la tâche")
+    .description("Applies the diff of a task's worktree to the main repository.")
+    .argument("<id>", "Task identifier")
     .action(async (id: string, _options: GlobalOptions, command: Command) => {
       const opts = command.optsWithGlobals<GlobalOptions>();
       await run(async () => runApply(await resolveRoot(opts.root), id, { json: opts.json }, io));
     });
 
   withCommonOptions(program.command("gc"))
-    .description("Nettoie les worktrees et branches laissés par les tâches terminées.")
-    .option("--dry-run", "Montre les suppressions et conservations sans rien modifier.")
-    .option("--force", "Supprime aussi les worktrees terminés portant des modifications non intégrées.")
+    .description("Cleans up the worktrees and branches left by finished tasks.")
+    .option("--dry-run", "Shows the removals and keeps without changing anything.")
+    .option("--force", "Also removes finished worktrees carrying non-integrated modifications.")
     .action(async (options: GlobalOptions & { dryRun?: boolean; force?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () =>
@@ -567,41 +566,41 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
 
   const mcp = program
     .command("mcp")
-    .description("Serveur MCP : expose les tools de délégation à un agent principal, et l'enregistrement auprès de ses clients.");
+    .description("MCP server: exposes the delegation tools to a main agent, and the registration with its clients.");
 
   mcp
     .command("serve")
-    .description('Démarre le serveur MCP sur stdio. Rien d\'autre que le protocole n\'écrit sur stdout : les diagnostics vont sur stderr.')
-    .option("--root <dir>", "Racine du projet (défaut : recherche automatique depuis le répertoire courant)")
+    .description('Starts the MCP server on stdio. Nothing but the protocol writes to stdout: diagnostics go to stderr.')
+    .option("--root <dir>", "Project root (default: automatic search from the current directory)")
     .action(async (options: { root?: string }) => {
       await run(async () => runMcpServe(await resolveRoot(options.root), io));
     });
 
   withCommonOptions(mcp.command("install"))
-    .description("Enregistre \"caesar\" auprès d'un client MCP : claude, codex, copilot, opencode ou antigravity.")
-    .argument("<client>", "claude, codex, copilot, opencode ou antigravity")
-    .option("--dry-run", "Affiche ce qui serait fait (commande exécutée ou fichier écrit), sans rien exécuter ni écrire.")
+    .description("Registers \"caesar\" with an MCP client: claude, codex, copilot, opencode or antigravity.")
+    .argument("<client>", "claude, codex, copilot, opencode or antigravity")
+    .option("--dry-run", "Shows what would be done (command run or file written), without running or writing anything.")
     .action(async (client: string, options: GlobalOptions & { dryRun?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () => runMcpInstall(await resolveRoot(opts.root), client, { dryRun: opts.dryRun, json: opts.json }, io));
     });
 
   // ---------------------------------------------------------------------
-  // channel (interne, tâche 12)
+  // channel (internal, task 12)
   // ---------------------------------------------------------------------
 
-  // Groupe caché : atteint par auto-invocation depuis le binaire compilé
-  // (voir `configureChannelLauncher` dans `@caesar/core` et `bun-entry.ts`),
-  // jamais tapé à la main — masqué de `caesar --help` (`{ hidden: true }`),
-  // toujours joignable explicitement (`caesar channel serve --task-dir <dir>`).
+  // Hidden group: reached by self-invocation from the compiled binary (see
+  // `configureChannelLauncher` in `@caesar/core` and `bun-entry.ts`), never
+  // typed by hand — masked from `caesar --help` (`{ hidden: true }`), always
+  // reachable explicitly (`caesar channel serve --task-dir <dir>`).
   const channel = program
     .command("channel", { hidden: true })
-    .description("Canal retour MCP : sous-commandes internes, atteintes par auto-invocation.");
+    .description("MCP return channel: internal subcommands, reached by self-invocation.");
 
   channel
     .command("serve")
-    .description("Démarre le serveur du canal retour sur stdio, pour une tâche donnée.")
-    .requiredOption("--task-dir <dir>", "Répertoire de la tâche (contient task.json, events.jsonl…).")
+    .description("Starts the return channel server on stdio, for a given task.")
+    .requiredOption("--task-dir <dir>", "Task directory (contains task.json, events.jsonl…).")
     .action(async (options: { taskDir: string }) => {
       await run(async () => runChannelServe(options.taskDir));
     });
@@ -610,12 +609,12 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   // protocol
   // ---------------------------------------------------------------------
 
-  const protocol = program.command("protocol").description("Le standard @caesar/protocol : JSON Schema publiés.");
+  const protocol = program.command("protocol").description("The @caesar/protocol standard: published JSON Schemas.");
 
   withCommonOptions(protocol.command("schema"))
-    .description("Publie le JSON Schema d'un document du standard (task, report, event). Sans argument : les liste.")
-    .argument("[name]", "task, report ou event")
-    .option("--strict", "Variante pour les sorties structurées natives (report uniquement).")
+    .description("Publishes the JSON Schema of a document of the standard (task, report, event). Without an argument: lists them.")
+    .argument("[name]", "task, report or event")
+    .option("--strict", "Variant for native structured outputs (report only).")
     .action(async (name: string | undefined, options: GlobalOptions & { strict?: boolean }, command: Command) => {
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () => runProtocolSchema(name, { strict: opts.strict, json: opts.json }, io));
@@ -624,7 +623,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
   return program;
 }
 
-/** Fait tourner le CLI sur `argv` et renvoie le code de sortie. N'appelle jamais `process.exit`. */
+/** Runs the CLI on `argv` and returns the exit code. Never calls `process.exit`. */
 export async function runCli(argv: string[], io: Io = processIo): Promise<number> {
   const exitCodeRef = { value: EXIT_OK };
   const program = buildProgram(io, exitCodeRef, argv);
@@ -632,13 +631,13 @@ export async function runCli(argv: string[], io: Io = processIo): Promise<number
   try {
     await program.parseAsync(argv);
   } catch (error) {
-    // commander.help / commander.version : déjà écrits sur les flux configurés, sortie 0.
+    // commander.help / commander.version: already written to the configured streams, exit 0.
     if (error instanceof CommanderError) {
       if (error.code.startsWith("commander.help") || error.code === "commander.version") return EXIT_OK;
-      // Toute autre CommanderError (argument manquant, option inconnue…) a déjà
-      // été écrite sur stderr par commander lui-même (`configureOutput`) : ne
-      // pas la réimprimer, seulement traduire son code de sortie vers celui
-      // du brief (2 = erreur d'usage).
+      // Any other CommanderError (missing argument, unknown option…) has
+      // already been written to stderr by commander itself
+      // (`configureOutput`): do not reprint it, only translate its exit
+      // code to the brief's (2 = usage error).
       return EXIT_USAGE;
     }
     printError(io, error instanceof Error ? error.message : String(error));

@@ -1,26 +1,26 @@
 /**
- * L'atelier : ce qu'il faut ajouter à un worktree git fraîchement créé pour
- * qu'un sous-agent puisse réellement y travailler.
+ * The workshop: what must be added to a freshly created git worktree so a
+ * subagent can actually work in it.
  *
- * Un worktree ne contient que les fichiers **suivis**. Les dépendances
- * installées, le `.env`, les répertoires ignorés portant des briefs ou des
- * artefacts n'y sont pas — rien ne s'y installe, rien ne s'y lance, rien ne
- * s'y vérifie. L'isolation devenait donc, sur un projet réel, un espace vide
- * dans lequel il n'y avait rien à faire, et la contourner par
- * `isolation = "inplace"` restait la seule issue praticable. C'est la cause de
- * fond du défaut que `isolation.ts` corrige de l'autre côté : durcir la règle
- * sans rendre le worktree habitable n'aurait fait que déplacer le
- * contournement d'un cran.
+ * A worktree contains only **tracked** files. Installed dependencies, the
+ * `.env`, ignored directories carrying briefs or artifacts are not there —
+ * nothing installs, nothing launches, nothing verifies. Isolation therefore
+ * became, on a real project, an empty space with nothing to do in it, and
+ * bypassing it via `isolation = "inplace"` remained the only practicable way
+ * out. This is the root cause of the defect `isolation.ts` fixes on the
+ * other side: hardening the rule without making the worktree habitable would
+ * only have moved the workaround one notch over.
  *
- * Ce module est l'étape « Project Setup » du skill
- * `superpowers:using-git-worktrees`, appliquée à un tiers plutôt qu'à soi : ce
- * n'est pas l'agent qui monte son atelier — il n'en connaît ni les chemins ni
- * les commandes —, c'est l'orchestrateur qui le lui livre monté, à partir de
- * ce que le projet a déclaré sous `[worktree]`.
+ * This module is the "Project Setup" step of the
+ * `superpowers:using-git-worktrees` skill, applied to a third party rather
+ * than to oneself: it is not the agent that sets up its workshop — it knows
+ * neither its paths nor its commands —, it is the orchestrator that delivers
+ * it fully set up, from what the project declared under `[worktree]`.
  *
- * Rien ici ne lève pour une raison d'exécution : un chemin absent, suivi,
- * non ignoré ou déjà présent produit un **constat** que le rapport porte, pas
- * un échec. Seule une configuration invalide lève — parce que c'en est une.
+ * Nothing here throws for an execution reason: a path that is absent,
+ * tracked, not ignored or already present produces a **finding** the report
+ * carries, not a failure. Only an invalid configuration throws — because it
+ * is one.
  */
 import { execFile } from "node:child_process";
 import { access, cp, mkdir, symlink } from "node:fs/promises";
@@ -30,13 +30,13 @@ import type { WorktreeConfig } from "../config.js";
 
 const execFileAsync = promisify(execFile);
 
-/** Comment un chemin a été posé dans le worktree. */
+/** How a path was placed into the worktree. */
 export type MaterializeVia =
-  /** Clone copy-on-write (APFS, Btrfs, XFS…) : instantané, isolé, sans coût disque immédiat. */
+  /** Copy-on-write clone (APFS, Btrfs, XFS…): instant, isolated, no immediate disk cost. */
   | "clone"
-  /** Copie récursive ordinaire : isolée, mais elle coûte son poids en temps et en octets. */
+  /** Plain recursive copy: isolated, but it costs its weight in time and bytes. */
   | "copy"
-  /** Lien symbolique : partagé avec le workspace, donc **pas** isolé. */
+  /** Symbolic link: shared with the workspace, therefore **not** isolated. */
   | "link";
 
 export interface MaterializedPath {
@@ -44,21 +44,21 @@ export interface MaterializedPath {
   via: MaterializeVia;
 }
 
-/** Pourquoi un chemin déclaré n'a pas été posé. Chacune de ces raisons est bénigne — et chacune mérite d'être dite. */
+/** Why a declared path was not placed. Each of these reasons is benign — and each deserves to be said. */
 export type SkipReason =
-  /** Le chemin n'existe pas dans le workspace : rien à poser. */
+  /** The path does not exist in the workspace: nothing to place. */
   | "absent"
-  /** Suivi par git : il est déjà dans le worktree, avec le bon contenu. */
+  /** Tracked by git: it is already in the worktree, with the right content. */
   | "tracked"
-  /** Ni suivi ni ignoré par git : le poser polluerait le diff qui fait foi. */
+  /** Neither tracked nor ignored by git: placing it would pollute the diff that is the source of truth. */
   | "not-ignored"
-  /** Déjà présent dans le worktree (posé par une commande de setup, ou par git). */
+  /** Already present in the worktree (placed by a setup command, or by git). */
   | "already-present";
 
 export interface SkippedPath {
   path: string;
   reason: SkipReason;
-  /** Phrase prête à lire, disant pourquoi et — quand il y a lieu — quoi faire. */
+  /** A ready-to-read sentence, saying why and — where applicable — what to do. */
   detail: string;
 }
 
@@ -66,39 +66,39 @@ export interface MaterializeResult {
   materialized: MaterializedPath[];
   skipped: SkippedPath[];
   /**
-   * Les chemins effectivement posés, à exclure du diff de la tâche : ce que
-   * l'orchestrateur a lui-même déposé n'est pas le travail de l'agent, et un
-   * `.env` recopié n'a rien à faire dans un `caesar apply`.
+   * The paths actually placed, to exclude from the task's diff: what the
+   * orchestrator itself deposited is not the agent's work, and a copied
+   * `.env` has no business in a `caesar apply`.
    */
   excluded: string[];
   /**
-   * Ce qui n'est pas isolé — les chemins posés en lien. Vide dans le cas
-   * normal ; non vide, c'est un constat que le rapport doit porter, parce que
-   * deux tâches simultanées y écrivent au même endroit, et que ce qu'elles y
-   * cassent, elles le cassent pour le workspace.
+   * What is not isolated — the paths placed as links. Empty in the normal
+   * case; non-empty, it is a finding the report must carry, because two
+   * simultaneous tasks write there in the same place, and what they break
+   * there, they break for the workspace.
    */
   shared: string[];
 }
 
 /**
- * Refuse un chemin qui n'a pas sa place dans `[worktree]`. Le schéma de
- * configuration (`WorktreePathSchema`) applique déjà ces règles au chargement
- * du TOML ; les répéter ici couvre les appelants qui construisent une
- * `WorktreeConfig` en mémoire, et fait de l'invariant une propriété du module
- * plutôt qu'une propriété du fichier.
+ * Refuses a path that has no place in `[worktree]`. The configuration
+ * schema (`WorktreePathSchema`) already applies these rules when the TOML
+ * is loaded; repeating them here covers callers that build a
+ * `WorktreeConfig` in memory, and makes the invariant a property of the
+ * module rather than a property of the file.
  */
 function assertRelativeInsidePath(path: string): void {
   if (path === "" || isAbsolute(path)) {
-    throw new Error(`Chemin "${path}" invalide dans [worktree] : attendu un chemin relatif à la racine du workspace.`);
+    throw new Error(`Path "${path}" in [worktree] is invalid: expected a path relative to the workspace root.`);
   }
   const segments = path.split(/[\\/]/);
   if (segments.includes("..")) {
-    throw new Error(`Chemin "${path}" invalide dans [worktree] : un segment ".." sortirait du workspace.`);
+    throw new Error(`Path "${path}" in [worktree] is invalid: a ".." segment would leave the workspace.`);
   }
   if (segments[0] === ".git" || segments[0] === ".caesar") {
     throw new Error(
-      `Chemin "${path}" invalide dans [worktree] : ".git" et ".caesar" sont l'administration du dépôt et celle de caesar, ` +
-        `le worktree existe précisément pour ne pas y toucher.`,
+      `Path "${path}" in [worktree] is invalid: ".git" and ".caesar" are the repository's administration and caesar's, ` +
+        `the worktree exists precisely to leave them alone.`,
     );
   }
 }
@@ -112,7 +112,7 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-/** Vrai si git suit au moins un fichier sous `path` (fichier ou répertoire). */
+/** True if git tracks at least one file under `path` (file or directory). */
 async function isTracked(repo: string, path: string): Promise<boolean> {
   try {
     const { stdout } = await execFileAsync("git", ["-C", repo, "ls-files", "--", path]);
@@ -122,38 +122,38 @@ async function isTracked(repo: string, path: string): Promise<boolean> {
   }
 }
 
-/** Vrai si git ignore `path` (`.gitignore`, `.git/info/exclude`, configuration globale). */
+/** True if git ignores `path` (`.gitignore`, `.git/info/exclude`, global configuration). */
 async function isIgnored(repo: string, path: string): Promise<boolean> {
   try {
     await execFileAsync("git", ["-C", repo, "check-ignore", "-q", "--", path]);
     return true;
   } catch {
-    // Code de sortie 1 : non ignoré. Tout autre code (128, hors dépôt) mène
-    // à la même conclusion prudente — on ne pose rien dont on ne sait pas que
-    // git le laissera hors du diff.
+    // Exit code 1: not ignored. Any other code (128, outside a repository)
+    // leads to the same cautious conclusion — we place nothing that we do
+    // not know git will keep out of the diff.
     return false;
   }
 }
 
 /**
- * Copie `source` vers `target` en privilégiant le clone copy-on-write du
- * système de fichiers, et rend le mécanisme réellement employé.
+ * Copies `source` to `target`, favoring the filesystem's copy-on-write
+ * clone, and returns the mechanism actually used.
  *
- * Le clone ne duplique aucun octet tant que personne n'écrit, ce qui rend
- * l'isolation par copie abordable là où elle serait autrement hors de prix.
- * Ce n'est pas gratuit pour autant — le parcours de l'arborescence reste à
- * faire. Mesuré sur un `node_modules` de 975 Mo (~100 000 fichiers, APFS) :
- * 6,3 s et 11 Mo de disque, contre 15,0 s et 994 Mo pour une copie ordinaire.
- * Le clone reste une **vraie** copie du point de vue de l'agent : deux tâches
- * simultanées ne partagent rien, et détruire le `node_modules` du worktree ne
- * touche pas celui du workspace.
+ * The clone duplicates no bytes as long as no one writes, which makes
+ * copy-based isolation affordable where it would otherwise be
+ * prohibitively expensive. It is not free either — the tree traversal
+ * still has to happen. Measured on a 975 MB `node_modules` (~100,000
+ * files, APFS): 6.3 s and 11 MB of disk, versus 15.0 s and 994 MB for a
+ * plain copy. The clone remains a **real** copy from the agent's point of
+ * view: two simultaneous tasks share nothing, and destroying the
+ * worktree's `node_modules` does not touch the workspace's.
  *
- * `cp -c` (darwin) échoue franchement quand le clonefile est impossible —
- * système de fichiers sans copy-on-write, ou traversée de volumes — d'où le
- * repli explicite. Sur Linux, `--reflink=auto` retombe seul sur une copie
- * ordinaire, mais on ne peut alors plus distinguer les deux : le repli
- * `fs.cp` est employé partout ailleurs, et sa lenteur éventuelle est un fait
- * que le rapport dira plutôt qu'un échec.
+ * `cp -c` (darwin) fails outright when the clonefile is impossible —
+ * filesystem without copy-on-write, or crossing volumes — hence the
+ * explicit fallback. On Linux, `--reflink=auto` falls back on its own to a
+ * plain copy, but the two can then no longer be told apart: the `fs.cp`
+ * fallback is used everywhere else, and its possible slowness is a fact
+ * the report will state rather than a failure.
  */
 async function copyTree(source: string, target: string): Promise<MaterializeVia> {
   if (process.platform === "darwin") {
@@ -161,16 +161,16 @@ async function copyTree(source: string, target: string): Promise<MaterializeVia>
       await execFileAsync("/bin/cp", ["-Rc", source, target]);
       return "clone";
     } catch {
-      // Pas de clonefile possible ici : on copie pour de bon.
+      // No clonefile possible here: we copy for real.
     }
   } else if (process.platform === "linux") {
     try {
       await execFileAsync("cp", ["-R", "--reflink=auto", source, target]);
-      // `auto` a pu retomber sur une copie ordinaire sans le dire : on
-      // n'annonce donc pas un clone qui n'a peut-être pas eu lieu.
+      // `auto` may have fallen back to a plain copy without saying so: we
+      // therefore do not announce a clone that may not have happened.
       return "copy";
     } catch {
-      // `cp` absent ou refusé : `fs.cp` ci-dessous.
+      // `cp` absent or refused: `fs.cp` below.
     }
   }
   await cp(source, target, { recursive: true, verbatimSymlinks: true });
@@ -178,25 +178,27 @@ async function copyTree(source: string, target: string): Promise<MaterializeVia>
 }
 
 /**
- * Pose dans `worktree` les chemins non suivis que `request` déclare, en les
- * prenant dans `workspace`.
+ * Places into `worktree` the untracked paths that `request` declares,
+ * taking them from `workspace`.
  *
- * L'ordre des vérifications, par chemin, n'est pas indifférent :
+ * The order of the checks, per path, is not indifferent:
  *
- * 1. **chemin invalide** ⇒ lève, c'est une erreur de configuration ;
- * 2. **absent du workspace** ⇒ écarté, il n'y a rien à poser ;
- * 3. **suivi par git** ⇒ écarté, et c'est le plus important : le worktree en a
- *    déjà sa version, et poser un lien par-dessus ferait écrire le sous-agent
- *    **dans le dépôt principal** — précisément le défaut qu'on corrige ;
- * 4. **non ignoré par git** ⇒ écarté : le poser le ferait apparaître dans
- *    `caesar diff`, qui fait foi, et `worktreeHasChanges` verrait le worktree
- *    sale à vie, si bien que `caesar gc` ne le nettoierait jamais ;
- * 5. **déjà présent dans le worktree** ⇒ écarté, on n'écrase rien ;
- * 6. sinon **posé**, par clone, copie ou lien.
+ * 1. **invalid path** ⇒ throws, it is a configuration error;
+ * 2. **absent from the workspace** ⇒ skipped, there is nothing to place;
+ * 3. **tracked by git** ⇒ skipped, and this is the most important one: the
+ *    worktree already has its version, and placing a link on top would make
+ *    the subagent write **into the main repository** — precisely the defect
+ *    being fixed;
+ * 4. **not ignored by git** ⇒ skipped: placing it would make it appear in
+ *    `caesar diff`, which is the source of truth, and `worktreeHasChanges`
+ *    would see the worktree dirty for life, so `caesar gc` would never clean
+ *    it up;
+ * 5. **already present in the worktree** ⇒ skipped, nothing is overwritten;
+ * 6. otherwise **placed**, by clone, copy or link.
  *
- * `link` est traité après `copy` : si un même chemin figure dans les deux, la
- * copie l'emporte, puisqu'elle isole — et le lien est alors écarté en
- * `already-present`, ce que le rapport dira.
+ * `link` is processed after `copy`: if the same path appears in both, the
+ * copy wins, since it isolates — and the link is then skipped as
+ * `already-present`, which the report will say.
  */
 export async function materializeUntracked(
   workspace: string,
@@ -221,7 +223,7 @@ export async function materializeUntracked(
       skipped.push({
         path,
         reason: "absent",
-        detail: `"${path}" est déclaré sous [worktree] mais n'existe pas dans le workspace : rien à poser.`,
+        detail: `"${path}" is declared under [worktree] but does not exist in the workspace: nothing to place.`,
       });
       continue;
     }
@@ -230,8 +232,8 @@ export async function materializeUntracked(
         path,
         reason: "tracked",
         detail:
-          `"${path}" est suivi par git : le worktree en a déjà sa version. Le poser par-dessus ferait écrire ` +
-          `le sous-agent dans le dépôt principal — retirez-le de [worktree].`,
+          `"${path}" is tracked by git: the worktree already has its version. Placing it on top would make ` +
+          `the subagent write into the main repository — remove it from [worktree].`,
       });
       continue;
     }
@@ -240,9 +242,9 @@ export async function materializeUntracked(
         path,
         reason: "not-ignored",
         detail:
-          `"${path}" n'est ni suivi ni ignoré par git : le poser le ferait apparaître dans "caesar diff" comme un ` +
-          `changement de l'agent, et "caesar gc" ne nettoierait plus jamais ce worktree. Ajoutez-le au .gitignore, ` +
-          `ou retirez-le de [worktree].`,
+          `"${path}" is neither tracked nor ignored by git: placing it would make it appear in "caesar diff" as a ` +
+          `change by the agent, and "caesar gc" would never clean up this worktree again. Add it to the .gitignore, ` +
+          `or remove it from [worktree].`,
       });
       continue;
     }
@@ -250,13 +252,13 @@ export async function materializeUntracked(
       skipped.push({
         path,
         reason: "already-present",
-        detail: `"${path}" est déjà présent dans le worktree : laissé tel quel, rien n'est écrasé.`,
+        detail: `"${path}" is already present in the worktree: left as is, nothing is overwritten.`,
       });
       continue;
     }
 
-    // Le chemin peut être imbriqué (`packages/api/node_modules`) et son parent
-    // n'exister dans le worktree que s'il porte des fichiers suivis.
+    // The path may be nested (`packages/api/node_modules`) and its parent
+    // only exists in the worktree if it carries tracked files.
     await mkdir(dirname(to), { recursive: true });
 
     if (mode === "link") {
@@ -274,18 +276,18 @@ export async function materializeUntracked(
 export interface SetupFailure {
   command: string;
   exitCode: number | null;
-  /** Sortie standard et d'erreur réunies, tronquée — collée telle quelle dans le motif d'échec. */
+  /** Standard output and error combined, truncated — pasted as-is into the failure reason. */
   output: string;
 }
 
 export interface SetupResult {
-  /** Les commandes menées à bien, dans l'ordre. */
+  /** The commands completed successfully, in order. */
   ran: string[];
-  /** La première commande en échec, s'il y en a une : les suivantes n'ont pas été lancées. */
+  /** The first failing command, if there is one: the following ones were not launched. */
   failure?: SetupFailure;
 }
 
-/** Au-delà, la sortie d'une commande de setup cesse d'aider à comprendre l'échec. */
+/** Beyond this, a setup command's output stops helping to understand the failure. */
 const SETUP_OUTPUT_LIMIT = 4000;
 
 function tail(text: string): string {
@@ -293,19 +295,19 @@ function tail(text: string): string {
 }
 
 /**
- * Lance les commandes de `[worktree] setup` dans le worktree, dans l'ordre,
- * et s'arrête à la première qui échoue.
+ * Runs the `[worktree] setup` commands in the worktree, in order, and stops
+ * at the first one that fails.
  *
- * Par un shell, et non par un découpage d'arguments : ce que les projets
- * écrivent ici ressemble à `npm ci && npm run build`, avec redirections et
- * enchaînements. C'est du même niveau de confiance que `[[agent]] bin`, que
- * l'orchestrateur exécute déjà — la configuration d'un projet est du code que
- * son auteur choisit de faire tourner chez lui.
+ * Through a shell, not through argument splitting: what projects write here
+ * looks like `npm ci && npm run build`, with redirections and chaining. It
+ * is the same trust level as `[[agent]] bin`, which the orchestrator
+ * already executes — a project's configuration is code its author chooses
+ * to run on their own machine.
  *
- * L'échec n'est pas rattrapé ici : c'est l'appelant qui décide qu'une tâche
- * dont l'atelier n'a pas pu être monté ne doit pas démarrer. Mieux vaut ne pas
- * commencer que confier à l'agent un atelier à moitié monté, où il passerait
- * son budget à réparer une installation plutôt qu'à faire son travail.
+ * The failure is not caught here: the caller decides that a task whose
+ * workshop could not be set up must not start. Better not to start than to
+ * hand the agent a half-set-up workshop, where it would spend its budget
+ * repairing an installation rather than doing its work.
  */
 export async function runSetup(worktree: string, commands: readonly string[], signal?: AbortSignal): Promise<SetupResult> {
   const ran: string[] = [];
@@ -335,13 +337,13 @@ function shellArgs(): string[] {
 }
 
 /**
- * Ce qu'un projet donne à voir de ses besoins d'atelier : par marqueur
- * reconnu, les chemins à emporter et la commande d'installation usuelle.
+ * What a project reveals of its workshop needs: per recognized marker, the
+ * paths to bring along and the usual install command.
  *
- * Volontairement court et conventionnel. Une détection exhaustive se
- * tromperait plus souvent qu'elle n'aiderait — et un `[worktree]` écrit une
- * fois par `caesar init` se relit et se corrige à la main, ce qui n'est vrai
- * d'aucune heuristique appliquée à chaque exécution.
+ * Deliberately short and conventional. An exhaustive detection would be
+ * wrong more often than it would help — and a `[worktree]` written once by
+ * `caesar init` gets re-read and corrected by hand, which is true of no
+ * heuristic applied on every run.
  */
 const PROJECT_MARKERS: { marker: string; copy: string[]; setup?: string }[] = [
   { marker: "pnpm-lock.yaml", copy: ["node_modules"], setup: "pnpm install --frozen-lockfile --prefer-offline" },
@@ -355,24 +357,26 @@ const PROJECT_MARKERS: { marker: string; copy: string[]; setup?: string }[] = [
   { marker: "go.mod", copy: [] },
 ];
 
-/** Chemins non versionnés fréquents, sans rapport avec un écosystème : emportés s'ils existent et sont ignorés. */
+/** Common unversioned paths, unrelated to any ecosystem: brought along if they exist and are ignored. */
 const COMMON_UNTRACKED = [".env", ".env.local"];
 
 /**
- * Devine ce que le worktree d'un projet devrait emporter, pour que `caesar init`
- * écrive un `[worktree]` déjà utile plutôt qu'une section vide à remplir.
+ * Guesses what a project's worktree should bring along, so that `caesar init`
+ * writes an already-useful `[worktree]` rather than an empty section to fill
+ * in.
  *
- * Ne propose **que** ce qui existe réellement dans le workspace et que git
- * ignore : proposer un chemin suivi rouvrirait le défaut que
- * `materializeUntracked` refuse (l'agent écrirait dans le dépôt principal), et
- * proposer un chemin ni suivi ni ignoré polluerait le diff. La détection
- * applique donc, en amont, exactement les mêmes règles que la pose.
+ * Proposes **only** what actually exists in the workspace and what git
+ * ignores: proposing a tracked path would reopen the defect that
+ * `materializeUntracked` refuses (the agent would write into the main
+ * repository), and proposing a path neither tracked nor ignored would
+ * pollute the diff. The detection therefore applies, upstream, exactly the
+ * same rules as the placement.
  *
- * Un projet nu ne produit rien du tout — `caesar init` n'écrit alors aucune
- * section, plutôt qu'une section vide qui ferait croire à un réglage.
- * `setup` est le seul champ que la détection puisse proposer à tort : une
- * commande d'installation est une convention, pas un fait, et c'est à ce titre
- * qu'elle est écrite en clair dans le fichier, où elle se corrige.
+ * A bare project produces nothing at all — `caesar init` then writes no
+ * section, rather than an empty section that would suggest a setting.
+ * `setup` is the only field the detection can propose wrongly: an install
+ * command is a convention, not a fact, and it is on that account that it is
+ * written in plain text in the file, where it can be corrected.
  */
 export async function detectUntrackedNeeds(workspace: string): Promise<WorktreeConfig | null> {
   const copy: string[] = [];
@@ -384,14 +388,14 @@ export async function detectUntrackedNeeds(workspace: string): Promise<WorktreeC
       if (!copy.includes(path) && (await isUsableUntracked(workspace, path))) copy.push(path);
     }
     if (command && !setup.includes(command)) setup.push(command);
-    // Un seul écosystème par famille : les marqueurs sont ordonnés du plus
-    // spécifique au plus général (`pnpm-lock.yaml` avant `package.json`), et
-    // le premier trouvé fixe la commande. Sans cette sortie, un projet pnpm
-    // recevrait aussi `npm install`.
+    // A single ecosystem per family: markers are ordered from most specific
+    // to most general (`pnpm-lock.yaml` before `package.json`), and the
+    // first one found fixes the command. Without this exit, a pnpm project
+    // would also receive `npm install`.
     if (command) break;
   }
 
-  // Après la boucle : ceux-ci ne dépendent d'aucun écosystème.
+  // After the loop: these depend on no ecosystem.
   for (const path of COMMON_UNTRACKED) {
     if (!copy.includes(path) && (await isUsableUntracked(workspace, path))) copy.push(path);
   }
@@ -400,7 +404,7 @@ export async function detectUntrackedNeeds(workspace: string): Promise<WorktreeC
   return { copy, link: [], setup };
 }
 
-/** Existe, n'est pas suivi, et git l'ignore — les trois conditions que `materializeUntracked` exigera. */
+/** Exists, is not tracked, and git ignores it — the three conditions `materializeUntracked` will require. */
 async function isUsableUntracked(workspace: string, path: string): Promise<boolean> {
   if (!(await exists(join(workspace, path)))) return false;
   if (await isTracked(workspace, path)) return false;
@@ -408,12 +412,12 @@ async function isUsableUntracked(workspace: string, path: string): Promise<boole
 }
 
 /**
- * Vrai si `path` est sous `prefix` (ou l'est exactement), en segments de
- * chemin — jamais en simple comparaison de chaînes, qui ferait passer
- * `node_modules-old` pour un enfant de `node_modules`.
+ * True if `path` is under `prefix` (or is exactly it), in path segments —
+ * never as a plain string comparison, which would make `node_modules-old`
+ * pass for a child of `node_modules`.
  *
- * Utilisée pour retirer du diff ce que la matérialisation a posé : un
- * répertoire posé exclut tout ce qu'il contient.
+ * Used to remove from the diff what the materialization placed: a placed
+ * directory excludes everything it contains.
  */
 export function isUnderPath(path: string, prefix: string): boolean {
   const normalized = path.split(/[\\/]/).join(sep);

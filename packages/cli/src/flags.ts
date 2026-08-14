@@ -1,20 +1,19 @@
 /**
- * Valeurs valides des flags `--mode`/`--isolation`, dérivées des schémas
- * d'`@caesar/protocol` plutôt que recopiées littéralement : un ajout de
- * variante au protocole (`TaskModeSchema`/`IsolationSchema`) se répercute
- * ici sans correction manuelle, ce qu'une paire de tableaux recopiés à la
- * main ne garantissait pas (tâche 10, B2 — `role.ts` et `run.ts`
- * définissaient jusqu'ici cette même paire, à l'identique, chacun de son
- * côté).
+ * Valid values of the `--mode`/`--isolation` flags, derived from the
+ * `@caesar/protocol` schemas rather than copied out literally: adding a
+ * variant to the protocol (`TaskModeSchema`/`IsolationSchema`) propagates
+ * here without a manual fix, which a pair of hand-copied arrays never
+ * guaranteed (task 10, B2 — `role.ts` and `run.ts` each defined this very
+ * pair until now, identically, on their own side).
  *
- * `"auto"` n'existe pas côté protocole : c'est un sentinel propre à la
- * politique de délégation (`@caesar/core`, `config.ts`, `default_isolation`),
- * ajouté ici explicitement plutôt que dérivé.
+ * `"auto"` does not exist on the protocol side: it is a sentinel specific to
+ * the delegation policy (`@caesar/core`, `config.ts`, `default_isolation`),
+ * added here explicitly rather than derived.
  *
- * Cette validation de *forme* (une chaîne brute issue de `commander`) reste
- * délibérément propre au CLI, jamais dans `@caesar/core` : voir l'en-tête de
- * `resolveDelegation` (`packages/core/src/delegation.ts`), dont les entrées
- * sont déjà typées quand elle est appelée.
+ * This *shape* validation (a raw string coming from `commander`) stays
+ * deliberately specific to the CLI, never in `@caesar/core`: see the header
+ * of `resolveDelegation` (`packages/core/src/delegation.ts`), whose inputs
+ * are already typed when it is called.
  */
 import { IsolationSchema, TaskModeSchema } from "@caesar/protocol";
 import type { Isolation, TaskMode } from "@caesar/protocol";
@@ -25,8 +24,8 @@ export const TASK_MODES: readonly TaskMode[] = TaskModeSchema.options;
 export const ISOLATIONS: readonly (Isolation | "auto")[] = [...IsolationSchema.options, "auto"];
 
 /**
- * `--network`. Comme `"auto"` pour l'isolation, ces trois valeurs n'existent
- * pas côté protocole : la `Task` ne porte qu'un booléen résolu. Elles vivent
- * dans `@caesar/core` (`network.ts`), d'où elles sont dérivées ici.
+ * `--network`. Like `"auto"` for isolation, these three values do not exist
+ * on the protocol side: the `Task` only carries a resolved boolean. They
+ * live in `@caesar/core` (`network.ts`), from which they are derived here.
  */
 export const NETWORK_REQUEST_VALUES: readonly NetworkRequest[] = NETWORK_REQUESTS;

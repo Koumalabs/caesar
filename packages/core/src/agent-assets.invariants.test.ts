@@ -1,23 +1,23 @@
 /**
- * Invariants du catalogue livré (`AGENT_ASSETS`, `agent-assets.generated.ts`)
- * — indépendants de toute source : ce fichier ne relit rien sur disque, il
- * n'exerce que ce qui est déjà committé. C'est le filet qui protège le
- * chargement SILENCIEUX du catalogue chez cinq runtimes différents : un
- * frontmatter mal formé, un id avec le mauvais préfixe, ou une fuite d'un
- * outil MCP propre à un seul runtime ne fait planter aucun d'entre eux — ils
- * ignorent simplement la skill ou la commande, sans le dire. Ces tests
- * rendent visible ce que les runtimes eux-mêmes taisent.
+ * Invariants of the shipped catalog (`AGENT_ASSETS`, `agent-assets.generated.ts`)
+ * — independent of any source: this file rereads nothing from disk, it
+ * only exercises what is already committed. It is the net that protects
+ * the SILENT loading of the catalog by five different runtimes: a
+ * malformed frontmatter, an id with the wrong prefix, or a leak of an
+ * MCP tool specific to a single runtime crashes none of them — they
+ * simply ignore the skill or the command, without saying so. These tests
+ * make visible what the runtimes themselves keep quiet.
  *
- * Complémentaire à `agent-assets.drift.test.ts` : la dérive vérifie que le
- * catalogue correspond aux sources, celui-ci vérifie que le catalogue
- * respecte son propre contrat de forme, quelle que soit son origine.
+ * Complementary to `agent-assets.drift.test.ts`: the drift test checks that
+ * the catalog matches the sources, this one checks that the catalog
+ * honors its own shape contract, whatever its origin.
  */
 import { basename } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AGENT_ASSETS } from "./agent-assets.generated.js";
 import { ASSET_TARGETS, type AgentAsset } from "./agent-assets.js";
 
-/** Lit un champ scalaire du frontmatter YAML (une ligne "clé: valeur"). Suffit ici : le frontmatter Claude Code de ce catalogue (voir `renderOpencodeCommand` dans agent-assets.ts) n'a que des scalaires sur une seule ligne. */
+/** Reads a scalar field of the YAML frontmatter (a "key: value" line). Enough here: the Claude Code frontmatter of this catalog (see `renderOpencodeCommand` in agent-assets.ts) has only single-line scalars. */
 function frontmatterField(content: string, field: string): string | undefined {
   const match = /^---\n([\s\S]*?)\n---\n?/.exec(content);
   if (!match) return undefined;
@@ -29,84 +29,84 @@ function frontmatterField(content: string, field: string): string | undefined {
   return undefined;
 }
 
-describe("invariants du catalogue — non-vide", () => {
-  it("AGENT_ASSETS n'est jamais vide", () => {
+describe("catalog invariants — non-empty", () => {
+  it("AGENT_ASSETS is never empty", () => {
     expect(
       AGENT_ASSETS.length,
-      'AGENT_ASSETS (packages/core/src/agent-assets.generated.ts) est vide — relancer "pnpm run assets:sync".',
+      'AGENT_ASSETS (packages/core/src/agent-assets.generated.ts) is empty — rerun "pnpm run assets:sync".',
     ).toBeGreaterThan(0);
   });
 
-  it.each(AGENT_ASSETS.map((asset) => [`${asset.kind}:${asset.path}`, asset] as const))("%s : content non vide", (_label, asset) => {
+  it.each(AGENT_ASSETS.map((asset) => [`${asset.kind}:${asset.path}`, asset] as const))("%s: non-empty content", (_label, asset) => {
     expect(asset.content.length).toBeGreaterThan(0);
   });
 });
 
-describe("invariants du catalogue — SKILL.md", () => {
+describe("catalog invariants — SKILL.md", () => {
   const skill = AGENT_ASSETS.find((asset) => asset.kind === "skill" && asset.path === "SKILL.md");
-  // Nom du dossier d'installation de la skill chez claude — c'est CE nom que
-  // le frontmatter `name:` doit reproduire pour que le runtime la charge
-  // (voir la table de faits en tête d'agent-assets.ts).
+  // Name of the skill's installation folder for claude — it is THIS name
+  // that the `name:` frontmatter must reproduce for the runtime to load it
+  // (see the fact table at the top of agent-assets.ts).
   const installedSkillName = basename(ASSET_TARGETS.find((target) => target.client === "claude")!.skillDir);
 
-  it('l\'entrée "SKILL.md" existe', () => {
-    expect(skill, 'aucune entrée { kind: "skill", path: "SKILL.md" } dans AGENT_ASSETS').toBeDefined();
+  it('the "SKILL.md" entry exists', () => {
+    expect(skill, 'no { kind: "skill", path: "SKILL.md" } entry in AGENT_ASSETS').toBeDefined();
   });
 
-  it('ouvre sur "---\\n" (frontmatter requis)', () => {
+  it('opens with "---\\n" (frontmatter required)', () => {
     expect(skill!.content.startsWith("---\n")).toBe(true);
   });
 
-  it(`frontmatter name === "${installedSkillName}" (le nom du dossier d'installation)`, () => {
+  it(`frontmatter name === "${installedSkillName}" (the name of the installation folder)`, () => {
     expect(frontmatterField(skill!.content, "name")).toBe(installedSkillName);
   });
 
-  it('frontmatter description non vide, ≤ 1024 caractères, commence par "Use when"', () => {
+  it('frontmatter description non-empty, ≤ 1024 characters, starts with "Use when"', () => {
     const description = frontmatterField(skill!.content, "description");
-    expect(description, "SKILL.md : pas de champ description en frontmatter").toBeDefined();
+    expect(description, "SKILL.md: no description field in the frontmatter").toBeDefined();
     expect(description!.length).toBeGreaterThan(0);
     expect(description!.length).toBeLessThanOrEqual(1024);
     expect(description!.startsWith("Use when")).toBe(true);
   });
 });
 
-describe("invariants du catalogue — références (SKILL.md excepté)", () => {
+describe("catalog invariants — references (SKILL.md excepted)", () => {
   const references = AGENT_ASSETS.filter((asset) => asset.kind === "skill" && asset.path !== "SKILL.md");
 
-  it("au moins une référence sous references/", () => {
+  it("at least one reference under references/", () => {
     expect(references.length).toBeGreaterThan(0);
     expect(references.every((asset) => asset.path.startsWith("references/"))).toBe(true);
   });
 
-  // Exemptées, à la différence de SKILL.md : pas d'exigence de frontmatter
-  // sur les fichiers de références (voir le brief) — aucune assertion ici
-  // au-delà de leur existence, délibérément.
+  // Exempted, unlike SKILL.md: no frontmatter requirement on the
+  // reference files (see the brief) — no assertion here beyond
+  // their existence, deliberately.
 });
 
-describe("invariants du catalogue — commandes", () => {
+describe("catalog invariants — commands", () => {
   const commands = AGENT_ASSETS.filter((asset) => asset.kind === "command");
 
-  it("au moins une commande dans le catalogue", () => {
+  it("at least one command in the catalog", () => {
     expect(commands.length).toBeGreaterThan(0);
   });
 
   it.each(commands.map((command) => [command.id, command] as const))(
-    '"%s" : path === id + ".md", id non vide sans préfixe "caesar-", ouvre sur "---\\n"',
+    '"%s": path === id + ".md", non-empty id without the "caesar-" prefix, opens with "---\\n"',
     (_id, command: AgentAsset) => {
       expect(command.path).toBe(`${command.id}.md`);
       expect(command.id.length).toBeGreaterThan(0);
-      // Sans ce garde-fou, l'installation composerait `caesar-${id}.md` à
-      // partir d'un id qui porte déjà le préfixe, produisant
-      // "caesar-caesar-*.md" (voir agent-assets.ts, COMMAND_PREFIX).
+      // Without this safeguard, installation would compose `caesar-${id}.md`
+      // from an id that already carries the prefix, producing
+      // "caesar-caesar-*.md" (see agent-assets.ts, COMMAND_PREFIX).
       expect(command.id.startsWith("caesar-")).toBe(false);
       expect(command.content.startsWith("---\n")).toBe(true);
     },
   );
 });
 
-describe("invariants du catalogue — sécurité des chemins", () => {
+describe("catalog invariants — path safety", () => {
   it.each(AGENT_ASSETS.map((asset) => [`${asset.kind}:${asset.path}`, asset] as const))(
-    '%s : ni "..", ni chemin absolu, ni antislash, ni segment vide',
+    '%s: no "..", no absolute path, no backslash, no empty segment',
     (_label, asset: AgentAsset) => {
       expect(asset.path.includes("..")).toBe(false);
       expect(asset.path.startsWith("/")).toBe(false);
@@ -116,16 +116,16 @@ describe("invariants du catalogue — sécurité des chemins", () => {
   );
 });
 
-describe("invariants du catalogue — contenu multi-runtime", () => {
+describe("catalog invariants — multi-runtime content", () => {
   it.each(AGENT_ASSETS.map((asset) => [`${asset.kind}:${asset.path}`, asset] as const))(
-    '%s : aucune occurrence de "mcp__caesar__" (préfixe propre à un seul runtime, le catalogue est multi-runtime)',
+    '%s: no occurrence of "mcp__caesar__" (prefix specific to a single runtime, the catalog is multi-runtime)',
     (_label, asset: AgentAsset) => {
       expect(asset.content.includes("mcp__caesar__")).toBe(false);
     },
   );
 
   it.each(AGENT_ASSETS.map((asset) => [`${asset.kind}:${asset.path}`, asset] as const))(
-    "%s : aucun \\r (tout en LF)",
+    "%s: no \\r (everything in LF)",
     (_label, asset: AgentAsset) => {
       expect(asset.content.includes("\r")).toBe(false);
     },

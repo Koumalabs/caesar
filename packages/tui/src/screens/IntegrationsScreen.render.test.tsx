@@ -1,19 +1,19 @@
 /**
- * `IntegrationsScreen` déclenche `checkMcpStatus` au montage (une lecture
- * par client). Pour les clients à fichier, cela lit sous `$HOME` — jamais la
- * configuration réelle de l'utilisateur dans un test : `HOME` est neutralisé
- * comme le fait `packages/cli/test/support.ts` (`withFakeHome`). Pour
- * `claude`/`codex`, `checkMcpStatus` ne lance aucun sous-processus (voir
- * `packages/cli/src/commands/mcp.ts`), donc aucun vrai CLI d'agent n'est
- * invoqué ici.
+ * `IntegrationsScreen` triggers `checkMcpStatus` on mount (one read per
+ * client). For the file-based clients, that reads under `$HOME` — never
+ * the user's real configuration in a test: `HOME` is neutralized the way
+ * `packages/cli/test/support.ts` does it (`withFakeHome`). For
+ * `claude`/`codex`, `checkMcpStatus` launches no subprocess (see
+ * `packages/cli/src/commands/mcp.ts`), so no real agent CLI is invoked
+ * here.
  *
- * Cette garantie dépend de `buildPlan` (`@caesar/core`, `mcp-registration.ts`)
- * résolvant `$HOME` via `homeDirectory()`, pas `os.homedir()` directement :
- * Bun (le runtime de ce package) ignore silencieusement `$HOME` dans
- * `os.homedir()`, ce que Node ne fait pas — ce test neutralisait donc `HOME`
- * sans effet réel sous Bun tant que `buildPlan` appelait `homedir()` en
- * clair, pour les chemins `copilot`/`antigravity`/`opencode` (constat de
- * revue de la tâche 15, corrigé dans `mcp-registration.ts`).
+ * This guarantee depends on `buildPlan` (`@caesar/core`,
+ * `mcp-registration.ts`) resolving `$HOME` via `homeDirectory()`, not
+ * `os.homedir()` directly: Bun (this package's runtime) silently ignores
+ * `$HOME` in `os.homedir()`, which Node does not — this test therefore
+ * neutralized `HOME` with no real effect under Bun as long as `buildPlan`
+ * called a bare `homedir()`, for the `copilot`/`antigravity`/`opencode`
+ * paths (review finding of task 15, fixed in `mcp-registration.ts`).
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -42,10 +42,10 @@ afterEach(async () => {
 });
 
 describe("IntegrationsScreen", () => {
-  it("se monte sans lever et affiche les cinq clients MCP", async () => {
+  it("mounts without throwing and shows the five MCP clients", async () => {
     const setup = await act(async () => testRender(<IntegrationsScreen root={root} notify={() => {}} />, { width: 100, height: 20 }));
     await act(async () => setup.renderOnce());
-    // Laisse le `checkMcpStatus` initial (async, un par client) se résoudre.
+    // Let the initial `checkMcpStatus` (async, one per client) resolve.
     await act(async () => {
       await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 50));
       await setup.renderOnce();

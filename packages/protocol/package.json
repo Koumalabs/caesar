@@ -1,7 +1,7 @@
 {
   "name": "@caesar/protocol",
   "version": "0.1.0",
-  "description": "Le standard de communication entre un orchestrateur et ses sous-agents de code",
+  "description": "The communication standard between an orchestrator and its code sub-agents",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

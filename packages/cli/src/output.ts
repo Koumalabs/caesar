@@ -1,31 +1,30 @@
 /**
- * Mise en forme partagée par toutes les sous-commandes : bandeaux, tableaux,
- * couleurs, `--json`, et la séparation stdout/stderr.
+ * Formatting shared by all the subcommands: banners, tables, colors,
+ * `--json`, and the stdout/stderr separation.
  *
- * Chaque commande reçoit un `Io` plutôt que d'écrire directement sur
- * `process.stdout`/`process.stderr` : c'est ce qui permet aux tests
- * d'appeler les fonctions de commande directement, avec une sortie
- * capturée, sans jamais lancer de sous-processus (voir le brief de la
- * tâche 6).
+ * Each command receives an `Io` rather than writing directly to
+ * `process.stdout`/`process.stderr`: that is what lets the tests call the
+ * command functions directly, with captured output, without ever spawning a
+ * subprocess (see the task 6 brief).
  *
- * ## Les trois canaux
+ * ## The three channels
  *
- * Une même commande écrit vers trois destinataires très différents, et ce
- * module est l'endroit où la distinction se fait une fois pour toutes :
+ * A single command writes to three very different recipients, and this
+ * module is where the distinction is made once and for all:
  *
- *  1. **`--json`** — un agent, ou un script. Le JSON, rien d'autre : jamais
- *     de séquence ANSI, jamais de bandeau, jamais une ligne parasite sur
- *     `stdout`. Les erreurs et les avertissements partent sur `stderr`.
- *  2. **Hors terminal** (tuyau, redirection, tests) — un humain qui lira
- *     plus tard, ou un test. La **structure** est rendue (bandeaux,
- *     encadrés, entêtes), la **couleur** ne l'est pas : elle n'aurait aucun
- *     destinataire, et elle rendrait la sortie impossible à comparer.
- *  3. **Terminal** — structure et couleur.
+ *  1. **`--json`** — an agent, or a script. The JSON, nothing else: never
+ *     an ANSI sequence, never a banner, never a stray line on `stdout`.
+ *     Errors and warnings go to `stderr`.
+ *  2. **Outside a terminal** (pipe, redirection, tests) — a human who will
+ *     read later, or a test. The **structure** is rendered (banners, boxes,
+ *     headers), the **color** is not: it would have no recipient, and it
+ *     would make the output impossible to compare.
+ *  3. **Terminal** — structure and color.
  *
- * La règle 2 est ce qui rend le thème testable : un test capture un flux
- * sans `isTTY`, donc voit exactement la structure et jamais les couleurs.
- * Pour éprouver les couleurs elles-mêmes, il pose `isTTY = true` sur le flux
- * capturé.
+ * Rule 2 is what makes the theme testable: a test captures a stream without
+ * `isTTY`, so it sees exactly the structure and never the colors. To
+ * exercise the colors themselves, it sets `isTTY = true` on the captured
+ * stream.
  */
 import type { ColorDepth, Glyphs } from "@caesar/theme";
 import {
@@ -45,32 +44,31 @@ import {
 import { homedir } from "node:os";
 import type { Writable } from "node:stream";
 
-/** Flux de sortie d'une commande. `process.stdout`/`process.stderr` en usage réel, capturés en test. */
+/** Output streams of a command. `process.stdout`/`process.stderr` in real use, captured in tests. */
 export interface Io {
   stdout: Writable;
   stderr: Writable;
 }
 
-/** Le `Io` réel du process courant, utilisé par `bin.ts`. */
+/** The real `Io` of the current process, used by `bin.ts`. */
 export const processIo: Io = { stdout: process.stdout, stderr: process.stderr };
 
-/** Codes de sortie, valables pour toutes les commandes (voir le brief). */
+/** Exit codes, valid for all commands (see the brief). */
 export const EXIT_OK = 0;
 export const EXIT_RUNTIME = 1;
 export const EXIT_USAGE = 2;
 
 /**
- * Les rôles que le texte peut jouer — jamais une couleur nommée.
+ * The roles text can play — never a named color.
  *
- * C'est le point du thème : `colorize(x, "green")` est une décision prise sur
- * place, que rien ne relie aux autres ; `colorize(x, "ok")` est une décision
- * prise une fois, dans la palette. La ligne de commande choisissait
- * jusqu'ici parmi sept codes ANSI, au cas par cas, ce qui revenait à n'avoir
- * aucun thème.
+ * That is the point of the theme: `colorize(x, "green")` is a decision made
+ * on the spot, tied to nothing else; `colorize(x, "ok")` is a decision made
+ * once, in the palette. The command line used to pick from seven ANSI
+ * codes, case by case, which amounted to having no theme at all.
  *
- * `strong` ne porte volontairement pas de couleur : le texte principal hérite
- * de l'avant-plan du terminal, donc reste lisible sur fond clair comme sur
- * fond sombre (règle 1 de la palette).
+ * `strong` deliberately carries no color: main text inherits the terminal's
+ * foreground, so it stays readable on light and dark backgrounds alike
+ * (rule 1 of the palette).
  */
 const TOKENS = {
   accent: { hex: ACCENT },
@@ -86,30 +84,30 @@ const TOKENS = {
 
 export type ThemeToken = keyof typeof TOKENS;
 
-/** Un flux Node avec `isTTY` — vrai pour `process.stdout`/`process.stderr`, jamais pour un flux de capture de test. */
+/** A Node stream with `isTTY` — true for `process.stdout`/`process.stderr`, never for a test capture stream. */
 interface MaybeTty extends Writable {
   isTTY?: boolean;
 }
 
 /**
- * Ce que ce flux-ci sait rendre.
+ * What this particular stream is able to render.
  *
- * La décision est **par flux** et non par processus : `stdout` peut être
- * redirigé vers un fichier pendant que `stderr` reste attaché au terminal.
- * Colorer les deux de la même façon écrirait des séquences ANSI dans le
- * fichier, ou en priverait le terminal.
+ * The decision is **per stream**, not per process: `stdout` may be
+ * redirected to a file while `stderr` stays attached to the terminal.
+ * Coloring both the same way would write ANSI sequences into the file, or
+ * deprive the terminal of them.
  */
 export function colorDepth(stream: Writable): ColorDepth {
   if (!(stream as MaybeTty).isTTY) return "none";
   return detectColorDepth(process.env);
 }
 
-/** Le jeu de caractères de dessin adapté à la locale courante. */
+/** The drawing character set suited to the current locale. */
 export function activeGlyphs(): Glyphs {
   return glyphsFor(process.env);
 }
 
-/** Habille `text` du rôle `token`, seulement si `stream` sait le rendre. */
+/** Dresses `text` in the role `token`, only if `stream` can render it. */
 export function colorize(text: string, token: ThemeToken, stream: Writable): string {
   return paint(text, TOKENS[token], colorDepth(stream));
 }
@@ -118,7 +116,7 @@ export function writeLine(stream: Writable, text = ""): void {
   stream.write(text + "\n");
 }
 
-/** Sortie `--json` : uniquement le JSON, rien d'autre, jamais de couleur. */
+/** `--json` output: only the JSON, nothing else, never any color. */
 export function printJson(io: Io, data: unknown): void {
   writeLine(io.stdout, JSON.stringify(data, null, 2));
 }
@@ -132,12 +130,12 @@ export function printWarning(io: Io, message: string): void {
 }
 
 /**
- * Le bandeau qui ouvre une commande, suivi d'une ligne vide.
+ * The banner that opens a command, followed by a blank line.
  *
- * Il sépare une invocation de la précédente dans le défilement du terminal —
- * c'est l'endroit où l'œil revient quand on remonte, et rien ne le marquait.
- * À n'appeler qu'**après** la branche `--json`, jamais avant : une ligne de
- * décoration sur `stdout` casserait la sortie machine.
+ * It separates one invocation from the previous one in the terminal
+ * scrollback — it is where the eye returns when scrolling up, and nothing
+ * used to mark it. To be called only **after** the `--json` branch, never
+ * before: a decoration line on `stdout` would break the machine output.
  */
 export function sectionHeader(io: Io, label: string): void {
   writeLine(io.stdout, renderSectionRule(label, terminalWidth(io.stdout), activeGlyphs(), colorDepth(io.stdout)));
@@ -145,22 +143,23 @@ export function sectionHeader(io: Io, label: string): void {
 }
 
 /**
- * Une ligne de confirmation : ce qui vient d'être fait, marqué comme tel.
+ * A confirmation line: what has just been done, marked as such.
  *
- * Une commande qui écrit un fichier rendait jusqu'ici une phrase nue,
- * impossible à distinguer d'un avertissement ou d'un rappel dans le
- * défilement. La marque la classe avant qu'elle ne soit lue.
+ * A command that writes a file used to render a bare sentence, impossible
+ * to tell apart from a warning or a reminder in the scrollback. The mark
+ * classifies it before it is even read.
  */
 export function printDone(io: Io, message: string): void {
   writeLine(io.stdout, `${colorize(activeGlyphs().status.done, "ok", io.stdout)} ${message}`);
 }
 
 /**
- * Une précision qui accompagne, sans être ce qu'on est venu lire.
+ * A precision that accompanies, without being what one came to read.
  *
- * Repliée sur la largeur du terminal : ces phrases sont des phrases entières,
- * et elles débordaient sur un terminal étroit — le repli laissé au terminal
- * ramène la suite en colonne zéro, où elle se confond avec ce qui suit.
+ * Wrapped to the terminal width: these sentences are full sentences, and
+ * they overflowed on a narrow terminal — the wrap left to the terminal
+ * brings the continuation back to column zero, where it blends into what
+ * follows.
  */
 export function printNote(io: Io, message: string): void {
   for (const line of wrapText(message, terminalWidth(io.stdout))) {
@@ -169,40 +168,39 @@ export function printNote(io: Io, message: string): void {
 }
 
 /**
- * L'intertitre d'une rubrique, dans le même dessin que les sections de
- * `caesar --help` : capitale et demi-ton, jamais de ponctuation finale.
+ * A section's subheading, in the same design as the `caesar --help`
+ * sections: uppercase and half-tone, never any trailing punctuation.
  *
- * Ce qui expliquait la rubrique passe en note dessous. Les deux étaient
- * jusqu'ici fondus dans une seule phrase — « Refusés par la politique — état
- * voulu, sauf si vous en décidez autrement : », soixante-quatorze
- * caractères — donc à la fois trop long pour un titre et trop court pour se
- * replier proprement.
+ * Whatever explained the section becomes a note underneath. The two used to
+ * be fused into one sentence — "Denied by the policy — the intended state,
+ * unless you decide otherwise:", seventy-four characters — hence both too
+ * long for a heading and too short to wrap cleanly.
  */
 export function printHeading(io: Io, title: string): void {
   writeLine(io.stdout, colorize(title.toUpperCase(), "faint", io.stdout));
 }
 
-/** Un couple libellé/valeur aligné, pour les vues en bloc plutôt qu'en tableau. */
+/** An aligned label/value pair, for block views rather than tables. */
 export function printField(io: Io, label: string, value: string, width: number): void {
   writeLine(io.stdout, `${colorize(label.padEnd(width), "dim", io.stdout)}  ${value}`);
 }
 
 /**
- * Le logotype, réservé à la porte d'entrée : `caesar --help` et la fin de
- * `caesar init`. Nulle part ailleurs — un logotype réimprimé à chaque
- * invocation cesse d'être une identité pour devenir du bruit.
+ * The wordmark, reserved for the front door: `caesar --help` and the end of
+ * `caesar init`. Nowhere else — a wordmark reprinted on every invocation
+ * stops being an identity and becomes noise.
  */
 export function bannerLines(stream: Writable, tagline?: string): string[] {
   return renderWordmark(activeGlyphs(), colorDepth(stream), tagline);
 }
 
 /**
- * Remplace le répertoire personnel par `~`.
+ * Replaces the home directory with `~`.
  *
- * Dix caractères rendus à la colonne « binaire » de `caesar agents list`, qui
- * affichait jusqu'ici `/Users/prénom/.…` — un chemin tronqué à dix-sept
- * caractères, donc inutilisable. Le préfixe est ce que toutes les lignes ont
- * en commun : c'est exactement ce qui n'apprend rien.
+ * Ten characters returned to the "binary" column of `caesar agents list`,
+ * which used to display `/Users/firstname/.…` — a path truncated at
+ * seventeen characters, hence unusable. The prefix is what all the lines
+ * have in common: it is exactly what teaches nothing.
  */
 export function homePath(path: string): string {
   const home = homedir();
@@ -211,20 +209,20 @@ export function homePath(path: string): string {
 }
 
 /**
- * Replie un texte sur la largeur donnée, en coupant entre les mots.
+ * Wraps a text to the given width, breaking between words.
  *
- * Les phrases de diagnostic — un remède, la raison d'un refus — sont longues
- * par nature. Laissées telles quelles, le terminal les replie lui-même, mais
- * sans indentation : la suite d'une puce revient en colonne zéro et se confond
- * avec l'élément suivant.
+ * Diagnostic sentences — a remedy, the reason for a refusal — are long by
+ * nature. Left as they are, the terminal wraps them itself, but without
+ * indentation: the continuation of a bullet comes back to column zero and
+ * blends into the next item.
  *
- * Les préfixes sont appliqués **après** le découpage : `firstPrefix` ouvre la
- * première ligne, `nextPrefix` les suivantes, et `width` les compte. Les passer
- * ainsi plutôt que collés au texte évite le piège où le découpage sur les
- * blancs les avalerait.
+ * The prefixes are applied **after** splitting: `firstPrefix` opens the
+ * first line, `nextPrefix` the following ones, and `width` accounts for
+ * them. Passing them this way rather than glued to the text avoids the trap
+ * where splitting on whitespace would swallow them.
  *
- * Un mot plus long que la largeur (un chemin, une URL) n'est pas coupé : le
- * tronquer le rendrait inutilisable, et le terminal saura le replier.
+ * A word longer than the width (a path, a URL) is not cut: truncating it
+ * would make it unusable, and the terminal will know how to wrap it.
  */
 export function wrapText(text: string, width: number, firstPrefix = "", nextPrefix = firstPrefix): string[] {
   const lines: string[] = [];
@@ -242,29 +240,29 @@ export function wrapText(text: string, width: number, firstPrefix = "", nextPref
   return lines.map((line, i) => (i === 0 ? firstPrefix : nextPrefix) + line);
 }
 
-/** Deux espaces entre colonnes, dans la mise en page sans encadré. */
+/** Two spaces between columns, in the box-less layout. */
 const PLAIN_GAP = 2;
 
 /**
- * Ce qu'un encadré consomme **entre** deux colonnes : ` │ `. Les deux bords
- * extérieurs (`│ ` et ` │`) sont comptés à part, dans `BOX_EDGES`.
+ * What a box consumes **between** two columns: ` │ `. The two outer edges
+ * (`│ ` and ` │`) are counted separately, in `BOX_EDGES`.
  */
 const BOX_GAP = 3;
 const BOX_EDGES = 4;
 
 /**
- * En dessous, une colonne ne porte plus d'information : on cesse de la
- * rétrécir. Ce qui suit dépend alors de la mise en page — voir `printTable`.
+ * Below this, a column no longer carries information: we stop shrinking it.
+ * What happens next depends on the layout — see `printTable`.
  */
 const MIN_COLUMN_WIDTH = 6;
 
-/** Largeur du terminal, ou 80 quand la sortie n'en est pas un (redirection, `--json` d'un script, tests). */
+/** Terminal width, or 80 when the output is not one (redirection, a script's `--json`, tests). */
 export function terminalWidth(stream?: Writable): number {
   const columns = (stream as { columns?: number } | undefined)?.columns ?? process.stdout.columns;
   return typeof columns === "number" && columns > 0 ? columns : 80;
 }
 
-/** Tronque à `width` en marquant la coupe, pour qu'une cellule rognée se voie. */
+/** Truncates to `width` while marking the cut, so that a trimmed cell is visible. */
 function fitCell(text: string, width: number, ellipsis: string): string {
   if (text.length <= width) return text;
   if (width <= 1) return ellipsis.repeat(Math.max(0, width));
@@ -272,13 +270,13 @@ function fitCell(text: string, width: number, ellipsis: string): string {
 }
 
 /**
- * Rabote les colonnes les plus larges jusqu'à tenir dans `budget`.
+ * Shaves the widest columns down until they fit within `budget`.
  *
- * La plus large paie en premier : une colonne étroite porte en général une
- * valeur courte et entière (un identifiant, un statut), là où une colonne
- * large porte une énumération dont la fin se devine. On s'arrête dès que
- * toutes ont atteint `MIN_COLUMN_WIDTH`, sans garantir d'avoir tenu le
- * budget — c'est l'appelant qui décide quoi faire de cet échec.
+ * The widest pays first: a narrow column generally carries a short, whole
+ * value (an identifier, a status), where a wide column carries an
+ * enumeration whose end can be guessed. We stop as soon as all have reached
+ * `MIN_COLUMN_WIDTH`, without guaranteeing the budget was met — the caller
+ * decides what to do with that failure.
  */
 function shrinkColumns(widths: readonly number[], budget: number, gap: number): number[] {
   const out = [...widths];
@@ -293,11 +291,11 @@ function shrinkColumns(widths: readonly number[], budget: number, gap: number): 
 }
 
 /**
- * Une cellule : un texte nu, ou un texte qui porte un rôle du thème.
+ * A cell: a bare text, or a text carrying a theme role.
  *
- * C'est ce qui permet à « autorisé » d'être vert et à « refusé » d'être rouge
- * sans que `printTable` ait à connaître le domaine, ni la commande à savoir
- * mettre en forme.
+ * This is what lets "allowed" be green and "denied" be red without
+ * `printTable` having to know the domain, or the command having to know how
+ * to format.
  */
 export type Cell = string | { text: string; token: ThemeToken };
 
@@ -306,33 +304,31 @@ function cellText(cell: Cell): string {
 }
 
 export interface TableOptions {
-  /** Largeur disponible. Défaut : celle du terminal de `io.stdout`. */
+  /** Available width. Default: that of `io.stdout`'s terminal. */
   maxWidth?: number;
 }
 
 /**
- * Un tableau encadré de traits fins. Aucune dépendance.
+ * A table framed with thin rules. No dependency.
  *
- * **Le cadre est compté dans le budget de largeur.** Un encadré à N colonnes
- * consomme `3N+1` caractères de chrome : sans cette soustraction, la bordure
- * droite atterrit sur la ligne suivante, et un cadre rompu est bien moins
- * lisible qu'un tableau sans cadre.
+ * **The frame counts against the width budget.** An N-column box consumes
+ * `3N+1` characters of chrome: without that subtraction, the right border
+ * lands on the next line, and a broken frame is far less readable than a
+ * frameless table.
  *
- * **Quand le cadre ne peut pas tenir, on y renonce.** Sur un terminal étroit,
- * aucune répartition ne fait entrer six ou huit colonnes dans un cadre sans
- * réduire chaque cellule à des points de suspension. La mise en page alignée
- * récupère alors le tiers de largeur que le cadre coûtait. Le repli est
- * silencieux et c'est voulu : il n'y a rien à signaler, seulement une largeur
- * à honorer.
+ * **When the frame cannot fit, we give it up.** On a narrow terminal, no
+ * distribution makes six or eight columns fit inside a frame without
+ * reducing each cell to ellipses. The aligned layout then recovers the
+ * third of the width the frame used to cost. The fallback is silent, and
+ * intentionally so: there is nothing to report, only a width to honor.
  *
- * Reste le cas extrême, hérité et assumé : quand même six caractères par
- * colonne ne tiennent pas, `shrinkColumns` s'arrête et la mise en page
- * déborde. C'est le moindre mal — un tableau que le terminal replie sur deux
- * lignes reste lisible, un tableau dont chaque cellule vaut « … » ne l'est
- * plus.
+ * There remains the extreme case, inherited and accepted: when even six
+ * characters per column do not fit, `shrinkColumns` stops and the layout
+ * overflows. It is the lesser evil — a table the terminal wraps onto two
+ * lines stays readable, a table whose every cell is "…" no longer is.
  *
- * La couleur est appliquée **après** le calage : peindre avant compterait les
- * séquences ANSI comme des colonnes, et tout l'alignement serait faux.
+ * Color is applied **after** padding: painting before would count the ANSI
+ * sequences as columns, and all the alignment would be wrong.
  */
 export function printTable(
   io: Io,
@@ -365,7 +361,7 @@ export function printTable(
     });
 
   if (!boxed) {
-    // Mise en page alignée : entête, filet pleine largeur, corps.
+    // Aligned layout: header, full-width rule, body.
     writeLine(io.stdout, cells(headers, "dim").join(" ".repeat(PLAIN_GAP)).trimEnd());
     const ruleWidth = widths.reduce((sum, w) => sum + w, 0) + PLAIN_GAP * Math.max(0, count - 1);
     writeLine(io.stdout, paint(glyphs.box.horizontal.repeat(ruleWidth), TOKENS.border, depth));

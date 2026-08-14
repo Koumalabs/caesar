@@ -23,11 +23,11 @@ describe("caesar doctor", () => {
     await rm(shimDir, { recursive: true, force: true });
   });
 
-  it("un agent installé et répondant à --version, un agent absent : les deux apparaissent correctement", async () => {
+  it("one agent installed and answering --version, one agent missing: both appear correctly", async () => {
     await withFakeHome(async () => {
-      // "codex" (premier du catalogue) est le seul shimmé : présent avec une
-      // version connue. Les quatre autres restent absents (PATH maîtrisé,
-      // voir withShimmedPath) — jamais un vrai CLI d'agent n'est invoqué.
+      // "codex" (first of the catalog) is the only one shimmed: present
+      // with a known version. The four others stay missing (controlled
+      // PATH, see withShimmedPath) — no real agent CLI is ever invoked.
       await writeVersionOkShim(shimDir, "codex", "codex-shim 9.9.9");
 
       const code = await withShimmedPath(shimDir, () => runDoctor(root, { json: true }, io));
@@ -46,24 +46,24 @@ describe("caesar doctor", () => {
     });
   });
 
-  it("un agent déclaré par chemin explicite n'envoie pas chercher dans le PATH quand le chemin ne désigne rien", async () => {
+  it("an agent declared by explicit path does not send people to the PATH when the path points at nothing", async () => {
     await withFakeHome(async () => {
-      await saveLayer("project", root, { agents: [{ id: "mon-cli", bin: "/opt/rien/du/tout", args: ["{{prompt}}"] }] });
+      await saveLayer("project", root, { agents: [{ id: "my-cli", bin: "/opt/nothing/at/all", args: ["{{prompt}}"] }] });
 
       await withShimmedPath(shimDir, () => runDoctor(root, {}, io));
       const out = io.stdoutText();
 
-      // Fragment court : les puces sont repliées à la largeur du terminal
-      // (`wrapText`), une phrase entière tomberait sur deux lignes.
-      expect(out).toMatch(/"\/opt\/rien\/du\/tout" n'existe pas/);
-      // Le conseil doit porter sur le chemin, pas sur une installation.
-      expect(out).toMatch(/Corrigez le chemin/);
-      // Les agents natifs, eux, restent bien décrits par leur absence du PATH.
-      expect(out).toMatch(/binaire "codex" introuvable dans le PATH/);
+      // Short fragment: the bullets are wrapped to the terminal width
+      // (`wrapText`), a full sentence would land on two lines.
+      expect(out).toMatch(/"\/opt\/nothing\/at\/all" does not exist/);
+      // The advice must be about the path, not about an installation.
+      expect(out).toMatch(/Fix the path/);
+      // The native agents, for their part, remain described by their absence from the PATH.
+      expect(out).toMatch(/binary "codex" not found in the PATH/);
     });
   });
 
-  it("un binaire installé qui échoue sur --version est signalé \"version inconnue\", sans bloquer la commande", async () => {
+  it("an installed binary that fails on --version is flagged \"unknown version\", without blocking the command", async () => {
     await withFakeHome(async () => {
       await writeVersionFailShim(shimDir, "codex");
 
@@ -77,42 +77,41 @@ describe("caesar doctor", () => {
     });
   });
 
-  it("sortie humaine : tableau compact, puis ce qui est à installer et ce qui est refusé", async () => {
+  it("human output: compact table, then what is to install and what is denied", async () => {
     await withFakeHome(async () => {
       const code = await withShimmedPath(shimDir, () => runDoctor(root, {}, io));
       expect(code).toBe(EXIT_OK);
       const out = io.stdoutText();
       expect(out).toContain("codex");
-      expect(out).toContain("À INSTALLER");
+      expect(out).toContain("TO INSTALL");
       expect(out).not.toMatch(/\x1b\[/);
 
-      // Un binaire absent appelle une action, un agent refusé n'en appelle
-      // aucune : les ranger sous un même « À corriger » revenait à proposer de
-      // défaire un refus voulu — celui de `claude` par `allow_recursion`, qui
-      // est le réglage par défaut.
-      expect(out).not.toContain("À corriger");
+      // A missing binary calls for an action, a denied agent calls for
+      // none: filing them under a single "To fix" amounted to suggesting to
+      // undo an intended denial — that of `claude` by `allow_recursion`,
+      // which is the default setting.
+      expect(out).not.toContain("To fix");
 
-      // La colonne « binaire » n'est plus dans la vue par défaut : le chemin,
-      // additionné des capacités en toutes lettres, est ce qui la faisait
-      // déborder.
-      expect(out).not.toMatch(/│\s*binaire\s*│/);
+      // The "binary" column is no longer in the default view: the path,
+      // added to the capabilities spelled out, is what made it overflow.
+      expect(out).not.toMatch(/│\s*binary\s*│/);
     });
   });
 
-  it("--verbose rétablit la colonne du binaire", async () => {
+  it("--verbose restores the binary column", async () => {
     await withFakeHome(async () => {
       const code = await withShimmedPath(shimDir, () => runDoctor(root, { verbose: true }, io));
       expect(code).toBe(EXIT_OK);
-      expect(io.stdoutText()).toMatch(/│\s*agent\s*│\s*binaire\s*│\s*version/);
+      expect(io.stdoutText()).toMatch(/│\s*agent\s*│\s*binary\s*│\s*version/);
     });
   });
 
-  it("aucune ligne ne dépasse la largeur du terminal", async () => {
-    // Le défaut constaté à l'usage : l'énumération des capacités poussait la
-    // dernière colonne au-delà du bord, où le terminal la repliait sur la
-    // ligne suivante — le tableau devenait illisible précisément là où il
-    // devait renseigner. Vérifié sur les deux vues, la compacte et la
-    // détaillée : c'est `renderTable` qui plafonne, pas le choix des colonnes.
+  it("no line exceeds the terminal width", async () => {
+    // The defect observed in use: the capabilities enumeration pushed the
+    // last column past the edge, where the terminal wrapped it onto the
+    // next line — the table became unreadable precisely where it was meant
+    // to inform. Checked on both views, the compact and the detailed one:
+    // it is `renderTable` that caps, not the choice of columns.
     await withFakeHome(async () => {
       for (const options of [{}, { verbose: true }]) {
         const io2 = makeIo();

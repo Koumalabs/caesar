@@ -1,17 +1,17 @@
 /**
- * Zone d'explication de hauteur constante, en pied de panneau : ce que fait
- * le champ sélectionné.
+ * Constant-height explanation zone, at the foot of a panel: what the
+ * selected field does.
  *
- * La hauteur fixe est tout l'intérêt. Rendue en ligne, sous le champ, cette
- * explication décalait vers le bas tous les champs suivants dès qu'elle
- * apparaissait — descendre d'un cran faisait alors sauter la liste entière,
- * et l'œil perdait la ligne qu'il suivait. Ici la place est réservée une fois
- * pour toutes : le texte change, la mise en page ne bouge pas.
+ * The fixed height is the whole point. Rendered inline, under the field,
+ * this explanation pushed every following field down as soon as it
+ * appeared — moving down one notch then made the whole list jump, and the
+ * eye lost the line it was following. Here the room is reserved once and
+ * for all: the text changes, the layout does not move.
  */
 import { wrap } from "./layout";
 import { FAINT } from "./theme";
 
-/** Deux lignes : assez pour une phrase complète, assez peu pour ne pas voler la place aux réglages. */
+/** Two lines: enough for a full sentence, few enough not to steal the room from the settings. */
 const LINES = 2;
 
 export function Explain({ text, width }: { text?: string; width: number }) {

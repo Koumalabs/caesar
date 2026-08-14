@@ -22,14 +22,14 @@ describe("caesar_cancel", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("interrompt une tâche en cours et met à jour son statut, sans laisser de processus fils", async () => {
+  it("interrupts a running task and updates its status, without leaving a child process behind", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async (shimDir) => {
         const session = await createSession(root);
         const shimPath = join(shimDir, "codex");
 
         const delegated = await caesarDelegate(session, {
-          objective: "tâche longue",
+          objective: "long task",
           agent: "codex",
           mode: "write",
           isolation: "inplace",
@@ -37,7 +37,7 @@ describe("caesar_cancel", () => {
         });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
-        // Laisse la tâche réellement démarrer avant de l'annuler.
+        // Lets the task actually start before cancelling it.
         let record = await session.store.get(taskId);
         for (let i = 0; i < 200 && record?.pid === undefined; i++) {
           await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 10));
@@ -64,11 +64,11 @@ describe("caesar_cancel", () => {
     );
   }, 20_000);
 
-  it("une tâche déjà terminée : cancelled: false, statut inchangé", async () => {
+  it("an already finished task: cancelled: false, status unchanged", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await caesarDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
+        const delegated = await caesarDelegate(session, { objective: "task", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
         const entry = session.tasks.get(taskId);
@@ -82,12 +82,12 @@ describe("caesar_cancel", () => {
     );
   }, 20_000);
 
-  it("une tâche inconnue rend une erreur", async () => {
+  it("an unknown task returns an error", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await caesarCancel(session, { task_id: "t_inexistant" });
+      const result = await caesarCancel(session, { task_id: "t_nonexistent" });
       expect(result.isError).toBe(true);
-      expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);
+      expect((result.content?.[0] as { text: string }).text).toMatch(/unknown task/i);
     });
   });
 });

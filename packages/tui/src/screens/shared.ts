@@ -1,10 +1,9 @@
 /**
- * Petits utilitaires d'affichage partagés par `PolicyScreen` et
- * `RolesScreen` — les deux seuls écrans qui cyclent une valeur parmi un
- * ensemble fixe (mode, isolation) ou qui formatent/parcourent le même
- * catalogue d'agents. Recopiés à l'identique entre les deux jusqu'ici
- * (tâche 10, B), avec le risque qu'une correction faite dans l'un ne soit
- * pas reportée dans l'autre.
+ * Small display utilities shared by `PolicyScreen` and `RolesScreen` — the
+ * only two screens that cycle a value through a fixed set (mode,
+ * isolation) or that format/walk the same agent catalog. Copied verbatim
+ * between the two until now (task 10, B), with the risk that a fix made
+ * in one would not be carried over to the other.
  */
 import type { GenericAgentSpec } from "@caesar/core";
 import { listAgentDefinitions, NETWORK_REQUESTS } from "@caesar/core";
@@ -15,21 +14,21 @@ export const ISOLATION_OPTIONS = [...IsolationSchema.options, "auto"] as const;
 export const NETWORK_OPTIONS = NETWORK_REQUESTS;
 
 /**
- * Identifiants du catalogue, natif étendu des agents de configuration
- * (`state.draft.agents`, `[[agent]]` du TOML) — voir C1 de la revue finale.
- * `CATALOG_IDS` était jusqu'ici une constante figée au chargement du module
- * (`listAgentDefinitions()` sans argument), qui ne pouvait donc jamais
- * refléter un agent déclaré en configuration : ni les écrans Rôles/Politique
- * (ordre de repli, listes allowed/denied) ne pouvaient le proposer avec "a",
- * ni — jusqu'à ce que `AgentsScreen` soit corrigé au même geste — l'écran
- * Agents ne pouvait le lister. Fonction plutôt que constante : appelée avec
- * la configuration courante à chaque rendu.
+ * Catalog identifiers, native ones extended with the configuration's
+ * agents (`state.draft.agents`, `[[agent]]` in the TOML) — see C1 of the
+ * final review. `CATALOG_IDS` was until now a constant frozen at module
+ * load (`listAgentDefinitions()` with no argument), which could therefore
+ * never reflect an agent declared in configuration: neither the
+ * Roles/Policy screens (fallback order, allowed/denied lists) could offer
+ * it with "a", nor — until `AgentsScreen` was fixed with the same gesture
+ * — could the Agents screen list it. A function rather than a constant:
+ * called with the current configuration on every render.
  */
 export function catalogIds(extraAgents: readonly GenericAgentSpec[] = []): string[] {
   return listAgentDefinitions(extraAgents).map((def) => def.id);
 }
 
-/** Formate `ms` dans l'unité la plus large qui le divise exactement (h, m, s), sinon en millisecondes brutes. */
+/** Formats `ms` in the widest unit that divides it exactly (h, m, s), otherwise in raw milliseconds. */
 export function formatMs(ms: number): string {
   if (ms % 3_600_000 === 0) return `${ms / 3_600_000}h`;
   if (ms % 60_000 === 0) return `${ms / 60_000}m`;
@@ -37,13 +36,13 @@ export function formatMs(ms: number): string {
   return `${ms}ms`;
 }
 
-/** Valeur suivante dans `options`, en boucle après la dernière. */
+/** Next value in `options`, looping past the last one. */
 export function cycle<T>(options: readonly T[], current: T): T {
   const index = options.indexOf(current);
   return options[(index + 1) % options.length]!;
 }
 
-// `fitColumn` vivait ici : elle complétait une cellule à une largeur écrite
-// en dur dans chaque écran. Remplacée par `cell` (`ui/layout.ts`), qui ne
-// décide plus seule de la largeur — celle-ci vient de `layoutColumns`, donc
-// de la place réellement disponible, gouttière comprise.
+// `fitColumn` lived here: it padded a cell to a width hard-coded in each
+// screen. Replaced by `cell` (`ui/layout.ts`), which no longer decides the
+// width on its own — that comes from `layoutColumns`, hence from the room
+// actually available, gutter included.

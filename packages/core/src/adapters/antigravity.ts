@@ -21,14 +21,14 @@ const CAPABILITIES: AgentCapabilities = {
   addDir: true,
   mcpInjection: "global-config",
   model: true,
-  // `agy` a bien un `--sandbox`, mais il restreint le terminal, pas le
-  // réseau — sa capture réelle (test/fixtures/antigravity.jsonl) montre au
-  // contraire des outils `open_browser_url`, `read_url_content` et
-  // `search_web`. Nous ne le passons pas, et nous ne saurions pas refermer.
+  // `agy` does have a `--sandbox`, but it restricts the terminal, not the
+  // network — its real capture (test/fixtures/antigravity.jsonl) shows, on
+  // the contrary, `open_browser_url`, `read_url_content` and `search_web`
+  // tools. We do not pass it, and we would not know how to close it.
   network: "open",
 };
 
-/** Convertit une durée en millisecondes vers la syntaxe Go attendue par `--print-timeout`. */
+/** Converts a duration in milliseconds to the Go syntax expected by `--print-timeout`. */
 function toGoDuration(ms: number): string {
   const totalSeconds = Math.max(1, Math.ceil(ms / 1000));
   if (totalSeconds % 3600 === 0) return `${totalSeconds / 3600}h`;
@@ -48,9 +48,9 @@ function build(ctx: BuildContext): SpawnPlan {
     toGoDuration(ctx.task.deadline_ms),
   ];
 
-  // Antigravity n'a aucun flag de répertoire de travail : le cwd du SpawnPlan
-  // porte le workspace. --add-dir garde le répertoire de tâche accessible
-  // pour le rapport et le message final.
+  // Antigravity has no working-directory flag: the SpawnPlan's cwd carries
+  // the workspace. --add-dir keeps the task directory accessible for the
+  // report and the final message.
   args.push("--add-dir", ctx.paths.dir);
 
   if (ctx.model) args.push("--model", ctx.model);
@@ -58,9 +58,9 @@ function build(ctx: BuildContext): SpawnPlan {
     args.push("--json-schema", ctx.schemaFile);
   }
 
-  // La configuration globale de la machine est en agentMode "plan" avec une
-  // liste trustedWorkspaces restreinte : il faut la surcharger explicitement
-  // pour que le mode écriture s'applique réellement.
+  // The machine's global configuration is in agentMode "plan" with a
+  // restricted trustedWorkspaces list: it must be overridden explicitly
+  // for write mode to actually apply.
   if (ctx.task.mode === "write") args.push("--dangerously-skip-permissions");
 
   args.push(...ctx.extraArgs);
@@ -69,30 +69,30 @@ function build(ctx: BuildContext): SpawnPlan {
 }
 
 /**
- * Traduit le flux `agy --output-format stream-json`.
+ * Translates the `agy --output-format stream-json` stream.
  *
- * Formes observées sur deux captures réelles : `init`, `step_update` (types
+ * Shapes observed on two real captures: `init`, `step_update` (types
  * `user_input`, `unknown`, `agent_response`, `checkpoint`, `error_message`)
- * et `result`. La forme `error` de premier niveau n'a été observée sur aucune
- * des deux ; elle suit la même convention `event`/payload que les formes
- * confirmées et reste strictement défensive.
+ * and `result`. The top-level `error` shape was observed on neither of the
+ * two; it follows the same `event`/payload convention as the confirmed
+ * shapes and remains strictly defensive.
  *
- * Deux constats de la capture courante (`test/fixtures/antigravity.jsonl`),
- * qui est un échec de quota :
+ * Two findings from the current capture (`test/fixtures/antigravity.jsonl`),
+ * which is a quota failure:
  *
- * - `result.error` porte l'explication entière (« Individual quota reached… »)
- *   et n'était **pas lue** : trois erreurs se sont succédé et le flux traduit
- *   n'en montrait aucune. Seul le repli synthétisé du moteur, qui recopie la
- *   fin du journal brut, laissait deviner ce qui s'était passé.
- * - les étapes `error_message` ne portent **aucun texte**, pas même un champ
- *   vide. On les signale tout de même : « une erreur est survenue et le CLI
- *   n'en dit pas plus » renseigne, un silence non.
+ * - `result.error` carries the entire explanation ("Individual quota reached…")
+ *   and was **not read**: three errors came one after another and the
+ *   translated stream showed none of them. Only the engine's synthesized
+ *   fallback, which copies the end of the raw log, hinted at what happened.
+ * - `error_message` steps carry **no text**, not even an empty field. We
+ *   still flag them: "an error occurred and the CLI says no more" informs,
+ *   silence does not.
  *
- * Aucune des deux captures n'a déclenché d'outil — la première était triviale,
- * la seconde a échoué avant d'agir. Le `step_type` des étapes d'outil reste
- * donc inconnu, et cet adaptateur n'émet aucun `tool_use` : une branche écrite
- * d'après une convention plausible serait exactement l'erreur qui a rendu
- * inopérante celle d'opencode.
+ * Neither of the two captures triggered a tool — the first was trivial, the
+ * second failed before acting. The `step_type` of tool steps therefore
+ * remains unknown, and this adapter emits no `tool_use`: a branch written
+ * from a plausible convention would be exactly the mistake that left
+ * opencode's branch inoperative.
  */
 function translate(line: string): Translation {
   const data = parseJsonLine(line);
@@ -114,7 +114,7 @@ function translate(line: string): Translation {
     if (stepType === "error_message") {
       return {
         events: [
-          { type: "error", message: "Antigravity a signalé une erreur, sans en donner le texte dans son flux.", fatal: false },
+          { type: "error", message: "Antigravity reported an error, without giving its text in its stream.", fatal: false },
         ],
       };
     }
@@ -130,8 +130,8 @@ function translate(line: string): Translation {
     const failure = typeof result["error"] === "string" && result["error"] !== "" ? result["error"] : undefined;
 
     const events: PartialEvent[] = [];
-    // L'erreur d'abord : elle explique le `finished` qui suit, et c'est elle
-    // qu'on veut lire en tête du journal quand la tâche a échoué.
+    // The error first: it explains the `finished` that follows, and it is
+    // what we want to read at the top of the log when the task has failed.
     if (failure) events.push({ type: "error", message: failure, fatal: true });
     events.push({ type: "finished", status, summary: failure ?? "", exit_code: null });
 

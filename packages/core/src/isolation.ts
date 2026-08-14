@@ -1,59 +1,59 @@
 /**
- * Isolation d'une tâche en écriture : à quelles conditions un sous-agent a le
- * droit d'écrire directement dans le dépôt de l'utilisateur, plutôt que dans un
- * worktree jetable.
+ * Isolation of a write task: under what conditions a sub-agent has the
+ * right to write directly into the user's repository, rather than into a
+ * disposable worktree.
  *
- * Le défaut que ce module existe pour corriger : la chaîne de résolution
- * (`delegation.ts`) accordait à une demande explicite le dernier mot sur le
- * rôle et sur la politique, et `prepareIsolation` (`engine/runner.ts`)
- * l'honorait telle quelle — sans avertissement, sans constat dans le rapport.
- * Un `isolation: "inplace"` passé à `caesar_delegate` défaisait donc en silence
- * le rôle `implementer`, qui impose pourtant `worktree`. Constaté sur un dépôt
- * réel : trois tâches déléguées ont écrit directement sur la branche de travail
- * de l'utilisateur, et rien dans leur rapport ne le disait.
+ * The defect this module exists to fix: the resolution chain
+ * (`delegation.ts`) granted an explicit request the last word over the
+ * role and over the policy, and `prepareIsolation` (`engine/runner.ts`)
+ * honored it as-is — no warning, no finding in the report.
+ * An `isolation: "inplace"` passed to `caesar_delegate` therefore silently
+ * undid the `implementer` role, which nevertheless mandates `worktree`. Observed on
+ * a real repository: three delegated tasks wrote directly onto the user's working
+ * branch, and nothing in their report said so.
  *
- * Le garde-fou existant, `mustForceWorktree`, ne couvre que la lecture seule :
- * il force le worktree pour qu'une écriture interdite soit *contenue et
- * détectée*. Ici la question est inverse — l'écriture est autorisée, c'est son
- * *emplacement* qui engage le dépôt de quelqu'un d'autre — et la réponse doit
- * l'être aussi : on refuse au lieu de rediriger. Rediriger silencieusement
- * l'écriture d'un agent vers un ailleurs que l'appelant n'a pas demandé serait
- * pire que de refuser : il attendrait ses modifications dans son arbre de
- * travail et ne les y trouverait pas.
+ * The existing safeguard, `mustForceWorktree`, only covers read-only mode:
+ * it forces the worktree so that a forbidden write is *contained and
+ * detected*. Here the question is the reverse — the write is allowed, it is
+ * its *location* that commits someone else's repository — and the answer must
+ * be too: we refuse instead of redirecting. Silently redirecting
+ * an agent's write to an elsewhere the caller did not ask for would be
+ * worse than refusing: they would expect their modifications in their working
+ * tree and would not find them there.
  *
- * Comme `policy.ts` et `network.ts`, ce module ne fait aucune E/S : il décide,
- * et chaque refus porte un motif et un remède rédigés pour un humain — un refus
- * nu remonterait tel quel à l'agent principal via MCP, où il serait
- * inexploitable.
+ * Like `policy.ts` and `network.ts`, this module does no I/O: it decides,
+ * and every refusal carries a reason and a remedy written for a human — a
+ * bare refusal would bubble up as-is to the main agent via MCP, where it
+ * would be unusable.
  */
 import type { Isolation, TaskMode } from "@caesar/protocol";
 
 /**
- * D'où vient l'isolation retenue, le long de la chaîne
- * `argument explicite > rôle > politique` de `resolveDelegation`.
+ * Where the selected isolation comes from, along the
+ * `explicit argument > role > policy` chain of `resolveDelegation`.
  *
- * N'entre pas dans la décision — seulement dans sa formulation. Un refus dont
- * le motif dit « demandée explicitement » alors que la valeur venait du défaut
- * de la politique enverrait l'utilisateur corriger le mauvais fichier.
+ * Plays no part in the decision — only in its wording. A refusal whose
+ * reason says "explicitly requested" when the value came from the policy
+ * default would send the user off to fix the wrong file.
  */
 export type IsolationSource = "explicit" | "role" | "policy";
 
 export interface InplaceWriteQuery {
-  /** L'isolation retenue par la chaîne de résolution, `"auto"` compris. */
+  /** The isolation selected by the resolution chain, `"auto"` included. */
   requested: Isolation | "auto";
   mode: TaskMode;
   /**
-   * Vrai seulement si le workspace est dans un dépôt git **portant au moins un
-   * commit** — c'est-à-dire si un worktree y est réellement créable (voir
-   * `usableRepoRoot`). Un dépôt sans commit n'a pas de `HEAD` d'où partir.
+   * True only if the workspace is in a git repository **bearing at least one
+   * commit** — that is, if a worktree is actually creatable there (see
+   * `usableRepoRoot`). A repository without a commit has no `HEAD` to start from.
    */
   repoUsable: boolean;
-  /** L'opt-in `policy.allow_inplace_write`, tel que l'appelant l'a transmis. */
+  /** The `policy.allow_inplace_write` opt-in, as the caller passed it along. */
   allowed: boolean;
   source?: IsolationSource;
-  /** Racine du dépôt concerné, pour que le motif nomme ce qui est protégé. */
+  /** Root of the repository concerned, so the reason names what is protected. */
   repo?: string;
-  /** Nom du rôle, quand `source` vaut `"role"`. */
+  /** Role name, when `source` is `"role"`. */
   roleName?: string;
 }
 
@@ -61,45 +61,45 @@ export type InplaceWriteDecision =
   | { refused: false }
   | { refused: true; reason: string; remedy: string };
 
-/** « demandée explicitement », « héritée du rôle "implementer" », … */
+/** "explicitly requested", "inherited from role \"implementer\"", … */
 function describeSource(source: IsolationSource | undefined, roleName?: string): string {
   switch (source) {
     case "explicit":
-      return "demandée explicitement";
+      return "explicitly requested";
     case "role":
-      return roleName ? `héritée du rôle "${roleName}"` : "héritée du rôle";
+      return roleName ? `inherited from role "${roleName}"` : "inherited from the role";
     case "policy":
-      return 'héritée du défaut de la politique ("default_isolation")';
+      return 'inherited from the policy default ("default_isolation")';
     default:
-      return "retenue";
+      return "selected";
   }
 }
 
 /**
- * Décide si une tâche a le droit de s'exécuter en isolation `"inplace"`.
+ * Decides whether a task has the right to run in `"inplace"` isolation.
  *
- * Refuse **si et seulement si** les quatre conditions sont réunies :
- * `"inplace"` explicitement retenu, mode écriture, dépôt git utilisable, et
- * opt-in absent. Chacune mérite d'être lue comme une garde :
+ * Refuses **if and only if** the four conditions come together:
+ * `"inplace"` explicitly selected, write mode, usable git repository, and
+ * opt-in absent. Each deserves to be read as a guard:
  *
- * - `requested === "inplace"` : `"auto"` n'est pas concerné, c'est
- *   `prepareIsolation` qui choisit pour lui — et il choisit déjà le worktree en
- *   écriture dès qu'il le peut.
- * - `mode === "write"` : la lecture seule relève de `mustForceWorktree`, dont la
- *   logique est opposée (contenir, pas interdire).
- * - `repoUsable` : sans dépôt utilisable, aucun worktree n'est possible.
- *   Refuser ici rendrait `caesar` inutilisable sur tout projet non versionné ou
- *   fraîchement initialisé — un durcissement qui casse le cas ordinaire n'est
- *   pas un durcissement, c'est une panne. `prepareIsolation` avertit déjà pour
- *   ce cas.
- * - `!allowed` : l'opt-in `policy.allow_inplace_write` existe pour les dépôts où
- *   l'utilisateur assume le risque en connaissance de cause.
+ * - `requested === "inplace"`: `"auto"` is not concerned, it is
+ *   `prepareIsolation` that chooses for it — and it already chooses the
+ *   worktree in write mode whenever it can.
+ * - `mode === "write"`: read-only mode falls under `mustForceWorktree`, whose
+ *   logic is the opposite (contain, not forbid).
+ * - `repoUsable`: without a usable repository, no worktree is possible.
+ *   Refusing here would make `caesar` unusable on any unversioned or
+ *   freshly initialized project — a hardening that breaks the ordinary case
+ *   is not a hardening, it is an outage. `prepareIsolation` already warns for
+ *   that case.
+ * - `!allowed`: the `policy.allow_inplace_write` opt-in exists for repositories
+ *   where the user knowingly assumes the risk.
  *
- * La fonction est appelée deux fois sur le même trajet — tôt dans
- * `resolveDelegation`, pour refuser avant qu'aucun répertoire de tâche ne soit
- * écrit sur le disque, et de nouveau dans `prepareIsolation`, seul point que
- * *toutes* les façades traversent, y compris un appel direct à `runTask`. Elle
- * est pure : les deux appels rendent nécessairement le même verdict.
+ * The function is called twice on the same path — early in
+ * `resolveDelegation`, to refuse before any task directory gets
+ * written to disk, and again in `prepareIsolation`, the only point that
+ * *all* the facades pass through, including a direct call to `runTask`. It
+ * is pure: both calls necessarily return the same verdict.
  */
 export function decideInplaceWrite(query: InplaceWriteQuery): InplaceWriteDecision {
   const { requested, mode, repoUsable, allowed } = query;
@@ -108,18 +108,18 @@ export function decideInplaceWrite(query: InplaceWriteQuery): InplaceWriteDecisi
     return { refused: false };
   }
 
-  const where = query.repo ? ` du dépôt "${query.repo}"` : "";
+  const where = query.repo ? ` of the repository "${query.repo}"` : "";
   return {
     refused: true,
     reason:
-      `Isolation "inplace" ${describeSource(query.source, query.roleName)} pour une tâche en écriture : refusée. ` +
-      `Le sous-agent écrirait directement dans l'arbre de travail${where}, sur la branche courante — ` +
-      `ses modifications se mêleraient aux vôtres et à celles des autres tâches, sans que "caesar diff" puisse en rendre compte.`,
+      `Isolation "inplace" ${describeSource(query.source, query.roleName)} for a write task: refused. ` +
+      `The sub-agent would write directly into the working tree${where}, on the current branch — ` +
+      `its modifications would mingle with yours and with those of the other tasks, without "caesar diff" being able to account for them.`,
     remedy:
-      `Laissez l'isolation à "worktree" (ou "auto") : le sous-agent travaille alors sur une branche jetable, ` +
-      `dont "caesar diff" montre le résultat et "caesar apply" le reporte. Si le worktree est inexploitable parce qu'il ` +
-      `manque des fichiers non suivis par git (dépendances installées, ".env", briefs ignorés), déclarez-les sous ` +
-      `[worktree] dans ".caesar/config.toml" (clés "copy", "link", "setup") plutôt que de renoncer à l'isolation. ` +
-      `En dernier recours, et en connaissance de cause, posez "allow_inplace_write = true" sous [policy].`,
+      `Leave the isolation at "worktree" (or "auto"): the sub-agent then works on a disposable branch, ` +
+      `whose result "caesar diff" shows and "caesar apply" carries over. If the worktree is unusable because it is ` +
+      `missing files not tracked by git (installed dependencies, ".env", ignored briefs), declare them under ` +
+      `[worktree] in ".caesar/config.toml" (keys "copy", "link", "setup") rather than giving up on isolation. ` +
+      `As a last resort, and knowingly, set "allow_inplace_write = true" under [policy].`,
   };
 }

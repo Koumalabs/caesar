@@ -15,31 +15,31 @@ describe("resolveRoot", () => {
     await rm(base, { recursive: true, force: true });
   });
 
-  it("--root explicite l'emporte toujours", async () => {
-    const explicit = join(base, "ailleurs");
+  it("an explicit --root always wins", async () => {
+    const explicit = join(base, "elsewhere");
     await mkdir(explicit, { recursive: true });
     expect(await resolveRoot(explicit, base)).toBe(explicit);
   });
 
-  it("remonte jusqu'au premier répertoire contenant .caesar/", async () => {
+  it("walks up to the first directory containing .caesar/", async () => {
     await mkdir(join(base, ".caesar"), { recursive: true });
     const nested = join(base, "src", "deep");
     await mkdir(nested, { recursive: true });
     expect(await resolveRoot(undefined, nested)).toBe(base);
   });
 
-  it("remonte jusqu'au premier répertoire contenant .git/", async () => {
+  it("walks up to the first directory containing .git/", async () => {
     await mkdir(join(base, ".git"), { recursive: true });
     const nested = join(base, "packages", "cli");
     await mkdir(nested, { recursive: true });
     expect(await resolveRoot(undefined, nested)).toBe(base);
   });
 
-  it("ni .caesar/ ni .git/ trouvé : replie sur le répertoire de départ", async () => {
+  it("neither .caesar/ nor .git/ found: falls back to the starting directory", async () => {
     expect(await resolveRoot(undefined, base)).toBe(base);
   });
 
-  it("le répertoire courant lui-même contenant .caesar/ est retenu directement", async () => {
+  it("the current directory itself containing .caesar/ is picked directly", async () => {
     await mkdir(join(base, ".caesar"), { recursive: true });
     expect(await resolveRoot(undefined, base)).toBe(base);
   });

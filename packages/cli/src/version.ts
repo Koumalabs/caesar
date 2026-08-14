@@ -1,9 +1,9 @@
 /**
- * La version de l'outil, en un seul endroit.
+ * The tool's version, in a single place.
  *
- * `program.ts` la donne à commander (`caesar --version`) et `init.ts` l'affiche
- * sous le logotype : deux lectures du même `package.json` finissaient
- * fatalement par diverger le jour où l'une des deux serait déplacée.
+ * `program.ts` hands it to commander (`caesar --version`) and `init.ts`
+ * prints it under the wordmark: two reads of the same `package.json` would
+ * fatally end up diverging the day one of the two got moved.
  */
 import packageJson from "../package.json" with { type: "json" };
 

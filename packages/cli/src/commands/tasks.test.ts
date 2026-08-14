@@ -44,7 +44,7 @@ describe("caesar ps", () => {
     return {
       id: "t_1",
       agent: "codex",
-      objective: "objectif",
+      objective: "objective",
       status: "pending",
       created_at: "2026-08-09T10:00:00.000Z",
       task_dir: join(root, ".caesar", "tasks", "t_1"),
@@ -57,7 +57,7 @@ describe("caesar ps", () => {
     };
   }
 
-  it("par défaut : tâches actives + dernières terminées, --json exploitable", async () => {
+  it("by default: active tasks + latest finished, usable --json", async () => {
     const store = fileTaskStore(root);
     await store.create(record({ id: "t_running", status: "running", created_at: "2026-08-09T10:00:00.000Z" }));
     await store.create(record({ id: "t_done", status: "succeeded", created_at: "2026-08-09T09:00:00.000Z" }));
@@ -69,7 +69,7 @@ describe("caesar ps", () => {
     expect(ids).toEqual(["t_done", "t_running"]);
   });
 
-  it("--status filtre, un statut inconnu est une erreur d'usage", async () => {
+  it("--status filters, an unknown status is a usage error", async () => {
     const store = fileTaskStore(root);
     await store.create(record({ id: "t_ok", status: "succeeded" }));
     await store.create(record({ id: "t_ko", status: "failed" }));
@@ -80,27 +80,27 @@ describe("caesar ps", () => {
     expect(parsed.tasks.map((t: { id: string }) => t.id)).toEqual(["t_ok"]);
 
     const io2 = makeIo();
-    const badCode = await runPs(root, { status: "n-importe-quoi" }, io2);
+    const badCode = await runPs(root, { status: "whatever" }, io2);
     expect(badCode).toBe(EXIT_USAGE);
   });
 
-  it("store vide : liste vide, pas d'erreur", async () => {
+  it("empty store: empty list, no error", async () => {
     const code = await runPs(root, { json: true }, io);
     expect(code).toBe(EXIT_OK);
     expect(JSON.parse(io.stdoutText()).tasks).toEqual([]);
   });
 
   /**
-   * Le symptôme d'origine : une tâche dont l'orchestrateur a été tué reste
-   * « running » à vie, en tête de `ps`, des heures après que plus rien ne la
-   * conduit. `ps` est le premier endroit où ce mensonge se voit — donc le
-   * premier où il se répare.
+   * The original symptom: a task whose orchestrator was killed stays
+   * "running" forever, at the top of `ps`, hours after nothing drives it
+   * anymore. `ps` is the first place where that lie is visible — hence the
+   * first where it gets repaired.
    */
-  it("une tâche dont l'orchestrateur a disparu n'est plus affichée en cours", async () => {
+  it("a task whose orchestrator disappeared is no longer shown in progress", async () => {
     const store = fileTaskStore(root);
-    await store.create(record({ id: "t_abandonnee", status: "running" }));
-    // Le marqueur que `markWorktreeInUse` laisse derrière un processus tué.
-    const lease = await markWorktreeInUse(root, "t_abandonnee");
+    await store.create(record({ id: "t_abandoned", status: "running" }));
+    // The marker `markWorktreeInUse` leaves behind a killed process.
+    const lease = await markWorktreeInUse(root, "t_abandoned");
     await writeFile(lease.path, JSON.stringify({ pid: 2_147_483_647, token: lease.token }) + "\n", "utf8");
 
     const code = await runPs(root, { json: true }, io);
@@ -109,13 +109,13 @@ describe("caesar ps", () => {
     const [task] = JSON.parse(io.stdoutText()).tasks as TaskRecord[];
     expect(task.status).toBe("failed");
     expect(task.ended_at).toBeDefined();
-    expect((await store.get("t_abandonnee"))?.status).toBe("failed");
+    expect((await store.get("t_abandoned"))?.status).toBe("failed");
   });
 
-  it("une tâche réellement en cours n'est pas conclue par un simple ps", async () => {
+  it("a task really in progress is not concluded by a mere ps", async () => {
     const store = fileTaskStore(root);
-    await store.create(record({ id: "t_en_cours", status: "running" }));
-    const lease = await markWorktreeInUse(root, "t_en_cours");
+    await store.create(record({ id: "t_in_progress", status: "running" }));
+    const lease = await markWorktreeInUse(root, "t_in_progress");
 
     const code = await runPs(root, { json: true }, io);
 
@@ -126,7 +126,7 @@ describe("caesar ps", () => {
   });
 });
 
-describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vraies tâches", () => {
+describe("caesar logs / cancel / diff / apply — on a store populated by real tasks", () => {
   let root: string;
   let io: CapturedIo;
 
@@ -139,24 +139,24 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     await rm(root, { recursive: true, force: true });
   });
 
-  it("logs : tâche inconnue traitée proprement (code d'usage, message clair)", async () => {
-    const code = await runLogs(root, "t_fantome", {}, io);
+  it("logs: unknown task handled cleanly (usage code, clear message)", async () => {
+    const code = await runLogs(root, "t_ghost", {}, io);
     expect(code).toBe(EXIT_USAGE);
-    expect(io.stderrText()).toMatch(/inconnue/);
+    expect(io.stderrText()).toMatch(/[Uu]nknown/);
   });
 
-  it("logs : événements normalisés d'une tâche réelle (inplace), humain et --json", async () => {
+  it("logs: normalized events of a real task (inplace), human and --json", async () => {
     await withFakeAgentAsBin("codex", async () => {
       const store = fileTaskStore(root);
       const outcome = await runTask(
         { store, root },
-        { agentId: "codex", objective: "tâche de log", mode: "write", isolation: "inplace", workspace: root },
+        { agentId: "codex", objective: "log task", mode: "write", isolation: "inplace", workspace: root },
       );
 
       const code = await runLogs(root, outcome.record.id, {}, io);
       expect(code).toBe(EXIT_OK);
-      expect(io.stdoutText()).toContain("démarré");
-      expect(io.stdoutText()).toContain("terminé");
+      expect(io.stdoutText()).toContain("started");
+      expect(io.stdoutText()).toContain("finished");
 
       const io2 = makeIo();
       const jsonCode = await runLogs(root, outcome.record.id, { json: true }, io2);
@@ -168,33 +168,33 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     });
   }, 20_000);
 
-  it("logs --raw : la sortie brute du CLI de l'agent", async () => {
+  it("logs --raw: the agent CLI's raw output", async () => {
     await withFakeAgentAsBin("codex", async () => {
       const store = fileTaskStore(root);
       const outcome = await runTask(
         { store, root },
-        { agentId: "codex", objective: "tâche de log brute", mode: "write", isolation: "inplace", workspace: root },
+        { agentId: "codex", objective: "raw log task", mode: "write", isolation: "inplace", workspace: root },
       );
 
       const code = await runLogs(root, outcome.record.id, { raw: true }, io);
       expect(code).toBe(EXIT_OK);
-      expect(io.stdoutText()).toContain("démarrage");
-      expect(io.stdoutText()).toContain("terminé");
+      expect(io.stdoutText()).toContain("starting");
+      expect(io.stdoutText()).toContain("done");
     });
   }, 20_000);
 
-  it("logs --follow : suit une tâche en direct jusqu'à sa fin", async () => {
+  it("logs --follow: follows a live task until it ends", async () => {
     await withFakeAgentAsBin("codex", async () => {
       const store = fileTaskStore(root);
       const runPromise = runTask(
         { store, root },
-        { agentId: "codex", objective: "tâche suivie en direct", mode: "write", isolation: "inplace", workspace: root },
+        { agentId: "codex", objective: "task followed live", mode: "write", isolation: "inplace", workspace: root },
       );
 
       const [outcome] = await Promise.all([runPromise, runLogs(root, await firstTaskId(store), { follow: true }, io)]);
       expect(outcome.record.status).toBe("succeeded");
-      expect(io.stdoutText()).toContain("démarré");
-      expect(io.stdoutText()).toContain("terminé");
+      expect(io.stdoutText()).toContain("started");
+      expect(io.stdoutText()).toContain("finished");
     });
 
     async function firstTaskId(store: ReturnType<typeof fileTaskStore>): Promise<string> {
@@ -203,11 +203,11 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
         if (record) return record.id;
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      throw new Error("aucune tâche en cours trouvée à temps");
+      throw new Error("no running task found in time");
     }
   }, 20_000);
 
-  it("logs --follow : une ligne malformée ou hors schéma est signalée sur stderr, sans interrompre le suivi ni polluer stdout", async () => {
+  it("logs --follow: a malformed or off-schema line is flagged on stderr, without stopping the follow nor polluting stdout", async () => {
     const id = "t_bad_line";
     const taskDir = join(root, ".caesar", "tasks", id);
     const paths = taskPaths(taskDir);
@@ -217,8 +217,8 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     const finished = makeEvent(id, 1, "finished", { status: "success", summary: "", exit_code: 0 });
     const lines = [
       JSON.stringify(started),
-      "{ceci n'est pas du JSON",
-      JSON.stringify({ type: "inconnu" }),
+      "{this is not JSON",
+      JSON.stringify({ type: "unknown" }),
       JSON.stringify(finished),
     ];
     await writeFile(paths.eventsPath, lines.join("\n") + "\n", "utf8");
@@ -227,7 +227,7 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     await store.create({
       id,
       agent: "codex",
-      objective: "événements avec une ligne malformée",
+      objective: "events with a malformed line",
       status: "succeeded",
       created_at: new Date().toISOString(),
       task_dir: taskDir,
@@ -241,29 +241,29 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     const code = await runLogs(root, id, { follow: true }, io);
     expect(code).toBe(EXIT_OK);
 
-    // Les deux événements valides atteignent stdout, dans l'ordre.
-    expect(io.stdoutText()).toContain("démarré");
-    expect(io.stdoutText()).toContain("terminé");
+    // The two valid events reach stdout, in order.
+    expect(io.stdoutText()).toContain("started");
+    expect(io.stdoutText()).toContain("finished");
 
-    // Les deux lignes invalides sont signalées sur stderr, chacune pour sa raison.
-    expect(io.stderrText()).toMatch(/JSON invalide/);
-    expect(io.stderrText()).toMatch(/schéma/);
+    // The two invalid lines are flagged on stderr, each for its own reason.
+    expect(io.stderrText()).toMatch(/invalid JSON/);
+    expect(io.stderrText()).toMatch(/schema/);
 
-    // stdout reste du NDJSON/texte exploitable : jamais de diagnostic dessus.
-    expect(io.stdoutText()).not.toMatch(/ignorée/);
+    // stdout stays usable NDJSON/text: never a diagnostic on it.
+    expect(io.stdoutText()).not.toMatch(/dropped/);
   });
 
-  it("cancel : tâche inconnue traitée proprement", async () => {
-    const code = await runCancel(root, "t_fantome", {}, io);
+  it("cancel: unknown task handled cleanly", async () => {
+    const code = await runCancel(root, "t_ghost", {}, io);
     expect(code).toBe(EXIT_USAGE);
   });
 
-  it("cancel : tâche déjà terminée — message clair, pas une erreur", async () => {
+  it("cancel: task already finished — clear message, not an error", async () => {
     const store = fileTaskStore(root);
     await store.create({
       id: "t_done",
       agent: "codex",
-      objective: "déjà finie",
+      objective: "already finished",
       status: "succeeded",
       created_at: new Date().toISOString(),
       task_dir: join(root, ".caesar", "tasks", "t_done"),
@@ -280,12 +280,12 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     expect(parsed.cancelled).toBe(false);
   });
 
-  it("cancel : tâche en cours sans pid enregistré — message clair, pas une erreur", async () => {
+  it("cancel: running task without a recorded pid — clear message, not an error", async () => {
     const store = fileTaskStore(root);
     await store.create({
       id: "t_no_pid",
       agent: "codex",
-      objective: "sans pid",
+      objective: "without a pid",
       status: "running",
       created_at: new Date().toISOString(),
       task_dir: join(root, ".caesar", "tasks", "t_no_pid"),
@@ -301,8 +301,8 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     expect(JSON.parse(io.stdoutText()).cancelled).toBe(false);
   });
 
-  it("cancel : pid enregistré mais processus déjà mort — message clair (ESRCH)", async () => {
-    // Un processus qu'on laisse réellement se terminer : son pid est garanti libre.
+  it("cancel: recorded pid but process already dead — clear message (ESRCH)", async () => {
+    // A process we actually let finish: its pid is guaranteed free.
     const dead = spawn(process.execPath, ["-e", "process.exit(0)"]);
     const deadPid = dead.pid!;
     await new Promise((resolve) => dead.once("exit", resolve));
@@ -311,7 +311,7 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     await store.create({
       id: "t_dead_pid",
       agent: "codex",
-      objective: "pid mort",
+      objective: "dead pid",
       status: "running",
       created_at: new Date().toISOString(),
       task_dir: join(root, ".caesar", "tasks", "t_dead_pid"),
@@ -330,14 +330,14 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     expect((await store.get("t_dead_pid"))!.status).toBe("cancelled");
   });
 
-  it("cancel : envoie SIGTERM à une tâche réellement en cours, qui se termine promptement", async () => {
+  it("cancel: sends SIGTERM to a task really in progress, which terminates promptly", async () => {
     await withFakeAgentAsBin("codex", async () => {
       const store = fileTaskStore(root);
       const runPromise = runTask(
         { store, root },
         {
           agentId: "codex",
-          objective: "tâche qui traîne",
+          objective: "lingering task",
           mode: "write",
           isolation: "inplace",
           workspace: root,
@@ -358,18 +358,18 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
       expect(code).toBe(EXIT_OK);
       expect(JSON.parse(io.stdoutText()).cancelled).toBe(true);
 
-      // Preuve que le SIGTERM a réellement atteint le sous-processus : la
-      // tâche se termine bien avant les 30 s de `sleepMs`.
+      // Proof that the SIGTERM really reached the subprocess: the task
+      // finishes well before `sleepMs`'s 30 s.
       await runPromise;
     });
   }, 20_000);
 
-  it("diff / apply : isolation \"inplace\", rien à diffuser ni à appliquer", async () => {
+  it("diff / apply: \"inplace\" isolation, nothing to diff nor to apply", async () => {
     await withFakeAgentAsBin("codex", async () => {
       const store = fileTaskStore(root);
       const outcome = await runTask(
         { store, root },
-        { agentId: "codex", objective: "sans worktree", mode: "write", isolation: "inplace", workspace: root },
+        { agentId: "codex", objective: "without a worktree", mode: "write", isolation: "inplace", workspace: root },
       );
 
       const diffCode = await runDiff(root, outcome.record.id, { json: true }, io);
@@ -383,7 +383,7 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     });
   }, 20_000);
 
-  it("diff / apply : worktree sans conflit — le diff se retrouve appliqué au dépôt principal", async () => {
+  it("diff / apply: conflict-free worktree — the diff ends up applied to the main repository", async () => {
     await withFakeAgentAsBin("codex", async () => {
       await initGitRepo(root);
       const store = fileTaskStore(root);
@@ -391,11 +391,11 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
         { store, root },
         {
           agentId: "codex",
-          objective: "écrire un fichier en worktree",
+          objective: "write a file in a worktree",
           mode: "write",
           isolation: "worktree",
           workspace: root,
-          context: JSON.stringify({ files: [{ path: "nouveau.txt", content: "contenu\n" }] }),
+          context: JSON.stringify({ files: [{ path: "new.txt", content: "content\n" }] }),
         },
       );
       expect(outcome.record.isolation).toBe("worktree");
@@ -404,13 +404,13 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
       expect(diffCode).toBe(EXIT_OK);
       const diffParsed = JSON.parse(io.stdoutText());
       expect(diffParsed.is_empty).toBe(false);
-      expect(diffParsed.files.map((f: { path: string }) => f.path)).toContain("nouveau.txt");
+      expect(diffParsed.files.map((f: { path: string }) => f.path)).toContain("new.txt");
 
       const io2 = makeIo();
       const applyCode = await runApply(root, outcome.record.id, { json: true }, io2);
       expect(applyCode).toBe(EXIT_OK);
       expect(JSON.parse(io2.stdoutText()).applied).toBe(true);
-      expect(await readFile(join(root, "nouveau.txt"), "utf8")).toBe("contenu\n");
+      expect(await readFile(join(root, "new.txt"), "utf8")).toBe("content\n");
 
       const record = await fileTaskStore(root).get(outcome.record.id);
       expect(record?.applied_at).toBeDefined();
@@ -418,7 +418,7 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     });
   }, 20_000);
 
-  it("apply : rapporte les conflits sans les masquer (code 1)", async () => {
+  it("apply: reports the conflicts without masking them (code 1)", async () => {
     await withFakeAgentAsBin("codex", async () => {
       await initGitRepo(root);
       const store = fileTaskStore(root);
@@ -426,16 +426,16 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
         { store, root },
         {
           agentId: "codex",
-          objective: "modifie a.txt en worktree",
+          objective: "modify a.txt in a worktree",
           mode: "write",
           isolation: "worktree",
           workspace: root,
-          context: JSON.stringify({ files: [{ path: "a.txt", content: "hello\nbranche agent\n" }] }),
+          context: JSON.stringify({ files: [{ path: "a.txt", content: "hello\nagent branch\n" }] }),
         },
       );
 
-      // Le dépôt principal diverge sur la même ligne pendant que l'agent travaille.
-      await writeFile(join(root, "a.txt"), "hello\nbranche principale\n", "utf8");
+      // The main repository diverges on the same line while the agent works.
+      await writeFile(join(root, "a.txt"), "hello\nmain branch\n", "utf8");
       await git(root, ["add", "a.txt"]);
       await git(root, ["commit", "-q", "-m", "diverge"]);
 
@@ -447,9 +447,9 @@ describe("caesar logs / cancel / diff / apply — sur un store peuplé par de vr
     });
   }, 20_000);
 
-  it("diff / apply : tâche inconnue traitée proprement", async () => {
-    expect(await runDiff(root, "t_fantome", {}, io)).toBe(EXIT_USAGE);
+  it("diff / apply: unknown task handled cleanly", async () => {
+    expect(await runDiff(root, "t_ghost", {}, io)).toBe(EXIT_USAGE);
     const io2 = makeIo();
-    expect(await runApply(root, "t_fantome", {}, io2)).toBe(EXIT_USAGE);
+    expect(await runApply(root, "t_ghost", {}, io2)).toBe(EXIT_USAGE);
   });
 });

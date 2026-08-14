@@ -13,66 +13,66 @@ async function mount(state = makeState(), size = { width: 100, height: 30 }) {
 }
 
 describe("PolicyScreen", () => {
-  it("nomme chaque réglage en français plutôt que par sa clé TOML", async () => {
+  it("names each setting in plain language rather than by its TOML key", async () => {
     const setup = await mount();
     const frame = setup.captureCharFrame();
-    // Le défaut que cet écran corrige : « max_parallel », « allow_recursion »
-    // et « max_depth » s'affichaient tels quels, sans qu'un mot dise ce qu'ils
-    // font. Un réglage qu'on ne comprend pas ne se règle pas.
-    expect(frame).toContain("Tâches en parallèle");
-    expect(frame).toContain("Délégation récursive");
-    expect(frame).toContain("Agents refusés");
-    expect(frame).toContain("l'emporte toujours sur");
+    // The defect this screen fixes: "max_parallel", "allow_recursion" and
+    // "max_depth" were displayed as-is, without a word saying what they do.
+    // A setting one does not understand does not get adjusted.
+    expect(frame).toContain("Parallel tasks");
+    expect(frame).toContain("Recursive delegation");
+    expect(frame).toContain("Denied agents");
+    expect(frame).toContain("always wins over");
     setup.renderer.destroy();
   });
 
-  it("explique le réglage sélectionné, et la clé TOML correspondante", async () => {
+  it("explains the selected setting, and the matching TOML key", async () => {
     const setup = await mount();
-    // Sélection initiale : le premier réglage de la liste.
-    expect(setup.captureCharFrame()).toContain("Ce qu'une tâche fait à défaut");
+    // Initial selection: the first setting in the list.
+    expect(setup.captureCharFrame()).toContain("What a task does when unspecified");
     expect(setup.captureCharFrame()).toContain("default_mode");
 
-    // Descendre change l'explication — elle suit la sélection.
+    // Moving down changes the explanation — it follows the selection.
     // default_mode, default_isolation, default_network, default_timeout_ms,
-    // max_parallel, max_depth, allow_recursion : six crans jusqu'à la
-    // récursion (FIELDS, PolicyScreen.tsx).
+    // max_parallel, max_depth, allow_recursion: six notches down to the
+    // recursion setting (FIELDS, PolicyScreen.tsx).
     for (let i = 0; i < 6; i++) await act(async () => setup.mockInput.pressKey("j"));
     await act(async () => setup.renderOnce());
     const frame = setup.captureCharFrame();
     expect(frame).toContain("allow_recursion");
-    // Fragment court : l'explication est repliée sur deux lignes, une phrase
-    // entière tomberait à cheval sur la coupure.
-    expect(frame).toContain("déléguer à Claude");
+    // Short fragment: the explanation is wrapped over two lines, a whole
+    // sentence would fall astride the break.
+    expect(frame).toContain("delegating to Claude");
     setup.renderer.destroy();
   });
 
-  it("l'explication ne décale pas les réglages qui la suivent", async () => {
-    // Rendue en ligne, elle poussait vers le bas tous les champs suivants dès
-    // qu'elle apparaissait : descendre d'un cran faisait sauter la liste
-    // entière. Sa place est réservée en pied de panneau, donc les libellés
-    // restent aux mêmes lignes quelle que soit la sélection.
+  it("the explanation does not shift the settings that follow it", async () => {
+    // Rendered inline, it pushed every following field down as soon as it
+    // appeared: moving down one notch made the whole list jump. Its room
+    // is reserved at the foot of the panel, so the labels stay on the same
+    // lines whatever the selection.
     const setup = await mount();
     const lineOf = (frame: string, label: string): number => frame.split("\n").findIndex((line) => line.includes(label));
 
-    const before = lineOf(setup.captureCharFrame(), "Agents refusés");
+    const before = lineOf(setup.captureCharFrame(), "Denied agents");
     await act(async () => setup.mockInput.pressKey("j"));
     await act(async () => setup.renderOnce());
-    expect(lineOf(setup.captureCharFrame(), "Agents refusés")).toBe(before);
+    expect(lineOf(setup.captureCharFrame(), "Denied agents")).toBe(before);
     setup.renderer.destroy();
   });
 
-  it('marque "← global" un champ hérité, jamais un champ que la couche active déclare elle-même', async () => {
+  it('marks an inherited field "← global", never a field the active layer declares itself', async () => {
     const state = makeState();
     state.layers[0] = { ...state.layers[0]!, override: { policy: { max_parallel: 9 } } };
     const setup = await mount(state);
     const frame = setup.captureCharFrame();
     expect(frame).toContain("← global");
-    // max_depth n'est déclaré nulle part : hérité du défaut, une marque différente.
-    expect(frame).toContain("← défaut");
+    // max_depth is declared nowhere: inherited from the default, a different mark.
+    expect(frame).toContain("← default");
     setup.renderer.destroy();
   });
 
-  it('aucune marque quand la couche active ("project") déclare elle-même le champ', async () => {
+  it('no mark when the active layer ("project") declares the field itself', async () => {
     const state = makeState();
     state.layers[0] = { ...state.layers[0]!, override: { policy: { max_parallel: 9 } } };
     state.draft = { policy: { max_parallel: 3 } };
@@ -81,23 +81,23 @@ describe("PolicyScreen", () => {
     setup.renderer.destroy();
   });
 
-  it("expose le réseau par défaut, avec sa clé TOML et ce qu'il fait", async () => {
-    // L'écran est contrôlé : `onChange` est un no-op dans ce harnais, donc
-    // la valeur ne peut pas changer ici. Ce qui se vérifie à ce niveau, c'est
-    // que le réglage existe, se sélectionne, et s'explique — le cycle
-    // lui-même relève de `updatePolicy` (state/config-state.test.ts).
+  it("exposes the default network, with its TOML key and what it does", async () => {
+    // The screen is controlled: `onChange` is a no-op in this harness, so
+    // the value cannot change here. What is verified at this level is that
+    // the setting exists, can be selected, and is explained — the cycling
+    // itself belongs to `updatePolicy` (state/config-state.test.ts).
     const setup = await mount();
-    expect(setup.captureCharFrame()).toContain("Réseau par défaut");
-    // default_mode, default_isolation, default_network : deux crans.
+    expect(setup.captureCharFrame()).toContain("Default network");
+    // default_mode, default_isolation, default_network: two notches.
     for (let i = 0; i < 2; i++) await act(async () => setup.mockInput.pressKey("j"));
     await act(async () => setup.renderOnce());
     const frame = setup.captureCharFrame();
     expect(frame).toContain("default_network");
-    expect(frame).toContain("refuse la délégation si l'agent ne sait pas l'ouvrir");
+    expect(frame).toContain("refuses the delegation if the agent cannot open it");
     setup.renderer.destroy();
   });
 
-  it("aucune ligne ne déborde de la largeur du terminal, si étroit soit-il", async () => {
+  it("no line overflows the terminal width, however narrow it is", async () => {
     for (const width of [70, 100, 180]) {
       const setup = await mount(makeState(), { width, height: 30 });
       for (const line of setup.captureCharFrame().split("\n")) {

@@ -1,7 +1,7 @@
 {
   "name": "@caesar/cli",
   "version": "0.1.0",
-  "description": "CLI de configuration et de supervision de l'orchestrateur",
+  "description": "CLI for configuring and supervising the orchestrator",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

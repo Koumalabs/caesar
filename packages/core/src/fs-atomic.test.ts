@@ -15,53 +15,53 @@ describe("writeFileAtomic", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("écrit le contenu, relisible tel quel", async () => {
-    const path = join(dir, "fichier.txt");
-    await writeFileAtomic(path, "contenu\n");
-    expect(await readFile(path, "utf8")).toBe("contenu\n");
+  it("writes the content, re-readable as-is", async () => {
+    const path = join(dir, "file.txt");
+    await writeFileAtomic(path, "content\n");
+    expect(await readFile(path, "utf8")).toBe("content\n");
   });
 
-  it("remplace un fichier existant, sans laisser de résidu", async () => {
-    const path = join(dir, "fichier.txt");
-    await writeFileAtomic(path, "premier\n");
+  it("replaces an existing file, without leaving residue", async () => {
+    const path = join(dir, "file.txt");
+    await writeFileAtomic(path, "first\n");
     await writeFileAtomic(path, "second\n");
     expect(await readFile(path, "utf8")).toBe("second\n");
-    // Seule la cible finale doit rester dans le répertoire — aucun temporaire abandonné.
-    expect(await readdir(dir)).toEqual(["fichier.txt"]);
+    // Only the final target must remain in the directory — no abandoned temporary.
+    expect(await readdir(dir)).toEqual(["file.txt"]);
   });
 
-  it("crée le répertoire parent manquant, récursivement", async () => {
-    const path = join(dir, "a", "b", "c", "fichier.txt");
-    await writeFileAtomic(path, "profond\n");
-    expect(await readFile(path, "utf8")).toBe("profond\n");
+  it("creates the missing parent directory, recursively", async () => {
+    const path = join(dir, "a", "b", "c", "file.txt");
+    await writeFileAtomic(path, "deep\n");
+    expect(await readFile(path, "utf8")).toBe("deep\n");
   });
 
-  it("n'écrase pas un parent déjà présent (mkdir récursif idempotent)", async () => {
-    await mkdir(join(dir, "existant"), { recursive: true });
-    const path = join(dir, "existant", "fichier.txt");
+  it("does not clobber an already-present parent (idempotent recursive mkdir)", async () => {
+    await mkdir(join(dir, "existing"), { recursive: true });
+    const path = join(dir, "existing", "file.txt");
     await writeFileAtomic(path, "ok\n");
     expect(await readFile(path, "utf8")).toBe("ok\n");
   });
 
-  it("aucun résidu temporaire dans le répertoire après un succès", async () => {
-    const path = join(dir, "sous-dossier", "fichier.txt");
-    await writeFileAtomic(path, "contenu\n");
-    expect(await readdir(join(dir, "sous-dossier"))).toEqual(["fichier.txt"]);
+  it("no temporary residue in the directory after a success", async () => {
+    const path = join(dir, "subfolder", "file.txt");
+    await writeFileAtomic(path, "content\n");
+    expect(await readdir(join(dir, "subfolder"))).toEqual(["file.txt"]);
   });
 
-  it("nomme le temporaire `.<basename>.<uuid>.tmp` — caché, non-.md", async () => {
-    // `path` est lui-même un répertoire existant : `rename` échoue avec
-    // EISDIR (vérifié sur la machine de développement) et laisse le
-    // temporaire en place, observable sans course ni mock.
-    const target = join(dir, "cible-en-dossier");
+  it("names the temporary `.<basename>.<uuid>.tmp` — hidden, non-.md", async () => {
+    // `path` is itself an existing directory: `rename` fails with
+    // EISDIR (verified on the development machine) and leaves the
+    // temporary in place, observable without a race or a mock.
+    const target = join(dir, "target-as-dir");
     await mkdir(target);
 
-    await expect(writeFileAtomic(target, "contenu")).rejects.toThrow();
+    await expect(writeFileAtomic(target, "content")).rejects.toThrow();
 
     const entries = await readdir(dir);
-    const tmp = entries.find((entry) => entry !== "cible-en-dossier");
+    const tmp = entries.find((entry) => entry !== "target-as-dir");
     expect(tmp).toBeDefined();
-    expect(tmp).toMatch(/^\.cible-en-dossier\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/);
+    expect(tmp).toMatch(/^\.target-as-dir\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/);
     expect(tmp).not.toMatch(/\.md$/);
   });
 });

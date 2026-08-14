@@ -1,17 +1,16 @@
 /**
- * Récupération du rapport d'une exécution, selon quatre paliers dégradés, et
- * recoupement de ce que l'agent déclare avoir modifié avec ce que git
- * constate.
+ * Retrieval of a run's report, along four degraded tiers, and
+ * reconciliation of what the agent declares it modified with what git
+ * observes.
  *
- * Le palier 2 (le texte final de l'agent) consulte deux sources dans
- * l'ordre de fiabilité décroissante : d'abord un fichier que le CLI
- * lui-même a déposé (`finalMessageFile`), puis, à défaut, le texte
- * reconstitué en rejouant les traductions ligne à ligne de stdout.
+ * Tier 2 (the agent's final text) consults two sources in decreasing
+ * order of reliability: first a file the CLI itself deposited
+ * (`finalMessageFile`), then, failing that, the text reconstituted by
+ * replaying the line-by-line translations of stdout.
  *
- * C'est le garde-fou central du projet : un agent qui ne respecte aucun
- * contrat de rapport ne fait pas échouer l'orchestrateur, et un agent qui
- * ment sur ses `changes` ne trompe jamais l'appelant plus loin que ce
- * fichier.
+ * This is the project's central safeguard: an agent that respects no
+ * report contract does not make the orchestrator fail, and an agent that
+ * lies about its `changes` never deceives the caller beyond this file.
  */
 import { readFile } from "node:fs/promises";
 import type { Finding, Report, ReportChannel, ReportStatus, Task, TaskPaths } from "@caesar/protocol";
@@ -31,38 +30,39 @@ export async function resolveReport(args: {
   run: RunResult;
   diff?: WorktreeDiff;
   /**
-   * Palier de rapport effectivement retenu pour cette exécution, choisi en
-   * amont par le moteur via `agent.preferredReportChannel`.
+   * Report tier actually retained for this run, chosen upstream by the
+   * engine via `agent.preferredReportChannel`.
    *
-   * Absent des signatures listées au brief de la tâche 4, qui ne donne par
-   * ailleurs aucun autre moyen de faire parvenir cette information jusqu'ici :
-   * sans elle, le palier 2 ne peut pas distinguer un rapport obtenu par le
-   * mécanisme *attendu* (`"schema"`) d'un rapport simplement *retrouvé* dans
-   * le texte final d'un agent censé écrire un fichier et qui ne l'a pas fait
-   * (`"extracted"`) — deux situations que le brief demande pourtant de
-   * distinguer. Extension minimale et documentée, à confirmer en revue.
+   * Absent from the signatures listed in the task 4 brief, which moreover
+   * gives no other way to carry this information down to here: without it,
+   * tier 2 cannot distinguish a report obtained through the *expected*
+   * mechanism (`"schema"`) from a report merely *found* in the final text
+   * of an agent that was supposed to write a file and did not
+   * (`"extracted"`) — two situations the brief nevertheless asks to
+   * distinguish. Minimal and documented extension, to confirm in review.
    */
   reportVia?: ReportChannel;
   /**
-   * Chemin du fichier où le CLI lui-même — et non le modèle sous sandbox —
-   * dépose son message final, quand `agent.capabilities.finalMessageFile`
-   * est vrai (voir `BuildContext.finalMessageFile`, renseigné par le
-   * runner). Plus fiable que `run.finalText`, reconstitué en reformant les
-   * traductions ligne à ligne de stdout : consulté avant lui.
+   * Path of the file where the CLI itself — not the model under sandbox —
+   * deposits its final message, when `agent.capabilities.finalMessageFile`
+   * is true (see `BuildContext.finalMessageFile`, filled in by the
+   * runner). More reliable than `run.finalText`, reconstituted by
+   * reassembling the line-by-line translations of stdout: consulted
+   * before it.
    */
   finalMessageFile?: string;
 }): Promise<ResolvedReport> {
   const { task, paths, run, diff, reportVia, finalMessageFile } = args;
 
-  // Palier 1 : canal MCP ou contrat de fichier, tous deux écrivant report.json.
+  // Tier 1: MCP channel or file contract, both writing report.json.
   const fromFile = await readReport(paths);
   if (fromFile) {
     return { report: fromFile, source: task.channel ? "channel" : "file" };
   }
 
-  // Palier 2, message final : le CLI a lui-même déposé son dernier message
-  // dans un fichier dédié — plus fiable qu'une reconstitution depuis stdout,
-  // donc consulté en premier.
+  // Tier 2, final message: the CLI itself deposited its last message in a
+  // dedicated file — more reliable than a reconstitution from stdout, so
+  // consulted first.
   if (finalMessageFile) {
     const fileText = await readTextSafe(finalMessageFile);
     if (fileText.trim() !== "") {
@@ -73,7 +73,7 @@ export async function resolveReport(args: {
     }
   }
 
-  // Palier 2, stdout : le dernier texte final non vide de l'agent contient le rapport.
+  // Tier 2, stdout: the agent's last non-empty final text contains the report.
   if (run.finalText) {
     const extracted = extractReportFromText(run.finalText);
     if (extracted) {
@@ -81,23 +81,23 @@ export async function resolveReport(args: {
     }
   }
 
-  // Palier 3 : le rapport est noyé quelque part dans le journal brut complet.
+  // Tier 3: the report is buried somewhere in the complete raw log.
   const rawText = await readTextSafe(paths.rawLog);
   const fromLog = extractReportFromText(rawText);
   if (fromLog) {
     return { report: fromLog, source: "extracted" };
   }
 
-  // Palier 4 : aucun rapport exploitable, on synthétise depuis ce qu'on sait.
+  // Tier 4: no usable report, we synthesize from what we know.
   return { report: synthesize(task, run, diff, rawText), source: "synthesized" };
 }
 
 /**
- * Recoupe les `changes` déclarés par l'agent avec le diff git constaté.
+ * Reconciles the `changes` declared by the agent with the observed git diff.
  *
- * Le diff fait foi : `report.changes` est remplacé par la vérité constatée,
- * et un `finding` nomme chaque divergence — fichier modifié mais non
- * déclaré, ou fichier déclaré mais que git ne voit pas changé.
+ * The diff is the source of truth: `report.changes` is replaced by the
+ * observed truth, and a `finding` names each divergence — a file modified
+ * but not declared, or a file declared but that git does not see changed.
  */
 export function reconcileChanges(report: Report, diff: WorktreeDiff): Report {
   const declared = new Set(report.changes.map((change) => change.path));
@@ -109,9 +109,9 @@ export function reconcileChanges(report: Report, diff: WorktreeDiff): Report {
     if (!declared.has(change.path)) {
       findings.push({
         severity: "medium",
-        title: "Modification non déclarée",
+        title: "Undeclared change",
         file: change.path,
-        detail: `Le diff git montre "${change.path}" (${change.action}) alors que l'agent ne l'a pas mentionné dans son rapport.`,
+        detail: `The git diff shows "${change.path}" (${change.action}) even though the agent did not mention it in its report.`,
       });
     }
   }
@@ -120,9 +120,9 @@ export function reconcileChanges(report: Report, diff: WorktreeDiff): Report {
     if (!actual.has(change.path)) {
       findings.push({
         severity: "medium",
-        title: "Modification déclarée mais introuvable dans le diff",
+        title: "Change declared but not found in the diff",
         file: change.path,
-        detail: `L'agent déclare avoir modifié "${change.path}" (${change.action}), mais git ne voit aucun changement sur ce fichier.`,
+        detail: `The agent declares it modified "${change.path}" (${change.action}), but git sees no change to that file.`,
       });
     }
   }
@@ -169,7 +169,7 @@ function buildSummary(run: RunResult, rawText: string): string {
     .filter((line) => line !== "")
     .slice(-5);
   if (usefulLines.length > 0) {
-    return `Aucun rapport reçu ; dernières lignes du journal : ${usefulLines.join(" | ")}`;
+    return `No report received; last log lines: ${usefulLines.join(" | ")}`;
   }
-  return "Aucun rapport reçu de l'agent, et le journal ne contient rien d'exploitable.";
+  return "No report received from the agent, and the log contains nothing usable.";
 }

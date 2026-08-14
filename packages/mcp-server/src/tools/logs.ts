@@ -1,8 +1,7 @@
 /**
- * `caesar_logs` : un extrait des événements normalisés d'une tâche, ou de la
- * sortie brute de son CLI — le détail que `caesar_status`/`caesar_await` gardent
- * volontairement hors de leurs réponses, pour rester compacts (voir le
- * brief de la tâche 7).
+ * `caesar_logs`: an excerpt of a task's normalized events, or of its CLI's
+ * raw output — the detail that `caesar_status`/`caesar_await` deliberately
+ * keep out of their responses, to stay compact (see the task 7 brief).
  */
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
@@ -15,7 +14,7 @@ import { errorResult, jsonResult } from "./result.js";
 export const CAESAR_LOGS = "caesar_logs";
 
 const DEFAULT_EVENT_LIMIT = 50;
-/** Nombre de caractères conservés en fin de journal brut, en mode `raw`. */
+/** Number of characters kept at the tail of the raw log, in `raw` mode. */
 const RAW_TAIL_CHARS = 20_000;
 
 export const caesarLogsDescription =
@@ -49,7 +48,7 @@ async function readTextSafe(path: string): Promise<string> {
 
 export async function caesarLogs(session: McpSession, input: CaesarLogsInput): Promise<CallToolResult> {
   const record = await session.store.get(input.task_id);
-  if (!record) return errorResult(`Tâche inconnue : "${input.task_id}".`);
+  if (!record) return errorResult(`Unknown task: "${input.task_id}".`);
   const paths = taskPaths(record.task_dir);
 
   if (input.raw) {

@@ -1,6 +1,7 @@
 /**
- * `caesar protocol schema [task|report|event]` : publie le JSON Schema du
- * standard `@caesar/protocol`. Sans argument, liste les documents disponibles.
+ * `caesar protocol schema [task|report|event]`: publishes the JSON Schema
+ * of the `@caesar/protocol` standard. Without an argument, lists the
+ * available documents.
  */
 import type { SchemaName } from "@caesar/protocol";
 import { jsonSchemaFor, strictReportJsonSchema } from "@caesar/protocol";
@@ -22,12 +23,12 @@ export async function runProtocolSchema(name: string | undefined, options: Proto
   }
 
   if (!DOCUMENTS.includes(name as SchemaName)) {
-    printError(io, `Document inconnu : "${name}" (attendu l'un de : ${DOCUMENTS.join(", ")}).`);
+    printError(io, `Unknown document: "${name}" (expected one of: ${DOCUMENTS.join(", ")}).`);
     return EXIT_USAGE;
   }
 
   if (options.strict && name !== "report") {
-    printError(io, '--strict n\'est disponible que pour "report".');
+    printError(io, '--strict is only available for "report".');
     return EXIT_USAGE;
   }
 

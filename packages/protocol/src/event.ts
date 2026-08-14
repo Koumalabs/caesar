@@ -3,28 +3,28 @@ import { EVENT_PROTOCOL } from "./version.js";
 import { ReportStatusSchema } from "./report.js";
 
 /**
- * Champs communs à tout événement. Chaque ligne de `events.jsonl` se suffit à
- * elle-même : un consommateur peut lire le journal par la fin sans état préalable.
+ * Fields common to every event. Each line of `events.jsonl` stands on its
+ * own: a consumer can read the log from the end with no prior state.
  */
 const base = z.object({
   protocol: z.literal(EVENT_PROTOCOL),
-  /** Numéro d'ordre croissant, propre à la tâche. */
+  /** Increasing sequence number, scoped to the task. */
   seq: z.number().int().nonnegative(),
   at: z.iso.datetime(),
   task_id: z.string(),
 });
 
 /**
- * Le vocabulaire commun vers lequel chaque adaptateur traduit le flux JSON de
- * son CLI. C'est ce qui rend les providers interchangeables vus de l'agent
- * principal : un événement `tool_use` a le même sens qu'il vienne de Codex ou
- * d'Antigravity.
+ * The common vocabulary into which each adapter translates its CLI's JSON
+ * stream. It is what makes providers interchangeable as seen from the main
+ * agent: a `tool_use` event means the same thing whether it comes from Codex
+ * or from Antigravity.
  */
 export const EventSchema = z.discriminatedUnion("type", [
   base.extend({
     type: z.literal("started"),
     agent: z.string(),
-    /** Ligne de commande réellement exécutée, utile au diagnostic. */
+    /** Command line actually executed, useful for diagnosis. */
     command: z.string().default(""),
   }),
   base.extend({
@@ -41,18 +41,19 @@ export const EventSchema = z.discriminatedUnion("type", [
     input_summary: z.string().default(""),
     status: z.enum(["started", "succeeded", "failed"]).default("started"),
     /**
-     * Identifiant de l'appel d'outil chez l'agent, quand son flux en fournit
-     * un — `item_1` chez codex, `write_0` chez opencode, `toolu_…` chez
-     * claude. Sert à apparier le « démarré » et le « terminé » d'un même
-     * appel : sans lui, il faut recouper sur (nom, résumé), ce qui confond
-     * deux exécutions identiques de la même commande.
+     * Identifier of the tool call on the agent's side, when its stream
+     * provides one — `item_1` for codex, `write_0` for opencode, `toolu_…`
+     * for claude. Used to pair the "started" and the "finished" of one and
+     * the same call: without it, you have to reconcile on (name, summary),
+     * which conflates two identical executions of the same command.
      *
-     * Il est parfois le *seul* moyen : claude annonce la fin d'un outil dans
-     * un bloc `tool_result` qui ne porte que `tool_use_id`, jamais le nom de
-     * l'outil — et `translate` est sans état, par contrat. L'événement de
-     * fermeture arrive donc avec `tool` vide et cet identifiant seul.
+     * It is sometimes the *only* way: claude announces the end of a tool in
+     * a `tool_result` block that carries only `tool_use_id`, never the name
+     * of the tool — and `translate` is stateless, by contract. The closing
+     * event therefore arrives with an empty `tool` and this identifier alone.
      *
-     * Défaut vide : les `events.jsonl` écrits avant ce champ se relisent.
+     * Empty default: `events.jsonl` files written before this field remain
+     * readable.
      */
     id: z.string().default(""),
   }),
@@ -94,7 +95,7 @@ export type CaesarEvent = z.infer<typeof EventSchema>;
 export type CaesarEventInput = z.input<typeof EventSchema>;
 export type CaesarEventType = CaesarEvent["type"];
 
-/** Construit un événement en remplissant les champs communs. */
+/** Builds an event, filling in the common fields. */
 export function makeEvent<T extends CaesarEventInput["type"]>(
   taskId: string,
   seq: number,

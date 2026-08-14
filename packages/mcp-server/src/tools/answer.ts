@@ -1,11 +1,11 @@
 /**
- * `caesar_answer` : répond à une question qu'un sous-agent a posée en cours de
- * route via son tool `ask_orchestrator` (canal retour, `@caesar/mcp-channel`)
- * — voir le brief de la tâche 9. Écrit `<taskDir>/answers/<question_id>.json`
- * (le fichier que `ask_orchestrator` scrute, via `writeAnswer` de
- * `@caesar/mcp-channel` — même primitive des deux côtés du canal, pour ne
- * jamais faire diverger le format ni les règles "question inconnue"/"déjà
- * répondue") et émet un événement `answer` dans `events.jsonl`.
+ * `caesar_answer`: answers a question a subagent asked mid-run via its
+ * `ask_orchestrator` tool (return channel, `@caesar/mcp-channel`) — see the
+ * task 9 brief. Writes `<taskDir>/answers/<question_id>.json` (the file
+ * `ask_orchestrator` polls, via `writeAnswer` from `@caesar/mcp-channel` —
+ * the same primitive on both ends of the channel, so the format and the
+ * "unknown question"/"already answered" rules can never diverge) and emits
+ * an `answer` event in `events.jsonl`.
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -35,12 +35,12 @@ const CaesarAnswerInputSchema = z.object(caesarAnswerInputShape);
 export type CaesarAnswerInput = z.infer<typeof CaesarAnswerInputSchema>;
 
 /**
- * Prochain numéro d'ordre pour un événement — `seq` ne sert qu'à l'affichage
- * (`caesar logs`), jamais à trier ni à dédupliquer (voir
- * `packages/protocol/src/event.ts`). Même méthode, dupliquée faute d'un
- * point d'export commun, côté `ask_orchestrator`/`report_progress`
- * (`@caesar/mcp-channel`), qui écrit sur ce même journal depuis l'autre bout
- * du canal.
+ * Next sequence number for an event — `seq` is only used for display
+ * (`caesar logs`), never for sorting or deduplication (see
+ * `packages/protocol/src/event.ts`). Same method, duplicated for lack of a
+ * shared export point, on the `ask_orchestrator`/`report_progress` side
+ * (`@caesar/mcp-channel`), which writes to this same log from the other end
+ * of the channel.
  */
 async function nextSeq(paths: TaskPaths): Promise<number> {
   const events = await readEvents(paths);
@@ -49,7 +49,7 @@ async function nextSeq(paths: TaskPaths): Promise<number> {
 
 export async function caesarAnswer(session: McpSession, input: CaesarAnswerInput): Promise<CallToolResult> {
   const record = await session.store.get(input.task_id);
-  if (!record) return errorResult(`Tâche inconnue : "${input.task_id}".`);
+  if (!record) return errorResult(`Unknown task: "${input.task_id}".`);
 
   const result = await writeAnswer(record.task_dir, {
     id: input.question_id,
@@ -59,9 +59,9 @@ export async function caesarAnswer(session: McpSession, input: CaesarAnswerInput
 
   if (!result.ok) {
     if (result.reason === "unknown_question") {
-      return errorResult(`Question inconnue : "${input.question_id}" pour la tâche "${input.task_id}".`);
+      return errorResult(`Unknown question: "${input.question_id}" for task "${input.task_id}".`);
     }
-    return errorResult(`La question "${input.question_id}" (tâche "${input.task_id}") a déjà reçu une réponse.`);
+    return errorResult(`Question "${input.question_id}" (task "${input.task_id}") has already been answered.`);
   }
 
   const paths = taskPaths(record.task_dir);

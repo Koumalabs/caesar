@@ -2,15 +2,15 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Exécutable autonome produit par scripts/build-binary.sh (tâche 12)
+# Standalone executable produced by scripts/build-binary.sh (task 12)
 /dist-bin/
 
-# État runtime de l'orchestrateur : tâches, worktrees, logs
+# Orchestrator runtime state: tasks, worktrees, logs
 .caesar/tasks/
 .caesar/wt/
 .caesar/state/
 
-# Artefacts de pilotage du développement par sous-agents
+# Artifacts from sub-agent-driven development
 .superpowers/
 
 .DS_Store

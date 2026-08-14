@@ -1,115 +1,115 @@
 # caesar
 
-Un orchestrateur qui permet à un agent de code — typiquement Claude Code — de déléguer des tâches à des sous-agents **externes** (Codex, Antigravity, OpenCode, Copilot, ou même une autre instance de Claude Code) exécutés comme de simples processus CLI, exactement comme il déléguerait à un sous-agent natif.
+An orchestrator that lets a coding agent — typically Claude Code — delegate tasks to **external** sub-agents (Codex, Antigravity, OpenCode, Copilot, or even another Claude Code instance) run as plain CLI processes, exactly the way it would delegate to a native sub-agent.
 
-Le problème qu'il résout : chaque CLI d'agent de code a sa propre façon de recevoir une mission, de rendre un compte rendu, de signaler qu'il a besoin d'une précision. Sans couche commune, comparer deux providers sur la même tâche, ou simplement fiabiliser un aller-retour avec l'un d'eux, veut dire réapprendre son format à chaque fois — et croire sur parole ce qu'il prétend avoir modifié. `caesar` normalise ce cycle : un standard de communication commun (`docs/protocol.md`), un moteur qui isole chaque tâche sur un worktree git jetable, et un recoupement systématique entre ce que l'agent déclare et ce que `git diff` constate — le diff fait foi, jamais la seule déclaration de l'agent.
+The problem it solves: every coding-agent CLI has its own way of receiving a mission, returning a report, and signaling that it needs a clarification. Without a common layer, comparing two providers on the same task, or simply making a round-trip with one of them reliable, means relearning its format every time — and taking its word for what it claims to have modified. `caesar` normalizes that cycle: a common communication standard (`docs/protocol.md`), an engine that isolates each task on a disposable git worktree, and a systematic reconciliation between what the agent declares and what `git diff` observes — the diff is the source of truth, never the agent's claim alone.
 
-Ce dépôt livre un CLI (`caesar`), un serveur MCP à dix tools pour piloter tout ça depuis Claude Code (ou tout autre client MCP), un TUI de configuration, et une skill `caesar` multi-runtime accompagnée de cinq commandes — ce que `caesar init` dépose chez l'agent principal (Claude Code, Codex, Copilot CLI, OpenCode, Antigravity CLI) pour qu'il sache diriger `caesar` plutôt que l'exécuter lui-même (voir « [Usage depuis Claude Code](#usage-depuis-claude-code) »).
+This repository ships a CLI (`caesar`), a ten-tool MCP server to drive all of it from Claude Code (or any other MCP client), a configuration TUI, and a multi-runtime `caesar` skill accompanied by five commands — what `caesar init` deposits with the main agent (Claude Code, Codex, Copilot CLI, OpenCode, Antigravity CLI) so it knows how to direct `caesar` rather than execute it itself (see "[Using from Claude Code](#using-from-claude-code)").
 
-## Agents pris en charge
+## Supported agents
 
-| Agent | Identifiant | Binaire attendu | Mode headless | Réseau |
+| Agent | Identifier | Expected binary | Headless mode | Network |
 |---|---|---|---|---|
-| Codex | `codex` | `codex` | `codex exec --json -s <read-only\|workspace-write> …` | en écriture seule |
-| Antigravity CLI | `antigravity` | `agy` | `agy --print <prompt> --output-format stream-json --mode <plan\|accept-edits> …` | ouvert |
-| OpenCode | `opencode` | `opencode` | `opencode run --format json --dir <workspace> …` | ouvert |
-| GitHub Copilot CLI | `copilot` | `copilot` | `copilot --prompt <prompt> --output-format json --no-color --log-level none …` | pilotable |
-| Claude Code | `claude` | `claude` | `claude --print <prompt> --output-format stream-json --verbose --permission-mode <plan\|acceptEdits> …` | ouvert |
+| Codex | `codex` | `codex` | `codex exec --json -s <read-only\|workspace-write> …` | write mode only |
+| Antigravity CLI | `antigravity` | `agy` | `agy --print <prompt> --output-format stream-json --mode <plan\|accept-edits> …` | open |
+| OpenCode | `opencode` | `opencode` | `opencode run --format json --dir <workspace> …` | open |
+| GitHub Copilot CLI | `copilot` | `copilot` | `copilot --prompt <prompt> --output-format json --no-color --log-level none …` | controllable |
+| Claude Code | `claude` | `claude` | `claude --print <prompt> --output-format stream-json --verbose --permission-mode <plan\|acceptEdits> …` | open |
 
-Le détail complet des flags (schéma de sortie natif, canal MCP, modèle, répertoires additionnels…) est dans `packages/core/src/adapters/*.ts`, un fichier par agent — chaque flag y a été vérifié par `--help` sur une machine réelle, aucun n'est inventé.
+The full flag details (native output schema, MCP channel, model, additional directories…) live in `packages/core/src/adapters/*.ts`, one file per agent — every flag there was verified with `--help` on a real machine, none is invented.
 
-La colonne **Réseau** dit ce que `caesar` sait *piloter*, et non ce dont l'agent est capable — la distinction compte. « Ouvert » signifie que nos arguments ne passent aucun confinement, donc que nous ne saurions pas le refermer. « Pilotable » : nous savons l'ouvrir dans les deux modes (`copilot --allow-all-urls`, distinct de `--allow-all-tools`, qui ne couvre pas les URL). « En écriture seule » : le bac à sable de `codex` n'expose son réglage réseau que sous `sandbox_workspace_write` — en `-s read-only`, le réseau est coupé sans recours.
+The **Network** column says what `caesar` knows how to *control*, not what the agent is capable of — the distinction matters. "Open" means our arguments pass through no confinement, so we would not know how to close it. "Controllable": we know how to open it in both modes (`copilot --allow-all-urls`, distinct from `--allow-all-tools`, which does not cover URLs). "Write mode only": the `codex` sandbox only exposes its network setting under `sandbox_workspace_write` — with `-s read-only`, the network is cut with no recourse.
 
-C'est la raison d'être du réglage `network`, disponible à trois niveaux (politique, rôle, tâche) et tri-état :
+This is the raison d'être of the `network` setting, available at three levels (policy, role, task) and tri-state:
 
 ```bash
-caesar run --agent codex --mode write "installe la dépendance manquante"   # auto : ouvert, ici c'est possible
-caesar run --agent codex --mode read-only --network on "…"                 # refusé, avec le motif et le remède
-caesar run --agent codex --mode write --network off "…"                    # réseau coupé explicitement
+caesar run --agent codex --mode write "install the missing dependency"   # auto: open, possible here
+caesar run --agent codex --mode read-only --network on "…"               # refused, with the reason and the remedy
+caesar run --agent codex --mode write --network off "…"                  # network explicitly cut
 ```
 
-- `auto` (défaut) — ouvre le réseau partout où l'agent choisi le permet ; ailleurs, la tâche part quand même et le rapport porte un constat `info`. C'est ce qui permet aux rôles `reviewer` et `investigator`, en lecture seule sur codex, de continuer à tourner.
-- `on` — **fait échouer la délégation** si l'agent ne peut pas fournir le réseau, avant tout lancement et sans laisser de répertoire de tâche. À préférer dès que l'objectif est impossible sans réseau : un refus net vaut mieux qu'un sous-agent qui épuise son budget sur une installation vouée à l'échec.
-- `off` — ferme là où c'est possible. Là où ça ne l'est pas, `caesar` le dit plutôt que d'annoncer une garantie qu'il n'a pas.
+- `auto` (default) — opens the network wherever the chosen agent allows it; elsewhere, the task still launches and the report carries an `info` finding. This is what lets the `reviewer` and `investigator` roles, read-only on codex, keep running.
+- `on` — **fails the delegation** if the agent cannot provide the network, before any launch and without leaving a task directory behind. Prefer it whenever the objective is impossible without the network: a clean refusal beats a sub-agent burning its budget on an install doomed to fail.
+- `off` — closes it where possible. Where it is not, `caesar` says so rather than announcing a guarantee it does not have.
 
-Quand — et seulement quand — `caesar` sait le réseau coupé, il l'écrit dans le brief de l'agent, pour lui éviter d'y user ses tours.
+When — and only when — `caesar` knows the network is cut, it writes it into the agent's brief, to spare it wasting its turns on it.
 
-Un mot sur `claude` : il figure au catalogue (déléguer d'une instance de Claude Code à une autre a du sens — relecture croisée, par exemple), mais la politique par défaut le refuse (`allow_recursion: false`) précisément parce que c'est le cas le plus susceptible de tourner en boucle. `caesar agents enable claude` ou `caesar policy allow claude` lève ce refus explicitement, si besoin.
+A word on `claude`: it is in the catalog (delegating from one Claude Code instance to another makes sense — cross-review, for example), but the default policy refuses it (`allow_recursion: false`) precisely because it is the case most likely to loop. `caesar agents enable claude` or `caesar policy allow claude` lifts that refusal explicitly, if needed.
 
-## Installation et premiers pas
+## Installation and first steps
 
-Monorepo pnpm, Node 24. Pas encore publié sur npm : on l'utilise depuis une copie du dépôt, en ciblant avec `--root` le projet où vous voulez déléguer des tâches.
+pnpm monorepo, Node 24. Not yet published on npm: you use it from a checkout of the repository, targeting with `--root` the project where you want to delegate tasks.
 
 ```bash
 pnpm install
-pnpm exec tsc -b        # build de tous les packages
+pnpm exec tsc -b        # builds all packages
 
-pnpm run caesar init   --root <chemin-vers-votre-projet>   # crée <projet>/.caesar/config.toml + les prompts système + dépose la skill et les commandes des runtimes détectés
-pnpm run caesar doctor --root <chemin-vers-votre-projet>   # quels agents sont installés, avec quelles capacités, autorisés ou non
+pnpm run caesar init   --root <path-to-your-project>   # creates <project>/.caesar/config.toml + the system prompts + deposits the skill and commands for detected runtimes
+pnpm run caesar doctor --root <path-to-your-project>   # which agents are installed, with which capabilities, allowed or not
 ```
 
-`pnpm run caesar <commande>` est le script `caesar` du `package.json` **racine de ce dépôt** (`node packages/cli/dist/bin.js`) : il s'exécute depuis ici, jamais depuis le projet cible lui-même — d'où `--root <chemin-vers-votre-projet>` pour lui dire où agir. Tapé depuis un répertoire qui n'est pas une copie de ce dépôt, `pnpm run caesar …` échoue immédiatement (`ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND`) : ce script n'existe que dans le `package.json` racine de ce monorepo, nulle part ailleurs.
+`pnpm run caesar <command>` is the `caesar` script in **this repository's root** `package.json` (`node packages/cli/dist/bin.js`): it runs from here, never from the target project itself — hence `--root <path-to-your-project>` to tell it where to act. Typed from a directory that is not a checkout of this repository, `pnpm run caesar …` fails immediately (`ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND`): this script exists only in this monorepo's root `package.json`, nowhere else.
 
-`caesar doctor` inspecte le catalogue et croise avec la politique effective. Exemple réel, sur une machine où les cinq agents sont installés :
+`caesar doctor` inspects the catalog and cross-checks it against the effective policy. Real example, on a machine where all five agents are installed:
 
 ```
 $ caesar doctor
 ▞▚ caesar · doctor ───────────────────────────────────────────────────────────────
 
 ╭─────────────┬─────────────────────────┬──────────────────────────┬───────────╮
-│ agent       │ version                 │ capacités                │ politique │
+│ agent       │ version                 │ capabilities             │ policy    │
 ├─────────────┼─────────────────────────┼──────────────────────────┼───────────┤
-│ codex       │ codex-cli 0.147.0       │ net(w) ro schéma msg re… │ autorisé  │
-│ antigravity │ 1.1.12                  │ net ro schéma reprise d… │ autorisé  │
-│ opencode    │ 1.18.16                 │ net reprise modèle mcp   │ autorisé  │
-│ copilot     │ GitHub Copilot CLI 1.0… │ net± ro reprise dirs mo… │ refusé    │
-│ claude      │ 2.1.227 (Claude Code)   │ net ro reprise dirs mod… │ refusé    │
+│ codex       │ codex-cli 0.147.0       │ net(w) ro schema msg re… │ allowed   │
+│ antigravity │ 1.1.12                  │ net ro schema resume di… │ allowed   │
+│ opencode    │ 1.18.16                 │ net resume model mcp     │ allowed   │
+│ copilot     │ GitHub Copilot CLI 1.0… │ net± ro resume dirs mod… │ denied    │
+│ claude      │ 2.1.227 (Claude Code)   │ net ro resume dirs mode… │ denied    │
 ╰─────────────┴─────────────────────────┴──────────────────────────┴───────────╯
 
-REFUSÉS PAR LA POLITIQUE
-État voulu, sauf si vous en décidez autrement.
-  - "copilot" : Agent "copilot" refusé : présent dans la liste "denied" de la
-    politique. Autorisez-le avec "caesar agents enable copilot --global".
-  - "claude" : Agent "claude" refusé : allow_recursion est désactivé (déléguer à
-    Claude depuis Claude Code serait une récursion). Activez "allow_recursion"
-    (onglet Politique du TUI "caesar config", ou éditez .caesar/config.toml — aucune
-    sous-commande dédiée aujourd'hui).
+DENIED BY POLICY
+Intended state, unless you decide otherwise.
+  - "copilot": Agent "copilot" denied: present in the policy's "denied" list.
+    Allow it with "caesar agents enable copilot --global".
+  - "claude": Agent "claude" denied: allow_recursion is disabled (delegating to
+    Claude from Claude Code would be recursion). Enable "allow_recursion"
+    (Policy tab of the "caesar config" TUI, or edit .caesar/config.toml — no
+    dedicated subcommand today).
 ```
 
-`autorisé` s'y lit en vert et `refusé` en rouge : voir « [Le thème](#le-thème) » pour ce que la couleur porte, et pour ce qui se passe quand elle n'est pas disponible. `--verbose` ajoute le chemin du binaire et les capacités en toutes lettres.
+`allowed` reads there in green and `denied` in red: see "[The theme](#the-theme)" for what the color carries, and for what happens when it is not available. `--verbose` adds the binary's path and the capabilities spelled out in full.
 
-`packages/cli/package.json` déclare aussi un binaire `caesar` (`bin: { caesar: "./dist/bin.js" }`) : une fois publié, ou lié dans vos propres projets par les moyens habituels de pnpm, `caesar <commande>` fonctionne directement sur le `PATH`, lancé **depuis le projet cible** — plus besoin de `--root` ni de revenir dans ce dépôt, `resolveRoot` remonte alors automatiquement jusqu'au premier `.caesar/` ou `.git/` trouvé depuis le répertoire courant. **C'est le cas que suppose le reste de ce document** (`caesar <commande>`, tapé depuis le projet cible) ; substituez `pnpm run caesar <commande> --root <chemin-vers-votre-projet>` si vous travaillez depuis une copie non liée de ce dépôt, comme ci-dessus.
+`packages/cli/package.json` also declares a `caesar` binary (`bin: { caesar: "./dist/bin.js" }`): once published, or linked into your own projects by the usual pnpm means, `caesar <command>` works directly on the `PATH`, launched **from the target project** — no more `--root`, no more coming back to this repository; `resolveRoot` then walks up automatically to the first `.caesar/` or `.git/` found from the current directory. **This is the case the rest of this document assumes** (`caesar <command>`, typed from the target project); substitute `pnpm run caesar <command> --root <path-to-your-project>` if you are working from an unlinked checkout of this repository, as above.
 
-Toute commande accepte `--root <dir>` (racine explicite du projet ; par défaut, recherche automatique de `.caesar/` ou `.git/` en remontant depuis le répertoire courant). La plupart acceptent aussi `--json` (sortie machine, sans couleur ni mise en forme) — deux exceptions : `caesar mcp serve` ne le connaît pas du tout (`unknown option`, cette commande ne doit rien écrire d'autre que le protocole MCP sur stdout) ; `caesar config` le refuse explicitement (TUI interactif, il n'y a pas de sortie machine à produire).
+Every command accepts `--root <dir>` (explicit project root; by default, automatic search for `.caesar/` or `.git/` walking up from the current directory). Most also accept `--json` (machine output, no color and no formatting) — two exceptions: `caesar mcp serve` does not know it at all (`unknown option`, that command must write nothing but the MCP protocol on stdout); `caesar config` refuses it explicitly (interactive TUI, there is no machine output to produce).
 
-## Usage en ligne de commande
+## Command-line usage
 
-`caesar --help` est la carte : les seize commandes y sont groupées par usage — démarrer, déléguer, suivre, configurer, intégrer — plutôt que listées dans leur ordre de déclaration. `caesar <commande> --help` donne le détail d'une seule.
+`caesar --help` is the map: the sixteen commands are grouped there by use — getting started, delegating, following, configuring, integrating — rather than listed in declaration order. `caesar <command> --help` gives the detail of a single one.
 
-`caesar run` est l'aller-retour complet : délègue, attend, rend le rapport. Exemple réel (agent Codex, isolation sur un worktree jetable) :
+`caesar run` is the complete round-trip: delegates, waits, returns the report. Real example (Codex agent, isolation on a disposable worktree):
 
 ```
-$ caesar run --agent codex --isolation worktree "Crée un fichier hello.txt contenant exactement OK"
+$ caesar run --agent codex --isolation worktree "Create a hello.txt file containing exactly OK"
 ▞▚ caesar · run ──────────────────────────────────────────────────────────────────
 
-  ● départ     agent "codex"
-  ▸ outil      shell — wc -c hello.txt && od -An -t x1 hello.txt (started)
-  » agent      Je crée le fichier avec exactement deux octets, sans saut de ligne final.
-  ▸ outil      shell — wc -c hello.txt && od -An -t x1 hello.txt (succeeded)
-  ~ fichier    created hello.txt
+  ● start      agent "codex"
+  ▸ tool       shell — wc -c hello.txt && od -An -t x1 hello.txt (started)
+  » agent      I am creating the file with exactly two bytes, no trailing newline.
+  ▸ tool       shell — wc -c hello.txt && od -An -t x1 hello.txt (succeeded)
+  ~ file       created hello.txt
 
-✓ Tâche t_680818a6 — statut : succeeded (rapport "success" via "schema")
-  Le fichier hello.txt a été créé avec exactement les deux octets « OK », sans saut de ligne final.
+✓ Task t_680818a6 — status: succeeded (report "success" via "schema")
+  The hello.txt file was created with exactly the two bytes "OK", no trailing newline.
 
-Fichiers modifiés (d'après git)
+Files modified (according to git)
   ~ created hello.txt
 
-Isolée dans un worktree : "caesar diff t_680818a6" pour voir le diff, "caesar apply t_680818a6" pour l'intégrer.
+Isolated in a worktree: "caesar diff t_680818a6" to see the diff, "caesar apply t_680818a6" to integrate it.
 ```
 
-L'outil apparaît **dès son départ**, pas seulement à son issue, et ce que l'agent dit s'affiche au fil de l'eau. Le libellé est à largeur fixe pour que les textes s'alignent : la colonne se parcourt d'un coup d'œil, là où des préfixes entre crochets de longueur variable obligeaient à lire chaque début de ligne.
+The tool appears **as soon as it starts**, not only at its end, and what the agent says is displayed as it streams. The label is fixed-width so the texts line up: the column can be scanned at a glance, where variable-length bracketed prefixes forced you to read the start of every line.
 
-En isolation `worktree`, rien ne touche le dépôt principal tant que vous ne l'avez pas décidé :
+Under `worktree` isolation, nothing touches the main repository until you have decided it should:
 
 ```
 $ caesar diff t_680818a6a92047a2b08bb904e46d8427
@@ -123,264 +123,264 @@ index 0000000..a0aba93
 \ No newline at end of file
 
 $ caesar apply t_680818a6a92047a2b08bb904e46d8427
-Tâche "t_680818a6a92047a2b08bb904e46d8427" appliquée au dépôt principal.
+Task "t_680818a6a92047a2b08bb904e46d8427" applied to the main repository.
 ```
 
-`caesar run` accepte `--role <name>` (choisit l'agent via un rôle configuré et sa chaîne de repli — voir `caesar role list`) ou `--agent <id>` (fixe l'agent, l'emporte sur `--role`), `--mode read-only|write`, `--isolation inplace|worktree|auto`, `--timeout 10m`, `--model <id>`, `--context <texte ou @fichier>`, `--network auto|on|off` (voir « Agents pris en charge » ci-dessus), et `--channel` (ouvre le canal retour MCP bidirectionnel : le sous-agent peut poser une question à l'agent principal en cours de route plutôt que de deviner — voir `docs/protocol.md`). Au moins l'un de `--agent`/`--role` est requis.
+`caesar run` accepts `--role <name>` (picks the agent via a configured role and its fallback chain — see `caesar role list`) or `--agent <id>` (fixes the agent, wins over `--role`), `--mode read-only|write`, `--isolation inplace|worktree|auto`, `--timeout 10m`, `--model <id>`, `--context <text or @file>`, `--network auto|on|off` (see "Supported agents" above), and `--channel` (opens the bidirectional MCP return channel: the sub-agent can ask the main agent a question along the way rather than guess — see `docs/protocol.md`). At least one of `--agent`/`--role` is required.
 
-Ce que `caesar` n'expose pas se passe après `--`, tel quel, en fin de ligne de commande de l'agent :
+What `caesar` does not expose goes after `--`, as is, at the end of the agent's command line:
 
 ```bash
 caesar run --agent codex "…" -- --enable feature_x
 ```
 
-Le séparateur est obligatoire : sans lui, un opérande en trop reste une coquille et `caesar` le refuse plutôt que de l'envoyer à l'agent. Volontairement absent du tool MCP `caesar_delegate` — c'est un geste que vous tapez, pas une latitude laissée à l'orchestrateur, qui pourrait sinon élever seul les privilèges d'un sous-agent.
+The separator is mandatory: without it, a stray operand remains a typo and `caesar` refuses it rather than sending it to the agent. Deliberately absent from the `caesar_delegate` MCP tool — it is a gesture you type, not a latitude left to the orchestrator, which could otherwise escalate a sub-agent's privileges on its own.
 
-## L'atelier
+## The workshop
 
-Un worktree git ne contient que les fichiers **suivis**. Les dépendances installées, le `.env`, les répertoires ignorés portant des briefs ou des artefacts n'y sont pas : rien ne s'y installe, rien ne s'y lance, rien ne s'y vérifie. Sur un projet réel, l'isolation devenait un espace vide dans lequel il n'y avait rien à faire — et la contourner par `--isolation inplace` restait la seule issue praticable. C'est ainsi qu'un sous-agent finissait par écrire directement sur la branche de travail de l'utilisateur.
+A git worktree contains only **tracked** files. Installed dependencies, the `.env`, ignored directories carrying briefs or artifacts are not there: nothing installs there, nothing runs there, nothing can be verified there. On a real project, isolation became an empty space with nothing to do in it — and bypassing it with `--isolation inplace` remained the only practicable way out. That is how a sub-agent ended up writing directly onto the user's working branch.
 
-La section `[worktree]` de `.caesar/config.toml` décrit ce qu'il faut emporter pour que le worktree devienne un lieu de travail :
+The `[worktree]` section of `.caesar/config.toml` describes what must be brought along for the worktree to become a place to work:
 
 ```toml
 [worktree]
-copy  = ["node_modules", ".env"]   # recopié — isolé du workspace
-link  = []                         # lié — partagé, donc non isolé
-setup = ["pnpm install --offline"] # lancé dans le worktree, avant l'agent
+copy  = ["node_modules", ".env"]   # copied — isolated from the workspace
+link  = []                         # linked — shared, hence not isolated
+setup = ["pnpm install --offline"] # run in the worktree, before the agent
 ```
 
-`caesar init` la remplit à partir de ce qu'il trouve (`pnpm-lock.yaml`, `Cargo.toml`, `pyproject.toml`, `.env`…), et n'écrit rien s'il ne trouve rien.
+`caesar init` fills it in from what it finds (`pnpm-lock.yaml`, `Cargo.toml`, `pyproject.toml`, `.env`…), and writes nothing if it finds nothing.
 
-**`copy` plutôt que `link`.** Sur un système de fichiers copy-on-write — APFS, Btrfs, XFS — la copie se fait par clone, et ne duplique rien tant que personne n'écrit. Mesuré sur un `node_modules` de 975 Mo (~100 000 fichiers) : **6,3 s et 11 Mo de disque**, contre 15,0 s et 994 Mo pour une copie ordinaire. Ce n'est donc pas gratuit — le parcours de l'arborescence reste à faire — mais c'est le prix d'une isolation réelle, et il se compare à celui du `setup` qu'il évite de relancer. La copie reste une vraie copie du point de vue de l'agent : deux tâches simultanées ne partagent rien, et ce que l'une casse chez elle ne casse rien ailleurs.
+**`copy` rather than `link`.** On a copy-on-write filesystem — APFS, Btrfs, XFS — the copy is done by clone, and duplicates nothing until someone writes. Measured on a 975 MB `node_modules` (~100,000 files): **6.3 s and 11 MB of disk**, versus 15.0 s and 994 MB for an ordinary copy. So it is not free — the tree walk still has to happen — but it is the price of real isolation, and it compares to the cost of the `setup` it avoids re-running. The copy remains a true copy from the agent's point of view: two simultaneous tasks share nothing, and what one breaks at home breaks nothing elsewhere.
 
-`link` existe pour les systèmes de fichiers sans copy-on-write, mais partage le répertoire avec le workspace — le rapport de la tâche le dit alors en toutes lettres.
+`link` exists for filesystems without copy-on-write, but shares the directory with the workspace — the task's report then says so in plain words.
 
-Ce que `caesar` a lui-même posé est retiré du diff : un `.env` recopié n'apparaît ni dans `caesar diff`, ni dans `caesar apply`. Et un chemin déclaré qui ne peut pas être posé — suivi par git, non ignoré, absent — produit un constat nommant la clé à corriger, plutôt qu'une tâche qui échoue sans raison visible.
+What `caesar` itself put in place is removed from the diff: a copied `.env` appears neither in `caesar diff` nor in `caesar apply`. And a declared path that cannot be put in place — tracked by git, not ignored, absent — produces a finding naming the key to fix, rather than a task that fails with no visible reason.
 
-### L'écriture en place est refusée par défaut
+### In-place writing is refused by default
 
-Une tâche en **écriture** qui demande `--isolation inplace` dans un dépôt git utilisable est refusée, en nommant le remède. Ce n'est pas une précaution abstraite : c'est la règle que son absence a rendue nécessaire. Le refus tombe avant qu'aucun répertoire de tâche ne soit créé.
+A **write** task that requests `--isolation inplace` in a usable git repository is refused, naming the remedy. This is not an abstract precaution: it is the rule whose absence made it necessary. The refusal lands before any task directory is created.
 
-Si le worktree paraît incomplet, la réponse est `[worktree]`, jamais `inplace`. Pour les dépôts où le mélange est assumé en connaissance de cause, `allow_inplace_write = true` sous `[policy]` lève l'interdiction — et deux tâches en écriture ne peuvent alors toujours pas partager le même arbre en même temps, leurs diffs deviendraient inattribuables.
+If the worktree seems incomplete, the answer is `[worktree]`, never `inplace`. For repositories where the mixing is knowingly accepted, `allow_inplace_write = true` under `[policy]` lifts the ban — and two write tasks still cannot share the same tree at the same time, their diffs would become unattributable.
 
-Hors dépôt git, ou dans un dépôt sans le moindre commit, aucun worktree n'est possible : `inplace` y reste le seul mode de fonctionnement, et rien n'est refusé.
+Outside a git repository, or in a repository without a single commit, no worktree is possible: `inplace` remains the only mode of operation there, and nothing is refused.
 
-## Tâches simultanées
+## Simultaneous tasks
 
-Plusieurs agents tournent de front, chacun dans son propre atelier (`.caesar/wt/<taskId>`, sur une branche nommée pour être lue — `caesar/<rôle>/<objectif>-<8 car.>`). C'est le mode normal depuis Claude Code : `caesar_delegate` rend la main aussitôt avec un `task_id`, on en lance plusieurs, `caesar_await` récupère les résultats.
+Several agents run at once, each in its own workshop (`.caesar/wt/<taskId>`, on a branch named to be read — `caesar/<role>/<objective>-<8 chars>`). This is the normal mode from Claude Code: `caesar_delegate` hands back immediately with a `task_id`, you launch several, `caesar_await` collects the results.
 
-`policy.max_parallel` (4 par défaut) plafonne le tout — **y compris entre processus**. Six `caesar run` dans six terminaux, plus une conversation Claude Code qui délègue : tous se partagent les mêmes créneaux, matérialisés par des fichiers sous `.caesar/state/slots/`. Un `caesar run` qui ne trouve pas de place attend en le disant, et nomme qui occupe :
+`policy.max_parallel` (4 by default) caps the whole — **across processes included**. Six `caesar run` in six terminals, plus a Claude Code conversation that delegates: all share the same slots, materialized as files under `.caesar/state/slots/`. A `caesar run` that finds no room waits while saying so, and names who is occupying:
 
 ```
 $ caesar run --agent codex "…"
-1 tâche(s) déjà en cours sous ce projet (max_parallel = 1) — en attente d'un créneau. Ctrl-C pour renoncer.
-  · pid 51820 — caesar run — relire le parseur (depuis 2026-08-11T13:42:11.004Z)
+1 task(s) already running under this project (max_parallel = 1) — waiting for a slot. Ctrl-C to give up.
+  · pid 51820 — caesar run — review the parser (since 2026-08-11T13:42:11.004Z)
 ```
 
-Un processus tué (`kill -9`) laisse son fichier-créneau derrière lui : le premier appelant qui trouve tout occupé vérifie chaque détenteur et récupère ceux dont le processus n'existe plus. Une limite qui deviendrait un blocage définitif serait pire que pas de limite du tout.
+A killed process (`kill -9`) leaves its slot file behind: the first caller that finds everything occupied checks each holder and reclaims those whose process no longer exists. A limit that could become a permanent deadlock would be worse than no limit at all.
 
-Il laisse aussi sa tâche en plan. Le statut d'une tâche est écrit par le processus qui la conduit : tué — `kill -9`, session MCP fermée, machine arrêtée — il ne l'écrit jamais, et l'enregistrement reste « en cours » indéfiniment. `caesar ps` et `caesar gc` réconcilient cet état : une tâche dont le marqueur nomme un processus disparu passe en échec, avec un rapport qui dit ce qui s'est passé, et le worktree qu'elle retenait redevient collectable. La preuve est positive — un pid qu'on ne trouve plus — jamais déduite d'une absence : une tâche sans marqueur n'est jamais conclue d'office, et `caesar cancel <id>` reste la sortie manuelle.
+It also leaves its task hanging. A task's status is written by the process conducting it: killed — `kill -9`, MCP session closed, machine shut down — it never writes it, and the record stays "running" indefinitely. `caesar ps` and `caesar gc` reconcile that state: a task whose marker names a vanished process moves to failed, with a report that says what happened, and the worktree it was holding becomes collectable again. The proof is positive — a pid that can no longer be found — never deduced from an absence: a task without a marker is never concluded by default, and `caesar cancel <id>` remains the manual way out.
 
-Deux réserves à connaître. L'attente est une scrutation, pas une file d'attente : entre deux candidats, l'ordre d'entrée n'est pas garanti. Et la reprise d'un créneau mort repose sur le pid, ce qui n'a de sens que sur une seule machine — un `.caesar/` sur un partage réseau, utilisé depuis deux postes, verrait les créneaux de l'autre comme vivants indéfiniment.
+Two caveats to know. The wait is a poll, not a queue: between two candidates, entry order is not guaranteed. And reclaiming a dead slot relies on the pid, which only makes sense on a single machine — a `.caesar/` on a network share, used from two workstations, would see the other's slots as alive indefinitely.
 
-## Regarder les sous-agents travailler
+## Watching the sub-agents work
 
-Une tâche déléguée n'est pas une boîte noire : `caesar watch` ouvre une fenêtre sur ce qui se passe, à côté de la conversation ou du terminal qui a lancé la délégation.
+A delegated task is not a black box: `caesar watch` opens a window onto what is happening, next to the conversation or terminal that launched the delegation.
 
 ```bash
-caesar watch                 # toutes les tâches en cours, image redessinée
-caesar watch t_a1b2 t_c3d4   # seulement celles-ci
-caesar watch --once          # une image, puis sortie
-caesar watch --json          # NDJSON des événements, plusieurs tâches fusionnées
+caesar watch                 # all running tasks, redrawn frame
+caesar watch t_a1b2 t_c3d4   # only these
+caesar watch --once          # one frame, then exit
+caesar watch --json          # NDJSON of the events, several tasks merged
 ```
 
 ```
 ▞▚ caesar · watch   1 active · max_parallel 4                             17:21:20
 
 ● t_efb5914d codex        —            25s  inplace · write
-  Écris trois fichiers a.txt, b.txt et c.txt, puis exécute 'sleep 8 && ls -1'…
+  Write three files a.txt, b.txt and c.txt, then run 'sleep 8 && ls -1'…
   ▸ shell /bin/zsh -lc 'sleep 8 && ls -1' — 3s
-  ~ 3 fichier(s)  ·  11 événement(s)
+  ~ 3 file(s)  ·  11 event(s)
 
-q ou Ctrl-C pour quitter — regarder ne modifie rien.
+q or Ctrl-C to quit — watching modifies nothing.
 ```
 
-Aucun démon n'est nécessaire : le moteur écrit `events.jsonl` **pendant** l'exécution et publie l'état des tâches par des écritures atomiques. `caesar watch` ne fait que lire ce qu'un autre processus écrit — la même propriété qui fait marcher `caesar cancel` et le partage de `max_parallel`.
+No daemon is needed: the engine writes `events.jsonl` **during** execution and publishes task state through atomic writes. `caesar watch` only reads what another process writes — the same property that makes `caesar cancel` and the sharing of `max_parallel` work.
 
-Quatre choses y sont délibérées :
+Four things there are deliberate:
 
-- **Un outil apparaît dès son départ**, pas à son achèvement. C'est toute la différence entre voir partir un `npm install` de trois minutes et le découvrir à la troisième.
-- **Le silence est affiché.** Une tâche bloquée et une tâche qui travaille sont indiscernables sans lui ; au-delà de trente secondes sans le moindre événement, la vue le dit.
-- **Une question en attente passe devant tout le reste.** Un sous-agent qui attend une réponse via le canal retour ressemble exactement à un sous-agent figé.
-- **Les tâches terminées restent visibles** quelques minutes, avec leur statut de rapport : une tâche qui disparaît au moment où elle finit est une tâche dont on ne saura jamais comment elle s'est terminée.
+- **A tool appears as soon as it starts**, not at its completion. That is the whole difference between seeing a three-minute `npm install` set off and discovering it at minute three.
+- **Silence is displayed.** A stuck task and a working task are indistinguishable without it; past thirty seconds without a single event, the view says so.
+- **A pending question jumps ahead of everything else.** A sub-agent waiting for an answer over the return channel looks exactly like a frozen sub-agent.
+- **Finished tasks stay visible** for a few minutes, with their report status: a task that disappears the moment it finishes is a task whose ending you will never know.
 
-Hors terminal (redirection, `| tee`, script), pas de redessin ni de séquences ANSI : une ligne par événement, et `--json` rend du NDJSON exploitable.
+Outside a terminal (redirection, `| tee`, script), no redraw and no ANSI sequences: one line per event, and `--json` yields usable NDJSON.
 
-Ce que chaque agent laisse voir dépend de ce que son CLI raconte, et cela varie beaucoup :
+What each agent lets you see depends on what its CLI narrates, and that varies a lot:
 
-| Agent | Pendant l'exécution |
+| Agent | During execution |
 |---|---|
-| `codex` | départ **et** fin de chaque commande, fichiers modifiés, ses rapports d'étape |
-| `claude` | outils, résultats, texte, et un signal de réflexion en cours |
-| `opencode` | outils (une fois terminés seulement — son flux n'annonce pas leur départ), texte |
-| `antigravity` | son texte au fil de l'eau, ses erreurs ; ses appels d'outils ne sont pas encore traduits |
-| `copilot` | texte, erreurs de session ; ses appels d'outils restent non vérifiés faute de quota disponible |
+| `codex` | start **and** end of every command, modified files, its progress reports |
+| `claude` | tools, results, text, and an in-progress thinking signal |
+| `opencode` | tools (only once finished — its stream does not announce their start), text |
+| `antigravity` | its text as it streams, its errors; its tool calls are not yet translated |
+| `copilot` | text, session errors; its tool calls remain unverified for lack of available quota |
 
-Ces traductions sont écrites d'après des captures réelles, conservées dans `packages/core/test/fixtures/` et rejouées par les tests. Là où une forme n'a pas pu être observée, l'adaptateur le dit en toutes lettres plutôt que de deviner — une branche écrite d'après une convention plausible avait laissé les appels d'outils d'opencode invisibles pendant des mois, tout en passant au vert.
+These translations are written from real captures, kept in `packages/core/test/fixtures/` and replayed by the tests. Where a shape could not be observed, the adapter says so in plain words rather than guessing — a branch written from a plausible convention had left opencode's tool calls invisible for months, while staying green.
 
-Les autres sous-commandes : `caesar ps` (tâches en cours et récentes), `caesar logs <id> [--raw] [--follow]`, `caesar cancel <id>`, `caesar agents list|enable|disable|test` (`test` lance une micro-tâche réelle en lecture seule pour vérifier qu'un agent répond — `--yes` obligatoire, ça consomme son quota), `caesar policy show|allow|deny`, `caesar role list|show|add|remove`, `caesar protocol schema <task|report|event> [--strict]` (publie le standard en JSON Schema). Celles qui modifient (`policy allow|deny`, `agents enable|disable`, `role add|remove`) acceptent `--global`/`--local` pour cibler une autre couche que le projet — voir « Configuration en couches » ci-dessous.
+The other subcommands: `caesar ps` (running and recent tasks), `caesar logs <id> [--raw] [--follow]`, `caesar cancel <id>`, `caesar agents list|enable|disable|test` (`test` launches a real read-only micro-task to verify that an agent responds — `--yes` mandatory, it consumes its quota), `caesar policy show|allow|deny`, `caesar role list|show|add|remove`, `caesar protocol schema <task|report|event> [--strict]` (publishes the standard as JSON Schema). The ones that modify (`policy allow|deny`, `agents enable|disable`, `role add|remove`) accept `--global`/`--local` to target a layer other than the project — see "Layered configuration" below.
 
-## Usage depuis Claude Code
+## Using from Claude Code
 
-Enregistrez le serveur MCP auprès de Claude Code :
-
-```bash
-caesar mcp install claude --root <votre-projet>
-# exécute : claude mcp add caesar -- caesar mcp serve --root <votre-projet>
-```
-
-`caesar mcp install` fonctionne aussi avec `codex`, `copilot`, `opencode` et `antigravity` (installation en sous-commande native pour `claude`/`codex`, en fichier de configuration fusionné pour les trois autres — `--dry-run` montre ce qui serait fait sans rien exécuter ni écrire). Une fois enregistré, Claude Code expose dix tools préfixés `mcp__caesar__` (`caesar_delegate`, `caesar_await`, `caesar_status`, `caesar_logs`, `caesar_cancel`, `caesar_diff`, `caesar_apply`, `caesar_list_agents`, `caesar_list_roles`, `caesar_answer`) — le détail de chacun est dans `packages/mcp-server/src/tools/*.ts`.
-
-Ce qui rend une délégation aussi naturelle qu'invoquer un sous-agent natif, ce n'est pas ces tools pris isolément : c'est la skill `caesar`, déposée par `caesar init` chez l'agent principal, qui lui apprend à s'en servir.
-
-### La connaissance agentique : skill et commandes
-
-**Diriger, pas exécuter.** La skill apprend à l'agent principal — Claude Code, Codex, Copilot CLI, OpenCode ou Antigravity CLI — à briefer un exécutant externe pour une tâche précise, à en lancer plusieurs de front sans attendre l'un pour démarrer l'autre, et à ne jamais croire sur parole ce qui revient : c'est le diff qui tranche, pas le résumé du sous-agent. Cinq commandes en découlent directement, une par geste : `/caesar-delegate` (une implémentation, un provider), `/caesar-fanout` (plusieurs objectifs indépendants, en parallèle), `/caesar-race` (le même objectif sur plusieurs providers, comparés côte à côte), `/caesar-review` (une relecture en lecture seule par un provider qui n'a pas écrit le diff), `/caesar-tasks` (l'état de ce qui est délégué). Dans un runtime où la skill est déposée, il suffit de demander : *« délègue à Codex l'implémentation de X »* — elle guide alors l'agent principal lui-même dans l'enchaînement `caesar_delegate` → `caesar_await` → présentation du rapport et du diff, sans bloquer la conversation pendant que l'agent externe tourne ; sous Claude Code, les commandes donnent le même enchaînement de façon explicite, sans dépendre du déclenchement automatique de la skill.
-
-**Où elle s'installe** — un seul endroit gouverne cette table, `packages/core/src/agent-assets.ts`, vérifié contre chaque binaire réel :
-
-| Cible | Skill | Commandes |
-|---|---|---|
-| partagé (`codex`, `copilot`, `antigravity`) | `.agents/skills/caesar/` | — |
-| `claude` | `.claude/skills/caesar/` (copie dédiée) | `.claude/commands/` (`caesar-*.md`) |
-| `opencode` | `.agents/skills/caesar/` (partagé) | `.opencode/commands/` (`caesar-*.md`) |
-
-Deux copies plutôt qu'une : Claude Code ne lit pas `.agents/skills/` — vérifié empiriquement sur le binaire, pas supposé depuis sa documentation — une skill posée uniquement là lui resterait invisible.
-
-**Comment.** `caesar init` détecte les runtimes présents dans le `PATH` et leur dépose (ou rafraîchit) la skill et les commandes ; si aucun n'est détecté et qu'aucun `--agent` n'est donné, le socle partagé (`.agents/skills/caesar/`) est déposé quand même, prêt pour le premier runtime installé ensuite. `--agent <id>`, répétable, force la liste des cibles plutôt que la détection ; `--no-skills` coupe entièrement ce dépôt (non mémorisé, à repasser à chaque `init`). Sur un projet déjà initialisé, relancer `caesar init` **sans** `--force` est un refresh : `.caesar/config.toml` et `.caesar/roles/*.md` restent intacts, ce sont les fichiers que l'utilisateur édite — la skill et les commandes, elles, entièrement dérivées du catalogue et n'appartenant donc à personne, sont réécrites depuis celui-ci. C'est précisément ce qui fait qu'une skill améliorée atteint un projet déjà initialisé : un simple `caesar init`, rien de plus à réinitialiser. Côté `claude`, `caesar init` fusionne aussi `<projet>/.claude/settings.json` : les six tools MCP qui ne modifient aucun fichier de l'utilisateur (`caesar_list_agents`, `caesar_list_roles`, `caesar_status`, `caesar_await`, `caesar_logs`, `caesar_diff`) sont ajoutés à `permissions.allow` s'ils n'y sont pas déjà, sans toucher au reste du fichier. Dans tous les cas, la skill ne fait qu'appeler les tools du serveur MCP `caesar` : ils n'existent pour un runtime qu'une fois `caesar mcp install <client>` lancé pour lui (voir ci-dessus).
-
-**Pour les contributeurs.** Les sources de la skill et des commandes vivent en clair dans `.claude/skills/caesar/` (+ 4 références) et `.claude/commands/` — le format Claude Code sert de source, les autres runtimes en reçoivent une adaptation. `pnpm run assets:sync` régénère depuis ces fichiers le catalogue embarqué (`packages/core/src/agent-assets.generated.ts`), et un test de dérive échoue si l'un des deux a été édité sans relancer l'autre : les sources et le catalogue ne peuvent pas diverger en silence. Le dépôt garde par ailleurs ses trois sous-agents Claude Code (`.claude/agents/`) pour son propre développement — ils ne sont pas déposés chez l'utilisateur et ne font pas partie de ce catalogue. Attention en éditant ces sources : ce sont exactement les chemins que `caesar init` dépose/rafraîchit pour la cible `claude` dans ce dépôt même — lancer `caesar init` pendant que vous les modifiez écrase vos éditions non encore synchronisées dans le catalogue. Lancez `pnpm run assets:sync` avant, ou passez `caesar init --no-skills` le temps de l'édition.
-
-## Configuration en couches : global, projet, local
-
-Trois niveaux, du plus général au plus spécifique — le plus spécifique l'emporte, champ par champ :
-
-| Niveau | Fichier | Versionné |
-|---|---|---|
-| global | `~/.config/caesar/config.toml` | non — propre au poste |
-| projet | `<projet>/.caesar/config.toml` | oui, partagé avec l'équipe |
-| local | `<projet>/.caesar/config.local.toml` | non — propre au poste (voir `.gitignore` plus bas) |
-
-Poser sa politique, ses rôles et ses agents une fois dans le global fait que chaque nouveau projet en hérite sans rien faire :
+Register the MCP server with Claude Code:
 
 ```bash
-caesar init --global                 # crée ~/.config/caesar/config.toml + dépose skill et commandes en portée globale
-caesar policy deny copilot --global  # s'applique désormais à tous les projets de ce poste
+caesar mcp install claude --root <your-project>
+# runs: claude mcp add caesar -- caesar mcp serve --root <your-project>
 ```
 
-Les commandes qui modifient — `caesar policy allow|deny`, `caesar agents enable|disable`, `caesar role add|remove` — acceptent `--global`/`--local` pour cibler une couche autre que le projet (le défaut, sans option). Mutuellement exclusifs : `caesar` refuse explicitement `--global` et `--local` ensemble plutôt que de laisser le dernier lu l'emporter en silence. Chaque écriture ne touche **que** la couche visée, et ce fichier ne contient que ce que cette couche déclare en propre — jamais la fusion : un fichier de configuration lu par `caesar` (dont `caesar policy show`) additionne toujours les trois couches, mais écrire ne réécrit jamais ce résultat fusionné dans une seule d'entre elles. C'est précisément ce qui manquait avant : un seul `caesar policy deny copilot` recopiait la configuration effective (défauts compris) dans le fichier du projet, figeant `max_parallel` et tout le reste au passage — modifier ensuite le fichier global n'avait alors plus aucun effet sur ce projet.
+`caesar mcp install` also works with `codex`, `copilot`, `opencode` and `antigravity` (installation via native subcommand for `claude`/`codex`, via merged configuration file for the other three — `--dry-run` shows what would be done without executing or writing anything). Once registered, Claude Code exposes ten tools prefixed `mcp__caesar__` (`caesar_delegate`, `caesar_await`, `caesar_status`, `caesar_logs`, `caesar_cancel`, `caesar_diff`, `caesar_apply`, `caesar_list_agents`, `caesar_list_roles`, `caesar_answer`) — the detail of each is in `packages/mcp-server/src/tools/*.ts`.
 
-**Modifier une liste (`allowed`/`denied`) matérialise cette liste dans la couche visée.** Ces deux listes se fusionnent par remplacement, pas par union : une couche qui les déclare remplace entièrement celles des couches moins spécifiques. `caesar policy deny X` écrit donc la liste **effective** (celle que `caesar policy show` affiche) augmentée de `X`, jamais `X` seul — sans quoi la commande effacerait silencieusement ce que le global y avait déjà placé. Quand la couche visée ne déclarait pas encore ce champ, `caesar` le dit : elle en prend désormais la main, et modifier ensuite une couche moins spécifique n'aura plus d'effet dessus.
+What makes a delegation as natural as invoking a native sub-agent is not these tools taken in isolation: it is the `caesar` skill, deposited by `caesar init` with the main agent, which teaches it how to use them.
+
+### The agentic knowledge: skill and commands
+
+**Direct, don't execute.** The skill teaches the main agent — Claude Code, Codex, Copilot CLI, OpenCode or Antigravity CLI — to brief an external executor for a precise task, to launch several at once without waiting for one to start the next, and to never take what comes back at its word: the diff decides, not the sub-agent's summary. Five commands follow directly from it, one per gesture: `/caesar-delegate` (one implementation, one provider), `/caesar-fanout` (several independent objectives, in parallel), `/caesar-race` (the same objective on several providers, compared side by side), `/caesar-review` (a read-only review by a provider that did not write the diff), `/caesar-tasks` (the state of what is delegated). In a runtime where the skill is deposited, asking is enough: *"delegate the implementation of X to Codex"* — it then guides the main agent itself through the `caesar_delegate` → `caesar_await` → report-and-diff presentation sequence, without blocking the conversation while the external agent runs; under Claude Code, the commands give the same sequence explicitly, without depending on the skill's automatic triggering.
+
+**Where it installs** — a single place governs this table, `packages/core/src/agent-assets.ts`, verified against each real binary:
+
+| Target | Skill | Commands |
+|---|---|---|
+| shared (`codex`, `copilot`, `antigravity`) | `.agents/skills/caesar/` | — |
+| `claude` | `.claude/skills/caesar/` (dedicated copy) | `.claude/commands/` (`caesar-*.md`) |
+| `opencode` | `.agents/skills/caesar/` (shared) | `.opencode/commands/` (`caesar-*.md`) |
+
+Two copies rather than one: Claude Code does not read `.agents/skills/` — verified empirically on the binary, not assumed from its documentation — a skill placed only there would remain invisible to it.
+
+**How.** `caesar init` detects the runtimes present on the `PATH` and deposits (or refreshes) the skill and the commands for them; if none is detected and no `--agent` is given, the shared base (`.agents/skills/caesar/`) is deposited anyway, ready for the first runtime installed afterwards. `--agent <id>`, repeatable, forces the list of targets instead of detection; `--no-skills` cuts this deposit entirely (not remembered, to be passed again on each `init`). On an already-initialized project, re-running `caesar init` **without** `--force` is a refresh: `.caesar/config.toml` and `.caesar/roles/*.md` stay intact, they are the files the user edits — the skill and the commands, entirely derived from the catalog and thus belonging to no one, are rewritten from it. This is precisely what lets an improved skill reach an already-initialized project: a simple `caesar init`, nothing else to reinitialize. On the `claude` side, `caesar init` also merges `<project>/.claude/settings.json`: the six MCP tools that modify none of the user's files (`caesar_list_agents`, `caesar_list_roles`, `caesar_status`, `caesar_await`, `caesar_logs`, `caesar_diff`) are added to `permissions.allow` if they are not already there, without touching the rest of the file. In every case, the skill does nothing but call the tools of the `caesar` MCP server: they only exist for a runtime once `caesar mcp install <client>` has been run for it (see above).
+
+**For contributors.** The sources of the skill and the commands live in the clear in `.claude/skills/caesar/` (+ 4 references) and `.claude/commands/` — the Claude Code format serves as the source, the other runtimes receive an adaptation of it. `pnpm run assets:sync` regenerates the embedded catalog (`packages/core/src/agent-assets.generated.ts`) from these files, and a drift test fails if either was edited without re-running the other: the sources and the catalog cannot diverge in silence. The repository otherwise keeps its three Claude Code sub-agents (`.claude/agents/`) for its own development — they are not deposited with the user and are not part of this catalog. Careful when editing these sources: they are exactly the paths that `caesar init` deposits/refreshes for the `claude` target in this very repository — running `caesar init` while you are modifying them overwrites your edits not yet synchronized into the catalog. Run `pnpm run assets:sync` first, or pass `caesar init --no-skills` for the duration of the edit.
+
+## Layered configuration: global, project, local
+
+Three levels, from the most general to the most specific — the most specific wins, field by field:
+
+| Level | File | Versioned |
+|---|---|---|
+| global | `~/.config/caesar/config.toml` | no — per machine |
+| project | `<project>/.caesar/config.toml` | yes, shared with the team |
+| local | `<project>/.caesar/config.local.toml` | no — per machine (see `.gitignore` below) |
+
+Setting your policy, roles and agents once in the global layer means every new project inherits them without doing anything:
+
+```bash
+caesar init --global                 # creates ~/.config/caesar/config.toml + deposits skill and commands at global scope
+caesar policy deny copilot --global  # now applies to every project on this machine
+```
+
+The commands that modify — `caesar policy allow|deny`, `caesar agents enable|disable`, `caesar role add|remove` — accept `--global`/`--local` to target a layer other than the project (the default, with no option). Mutually exclusive: `caesar` explicitly refuses `--global` and `--local` together rather than letting the last one read win in silence. Each write touches **only** the targeted layer, and that file contains only what that layer declares in its own right — never the merge: a configuration read by `caesar` (including `caesar policy show`) always adds up the three layers, but writing never writes that merged result back into a single one of them. That is precisely what was missing before: a single `caesar policy deny copilot` used to copy the effective configuration (defaults included) into the project's file, freezing `max_parallel` and everything else along the way — modifying the global file afterwards then had no effect at all on that project.
+
+**Modifying a list (`allowed`/`denied`) materializes that list in the targeted layer.** These two lists merge by replacement, not by union: a layer that declares them entirely replaces those of less specific layers. `caesar policy deny X` therefore writes the **effective** list (the one `caesar policy show` displays) augmented with `X`, never `X` alone — otherwise the command would silently erase what the global layer had already placed there. When the targeted layer did not yet declare that field, `caesar` says so: it now takes ownership of it, and modifying a less specific layer afterwards will no longer have any effect on it.
 
 ```
 $ caesar policy deny copilot --global
 $ caesar init
 $ caesar policy deny opencode
-Agent "opencode" ajouté à la liste "denied" (couche projet (.caesar/config.toml)).
-Attention : la liste "denied" n'était pas déclarée par la couche projet (.caesar/config.toml) ; elle en prend désormais la main avec la valeur effective actuelle (copilot, opencode) — modifier une couche moins spécifique (global ou défaut) n'affectera plus ce champ ici.
+Agent "opencode" added to the "denied" list (project layer (.caesar/config.toml)).
+Warning: the "denied" list was not declared by the project layer (.caesar/config.toml); it now takes ownership of it with the current effective value (copilot, opencode) — modifying a less specific layer (global or default) will no longer affect this field here.
 ```
 
-À l'issue de ce scénario, `.caesar/config.toml` ne contient **que** `denied = ["copilot", "opencode"]` — aucun défaut recopié, aucun réglage global figé ; modifier ensuite `max_parallel` dans le fichier global continue de se répercuter dans ce projet. `caesar policy show` indique la provenance de chaque valeur (`global`, `project`, `local`, ou `default`), et `caesar role show`/`caesar agents list` l'étendent aux rôles et aux agents.
+At the end of this scenario, `.caesar/config.toml` contains **only** `denied = ["copilot", "opencode"]` — no copied defaults, no frozen global setting; modifying `max_parallel` in the global file afterwards keeps propagating to this project. `caesar policy show` indicates the provenance of each value (`global`, `project`, `local`, or `default`), and `caesar role show`/`caesar agents list` extend it to roles and agents.
 
-`caesar init` crée la couche **projet** : les prompts système par défaut (`.caesar/roles/*.md`), le dépôt de la skill et des commandes pour les runtimes détectés (voir « [Usage depuis Claude Code](#usage-depuis-claude-code) » ci-dessus), et complète le `.gitignore` du projet avec `.caesar/config.local.toml`, `.caesar/tasks/`, `.caesar/wt/` et `.caesar/state/` (n'ajoute que les lignes absentes, ne réécrit jamais le fichier depuis rien ; ne fait rien, en le disant, si le répertoire n'est pas un dépôt git). `caesar init --global` crée la couche **globale**, intégralement à partir des réglages par défaut. Sans `--force`, relancer l'une ou l'autre sur une couche déjà initialisée n'est plus un refus : la commande réussit (code 0), laisse `config.toml` et les rôles intacts, et se contente de rafraîchir la skill et les commandes — `--force` réinitialise tout depuis zéro, prompts système compris.
+`caesar init` creates the **project** layer: the default system prompts (`.caesar/roles/*.md`), the deposit of the skill and the commands for detected runtimes (see "[Using from Claude Code](#using-from-claude-code)" above), and completes the project's `.gitignore` with `.caesar/config.local.toml`, `.caesar/tasks/`, `.caesar/wt/` and `.caesar/state/` (adds only the missing lines, never rewrites the file from scratch; does nothing, while saying so, if the directory is not a git repository). `caesar init --global` creates the **global** layer, entirely from the default settings. Without `--force`, re-running either on an already-initialized layer is no longer a refusal: the command succeeds (code 0), leaves `config.toml` and the roles intact, and merely refreshes the skill and the commands — `--force` reinitializes everything from scratch, system prompts included.
 
-## Le thème
+## The theme
 
-Une seule palette pour la ligne de commande **et** pour le TUI, dans `packages/theme` : elle vivait auparavant dans le TUI seul, pendant que la CLI choisissait ses couleurs au cas par cas parmi sept codes ANSI de base — les deux moitiés du même outil ne se ressemblaient pas à l'écran.
+A single palette for the command line **and** for the TUI, in `packages/theme`: it used to live in the TUI alone, while the CLI picked its colors case by case among seven basic ANSI codes — the two halves of the same tool did not look alike on screen.
 
-Deux règles la tiennent, et elles expliquent l'essentiel de ce qu'on voit :
+Two rules hold it, and they explain most of what you see:
 
-- **Le texte principal ne porte jamais de couleur.** Il hérite de l'avant-plan du terminal, donc reste lisible sur fond clair comme sur fond sombre. Seuls le secondaire, le tertiaire et le sémantique (`autorisé` / `refusé`, les statuts de tâche, les statuts de rapport) sont colorés. C'est pourquoi la parole d'un sous-agent, dans `caesar run`, sort en texte neutre : c'est sa marque qui est teintée, pas ce qu'il dit.
-- **La couleur classe, elle ne décore pas.** Une valeur colorée est une valeur qu'on vient chercher du regard sans la lire.
+- **Primary text never carries color.** It inherits the terminal's foreground, so it stays readable on light and dark backgrounds alike. Only the secondary, the tertiary and the semantic (`allowed` / `denied`, task statuses, report statuses) are colored. That is why a sub-agent's words, in `caesar run`, come out as neutral text: it is its badge that is tinted, not what it says.
+- **Color classifies, it does not decorate.** A colored value is a value your eye goes looking for without reading it.
 
-### Les trois canaux
+### The three channels
 
-| | Structure (encadrés, bandeaux) | Couleur |
+| | Structure (frames, banners) | Color |
 |---|---|---|
-| `--json` | non | non |
-| Hors terminal (tuyau, redirection, `\| tee`) | oui | non |
-| Terminal | oui | oui |
+| `--json` | no | no |
+| Outside a terminal (pipe, redirection, `\| tee`) | yes | no |
+| Terminal | yes | yes |
 
-`--json` reste strictement du JSON : aucune séquence ANSI, aucun bandeau, rien d'autre sur `stdout`. C'est le canal par lequel un agent consomme ce CLI, et il ne bouge pas. Un tableau encadré se découpe en revanche mal à `grep`/`awk` — c'est assumé, `--json` est fait pour ça.
+`--json` stays strictly JSON: no ANSI sequence, no banner, nothing else on `stdout`. It is the channel through which an agent consumes this CLI, and it does not move. A framed table, on the other hand, cuts up poorly under `grep`/`awk` — that is accepted, `--json` is made for that.
 
-### Ce qui s'adapte tout seul
+### What adapts on its own
 
-- **Profondeur de couleur** : truecolor si `COLORTERM` l'annonce, sinon les 256 si `TERM` contient `256color`, sinon les 16 de base. Volontairement conservateur : une séquence 256 émise vers un terminal qui l'ignore s'affiche en clair au milieu du texte.
-- **[`NO_COLOR`](https://no-color.org)** et `TERM=dumb` coupent toute couleur.
-- **Locale non-UTF-8** (`LC_ALL=C`) : les traits fins et les marques retombent sur un jeu ASCII de même largeur — `+--+`, `|`, `*`, `+`, `x`. Sans ce repli, un encadré Unicode sur un terminal qui ne le lit pas est moins lisible qu'un tableau sans encadré.
-- **Largeur du terminal** : le coût du cadre (`3N+1` caractères pour N colonnes) entre dans le budget, de sorte qu'aucune bordure ne se replie. Quand le cadre ne peut plus tenir, il est abandonné au profit d'une mise en page alignée, qui récupère la place qu'il coûtait.
+- **Color depth**: truecolor if `COLORTERM` announces it, otherwise the 256 if `TERM` contains `256color`, otherwise the basic 16. Deliberately conservative: a 256 sequence emitted toward a terminal that ignores it displays in the clear in the middle of the text.
+- **[`NO_COLOR`](https://no-color.org)** and `TERM=dumb` cut all color.
+- **Non-UTF-8 locale** (`LC_ALL=C`): fine rules and marks fall back on an ASCII set of the same width — `+--+`, `|`, `*`, `+`, `x`. Without this fallback, a Unicode frame on a terminal that cannot read it is less readable than a table without a frame.
+- **Terminal width**: the frame's cost (`3N+1` characters for N columns) enters the budget, so that no border ever wraps. When the frame can no longer fit, it is abandoned in favor of an aligned layout, which recovers the space it cost.
 
-## Interface de configuration
+## Configuration interface
 
-`caesar config` lance un TUI (OpenTUI) pour éditer politique, rôles et intégrations MCP interactivement. Il a une exigence propre : **il tourne sous Bun**, pas sous Node — OpenTUI rend via le FFI de Bun, indisponible sur Node 24. Sans `bun` sur le `PATH`, `caesar config` explique la situation et renvoie vers les sous-commandes équivalentes plutôt que d'échouer sèchement :
+`caesar config` launches a TUI (OpenTUI) to edit policy, roles and MCP integrations interactively. It has one requirement of its own: **it runs under Bun**, not Node — OpenTUI renders through Bun's FFI, unavailable on Node 24. Without `bun` on the `PATH`, `caesar config` explains the situation and points to the equivalent subcommands rather than failing dryly:
 
 ```
 $ caesar config
-Le TUI de configuration exige Bun : OpenTUI rend via son FFI, que Node 24 ne permet pas […]. "bun" est introuvable dans le PATH.
-Installez Bun (https://bun.sh), ou utilisez les sous-commandes équivalentes :
-  - caesar policy show   Politique effective (allow/deny, provenance).
-  - caesar role list     Rôles, agents de repli, agent retenu aujourd'hui.
-  - caesar agents list   Catalogue des agents : présence, capacités, autorisation.
+The configuration TUI requires Bun: OpenTUI renders through its FFI, which Node 24 does not allow […]. "bun" was not found in the PATH.
+Install Bun (https://bun.sh), or use the equivalent subcommands:
+  - caesar policy show   Effective policy (allow/deny, provenance).
+  - caesar role list     Roles, fallback agents, the agent picked today.
+  - caesar agents list   Agent catalog: presence, capabilities, authorization.
 ```
 
-`@caesar/core` reste dans tous les cas la seule source de vérité de la configuration — les trois couches ci-dessus, fusionnées : le TUI, ces sous-commandes et le serveur MCP en sont des façades différentes, aucune ne la relit ni ne la réécrit pour son propre compte.
+`@caesar/core` remains in every case the single source of truth for the configuration — the three layers above, merged: the TUI, these subcommands and the MCP server are different facades over it, none re-reads or rewrites it on its own account.
 
-## Exécutable autonome
+## Standalone executable
 
-`caesar` se construit aussi en un seul binaire, sans Node, ni Bun, ni `node_modules` requis sur la machine cible : `bun build --compile` embarque le runtime Bun, le CLI et le TUI (OpenTUI et son cœur natif compris) dans un unique fichier.
+`caesar` also builds into a single binary, with no Node, no Bun, no `node_modules` required on the target machine: `bun build --compile` embeds the Bun runtime, the CLI and the TUI (OpenTUI and its native core included) into a single file.
 
 ```bash
-pnpm run build:binary   # équivalent à scripts/build-binary.sh — construit dist-bin/caesar
+pnpm run build:binary   # equivalent to scripts/build-binary.sh — builds dist-bin/caesar
 ```
 
-Produit `dist-bin/caesar` (répertoire ignoré par git ; ~70 Mo, Bun et OpenTUI embarqués). Utilisable directement, sans installation :
+Produces `dist-bin/caesar` (directory ignored by git; ~70 MB, Bun and OpenTUI embedded). Usable directly, without installation:
 
 ```bash
 dist-bin/caesar doctor
-dist-bin/caesar mcp serve --root <projet>
-dist-bin/caesar config --root <projet>
+dist-bin/caesar mcp serve --root <project>
+dist-bin/caesar config --root <project>
 ```
 
-Ce binaire embarque Bun : l'arbitrage initial du projet (« Node partout, Bun pour le seul TUI », justifié par le serveur MCP qui doit pouvoir tourner sans Bun) ne s'applique plus à lui — `caesar config` y monte directement le TUI dans le processus courant plutôt que de chercher un `bun` externe, et `caesar run --channel` s'auto-invoque (`caesar channel serve --task-dir <dir>`, une sous-commande interne masquée de l'aide) plutôt que de résoudre `@caesar/mcp-channel` par `node_modules`, absent d'un binaire compilé. Le chemin Node décrit dans le reste de ce document (`pnpm run caesar`, `pnpm exec tsc -b`) reste celui du développement quotidien dans ce monorepo, et continue de fonctionner à l'identique — ces deux comportements ne s'activent que dans le binaire, jamais sous Node.
+This binary embeds Bun: the project's initial trade-off ("Node everywhere, Bun for the TUI alone", justified by the MCP server having to run without Bun) no longer applies to it — `caesar config` there mounts the TUI directly in the current process rather than looking for an external `bun`, and `caesar run --channel` self-invokes (`caesar channel serve --task-dir <dir>`, an internal subcommand hidden from the help) rather than resolving `@caesar/mcp-channel` through `node_modules`, absent from a compiled binary. The Node path described in the rest of this document (`pnpm run caesar`, `pnpm exec tsc -b`) remains the everyday development path in this monorepo, and keeps working identically — these two behaviors only activate in the binary, never under Node.
 
-**Compilation croisée** (`--target=bun-linux-x64` et consorts, via `scripts/build-binary.sh --target=bun-linux-x64`) : échoue aujourd'hui — OpenTUI dépend d'un paquet de binaires natifs par plateforme (`@opentui/core-<plateforme>`), dont pnpm n'installe que celui de la machine courante. Produire un binaire pour une autre plateforme suppose de relancer l'installation pnpm sur cette plateforme (ou dans un environnement qui la cible) avant de compiler.
+**Cross-compilation** (`--target=bun-linux-x64` and friends, via `scripts/build-binary.sh --target=bun-linux-x64`): fails today — OpenTUI depends on a package of per-platform native binaries (`@opentui/core-<platform>`), of which pnpm installs only the current machine's. Producing a binary for another platform means re-running the pnpm install on that platform (or in an environment targeting it) before compiling.
 
-## Brancher un agent hors catalogue
+## Plugging in an agent outside the catalog
 
-Un CLI qui n'est pas dans le catalogue des cinq se déclare dans `.caesar/config.toml`, sans écrire de code — c'est l'adaptateur générique (`packages/core/src/registry/generic.ts`) qui construit sa ligne de commande à partir d'un gabarit :
+A CLI that is not in the catalog of five is declared in `.caesar/config.toml`, without writing code — the generic adapter (`packages/core/src/registry/generic.ts`) builds its command line from a template:
 
 ```toml
 [[agent]]
-id = "mon-agent"
-bin = "mon-agent-cli"
+id = "my-agent"
+bin = "my-agent-cli"
 args = ["--task-file", "{{taskDir}}/task.json", "--out", "{{reportPath}}", "--cwd", "{{workspace}}", "{{prompt}}"]
-cwd_mode = "process"      # "process" : le workspace est le cwd du processus. "flag" : déjà porté par un jeton dans args.
-network_args = ["--online"]  # facultatif : ce qu'il faut ajouter pour ouvrir le réseau.
+cwd_mode = "process"      # "process": the workspace is the process's cwd. "flag": already carried by a token in args.
+network_args = ["--online"]  # optional: what must be added to open the network.
 ```
 
-Déclarer `network_args`, c'est affirmer que **sans** ces arguments le CLI est confiné : `caesar` fait alors passer sa capacité réseau de « inconnu » à « pilotable », et les honore selon le réglage `network` de la tâche. Sans eux, `caesar doctor` annonce « réseau inconnu » et ne promet rien — ni ouverture, ni fermeture.
+Declaring `network_args` is asserting that **without** these arguments the CLI is confined: `caesar` then promotes its network capability from "unknown" to "controllable", and honors them according to the task's `network` setting. Without them, `caesar doctor` announces "network unknown" and promises nothing — neither opening nor closing.
 
-Les jetons `{{prompt}}`, `{{workspace}}`, `{{taskDir}}`, `{{reportPath}}` et `{{model}}` sont substitués ; un jeton sans valeur (`{{model}}` si aucun `--model` n'a été demandé, par exemple) fait disparaître l'argument entier plutôt que de laisser un `undefined` résiduel. Un agent générique n'a par défaut aucune capacité déclarée (`mcpInjection: "none"`, pas de schéma de sortie natif ni de canal MCP) : il se contente du palier de rapport le plus tolérant, celui qui n'exige que de savoir lire `$CAESAR_TASK_FILE` et écrire `$CAESAR_REPORT_PATH` — voir `docs/protocol.md`. C'est délibéré : le contrat minimal du standard est conçu pour être atteignable par un script de quelques lignes, pas seulement par les cinq agents nommément supportés.
+The tokens `{{prompt}}`, `{{workspace}}`, `{{taskDir}}`, `{{reportPath}}` and `{{model}}` are substituted; a token with no value (`{{model}}` if no `--model` was requested, for example) makes the entire argument disappear rather than leaving a residual `undefined`. A generic agent has by default no declared capability (`mcpInjection: "none"`, no native output schema and no MCP channel): it settles for the most tolerant report tier, the one that only requires knowing how to read `$CAESAR_TASK_FILE` and write `$CAESAR_REPORT_PATH` — see `docs/protocol.md`. That is deliberate: the standard's minimal contract is designed to be reachable by a script of a few lines, not only by the five agents supported by name.
 
-## Le standard
+## The standard
 
-Le contrat qui permet à n'importe quel agent — supporté nommément ou générique — de recevoir une mission et de rendre un compte rendu exploitable est documenté indépendamment de ce dépôt dans [`docs/protocol.md`](docs/protocol.md) : le répertoire de tâche, les variables d'environnement, la forme de `task.json`/`report.json`/`events.jsonl`, les quatre paliers de récupération du rapport, et le canal retour MCP facultatif.
+The contract that lets any agent — supported by name or generic — receive a mission and return a usable report is documented independently of this repository in [`docs/protocol.md`](docs/protocol.md): the task directory, the environment variables, the shape of `task.json`/`report.json`/`events.jsonl`, the four report-recovery tiers, and the optional MCP return channel.
 
-## Migration depuis « orch »
+## Migrating from "orch"
 
-Ce projet s'appelait auparavant `orch` (dépôt `agent-orchestrateur`). Le renommage en `caesar` est une rupture nette : rien de ce que l'ancien nom a posé n'est lu ni migré. Concrètement, sur une machine ou un projet qui utilisait `orch` :
+This project was previously called `orch` (repository `agent-orchestrateur`). The rename to `caesar` is a clean break: nothing the old name put in place is read or migrated. Concretely, on a machine or a project that used `orch`:
 
-- les dossiers `.orch/` des projets (état, worktrees, config) et la config globale `~/.config/orch/` sont ignorés — refaire `caesar init` dans chaque projet et `caesar init --global`, puis supprimer les anciens dossiers à la main ;
-- les branches et worktrees `orch/*` encore présents ne sont plus reconnus par le GC — les nettoyer avec `git worktree remove` / `git branch -D` ;
-- les enregistrements MCP `orch` chez les clients restent orphelins — les retirer (`claude mcp remove orch`, `codex mcp remove orch`, éditer la config de Copilot/Antigravity/OpenCode) puis réenregistrer avec `caesar mcp install <client>` ;
-- les assets déposés sous l'ancien nom (`.claude/skills/orch/`, `.claude/commands/orch-*.md`, `.agents/skills/orch/`) deviennent obsolètes — `caesar init` dépose les nouveaux, les anciens se suppriment à la main.
+- the projects' `.orch/` directories (state, worktrees, config) and the global config `~/.config/orch/` are ignored — redo `caesar init` in each project and `caesar init --global`, then delete the old directories by hand;
+- the `orch/*` branches and worktrees still present are no longer recognized by the GC — clean them up with `git worktree remove` / `git branch -D`;
+- the `orch` MCP registrations with the clients remain orphaned — remove them (`claude mcp remove orch`, `codex mcp remove orch`, edit the Copilot/Antigravity/OpenCode config) then re-register with `caesar mcp install <client>`;
+- the assets deposited under the old name (`.claude/skills/orch/`, `.claude/commands/orch-*.md`, `.agents/skills/orch/`) become obsolete — `caesar init` deposits the new ones, the old ones are to be deleted by hand.

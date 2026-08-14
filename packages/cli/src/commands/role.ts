@@ -1,18 +1,17 @@
 /**
  * `caesar role list|show|add|remove`.
  *
- * `add`/`remove` écrivent une seule couche (`--global`/`--local`, projet par
- * défaut), jamais la fusion : voir le brief de la tâche 13. Contrairement
- * aux listes `allowed`/`denied` (`policy.ts`, `materializePolicyList`), un
- * rôle est une entrée à clé (`name`) qui se fusionne par remplacement entier
- * — pas de "matérialisation" à faire ici, `add` remplace directement
- * l'entrée de la couche visée. `remove` ne peut en revanche retirer qu'une
- * entrée que la couche visée déclare elle-même : un rôle hérité d'une
- * couche moins spécifique (ou du défaut) n'est pas modifiable en le
- * "retirant" d'une couche qui ne le porte pas — la fusion par clé ne sait
- * pas exprimer une suppression, seulement un remplacement (voir
- * `mergeConfig`) —, le dire clairement plutôt que de rendre EXIT_OK sans
- * rien avoir changé.
+ * `add`/`remove` write a single layer (`--global`/`--local`, project by
+ * default), never the merge: see the task 13 brief. Unlike the
+ * `allowed`/`denied` lists (`policy.ts`, `materializePolicyList`), a role
+ * is a keyed entry (`name`) that merges by whole replacement — no
+ * "materialization" to do here, `add` directly replaces the targeted
+ * layer's entry. `remove`, however, can only remove an entry the targeted
+ * layer declares itself: a role inherited from a less specific layer (or
+ * from the default) cannot be changed by "removing" it from a layer that
+ * does not carry it — keyed merging cannot express a deletion, only a
+ * replacement (see `mergeConfig`) —, say so clearly rather than returning
+ * EXIT_OK without having changed anything.
  */
 import type { NetworkRequest, RoleConfig } from "@caesar/core";
 import { loadConfig, loadLayer, parseDuration, pickAgentForRole, resolveInstalledMap, resolveRole, roleProvenance, saveLayer } from "@caesar/core";
@@ -34,7 +33,7 @@ import {
 import type { ScopeOptions } from "../scope.js";
 import { resolveScope, scopeFlagHint, scopeLabel } from "../scope.js";
 
-/** Agents référencés par un ensemble de rôles, tous à la fois (`resolveInstalledMap` de `@caesar/core` ne prend qu'une seule liste). */
+/** Agents referenced by a set of roles, all at once (`resolveInstalledMap` from `@caesar/core` only takes a single list). */
 function agentIdsOf(roles: readonly RoleConfig[]): string[] {
   const ids = new Set<string>();
   for (const role of roles) for (const id of role.agents) ids.add(id);
@@ -69,9 +68,9 @@ export async function runRoleList(root: string, options: RoleListOptions, io: Io
   const tableRows: Cell[][] = rows.map((r) => [
     r.name,
     { text: r.agents.join(" > "), token: "dim" },
-    r.picked ? { text: r.picked, token: "ok" } : { text: `aucun (${r.error})`, token: "bad" },
+    r.picked ? { text: r.picked, token: "ok" } : { text: `none (${r.error})`, token: "bad" },
   ]);
-  printTable(io, ["rôle", "agents (ordre de repli)", "retenu aujourd'hui"], tableRows);
+  printTable(io, ["role", "agents (fallback order)", "picked today"], tableRows);
   return EXIT_OK;
 }
 
@@ -83,7 +82,7 @@ export async function runRoleShow(root: string, name: string, options: RoleShowO
   const { config, layers } = await loadConfig(root);
   const resolved = await resolveRole(config, root, name);
   if (!resolved) {
-    printError(io, `Rôle inconnu : "${name}".`);
+    printError(io, `Unknown role: "${name}".`);
     return EXIT_USAGE;
   }
   const provenance = roleProvenance(layers, name);
@@ -94,19 +93,19 @@ export async function runRoleShow(root: string, name: string, options: RoleShowO
   }
 
   sectionHeader(io, `role ${resolved.name}`);
-  // Les libellés alignés en demi-ton, les valeurs neutres : la colonne de
-  // gauche se saute, celle de droite se lit.
-  const LARGEUR = 22;
-  printField(io, "provenance", provenance, LARGEUR);
-  printField(io, "intention", resolved.purpose || "(non précisée)", LARGEUR);
-  printField(io, "agents (ordre de repli)", resolved.agents.join(" > ") || "(aucun)", LARGEUR);
-  printField(io, "mode", resolved.mode, LARGEUR);
-  printField(io, "isolation", resolved.isolation, LARGEUR);
-  printField(io, "réseau", resolved.network, LARGEUR);
-  printField(io, "délai", `${resolved.timeout_ms} ms`, LARGEUR);
+  // Aligned labels in half-tone, neutral values: the left column gets
+  // skipped, the right one gets read.
+  const LABEL_WIDTH = 22;
+  printField(io, "provenance", provenance, LABEL_WIDTH);
+  printField(io, "purpose", resolved.purpose || "(not specified)", LABEL_WIDTH);
+  printField(io, "agents (fallback order)", resolved.agents.join(" > ") || "(none)", LABEL_WIDTH);
+  printField(io, "mode", resolved.mode, LABEL_WIDTH);
+  printField(io, "isolation", resolved.isolation, LABEL_WIDTH);
+  printField(io, "network", resolved.network, LABEL_WIDTH);
+  printField(io, "timeout", `${resolved.timeout_ms} ms`, LABEL_WIDTH);
   writeLine(io.stdout);
-  printNote(io, "prompt système");
-  writeLine(io.stdout, resolved.systemPrompt || "(aucun)");
+  printNote(io, "system prompt");
+  writeLine(io.stdout, resolved.systemPrompt || "(none)");
   return EXIT_OK;
 }
 
@@ -123,21 +122,21 @@ export async function runRoleRemove(root: string, name: string, options: RoleRem
 
   const { config, layers } = await loadConfig(root);
   if (!config.roles.some((role) => role.name === name)) {
-    printError(io, `Rôle inconnu : "${name}".`);
+    printError(io, `Unknown role: "${name}".`);
     return EXIT_USAGE;
   }
 
   const layer = await loadLayer(scope, root);
   if (!layer.roles?.some((role) => role.name === name)) {
-    // La fusion par clé (`mergeConfig`) remplace, elle ne supprime jamais par absence : retirer un rôle d'une
-    // couche qui ne le déclare pas ne le ferait pas disparaître de la fusion (il resterait porté par la couche qui
-    // le déclare réellement, ou par `defaultConfig()`) — un EXIT_OK ici mentirait sur ce qui vient de se passer.
+    // Keyed merging (`mergeConfig`) replaces, it never deletes by absence: removing a role from a layer that does
+    // not declare it would not make it disappear from the merge (it would remain carried by the layer that
+    // actually declares it, or by `defaultConfig()`) — an EXIT_OK here would lie about what just happened.
     const actual = roleProvenance(layers, name);
     const hint =
       actual === "default"
-        ? `il fait partie de la configuration par défaut : aucune couche ne le supprime, redéfinissez-le si vous voulez en changer le comportement.`
-        : `il vient de la couche ${scopeLabel(actual)} : réessayez avec ${scopeFlagHint(actual)}.`;
-    printError(io, `Le rôle "${name}" n'est pas déclaré par la couche ${scopeLabel(scope)} : rien à supprimer ici, ${hint}`);
+        ? `it is part of the default configuration: no layer removes it, redefine it if you want to change its behavior.`
+        : `it comes from the ${scopeLabel(actual)} layer: retry with ${scopeFlagHint(actual)}.`;
+    printError(io, `Role "${name}" is not declared by the ${scopeLabel(scope)} layer: nothing to remove here, ${hint}`);
     return EXIT_USAGE;
   }
 
@@ -145,7 +144,7 @@ export async function runRoleRemove(root: string, name: string, options: RoleRem
   await saveLayer(scope, root, { ...layer, roles });
 
   if (options.json) printJson(io, { name, removed: true, scope });
-  else printDone(io, `Rôle "${name}" supprimé (couche ${scopeLabel(scope)}).`);
+  else printDone(io, `Role "${name}" removed (${scopeLabel(scope)} layer).`);
   return EXIT_OK;
 }
 
@@ -171,25 +170,25 @@ export async function runRoleAdd(root: string, name: string, options: RoleAddOpt
     .map((id) => id.trim())
     .filter((id) => id.length > 0);
   if (agents.length === 0) {
-    printError(io, 'Précisez --agents a,b,c (au moins un agent, séparés par des virgules).');
+    printError(io, 'Specify --agents a,b,c (at least one agent, comma-separated).');
     return EXIT_USAGE;
   }
 
   const mode = options.mode as TaskMode | undefined;
   if (!mode || !TASK_MODES.includes(mode)) {
-    printError(io, `--mode invalide (attendu l'une de : ${TASK_MODES.join(", ")}).`);
+    printError(io, `Invalid --mode (expected one of: ${TASK_MODES.join(", ")}).`);
     return EXIT_USAGE;
   }
 
   const isolation = (options.isolation ?? "auto") as Isolation | "auto";
   if (!ISOLATIONS.includes(isolation)) {
-    printError(io, `--isolation invalide (attendu l'une de : ${ISOLATIONS.join(", ")}).`);
+    printError(io, `Invalid --isolation (expected one of: ${ISOLATIONS.join(", ")}).`);
     return EXIT_USAGE;
   }
 
   const network = (options.network ?? "auto") as NetworkRequest;
   if (!NETWORK_REQUEST_VALUES.includes(network)) {
-    printError(io, `--network invalide (attendu l'une de : ${NETWORK_REQUEST_VALUES.join(", ")}).`);
+    printError(io, `Invalid --network (expected one of: ${NETWORK_REQUEST_VALUES.join(", ")}).`);
     return EXIT_USAGE;
   }
 
@@ -217,6 +216,6 @@ export async function runRoleAdd(root: string, name: string, options: RoleAddOpt
   await saveLayer(scope, root, { ...layer, roles });
 
   if (options.json) printJson(io, { role, replaced, scope });
-  else printDone(io, `Rôle "${name}" ${replaced ? "remplacé" : "créé"} (couche ${scopeLabel(scope)}).`);
+  else printDone(io, `Role "${name}" ${replaced ? "replaced" : "created"} (${scopeLabel(scope)} layer).`);
   return EXIT_OK;
 }

@@ -1,24 +1,23 @@
 /**
- * Éditeur plein écran du prompt système d'un rôle — le texte que
- * `resolveRole` place en tête du contexte transmis à l'agent
- * (`delegation.ts`). C'est *le* prompt de l'agent pour ce rôle : jusqu'ici le
- * TUI n'en montrait que le chemin, et il fallait sortir de l'outil pour en
- * changer un mot.
+ * Full-screen editor for a role's system prompt — the text `resolveRole`
+ * places at the head of the context passed to the agent (`delegation.ts`).
+ * It is *the* agent's prompt for this role: until now the TUI only showed
+ * its path, and one had to leave the tool to change a word of it.
  *
- * Deux choses le distinguent du reste du TUI, et l'écran les dit toutes deux
- * plutôt que de les laisser surprendre :
+ * Two things set it apart from the rest of the TUI, and the screen states
+ * them both rather than letting them surprise:
  *
- *  - **il écrit tout de suite.** Ctrl+S enregistre le fichier, sans passer
- *    par le "s" global ni par la portée d'édition : un prompt est un fichier
- *    unique, pas un réglage à trois couches (voir `prompt-file.ts`).
- *  - **il désigne le fichier que le moteur lira**, chemin absolu affiché en
- *    tête, calculé par `rolePromptPath` (`@caesar/core`) — celui-là même
- *    qu'ouvre `resolveRole`. Un rôle venu de la couche globale résout son
- *    prompt dans le projet courant : le chemin le montre, plutôt que de
- *    laisser croire à un fichier partagé entre projets.
+ *  - **it writes immediately.** Ctrl+S saves the file, without going
+ *    through the global "s" or the editing scope: a prompt is a single
+ *    file, not a three-layer setting (see `prompt-file.ts`).
+ *  - **it names the file the engine will read**, absolute path shown at
+ *    the top, computed by `rolePromptPath` (`@caesar/core`) — the very one
+ *    `resolveRole` opens. A role coming from the global layer resolves its
+ *    prompt in the current project: the path shows it, rather than letting
+ *    one believe in a file shared between projects.
  *
- * Échap abandonne, et demande confirmation si le texte a changé — même
- * principe que la sortie du TUI : rien ne se perd en silence.
+ * Esc abandons, and asks for confirmation if the text changed — same
+ * principle as quitting the TUI: nothing is lost silently.
  */
 import { useEffect, useRef, useState } from "react";
 import { TextAttributes } from "@opentui/core";
@@ -31,9 +30,9 @@ import { ACCENT, BAD, DIM, FAINT, WARN } from "../ui/theme";
 export interface PromptEditorProps {
   root: string;
   roleName: string;
-  /** Chemin relatif déclaré par le rôle — jamais vide : l'appelant en propose un par défaut au besoin. */
+  /** Relative path declared by the role — never empty: the caller proposes a default one when needed. */
   systemPromptFile: string;
-  /** Fermeture demandée. `saved` dit si le fichier a été écrit, pour que l'appelant rafraîchisse son aperçu. */
+  /** Close requested. `saved` says whether the file was written, so the caller can refresh its preview. */
   onClose: (saved: boolean) => void;
   notify: (message: string, isError?: boolean) => void;
 }
@@ -58,16 +57,16 @@ export function PromptEditor({ root, roleName, systemPromptFile, onClose, notify
       setLoaded((current) => (current ? { ...current, content, exists: true } : current));
       setDirty(false);
       setConfirmDiscard(false);
-      notify(`Prompt du rôle "${roleName}" enregistré dans ${path}.`);
+      notify(`Prompt for role "${roleName}" saved to ${path}.`);
       onClose(true);
     } catch (cause) {
       notify(cause instanceof Error ? cause.message : String(cause), true);
     }
   }
 
-  // Sans champ de saisie monté, plus rien ne reçoit les touches : ce
-  // gestionnaire global est le seul moyen de ressortir d'une erreur de
-  // lecture. Inerte le reste du temps, où la saisie a le clavier.
+  // With no input field mounted, nothing receives the keys anymore: this
+  // global handler is the only way out of a read error. Inert the rest of
+  // the time, when the textarea has the keyboard.
   useKeyboard((key) => {
     if (error && (key.name === "escape" || key.name === "return")) onClose(false);
   });
@@ -75,10 +74,10 @@ export function PromptEditor({ root, roleName, systemPromptFile, onClose, notify
   if (error) {
     return (
       <box flexDirection="column" flexGrow={1}>
-        <text fg={ACCENT} attributes={TextAttributes.BOLD}>{`Prompt système · ${roleName}`}</text>
+        <text fg={ACCENT} attributes={TextAttributes.BOLD}>{`System prompt · ${roleName}`}</text>
         <text fg={BAD}>{error}</text>
         <box marginTop={1}>
-          <KeyHints hints={[{ key: "Échap", label: "revenir aux rôles" }]} />
+          <KeyHints hints={[{ key: "Esc", label: "back to roles" }]} />
         </box>
       </box>
     );
@@ -87,14 +86,14 @@ export function PromptEditor({ root, roleName, systemPromptFile, onClose, notify
   return (
     <box flexDirection="column" flexGrow={1}>
       <box flexDirection="row">
-        <text fg={ACCENT} attributes={TextAttributes.BOLD}>{`Prompt système · ${roleName}`}</text>
-        {dirty ? <text fg={WARN}>{"   ● modifié"}</text> : null}
+        <text fg={ACCENT} attributes={TextAttributes.BOLD}>{`System prompt · ${roleName}`}</text>
+        {dirty ? <text fg={WARN}>{"   ● modified"}</text> : null}
       </box>
-      <text fg={DIM}>{loaded ? loaded.path : "chargement…"}</text>
+      <text fg={DIM}>{loaded ? loaded.path : "loading…"}</text>
       <text fg={FAINT}>
         {loaded && !loaded.exists
-          ? "Nouveau fichier — il sera créé à l'enregistrement."
-          : "Ce texte est placé en tête du contexte transmis à l'agent, avant l'objectif de la tâche."}
+          ? "New file — it will be created on save."
+          : "This text is placed at the head of the context passed to the agent, before the task's objective."}
       </text>
 
       <box flexGrow={1} border borderStyle="single" borderColor={ACCENT} marginTop={1} marginBottom={1}>
@@ -105,7 +104,7 @@ export function PromptEditor({ root, roleName, systemPromptFile, onClose, notify
             initialValue={loaded.content}
             wrapMode="word"
             flexGrow={1}
-            placeholder="(prompt vide — écrivez ce que l'agent doit savoir avant de recevoir la tâche)"
+            placeholder="(empty prompt — write what the agent must know before receiving the task)"
             onContentChange={() => setDirty((area.current?.plainText ?? "") !== loaded.content)}
             onKeyDown={(key) => {
               if (key.name === "s" && key.ctrl) {
@@ -113,9 +112,9 @@ export function PromptEditor({ root, roleName, systemPromptFile, onClose, notify
                 void save();
               } else if (key.name === "escape") {
                 key.preventDefault();
-                // Une frappe pour signaler ce qu'on va perdre, une seconde
-                // pour l'assumer — plutôt qu'une fenêtre modale qui volerait
-                // le clavier au champ de saisie.
+                // One keystroke to point out what is about to be lost, a
+                // second to own it — rather than a modal window that would
+                // steal the keyboard from the textarea.
                 if (dirty && !confirmDiscard) setConfirmDiscard(true);
                 else onClose(false);
               } else if (confirmDiscard) {
@@ -127,12 +126,12 @@ export function PromptEditor({ root, roleName, systemPromptFile, onClose, notify
       </box>
 
       {confirmDiscard ? (
-        <text fg={WARN}>Modifications non enregistrées — Échap à nouveau pour les abandonner, Ctrl+S pour enregistrer.</text>
+        <text fg={WARN}>Unsaved changes — Esc again to discard them, Ctrl+S to save.</text>
       ) : (
         <KeyHints
           hints={[
-            { key: "Ctrl+S", label: "enregistrer le fichier" },
-            { key: "Échap", label: "revenir aux rôles" },
+            { key: "Ctrl+S", label: "save the file" },
+            { key: "Esc", label: "back to roles" },
           ]}
         />
       )}

@@ -1,15 +1,16 @@
 /**
- * Le logotype et le bandeau de commande.
+ * The wordmark and the command banner.
  *
- * Le logotype suit le style « ANSI Shadow » : le corps de chaque lettre est
- * en blocs pleins (`█`), et son flanc droit comme sa base portent une ombre
- * en traits doubles (`╗ ║ ╚ ═`), ce qui donne du relief sans deuxième
- * couleur. Chaque lettre occupe 8 colonnes, ombre et respiration comprises —
- * les glyphes s'accolent donc sans séparateur : 48 colonnes sur 6 lignes.
+ * The wordmark follows the "ANSI Shadow" style: the body of each letter is
+ * made of full blocks (`█`), and its right flank and base carry a shadow
+ * in double strokes (`╗ ║ ╚ ═`), which gives relief without a second
+ * color. Each letter occupies 8 columns, shadow and breathing room
+ * included — the glyphs thus join without a separator: 48 columns over 6
+ * lines.
  *
- * Sans Unicode, ni les blocs pleins ni les traits doubles n'existent : le
- * repli n'essaie pas d'imiter le dessin en `#`, ce qui donnerait un pavé
- * grossier ; il rend une seule ligne, et l'assume.
+ * Without Unicode, neither the full blocks nor the double strokes exist:
+ * the fallback does not try to mimic the drawing in `#`, which would give
+ * a coarse slab; it renders a single line, and owns it.
  */
 import type { ColorDepth } from "./ansi.js";
 import { paint } from "./ansi.js";
@@ -17,10 +18,10 @@ import type { Glyphs } from "./glyphs.js";
 import { ACCENT, ACCENT_RAMP, BORDER, DIM } from "./palette.js";
 
 /**
- * Les six lignes du logotype, non colorées. Chacune fait exactement
- * `WORDMARK_WIDTH` colonnes — les espaces intérieurs et de fin de chaque
- * glyphe de 8 colonnes sont significatifs pour l'alignement des lettres
- * suivantes.
+ * The six lines of the wordmark, uncolored. Each is exactly
+ * `WORDMARK_WIDTH` columns — the interior and trailing spaces of each
+ * 8-column glyph are significant for the alignment of the following
+ * letters.
  */
 export const WORDMARK_LINES: readonly string[] = [
   " ██████╗ █████╗ ███████╗███████╗ █████╗ ██████╗ ",
@@ -34,31 +35,31 @@ export const WORDMARK_LINES: readonly string[] = [
 export const WORDMARK_WIDTH = 48;
 
 /**
- * Le logotype, une couleur de la rampe par ligne — la lumière vient d'en
- * haut. Sans Unicode ou sans couleur, ce qui reste est le nom lui-même.
+ * The wordmark, one ramp color per line — the light comes from above.
+ * Without Unicode or without color, what remains is the name itself.
  */
 export function renderWordmark(glyphs: Glyphs, depth: ColorDepth, tagline?: string): string[] {
   const unicode = glyphs.box.horizontal === "─";
   const lines = unicode
     ? WORDMARK_LINES.map((line, i) => paint(line, { hex: ACCENT_RAMP[i] ?? ACCENT }, depth))
-    : // La couleur de marque du logotype, pas l'accent de l'interface : le
-      // repli reste le logotype, réduit à sa plus simple expression.
+    : // The wordmark's brand color, not the interface accent: the fallback
+      // is still the wordmark, reduced to its simplest expression.
       [paint("CAESAR", { hex: ACCENT_RAMP[0] ?? ACCENT, bold: true }, depth)];
   if (tagline === undefined) return lines;
-  // Aligné sous la deuxième lettre plutôt que sur le bord : le logotype a
-  // déjà un bord gauche franc, et une accroche qui s'en écarte se lit comme
-  // une légende plutôt que comme une deuxième ligne de titre.
+  // Aligned under the second letter rather than on the edge: the wordmark
+  // already has a sharp left edge, and a tagline that steps away from it
+  // reads as a caption rather than as a second title line.
   const indent = unicode ? "  " : "";
   return [...lines, indent + paint(tagline, { hex: DIM }, depth)];
 }
 
 /**
- * Le bandeau d'une ligne qui ouvre chaque commande :
+ * The one-line banner that opens each command:
  * `▞▚ caesar · doctor ─────────────────────`.
  *
- * Il occupe toute la largeur disponible. Sa fonction est de séparer une
- * invocation de la précédente dans le défilement du terminal — c'est
- * l'endroit où l'œil revient quand on remonte, et rien ne le marquait.
+ * It occupies the full available width. Its purpose is to separate one
+ * invocation from the previous one in the terminal's scrollback — it is
+ * the place the eye returns to when scrolling up, and nothing marked it.
  */
 export function renderSectionRule(label: string, width: number, glyphs: Glyphs, depth: ColorDepth): string {
   const head = `${glyphs.status.mark} caesar ${glyphs.status.bullet} ${label} `;

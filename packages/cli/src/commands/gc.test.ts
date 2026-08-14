@@ -42,7 +42,7 @@ describe("caesar gc", () => {
     const record: TaskRecord = {
       id,
       agent: "codex",
-      objective: "tester caesar gc",
+      objective: "test caesar gc",
       status,
       created_at: "2026-08-11T10:00:00.000Z",
       task_dir: join(root, ".caesar", "tasks", id),
@@ -58,14 +58,14 @@ describe("caesar gc", () => {
   }
 
   /**
-   * Une tâche terminée dont le travail a été appliqué par le chemin officiel
-   * — mirror du helper de `packages/core/src/engine/gc.test.ts` : c'est là
-   * qu'`applyRecordedWorktree` est exercé en détail, ici on ne fabrique que
-   * la donnée nécessaire pour vérifier ce que la façade CLI en dit.
+   * A finished task whose work was applied through the official path —
+   * mirror of the helper in `packages/core/src/engine/gc.test.ts`: that is
+   * where `applyRecordedWorktree` is exercised in detail, here we only
+   * build the data needed to check what the CLI facade says about it.
    */
   async function appliedRecordedWorktree(id: string): Promise<TaskRecord> {
     const record = await createTask(id, "succeeded");
-    await writeFile(join(record.workspace, `${id}.txt`), "travail\n", "utf8");
+    await writeFile(join(record.workspace, `${id}.txt`), "work\n", "utf8");
     const paths = taskPaths(record.task_dir);
     const baseRef = (await git(record.workspace, ["rev-parse", "HEAD"])).trim();
     await writeTask(
@@ -90,12 +90,12 @@ describe("caesar gc", () => {
     return (await fileTaskStore(root).get(id))!;
   }
 
-  it("--dry-run --json décrit exactement les suppressions et conservations", async () => {
-    await createTask("t_propre", "succeeded");
-    const modified = await createTask("t_modifiee", "failed");
-    await writeFile(join(modified.workspace, "travail.txt"), "à appliquer\n", "utf8");
+  it("--dry-run --json describes exactly the removals and keeps", async () => {
+    await createTask("t_clean", "succeeded");
+    const modified = await createTask("t_modified", "failed");
+    await writeFile(join(modified.workspace, "work.txt"), "to apply\n", "utf8");
     await createTask("t_active", "running");
-    await createWorktree(root, "t_orpheline");
+    await createWorktree(root, "t_orphan");
 
     const code = await runGc(root, { dryRun: true, json: true }, io);
 
@@ -105,105 +105,104 @@ describe("caesar gc", () => {
     expect(parsed.dry_run).toBe(true);
     expect(parsed.entries).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "t_propre", action: "would_remove", reason: "clean", orphan: false }),
+        expect.objectContaining({ id: "t_clean", action: "would_remove", reason: "clean", orphan: false }),
         expect.objectContaining({
-          id: "t_modifiee",
+          id: "t_modified",
           action: "kept",
           reason: "modified",
           orphan: false,
-          diff_command: "caesar diff t_modifiee",
-          apply_command: "caesar apply t_modifiee",
+          diff_command: "caesar diff t_modified",
+          apply_command: "caesar apply t_modified",
         }),
         expect.objectContaining({ id: "t_active", action: "kept", reason: "active", orphan: false }),
-        expect.objectContaining({ id: "t_orpheline", action: "would_remove", reason: "clean", orphan: true }),
+        expect.objectContaining({ id: "t_orphan", action: "would_remove", reason: "clean", orphan: true }),
       ]),
     );
   });
 
-  it("la sortie humaine rappelle diff/apply pour un travail modifié conservé", async () => {
-    const modified = await createTask("t_a_appliquer", "timed_out");
-    await writeFile(join(modified.workspace, "travail.txt"), "à appliquer\n", "utf8");
+  it("the human output recalls diff/apply for kept modified work", async () => {
+    const modified = await createTask("t_to_apply", "timed_out");
+    await writeFile(join(modified.workspace, "work.txt"), "to apply\n", "utf8");
 
     const code = await runGc(root, {}, io);
 
     expect(code).toBe(EXIT_OK);
-    expect(io.stdoutText()).toContain("t_a_appliquer");
-    expect(io.stdoutText()).toContain("caesar diff t_a_appliquer");
-    expect(io.stdoutText()).toContain("caesar apply t_a_appliquer");
+    expect(io.stdoutText()).toContain("t_to_apply");
+    expect(io.stdoutText()).toContain("caesar diff t_to_apply");
+    expect(io.stdoutText()).toContain("caesar apply t_to_apply");
   });
 
   /**
-   * Le cas qui a fait remonter le défaut : `caesar gc` disait « Aucun worktree à
-   * nettoyer » pendant que `caesar ps` affichait une tâche en cours depuis six
-   * heures. La cause — une tâche que plus personne ne conduit — doit se lire
-   * dans la sortie, même quand il n'y a par ailleurs rien à supprimer.
+   * The case that surfaced the defect: `caesar gc` said "No worktree to
+   * clean up." while `caesar ps` showed a task in progress for six hours.
+   * The cause — a task nobody is driving anymore — must be readable in the
+   * output, even when there is otherwise nothing to remove.
    */
-  it("nomme la tâche conclue d'office, même sans aucun worktree à nettoyer", async () => {
+  it("names the task concluded by decree, even without any worktree to clean up", async () => {
     const store = fileTaskStore(root);
     await store.create({
-      id: "t_sans_worktree",
+      id: "t_no_worktree",
       agent: "codex",
-      objective: "écrire en place",
+      objective: "write in place",
       status: "running",
       created_at: "2026-08-11T10:00:00.000Z",
-      task_dir: join(root, ".caesar", "tasks", "t_sans_worktree"),
+      task_dir: join(root, ".caesar", "tasks", "t_no_worktree"),
       workspace: root,
       isolation: "inplace",
       mode: "write",
       report_via: "file",
       depth: 0,
     });
-    const lease = await markWorktreeInUse(root, "t_sans_worktree");
+    const lease = await markWorktreeInUse(root, "t_no_worktree");
     await writeFile(lease.path, JSON.stringify({ pid: 2_147_483_647, token: lease.token }) + "\n", "utf8");
 
     const code = await runGc(root, {}, io);
 
     expect(code).toBe(EXIT_OK);
-    expect(io.stdoutText()).toContain("t_sans_worktree");
-    expect(io.stdoutText()).toContain("Aucun worktree à nettoyer.");
-    expect((await store.get("t_sans_worktree"))?.status).toBe("failed");
+    expect(io.stdoutText()).toContain("t_no_worktree");
+    expect(io.stdoutText()).toContain("No worktree to clean up.");
+    expect((await store.get("t_no_worktree"))?.status).toBe("failed");
   });
 
-  it("un orphelin modifié indique son chemin sans conseiller diff/apply", async () => {
-    const orphan = await createWorktree(root, "t_orpheline_modifiee");
-    await writeFile(join(orphan.path, "travail.txt"), "sans enregistrement\n", "utf8");
+  it("a modified orphan shows its path without advising diff/apply", async () => {
+    const orphan = await createWorktree(root, "t_orphan_modified");
+    await writeFile(join(orphan.path, "work.txt"), "without a record\n", "utf8");
 
     const code = await runGc(root, {}, io);
 
     expect(code).toBe(EXIT_OK);
-    expect(io.stdoutText()).toContain("t_orpheline_modifiee");
+    expect(io.stdoutText()).toContain("t_orphan_modified");
     expect(io.stdoutText()).toContain(orphan.path);
     expect(io.stdoutText()).not.toContain("caesar diff");
     expect(io.stdoutText()).not.toContain("caesar apply");
   });
 
-  it("étiquette « appliqué » un worktree collecté après application", async () => {
-    await appliedRecordedWorktree("t_appliquee_cli");
+  it("labels \"applied\" a worktree collected after an apply", async () => {
+    await appliedRecordedWorktree("t_applied_cli");
 
     const code = await runGc(root, {}, io);
 
     expect(code).toBe(EXIT_OK);
-    expect(io.stdoutText()).toContain("supprimé");
-    // Sous-chaîne courte plutôt que le libellé complet : la colonne "raison"
-    // de `printTable` rogne à la largeur du terminal (80 par défaut hors
-    // tty), et ce libellé (45 caractères) dépasse le budget que lui laissent
-    // les autres colonnes de cette ligne — même motif que le test voisin
-    // "rappelle diff/apply", qui pour la même raison n'asserte jamais une
-    // phrase entière.
-    expect(io.stdoutText()).toContain("appliqué au workspace");
+    expect(io.stdoutText()).toContain("removed");
+    // A short substring rather than the full label: the "reason" column of
+    // `printTable` trims to the terminal width (80 by default outside a
+    // tty), and this label exceeds the budget the other columns of this row
+    // leave it — same motive as the neighboring test "recalls diff/apply",
+    // which for the same reason never asserts a full sentence.
+    expect(io.stdoutText()).toContain("applied to the workspace");
   });
 
-  it("étiquette « modifié depuis son application » un worktree retouché après apply, avec le conseil adapté", async () => {
-    const record = await appliedRecordedWorktree("t_retouchee_cli");
-    await writeFile(join(record.workspace, "t_retouchee_cli.txt"), "retouche\n", "utf8");
+  it("labels \"modified since it was applied\" a worktree retouched after apply, with the matching advice", async () => {
+    const record = await appliedRecordedWorktree("t_retouched_cli");
+    await writeFile(join(record.workspace, "t_retouched_cli.txt"), "retouch\n", "utf8");
 
     const code = await runGc(root, {}, io);
 
     expect(code).toBe(EXIT_OK);
-    expect(io.stdoutText()).toContain("modifié depuis son application");
-    // Idem : `wrapText` coupe cette phrase entre "pour" et "voir" à 80
-    // colonnes (le conseil dépasse la largeur d'une ligne) — la sous-chaîne
-    // testée reste à l'intérieur d'une seule ligne de l'habillage.
-    expect(io.stdoutText()).toContain("voir ce qui a bougé depuis l'application");
+    expect(io.stdoutText()).toContain("modified since it was applied");
+    // Same here: `wrapText` cuts this sentence at 80 columns (the advice
+    // exceeds one line's width) — the tested substring stays inside a
+    // single line of the wrapping.
+    expect(io.stdoutText()).toContain("what changed since the apply");
   });
 });

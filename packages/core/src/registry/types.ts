@@ -4,38 +4,39 @@ import type { CaesarEventInput } from "@caesar/protocol";
 import type { NetworkControl } from "../network.js";
 
 /**
- * Comment le canal MCP retour est branché côté agent, quand il l'est.
+ * How the MCP return channel is wired on the agent side, when it is.
  *
- * - `"flag"` : une ou plusieurs options de ligne de commande décrivent le serveur.
- * - `"project-config"` : un fichier de configuration déposé dans le workspace.
- * - `"global-config"` : l'agent lit une configuration déjà présente sur la machine ;
- *   rien à injecter au lancement.
- * - `"none"` : l'agent ne sait pas parler MCP.
+ * - `"flag"`: one or more command-line options describe the server.
+ * - `"project-config"`: a configuration file dropped into the workspace.
+ * - `"global-config"`: the agent reads a configuration already present on the machine;
+ *   nothing to inject at launch.
+ * - `"none"`: the agent does not know how to speak MCP.
  */
 export type McpInjection = "flag" | "project-config" | "global-config" | "none";
 
 export interface AgentCapabilities {
-  /** Émet un flux d'événements JSON exploitable. */
+  /** Emits an exploitable stream of JSON events. */
   jsonEvents: boolean;
-  /** Sait contraindre nativement la forme de sa réponse finale par un JSON Schema. */
+  /** Knows how to natively constrain the shape of its final answer with a JSON Schema. */
   outputSchema: boolean;
-  /** Le CLI lui-même — et non le modèle — sait déposer le message final dans un fichier. */
+  /** The CLI itself — and not the model — knows how to drop the final message into a file. */
   finalMessageFile: boolean;
-  /** Dispose d'un mode lecture seule appliqué par le CLI, et non par le prompt. */
+  /** Has a read-only mode enforced by the CLI, and not by the prompt. */
   nativeReadOnly: boolean;
   resume: boolean;
-  /** Accepte des répertoires supplémentaires en écriture. */
+  /** Accepts additional writable directories. */
   addDir: boolean;
   mcpInjection: McpInjection;
   model: boolean;
   /**
-   * Ce que l'orchestrateur sait piloter de l'accès réseau de cet agent — et
-   * non ce dont l'agent est capable. Voir `network.ts` : `"open"` signifie
-   * « nous ne savons pas le refermer », pas « il a le réseau ».
+   * What the orchestrator knows how to control of this agent's network
+   * access — and not what the agent is capable of. See `network.ts`:
+   * `"open"` means "we do not know how to close it", not "it has the
+   * network".
    *
-   * C'est la capacité dont l'absence a coûté le plus cher : `codex` tournait
-   * dans un bac à sable sans réseau pendant que trois autres agents l'avaient
-   * ouvert, et aucun diagnostic ne le disait.
+   * It is the capability whose absence cost the most: `codex` ran
+   * in a sandbox without network while three other agents had it
+   * open, and no diagnostic said so.
    */
   network: NetworkControl;
 }
@@ -43,45 +44,45 @@ export interface AgentCapabilities {
 export interface BuildContext {
   task: Task;
   paths: TaskPaths;
-  /** Prompt déjà rendu par renderTaskPrompt, selon le palier retenu. */
+  /** Prompt already rendered by renderTaskPrompt, according to the selected tier. */
   prompt: string;
   reportVia: ReportChannel;
-  /** Chemin d'un JSON Schema déjà écrit sur disque, quand reportVia vaut "schema". */
+  /** Path of a JSON Schema already written to disk, when reportVia is "schema". */
   schemaFile?: string;
-  /** Où le CLI doit déposer son message final, s'il en est capable. */
+  /** Where the CLI must drop its final message, if it is capable of it. */
   finalMessageFile?: string;
   /**
-   * Modèle demandé (`--model`/`model:`), s'il y en a un. Obligatoire — quitte
-   * à passer `undefined` explicitement — plutôt qu'optionnel : voir C6 et le
-   * durcissement de typage de la revue finale. Un champ optionnel est
-   * précisément ce qui a permis à `runTask` d'omettre ce champ sans qu'aucune
-   * erreur de compilation ne le signale, alors que les cinq adaptateurs le
-   * consomment tous (`ctx.model`) : `--model` était accepté partout et
-   * silencieusement ignoré. Absent → `undefined` explicite ; chaque
-   * adaptateur n'ajoute son flag que si `ctx.model` est défini.
+   * Requested model (`--model`/`model:`), if there is one. Required — even
+   * if that means passing `undefined` explicitly — rather than optional:
+   * see C6 and the typing hardening of the final review. An optional field
+   * is precisely what allowed `runTask` to omit this field without any
+   * compilation error signaling it, while all five adapters consume it
+   * (`ctx.model`): `--model` was accepted everywhere and silently ignored.
+   * Absent → explicit `undefined`; each adapter only adds its flag if
+   * `ctx.model` is defined.
    */
   model: string | undefined;
-  /** Arguments bruts ajoutés par l'utilisateur, passés en fin de ligne. */
+  /** Raw arguments added by the user, passed at the end of the line. */
   extraArgs: string[];
 }
 
-/** Fichier que le moteur devra écrire avant le lancement (config MCP projet, schéma…). */
+/** File the engine will have to write before launch (project MCP config, schema…). */
 export interface PreparedFile {
   path: string;
   content: string;
   /**
-   * Vrai si ce fichier ne doit pas survivre à la tâche : son contenu
-   * précédent (s'il en avait un) est restauré une fois l'exécution
-   * terminée ; supprimé s'il n'existait pas avant. Réservé aux fichiers
-   * écrits dans le workspace réel de l'utilisateur plutôt que dans le
-   * répertoire de tâche que l'orchestrateur possède déjà — voir C5 de la
-   * revue finale (l'adaptateur opencode, seul à écrire hors de
-   * `ctx.paths.dir`) : sans ce filet, `opencode.json` était écrasé
-   * silencieusement, sans sauvegarde ni restauration, y compris en
-   * isolation `inplace` sur le fichier réel de l'utilisateur. Par défaut
-   * (absent ou faux), comportement inchangé : le fichier reste après la
-   * tâche, utile pour l'inspection a posteriori (configs MCP de
-   * claude/copilot, schéma de sortie…), toutes déposées sous `paths.dir`.
+   * True if this file must not outlive the task: its previous content
+   * (if it had any) is restored once execution finishes; deleted if it
+   * did not exist before. Reserved for files written into the user's
+   * real workspace rather than into the task directory the orchestrator
+   * already owns — see C5 of the final review (the opencode adapter,
+   * the only one writing outside `ctx.paths.dir`): without this net,
+   * `opencode.json` was overwritten silently, with neither backup nor
+   * restoration, including in `inplace` isolation on the user's real
+   * file. By default (absent or false), behavior unchanged: the file
+   * remains after the task, useful for after-the-fact inspection (MCP
+   * configs of claude/copilot, output schema…), all dropped under
+   * `paths.dir`.
    */
   restoreAfter?: boolean;
 }
@@ -90,28 +91,28 @@ export interface SpawnPlan {
   command: string;
   args: string[];
   cwd: string;
-  /** Variables à ajouter à l'environnement hérité. */
+  /** Variables to add to the inherited environment. */
   env: Record<string, string>;
   files: PreparedFile[];
   stdin?: string;
 }
 
 /**
- * `Omit` ne se distribue pas sur les types union : appliqué tel quel à
- * `CaesarEventInput` (une union discriminée sur `type`), il ne garderait que
- * les clés communes à toutes les variantes — soit uniquement `type`, en
- * perdant `text`, `tool`, `message`, etc. `DistributiveOmit` applique
- * `Omit` variante par variante pour préserver les champs propres à chacune,
- * ce qui est l'intention documentée ci-dessous.
+ * `Omit` does not distribute over union types: applied as-is to
+ * `CaesarEventInput` (a union discriminated on `type`), it would keep only
+ * the keys common to all variants — i.e. only `type`, losing
+ * `text`, `tool`, `message`, etc. `DistributiveOmit` applies
+ * `Omit` variant by variant to preserve each one's own fields,
+ * which is the intention documented below.
  */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
-/** Événement sans les champs communs, que le moteur complétera. */
+/** Event without the common fields, which the engine will fill in. */
 export type PartialEvent = DistributiveOmit<CaesarEventInput, "protocol" | "seq" | "at" | "task_id">;
 
 export interface Translation {
   events: PartialEvent[];
-  /** Texte final de l'agent porté par cette ligne. Le dernier rencontré gagne. */
+  /** Final text of the agent carried by this line. The last one encountered wins. */
   finalText?: string;
 }
 
@@ -120,18 +121,18 @@ export interface AgentDefinition {
   displayName: string;
   bin: string;
   capabilities: AgentCapabilities;
-  /** Palier de rapport retenu, du plus fiable au plus tolérant. */
+  /** Report tier selected, from the most reliable to the most tolerant. */
   preferredReportChannel(task: Task, channelAvailable: boolean): ReportChannel;
   build(ctx: BuildContext): SpawnPlan;
-  /** Traduit une ligne de sortie vers le vocabulaire commun. Sans état. */
+  /** Translates an output line into the common vocabulary. Stateless. */
   translate(line: string): Translation;
 }
 
 /**
- * La règle de sélection du palier de rapport, commune à tous les adaptateurs :
- * le canal retour prime s'il est disponible et que l'agent sait s'y brancher,
- * puis le JSON Schema natif, puis en dernier recours le rapport-fichier que
- * tout agent capable d'écrire un fichier peut honorer.
+ * The report tier selection rule, common to all adapters:
+ * the return channel takes precedence if it is available and the agent
+ * knows how to hook into it, then the native JSON Schema, then as a last
+ * resort the file report that any agent capable of writing a file can honor.
  */
 export function defaultPreferredReportChannel(
   capabilities: AgentCapabilities,

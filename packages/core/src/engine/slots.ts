@@ -1,46 +1,46 @@
 /**
- * `policy.max_parallel` appliqué **entre processus**, et non seulement à
- * l'intérieur d'un seul.
+ * `policy.max_parallel` enforced **across processes**, not merely within a
+ * single one.
  *
- * Le défaut que ce module corrige : `createQueue` (queue.ts) est un sémaphore
- * en mémoire. Il tient sa promesse au sein d'une session MCP — toutes les
- * délégations y partagent une file — mais chaque `caesar run` construit la
- * sienne. Six terminaux, c'était six agents en vol quel que soit le réglage,
- * et un `caesar run` lancé pendant qu'une conversation Claude Code déléguait
- * déjà s'ajoutait aux quatre siennes sans rien en savoir.
+ * The defect this module fixes: `createQueue` (queue.ts) is an in-memory
+ * semaphore. It keeps its promise within one MCP session — all delegations
+ * there share one queue — but every `caesar run` builds its own. Six
+ * terminals meant six agents in flight whatever the setting, and a
+ * `caesar run` launched while a Claude Code conversation was already
+ * delegating added itself to its four without knowing anything about them.
  *
- * Le verrou : `limit` fichiers-créneaux sous `<root>/.caesar/state/slots/`.
- * Prendre un créneau, c'est réussir à créer son fichier en exclusion mutuelle
- * (`flag: "wx"` — `O_CREAT|O_EXCL`, atomique : un seul appelant gagne, les
- * autres reçoivent EEXIST). Le rendre, c'est le supprimer.
+ * The lock: `limit` slot files under `<root>/.caesar/state/slots/`. Taking
+ * a slot means succeeding at creating its file under mutual exclusion
+ * (`flag: "wx"` — `O_CREAT|O_EXCL`, atomic: a single caller wins, the
+ * others receive EEXIST). Returning it means deleting it.
  *
- * Deux propriétés valent d'être énoncées, parce qu'elles décident du
- * comportement en cas d'ennui :
+ * Two properties are worth stating, because they decide the behavior when
+ * trouble strikes:
  *
- *  - **Un processus tué ne bloque pas les suivants.** Son fichier survit,
- *    mais il porte son pid : le premier appelant qui trouve tous les créneaux
- *    pris vérifie chaque détenteur et récupère ceux dont le processus n'existe
- *    plus. Sans cette reprise, un `kill -9` condamnerait le projet à ne plus
- *    jamais rien lancer — une limite qui devient un blocage définitif est pire
- *    que pas de limite du tout.
- *  - **Personne ne libère le créneau d'autrui.** Chaque fichier porte un
- *    jeton aléatoire, revérifié juste avant toute suppression. Sans lui, deux
- *    reprises simultanées du même créneau mort pouvaient s'enchaîner en
- *    cascade : le second effaçait le créneau que le premier venait de
- *    légitimement reprendre, et le compte dérivait durablement.
+ *  - **A killed process does not block the next ones.** Its file survives,
+ *    but it carries its pid: the first caller that finds all slots taken
+ *    checks every holder and reclaims those whose process no longer exists.
+ *    Without this reclaim, a `kill -9` would doom the project to never
+ *    launch anything again — a limit that becomes a permanent blockage is
+ *    worse than no limit at all.
+ *  - **Nobody frees someone else's slot.** Each file carries a random
+ *    token, re-checked just before any deletion. Without it, two
+ *    simultaneous reclaims of the same dead slot could cascade: the second
+ *    erased the slot the first had just legitimately reclaimed, and the
+ *    count drifted durably.
  *
- * Deux choses que ce verrou ne prétend pas être :
+ * Two things this lock does not claim to be:
  *
- *  - **Équitable.** L'attente est une scrutation, pas une file : entre deux
- *    candidats, c'est celui qui frappe au bon moment qui entre, et non le
- *    premier arrivé. `createQueue`, lui, est strictement FIFO. La différence
- *    n'a d'importance que pour qui écrit un test supposant l'ordre.
- *  - **Distribué.** La reprise d'un créneau mort repose sur
- *    `process.kill(pid, 0)`, qui ne veut rien dire pour un pid d'une autre
- *    machine — un `.caesar/` posé sur un partage réseau et utilisé depuis deux
- *    postes verrait les créneaux de l'autre comme vivants à jamais. Le nom de
- *    la machine est enregistré pour que ce cas se reconnaisse plutôt que de
- *    se deviner (`describeSlotHolders`).
+ *  - **Fair.** The wait is a poll, not a queue: between two candidates, the
+ *    one who knocks at the right moment gets in, not the first arrived.
+ *    `createQueue`, for its part, is strictly FIFO. The difference only
+ *    matters to whoever writes a test assuming the order.
+ *  - **Distributed.** Reclaiming a dead slot relies on
+ *    `process.kill(pid, 0)`, which means nothing for a pid from another
+ *    machine — a `.caesar/` placed on a network share and used from two
+ *    hosts would see the other's slots as alive forever. The machine name
+ *    is recorded so that this case can be recognized rather than guessed
+ *    (`describeSlotHolders`).
  */
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
@@ -48,40 +48,40 @@ import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promi
 import { join } from "node:path";
 import type { Queue } from "./queue.js";
 
-/** Sous-répertoire des créneaux, relatif à la racine du projet. Déjà couvert par le `.gitignore` posé par `caesar init` (`.caesar/state/`). */
+/** Slots subdirectory, relative to the project root. Already covered by the `.gitignore` written by `caesar init` (`.caesar/state/`). */
 const SLOTS_DIR = join(".caesar", "state", "slots");
 
-/** Intervalle entre deux tentatives quand tous les créneaux sont pris. */
+/** Interval between two attempts when all slots are taken. */
 const DEFAULT_POLL_MS = 250;
 
 /**
- * En deçà, un fichier-créneau illisible n'est pas considéré comme un cadavre :
- * la création (atomique) et l'écriture de son contenu sont deux appels
- * distincts, et un lecteur peut tomber dans l'intervalle. Le reprendre
- * reviendrait à voler le créneau d'un processus parfaitement vivant, une
- * milliseconde après qu'il l'a obtenu.
+ * Below this, an unreadable slot file is not considered a corpse: the
+ * (atomic) creation and the writing of its content are two distinct calls,
+ * and a reader can land in the gap. Reclaiming it would amount to stealing
+ * the slot of a perfectly alive process, one millisecond after it obtained
+ * it.
  */
 const WRITE_GRACE_MS = 2_000;
 
 interface SlotHolder {
   pid: number;
   host: string;
-  /** Identifie le détenteur : personne ne supprime un créneau dont le jeton n'est plus le sien. */
+  /** Identifies the holder: nobody deletes a slot whose token is no longer theirs. */
   token: string;
   startedAt: string;
-  /** Ce que fait le détenteur, pour que l'attente puisse être expliquée plutôt que subie. */
+  /** What the holder is doing, so the wait can be explained rather than endured. */
   label?: string;
 }
 
 export interface SlotQueueOptions {
-  /** Racine du projet : les créneaux sont partagés par tout ce qui délègue sous cette racine. */
+  /** Project root: the slots are shared by everything that delegates under this root. */
   root: string;
   limit: number;
-  /** Ce que ce processus inscrit dans son créneau — repris tel quel par `describeSlotHolders`. */
+  /** What this process writes into its slot — passed through as-is by `describeSlotHolders`. */
   label?: string;
-  /** Appelé une seule fois, au moment où l'on commence effectivement à attendre. */
+  /** Called exactly once, at the moment we actually start waiting. */
   onWait?: (holders: SlotHolder[]) => void;
-  /** Interrompt l'attente. Le créneau n'est jamais pris après un abandon. */
+  /** Interrupts the wait. The slot is never taken after an abort. */
   signal?: AbortSignal;
   pollMs?: number;
 }
@@ -90,14 +90,14 @@ function slotPath(root: string, index: number): string {
   return join(root, SLOTS_DIR, `${index}.json`);
 }
 
-/** Vrai si le processus existe encore. Le signal 0 ne fait que tester : il ne tue rien. */
+/** True if the process still exists. Signal 0 only tests: it kills nothing. */
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    // EPERM : le processus existe mais appartient à un autre utilisateur —
-    // vivant, donc, et son créneau n'est pas à reprendre.
+    // EPERM: the process exists but belongs to another user — alive,
+    // therefore, and its slot is not up for reclaiming.
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
@@ -114,17 +114,18 @@ async function readHolder(path: string): Promise<SlotHolder | null> {
     if (typeof holder.pid !== "number" || typeof holder.token !== "string" || typeof holder.host !== "string") return null;
     return holder as SlotHolder;
   } catch {
-    // Absent, tronqué, ou illisible : l'appelant décide, selon l'âge du
-    // fichier, s'il s'agit d'une écriture en cours ou d'un cadavre.
+    // Absent, truncated, or unreadable: the caller decides, based on the
+    // file's age, whether it is a write in progress or a corpse.
     return null;
   }
 }
 
 /**
- * Supprime `path` **seulement** s'il porte encore `token`. C'est la garantie
- * qui empêche une reprise concurrente de dégénérer : entre le moment où l'on
- * décide qu'un créneau est mort et celui où on l'efface, un autre processus a
- * pu le reprendre légitimement — l'effacer alors reviendrait à le lui voler.
+ * Deletes `path` **only** if it still carries `token`. This is the
+ * guarantee that keeps a concurrent reclaim from degenerating: between the
+ * moment we decide a slot is dead and the moment we erase it, another
+ * process may have legitimately reclaimed it — erasing it then would
+ * amount to stealing it from them.
  */
 async function unlinkIfToken(path: string, token: string): Promise<boolean> {
   const holder = await readHolder(path);
@@ -138,7 +139,7 @@ async function unlinkIfToken(path: string, token: string): Promise<boolean> {
   }
 }
 
-/** Âge du fichier en millisecondes, `null` s'il n'existe plus. */
+/** File age in milliseconds, `null` if it no longer exists. */
 async function ageMs(path: string): Promise<number | null> {
   try {
     return Date.now() - (await stat(path)).mtimeMs;
@@ -148,8 +149,8 @@ async function ageMs(path: string): Promise<number | null> {
 }
 
 /**
- * Tente de reprendre les créneaux dont le détenteur n'existe plus. Rend le
- * nombre de créneaux libérés — zéro signifie que l'attente est légitime.
+ * Attempts to reclaim the slots whose holder no longer exists. Returns the
+ * number of slots freed — zero means the wait is legitimate.
  */
 async function reclaimDead(root: string, limit: number): Promise<number> {
   let reclaimed = 0;
@@ -158,21 +159,21 @@ async function reclaimDead(root: string, limit: number): Promise<number> {
     const holder = await readHolder(path);
 
     if (!holder) {
-      // Illisible : cadavre d'une écriture interrompue, ou fichier en cours
-      // d'écriture à l'instant même. Seul l'âge les distingue.
+      // Unreadable: corpse of an interrupted write, or a file being written
+      // this very instant. Only the age tells them apart.
       const age = await ageMs(path);
       if (age !== null && age > WRITE_GRACE_MS) {
         try {
           await unlink(path);
           reclaimed++;
         } catch {
-          // Un autre appelant l'a repris entre-temps : très bien.
+          // Another caller reclaimed it in the meantime: fine.
         }
       }
       continue;
     }
 
-    // Un pid d'une autre machine ne se teste pas : on ne reprend pas.
+    // A pid from another machine cannot be tested: we do not reclaim.
     if (holder.host !== hostname()) continue;
     if (isProcessAlive(holder.pid)) continue;
     if (await unlinkIfToken(path, holder.token)) reclaimed++;
@@ -180,7 +181,7 @@ async function reclaimDead(root: string, limit: number): Promise<number> {
   return reclaimed;
 }
 
-/** Les détenteurs actuels, pour expliquer une attente plutôt que la laisser muette. */
+/** The current holders, to explain a wait rather than leaving it mute. */
 export async function describeSlotHolders(root: string, limit: number): Promise<SlotHolder[]> {
   const holders: SlotHolder[] = [];
   for (let index = 0; index < limit; index++) {
@@ -190,7 +191,7 @@ export async function describeSlotHolders(root: string, limit: number): Promise<
   return holders;
 }
 
-/** Nombre de créneaux occupés sous cette racine, quelle que soit la limite du lecteur. */
+/** Number of occupied slots under this root, whatever the reader's limit. */
 export async function countOccupiedSlots(root: string): Promise<number> {
   try {
     return (await readdir(join(root, SLOTS_DIR))).filter((name) => name.endsWith(".json")).length;
@@ -200,22 +201,22 @@ export async function countOccupiedSlots(root: string): Promise<number> {
 }
 
 /**
- * Un sémaphore de `limit` places, partagé par tous les processus travaillant
- * sous `root`. Implémente `Queue` : il se substitue à `createQueue` partout
- * où `RunnerDeps.queue` est attendu, sans que le moteur ait à savoir que la
- * limite est désormais inter-processus.
+ * A semaphore of `limit` places, shared by all processes working under
+ * `root`. Implements `Queue`: it substitutes for `createQueue` everywhere
+ * `RunnerDeps.queue` is expected, without the engine having to know that
+ * the limit is now inter-process.
  *
- * `limit` est celui que *ce* processus a lu dans la configuration. Deux
- * processus qui liraient des limites différentes (couche locale distincte,
- * fichier modifié entre-temps) se partageraient les créneaux selon la plus
- * grande des deux : c'est inhérent à un réglage relu à chaque lancement, et
- * sans conséquence — la limite reste bornée.
+ * `limit` is the one *this* process read from the configuration. Two
+ * processes that read different limits (distinct local layer, file
+ * modified in between) would share the slots according to the larger of
+ * the two: this is inherent to a setting re-read at every launch, and
+ * without consequence — the limit remains bounded.
  */
 export function createSlotQueue(options: SlotQueueOptions): Queue {
   const { root, limit, label, onWait, signal } = options;
   const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
   if (limit < 1) {
-    throw new Error(`La limite de la file doit être au moins 1 (reçu ${limit}).`);
+    throw new Error(`The queue limit must be at least 1 (received ${limit}).`);
   }
 
   let activeCount = 0;
@@ -233,9 +234,10 @@ export function createSlotQueue(options: SlotQueueOptions): Queue {
         ...(label !== undefined ? { label } : {}),
       };
       try {
-        // `wx` = O_CREAT|O_EXCL : la création est atomique, un seul appelant
-        // gagne ce créneau. L'écriture du contenu suit, mais le vainqueur est
-        // déjà désigné — le contenu ne sert qu'à la reprise d'un mort.
+        // `wx` = O_CREAT|O_EXCL: the creation is atomic, a single caller
+        // wins this slot. The content write follows, but the winner is
+        // already designated — the content only serves the reclaim of a
+        // dead one.
         await writeFile(path, JSON.stringify(holder) + "\n", { flag: "wx" });
         return { path, token };
       } catch (error) {
@@ -256,8 +258,8 @@ export function createSlotQueue(options: SlotQueueOptions): Queue {
       const taken = await tryTake();
       if (taken) return taken;
 
-      // Tous pris : avant d'attendre, vérifier qu'aucun détenteur n'est un
-      // fantôme. C'est ce qui rend le verrou récupérable après un `kill -9`.
+      // All taken: before waiting, verify that no holder is a ghost. This
+      // is what makes the lock recoverable after a `kill -9`.
       if ((await reclaimDead(root, limit)) > 0) continue;
 
       if (!announced) {
@@ -271,7 +273,7 @@ export function createSlotQueue(options: SlotQueueOptions): Queue {
         }, pollMs);
         function onAbort(): void {
           clearTimeout(timer);
-          reject(signal?.reason ?? new Error("Attente interrompue."));
+          reject(signal?.reason ?? new Error("Wait interrupted."));
         }
         signal?.addEventListener("abort", onAbort, { once: true });
       });
@@ -292,19 +294,19 @@ export function createSlotQueue(options: SlotQueueOptions): Queue {
         return await task();
       } finally {
         activeCount--;
-        // Ne libère que si le créneau est encore le nôtre : si une reprise
-        // concurrente nous l'avait pris pour mort, l'effacer aveuglément
-        // supprimerait le créneau de son nouveau détenteur.
+        // Only release if the slot is still ours: if a concurrent reclaim
+        // had taken us for dead, erasing it blindly would delete the slot
+        // of its new holder.
         await unlinkIfToken(slot.path, slot.token).catch(() => {
-          // Un créneau qu'on n'a pas pu rendre sera repris par le prochain
-          // appelant qui constatera notre pid éteint : ne jamais faire
-          // échouer une tâche réussie pour un fichier de verrou.
+          // A slot we could not return will be reclaimed by the next caller
+          // who observes our pid extinguished: never fail a successful task
+          // over a lock file.
         });
       }
     },
-    /** Places occupées **par ce processus**. L'occupation globale se lit avec `countOccupiedSlots`. */
+    /** Places occupied **by this process**. Global occupancy is read with `countOccupiedSlots`. */
     active: () => activeCount,
-    /** Appelants en attente **dans ce processus** : ceux des autres ne se comptent pas de l'extérieur. */
+    /** Callers waiting **in this process**: those of other processes cannot be counted from outside. */
     pending: () => waitingCount,
   };
 }

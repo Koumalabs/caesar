@@ -1,15 +1,15 @@
 /**
- * Barre de touches contextuelle : ce qu'on peut taper **maintenant**, à
- * l'endroit où on est.
+ * Contextual key bar: what can be typed **right now**, at the place where
+ * one is.
  *
- * L'ancien écran affichait une ligne d'aide figée, identique qu'on parcoure
- * la liste ou qu'on édite un champ — donc fausse la moitié du temps, et
- * illisible tout le temps (tout en gris, touches et libellés confondus dans
- * la même phrase). Ici la touche est un pavé contrasté et le libellé un texte
- * secondaire : l'œil trouve les touches sans lire la phrase.
+ * The old screen displayed a frozen help line, identical whether one was
+ * walking the list or editing a field — thus wrong half the time, and
+ * unreadable all the time (all gray, keys and labels blended into the
+ * same sentence). Here the key is a contrasted chip and the label
+ * secondary text: the eye finds the keys without reading the sentence.
  *
- * Chaque écran rend cette barre lui-même, en fonction de son niveau de focus
- * courant : c'est lui qui sait ce que "Entrée" fait à cet instant.
+ * Each screen renders this bar itself, according to its current focus
+ * level: it is the one that knows what "Enter" does at this instant.
  */
 import { DIM, KEY_BG, KEY_FG } from "./theme";
 

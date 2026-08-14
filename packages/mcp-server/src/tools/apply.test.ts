@@ -18,18 +18,18 @@ describe("caesar_apply", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("applique au dépôt principal le diff d'une tâche isolée en worktree", async () => {
+  it("applies the diff of a worktree-isolated task to the main repository", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         await initGitRepo(root);
         const session = await createSession(root);
 
         const delegated = await caesarDelegate(session, {
-          objective: "écrire un fichier",
+          objective: "write a file",
           agent: "codex",
           mode: "write",
           isolation: "worktree",
-          context: JSON.stringify({ files: [{ path: "nouveau.txt", content: "contenu\n" }] }),
+          context: JSON.stringify({ files: [{ path: "new.txt", content: "content\n" }] }),
         });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
         const entry = session.tasks.get(taskId);
@@ -41,8 +41,8 @@ describe("caesar_apply", () => {
         expect(data.applied).toBe(true);
         expect(data.conflicts).toEqual([]);
 
-        const content = await readFile(join(root, "nouveau.txt"), "utf8");
-        expect(content).toBe("contenu\n");
+        const content = await readFile(join(root, "new.txt"), "utf8");
+        expect(content).toBe("content\n");
 
         const record = await session.store.get(taskId);
         expect(record?.applied_at).toBeDefined();
@@ -51,11 +51,11 @@ describe("caesar_apply", () => {
     );
   }, 20_000);
 
-  it("isolation inplace : rien à appliquer, applied: true", async () => {
+  it("inplace isolation: nothing to apply, applied: true", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await caesarDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
+        const delegated = await caesarDelegate(session, { objective: "task", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
         const entry = session.tasks.get(taskId);
         await entry?.promise;
@@ -71,10 +71,10 @@ describe("caesar_apply", () => {
     );
   }, 20_000);
 
-  it("tâche inconnue : erreur claire", async () => {
+  it("unknown task: clear error", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await caesarApply(session, { task_id: "t_inexistant" });
+      const result = await caesarApply(session, { task_id: "t_nonexistent" });
       expect(result.isError).toBe(true);
     });
   });

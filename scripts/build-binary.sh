@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# Construit l'exécutable autonome `caesar` (tâche 12) : un unique binaire, sans
-# Node, ni Bun, ni node_modules requis sur la machine cible.
+# Builds the standalone `caesar` executable (task 12): a single binary, with
+# no Node, no Bun, no node_modules required on the target machine.
 #
-# Deux étapes :
-#   1. `tsc -b` — dist/ à jour pour tous les packages compilés (@caesar/core,
+# Two steps:
+#   1. `tsc -b` — dist/ up to date for every compiled package (@caesar/core,
 #      @caesar/protocol, @caesar/mcp-channel, @caesar/mcp-server, @caesar/cli).
-#      `bun-entry.ts` les importe via leurs "main"/dist compilés, à
-#      l'exception d'@caesar/tui, importé directement depuis sa source .tsx —
-#      jamais concerné par tsc.
-#   2. `bun build --compile packages/cli/src/bun-entry.ts` — embarque le
-#      runtime Bun, le CLI et le TUI (OpenTUI compris, cœur natif inclus)
-#      dans un seul fichier.
+#      `bun-entry.ts` imports them via their compiled "main"/dist, with the
+#      exception of @caesar/tui, imported directly from its .tsx source —
+#      never handled by tsc.
+#   2. `bun build --compile packages/cli/src/bun-entry.ts` — embeds the Bun
+#      runtime, the CLI and the TUI (OpenTUI included, native core included)
+#      into a single file.
 #
-# Sortie dans dist-bin/ (racine du dépôt), ignoré par git — jamais dist/,
-# déjà pris par les sorties de tsc de chaque package.
+# Output in dist-bin/ (repository root), ignored by git — never dist/,
+# already taken by each package's tsc outputs.
 #
-# Arguments supplémentaires transmis tels quels à `bun build` : utile pour
-# essayer une cible croisée, p. ex. :
+# Extra arguments are forwarded as-is to `bun build`: useful to try a
+# cross-compilation target, e.g.:
 #   scripts/build-binary.sh --target=bun-linux-x64
-# (voir le rapport de la tâche 12 pour ce que cela donne en pratique — les
-# binaires natifs par plateforme d'OpenTUI ne sont installés que pour la
-# machine courante par pnpm, la cible étrangère est susceptible d'échouer).
+# (see task 12's report for how that works out in practice — OpenTUI's
+# per-platform native binaries are only installed for the current machine by
+# pnpm, so a foreign target is likely to fail).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,11 +28,11 @@ OUT_DIR="$ROOT_DIR/dist-bin"
 OUT_FILE="$OUT_DIR/caesar"
 
 if ! command -v bun >/dev/null 2>&1; then
-  echo "bun est introuvable dans le PATH : requis pour produire l'exécutable autonome (https://bun.sh)." >&2
+  echo "bun not found on the PATH: required to produce the standalone executable (https://bun.sh)." >&2
   exit 1
 fi
 
-echo "1/2 — pnpm exec tsc -b (dist/ à jour pour tous les packages sauf @caesar/tui)"
+echo "1/2 — pnpm exec tsc -b (dist/ up to date for every package except @caesar/tui)"
 (cd "$ROOT_DIR" && pnpm exec tsc -b)
 
 mkdir -p "$OUT_DIR"
@@ -40,4 +40,4 @@ mkdir -p "$OUT_DIR"
 echo "2/2 — bun build --compile packages/cli/src/bun-entry.ts"
 bun build "$ROOT_DIR/packages/cli/src/bun-entry.ts" --compile --outfile "$OUT_FILE" "$@"
 
-echo "Exécutable produit : $OUT_FILE"
+echo "Executable produced: $OUT_FILE"

@@ -10,7 +10,7 @@ const FIXTURE_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..
 const { sampleTask, sampleContext } = makeSampleFactory("opencode");
 
 describe("opencodeAgent.build", () => {
-  it("n'a pas de mode lecture seule natif : --auto n'apparaît qu'en écriture", () => {
+  it("has no native read-only mode: --auto only appears in write mode", () => {
     const readOnly = opencodeAgent.build(sampleContext({ task: sampleTask({ mode: "read-only" }) }));
     expect(readOnly.args).not.toContain("--auto");
 
@@ -18,30 +18,30 @@ describe("opencodeAgent.build", () => {
     expect(write.args).toContain("--auto");
   });
 
-  it("passe le workspace par --dir et par le cwd du plan", () => {
+  it("passes the workspace via --dir and via the plan's cwd", () => {
     const plan = opencodeAgent.build(sampleContext({ task: sampleTask({ workspace: "/tmp/wt" }) }));
     expect(plan.cwd).toBe("/tmp/wt");
     const index = plan.args.indexOf("--dir");
     expect(plan.args[index + 1]).toBe("/tmp/wt");
   });
 
-  it("n'ajoute --model que si un modèle est fourni", () => {
-    const sans = opencodeAgent.build(sampleContext());
-    expect(sans.args).not.toContain("--model");
-    const avec = opencodeAgent.build(sampleContext({ model: "anthropic/claude-opus-5" }));
-    const index = avec.args.indexOf("--model");
-    expect(avec.args[index + 1]).toBe("anthropic/claude-opus-5");
+  it("only adds --model when a model is provided", () => {
+    const without = opencodeAgent.build(sampleContext());
+    expect(without.args).not.toContain("--model");
+    const withModel = opencodeAgent.build(sampleContext({ model: "anthropic/claude-opus-5" }));
+    const index = withModel.args.indexOf("--model");
+    expect(withModel.args[index + 1]).toBe("anthropic/claude-opus-5");
   });
 
-  it("relaie task.role vers --agent", () => {
-    const sans = opencodeAgent.build(sampleContext());
-    expect(sans.args).not.toContain("--agent");
-    const avec = opencodeAgent.build(sampleContext({ task: sampleTask({ role: "reviewer" }) }));
-    const index = avec.args.indexOf("--agent");
-    expect(avec.args[index + 1]).toBe("reviewer");
+  it("relays task.role to --agent", () => {
+    const without = opencodeAgent.build(sampleContext());
+    expect(without.args).not.toContain("--agent");
+    const withRole = opencodeAgent.build(sampleContext({ task: sampleTask({ role: "reviewer" }) }));
+    const index = withRole.args.indexOf("--agent");
+    expect(withRole.args[index + 1]).toBe("reviewer");
   });
 
-  it("dépose un opencode.json dans le workspace au palier channel", () => {
+  it("drops an opencode.json into the workspace at the channel tier", () => {
     const task = sampleTask({ channel: { transport: "mcp-stdio", command: "node", args: ["server.js"], server_name: "caesar" } });
     const plan = opencodeAgent.build(sampleContext({ task, reportVia: "channel" }));
     expect(plan.files).toHaveLength(1);
@@ -50,12 +50,12 @@ describe("opencodeAgent.build", () => {
     expect(content.mcp.caesar).toEqual({ type: "local", command: ["node", "server.js"], enabled: true });
   });
 
-  it("ne dépose aucun fichier hors du palier channel", () => {
+  it("drops no file outside the channel tier", () => {
     const plan = opencodeAgent.build(sampleContext({ reportVia: "file" }));
     expect(plan.files).toEqual([]);
   });
 
-  it("place le prompt en position positionnelle finale, puis les arguments bruts", () => {
+  it("places the prompt in final positional position, then the raw arguments", () => {
     const plan = opencodeAgent.build(sampleContext({ extraArgs: ["--pure"] }));
     expect(plan.args.at(-2)).toBe("PROMPT");
     expect(plan.args.at(-1)).toBe("--pure");
@@ -65,11 +65,11 @@ describe("opencodeAgent.build", () => {
 describe("opencodeAgent.preferredReportChannel", () => {
   const task = sampleTask();
 
-  it("choisit channel quand le canal est disponible (mcpInjection project-config n'est pas none)", () => {
+  it("picks channel when the channel is available (mcpInjection project-config is not none)", () => {
     expect(opencodeAgent.preferredReportChannel(task, true)).toBe("channel");
   });
 
-  it("retombe sur file sans canal (outputSchema faux)", () => {
+  it("falls back to file without a channel (outputSchema false)", () => {
     expect(opencodeAgent.preferredReportChannel(task, false)).toBe("file");
   });
 });
@@ -77,12 +77,12 @@ describe("opencodeAgent.preferredReportChannel", () => {
 describe("opencodeAgent.translate", () => {
   const lines = readFileSync(join(FIXTURE_DIR, "opencode.jsonl"), "utf8").split("\n").filter((l) => l.trim());
 
-  it("reconnaît au moins un événement dans la capture réelle", () => {
+  it("recognizes at least one event in the real capture", () => {
     const all = lines.flatMap((line) => opencodeAgent.translate(line).events);
     expect(all.length).toBeGreaterThan(0);
   });
 
-  it("traduit une part de type text en message, et porte finalText", () => {
+  it("translates a text-typed part into message, and carries finalText", () => {
     const line = lines.find((l) => l.includes('"type":"text"'));
     expect(line).toBeDefined();
     const translation = opencodeAgent.translate(line as string);
@@ -92,7 +92,7 @@ describe("opencodeAgent.translate", () => {
     expect(translation.finalText).not.toBe("");
   });
 
-  it("ignore step_start / step_finish, qui ne portent pas de contenu reconnu", () => {
+  it("ignores step_start / step_finish, which carry no recognized content", () => {
     const stepStart = lines.find((l) => l.includes('"type":"step_start"'));
     const stepFinish = lines.find((l) => l.includes('"type":"step_finish"'));
 
@@ -103,14 +103,14 @@ describe("opencodeAgent.translate", () => {
   });
 
   /**
-   * Ce bloc remplace un test qui construisait lui-même une part
-   * `type: "tool-bash"`, avec `part.input` et `part.state` de type chaîne —
-   * la forme supposée d'après les conventions du Vercel AI SDK. Il passait au
-   * vert, et validait une forme qu'opencode n'émet pas : aucun `tool_use`
-   * n'était produit en vrai, et un sous-agent opencode paraissait n'utiliser
-   * aucun outil. Les assertions portent désormais sur la capture réelle.
+   * This block replaces a test that built its own `type: "tool-bash"` part,
+   * with `part.input` and a string-typed `part.state` — the shape assumed
+   * from the Vercel AI SDK conventions. It passed green, and validated a
+   * shape opencode does not emit: no `tool_use` was produced for real, and
+   * an opencode sub-agent appeared to use no tools at all. The assertions
+   * now target the real capture.
    */
-  it("traduit les parts tool de la capture réelle, avec leur identifiant d'appel", () => {
+  it("translates the tool parts of the real capture, with their call identifier", () => {
     const toolEvents = lines.flatMap((line) => opencodeAgent.translate(line).events).filter((e) => e.type === "tool_use");
     expect(toolEvents.length).toBeGreaterThanOrEqual(2);
 
@@ -118,13 +118,13 @@ describe("opencodeAgent.translate", () => {
     expect(bash).toMatchObject({ type: "tool_use", tool: "bash", input_summary: "ls -1", status: "succeeded" });
     expect((bash as { id: string }).id).toBe("bash_1");
 
-    // `state.title` est préféré à l'entrée sérialisée : celle-ci porte le
-    // contenu entier du fichier écrit, illisible dans une vue en direct.
+    // `state.title` is preferred over the serialized input: the latter
+    // carries the whole content of the written file, unreadable in a live view.
     const write = toolEvents.find((e) => (e as { tool: string }).tool === "write");
     expect((write as { input_summary: string }).input_summary).toBe("note.txt");
   });
 
-  it("retombe sur l'entrée sérialisée quand la part ne porte pas de titre", () => {
+  it("falls back to the serialized input when the part carries no title", () => {
     const line = JSON.stringify({
       type: "tool_use",
       part: { type: "tool", tool: "grep", callID: "grep_0", state: { status: "completed", input: { pattern: "TODO" } } },
@@ -134,7 +134,7 @@ describe("opencodeAgent.translate", () => {
     ]);
   });
 
-  it("ignore silencieusement une ligne vide, du JSON invalide, ou du JSON inconnu", () => {
+  it("silently ignores an empty line, invalid JSON, or unknown JSON", () => {
     expect(opencodeAgent.translate("")).toEqual({ events: [] });
     expect(opencodeAgent.translate("{not json")).toEqual({ events: [] });
     expect(opencodeAgent.translate('{"hello":"world"}')).toEqual({ events: [] });

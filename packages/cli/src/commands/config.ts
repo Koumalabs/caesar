@@ -1,31 +1,31 @@
 /**
- * `caesar config` : lance le TUI de configuration (OpenTUI, sous Bun — voir le
- * brief de la tâche 8).
+ * `caesar config`: launches the configuration TUI (OpenTUI, under Bun — see
+ * the task 8 brief).
  *
- * OpenTUI rend via le FFI de Bun ; Node 24 ne le permet pas (il faudrait
- * Node 26.4 avec `--experimental-ffi`, absent de cette machine). Cette
- * commande cherche donc `bun` dans le `PATH` — réutilise `findBinaryInPath`
- * de `@caesar/core`, la même recherche que `caesar doctor` fait pour chaque
- * agent, plutôt que d'en écrire une seconde — et, s'il est absent, explique
- * la situation et renvoie vers les sous-commandes équivalentes au lieu
- * d'échouer sèchement.
+ * OpenTUI renders through Bun's FFI; Node 24 does not allow it (it would
+ * take Node 26.4 with `--experimental-ffi`, absent from this machine). This
+ * command therefore looks for `bun` in the `PATH` — reusing
+ * `findBinaryInPath` from `@caesar/core`, the same lookup `caesar doctor`
+ * does for each agent, rather than writing a second one — and, if it is
+ * missing, explains the situation and points to the equivalent subcommands
+ * instead of failing dryly.
  *
- * `packages/tui` n'est jamais importé statiquement ici : ce module est
- * compilé par `tsc`, qui ne doit jamais tenter de traiter le `.tsx` destiné
- * à Bun. Son chemin est résolu dynamiquement via `@caesar/tui/package.json`,
- * déclaré en dépendance dans `package.json` pour que la résolution Node le
- * trouve dans `node_modules`.
+ * `packages/tui` is never imported statically here: this module is compiled
+ * by `tsc`, which must never attempt to process the `.tsx` meant for Bun.
+ * Its path is resolved dynamically via `@caesar/tui/package.json`, declared
+ * as a dependency in `package.json` so that Node resolution finds it in
+ * `node_modules`.
  *
- * Ce chemin (spawn d'un `bun` externe) est celui du développement dans le
- * monorepo, et celui d'une installation classique : il reste inchangé par
- * défaut. Le binaire compilé (tâche 12) n'a plus de `node_modules` où
- * résoudre quoi que ce soit — `resolveTuiEntry` y échouerait toujours.
- * `configureInProcessTui`, appelée une seule fois par
- * `packages/cli/src/bun-entry.ts` (qui, lui, importe `@caesar/tui`
- * statiquement — c'est ce qui l'embarque dans le binaire), fournit un
- * lanceur qui monte le TUI directement dans le processus courant plutôt que
- * dans un sous-processus : un seul binaire, aucune résolution de chemin, Bun
- * n'a plus besoin d'être installé séparément puisqu'il est dedans.
+ * This path (spawning an external `bun`) is the one for development in the
+ * monorepo, and for a classic installation: it stays unchanged by default.
+ * The compiled binary (task 12) no longer has a `node_modules` to resolve
+ * anything from — `resolveTuiEntry` would always fail there.
+ * `configureInProcessTui`, called exactly once by
+ * `packages/cli/src/bun-entry.ts` (which, itself, imports `@caesar/tui`
+ * statically — that is what embeds it into the binary), provides a launcher
+ * that mounts the TUI directly in the current process rather than in a
+ * subprocess: a single binary, no path resolution, Bun no longer needs to
+ * be installed separately since it is inside.
  */
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
@@ -34,22 +34,22 @@ import { findBinaryInPath } from "@caesar/core";
 import type { Io } from "../output.js";
 import { EXIT_RUNTIME, printError, writeLine } from "../output.js";
 
-/** Lanceur in-process du TUI (tâche 12) : monte le renderer dans le processus courant et rend le code de sortie une fois le TUI fermé. */
+/** In-process TUI launcher (task 12): mounts the renderer in the current process and returns the exit code once the TUI closes. */
 export type InProcessTuiLauncher = (root: string) => Promise<number>;
 
 let inProcessTui: InProcessTuiLauncher | undefined;
 
 /**
- * Point d'extension appelé par `bun-entry.ts` au démarrage du binaire
- * compilé. Tant qu'elle n'est jamais appelée — le cas du chemin Node,
- * `bin.ts` ne l'appelle jamais — `runConfig` garde son comportement
- * historique (spawn d'un `bun` externe, ci-dessous), à l'identique.
+ * Extension point called by `bun-entry.ts` at compiled-binary startup. As
+ * long as it is never called — the case of the Node path, `bin.ts` never
+ * calls it — `runConfig` keeps its historical behavior (spawning an
+ * external `bun`, below), identically.
  */
 export function configureInProcessTui(launcher: InProcessTuiLauncher | undefined): void {
   inProcessTui = launcher;
 }
 
-/** `<...>/packages/tui/src/main.tsx`, à partir du `package.json` de `@caesar/tui` tel que Node le résout. */
+/** `<...>/packages/tui/src/main.tsx`, from the `package.json` of `@caesar/tui` as Node resolves it. */
 function resolveTuiEntry(): string {
   const require = createRequire(import.meta.url);
   const packageJsonPath = require.resolve("@caesar/tui/package.json");
@@ -59,12 +59,12 @@ function resolveTuiEntry(): string {
 function explainMissingBun(io: Io): void {
   printError(
     io,
-    'Le TUI de configuration exige Bun : OpenTUI rend via son FFI, que Node 24 ne permet pas (il faudrait Node 26.4 avec "--experimental-ffi"). "bun" est introuvable dans le PATH.',
+    'The configuration TUI requires Bun: OpenTUI renders through its FFI, which Node 24 does not allow (it would take Node 26.4 with "--experimental-ffi"). "bun" was not found in the PATH.',
   );
-  writeLine(io.stderr, "Installez Bun (https://bun.sh), ou utilisez les sous-commandes équivalentes :");
-  writeLine(io.stderr, "  - caesar policy show   Politique effective (allow/deny, provenance).");
-  writeLine(io.stderr, "  - caesar role list     Rôles, agents de repli, agent retenu aujourd'hui.");
-  writeLine(io.stderr, "  - caesar agents list   Catalogue des agents : présence, capacités, autorisation.");
+  writeLine(io.stderr, "Install Bun (https://bun.sh), or use the equivalent subcommands:");
+  writeLine(io.stderr, "  - caesar policy show   Effective policy (allow/deny, provenance).");
+  writeLine(io.stderr, "  - caesar role list     Roles, fallback agents, agent picked today.");
+  writeLine(io.stderr, "  - caesar agents list   Agent catalog: presence, capabilities, authorization.");
 }
 
 export async function runConfig(root: string, io: Io): Promise<number> {
@@ -84,19 +84,18 @@ export async function runConfig(root: string, io: Io): Promise<number> {
   } catch (error) {
     printError(
       io,
-      `Impossible de localiser le TUI ("@caesar/tui" introuvable dans les dépendances) : ${error instanceof Error ? error.message : String(error)}`,
+      `Cannot locate the TUI ("@caesar/tui" not found in the dependencies): ${error instanceof Error ? error.message : String(error)}`,
     );
     return EXIT_RUNTIME;
   }
 
-  // Trois flux hérités (stdio: "inherit") : le TUI prend directement le
-  // terminal, `io` n'entre pas en jeu ici (il ne sert qu'aux diagnostics
-  // avant le lancement, ci-dessus). Le code de sortie du TUI devient celui
-  // de la commande.
+  // Three inherited streams (stdio: "inherit"): the TUI takes the terminal
+  // directly, `io` plays no part here (it only serves the diagnostics
+  // before the launch, above). The TUI's exit code becomes the command's.
   return await new Promise<number>((resolvePromise) => {
     const child = spawn(bunPath, [entry, root], { stdio: "inherit" });
     child.on("error", (error) => {
-      printError(io, `Échec du lancement du TUI : ${error.message}`);
+      printError(io, `Failed to launch the TUI: ${error.message}`);
       resolvePromise(EXIT_RUNTIME);
     });
     child.on("exit", (code) => {

@@ -1,34 +1,34 @@
 /**
- * Écran Rôles : la liste des rôles à gauche, l'édition du rôle sélectionné à
- * droite — nom, intention, agents dans leur ordre de repli, mode, isolation,
- * délai, et **le prompt système lui-même**, contenu compris.
+ * Roles screen: the list of roles on the left, editing of the selected
+ * role on the right — name, purpose, agents in their fallback order, mode,
+ * isolation, timeout, and **the system prompt itself**, content included.
  *
- * Ce dernier point est la raison de la réécriture : le champ n'exposait
- * qu'un chemin de fichier, alors que ce fichier *est* le prompt de l'agent
- * pour ce rôle (`resolveRole` le place en tête du contexte, voir
- * `delegation.ts`). Un aperçu le montre sur place, `Entrée` l'ouvre en
- * plein écran (`PromptEditor`).
+ * That last point is the reason for the rewrite: the field only exposed a
+ * file path, while that file *is* the agent's prompt for this role
+ * (`resolveRole` places it at the head of the context, see
+ * `delegation.ts`). A preview shows it in place, `Enter` opens it full
+ * screen (`PromptEditor`).
  *
- * L'ordre des agents reste le cœur de l'écran : réordonnable, avec l'agent
- * retenu aujourd'hui calculé par `pickAgentForRoleName` (`config-state.ts`,
- * qui s'appuie sur `pickAgentForRole` de `@caesar/core` — la seule règle de
- * repli, jamais réécrite ici).
+ * The agent order remains the heart of the screen: reorderable, with the
+ * agent picked today computed by `pickAgentForRoleName` (`config-state.ts`,
+ * which relies on `pickAgentForRole` from `@caesar/core` — the only
+ * fallback rule, never rewritten here).
  *
- * Navigation à trois niveaux, et le panneau qui reçoit les touches est celui
- * dont la bordure est allumée (`Panel`, `focused`) — l'ancienne version
- * laissait deux curseurs "›" visibles sans dire lequel écoutait :
- *  - "roles"  : Haut/Bas choisit le rôle, "n" en crée un, "x" supprime,
- *               Entrée entre dans les champs.
- *  - "fields" : Haut/Bas choisit un champ, Entrée l'édite / le fait cycler /
- *               ouvre l'éditeur de prompt, Échap revient à la liste.
- *  - "agents" : Haut/Bas choisit un agent du repli, Maj+J/Maj+K le déplace,
- *               "a" en ajoute un, "r" le retire, Échap revient aux champs.
+ * Three-level navigation, and the panel that receives the keys is the one
+ * whose border is lit (`Panel`, `focused`) — the old version left two "›"
+ * cursors visible without saying which one was listening:
+ *  - "roles"  : Up/Down picks the role, "n" creates one, "x" deletes,
+ *               Enter enters the fields.
+ *  - "fields" : Up/Down picks a field, Enter edits it / cycles it / opens
+ *               the prompt editor, Esc goes back to the list.
+ *  - "agents" : Up/Down picks a fallback agent, Shift+J/Shift+K moves it,
+ *               "a" adds one, "r" removes it, Esc goes back to the fields.
  *
- * Chaque rôle affiché est la version **effective** (la fusion, pas ce que la
- * couche active déclare seule). Renommer et supprimer restent réservés à un
- * rôle que la couche active déclare elle-même : la fusion par clé ne sait
- * exprimer ni la suppression ni le changement de nom d'une entrée héritée —
- * l'ancien nom continuerait d'exister, venu de la couche du dessous.
+ * Every displayed role is the **effective** version (the merge, not what
+ * the active layer declares alone). Renaming and deleting stay reserved
+ * for a role the active layer declares itself: the merge-by-key can
+ * express neither the deletion nor the renaming of an inherited entry —
+ * the old name would keep existing, coming from the layer below.
  */
 import { useEffect, useState } from "react";
 import type { RoleConfig } from "@caesar/core";
@@ -61,10 +61,10 @@ import { ACCENT, BAD, DIM, FAINT, OK, WARN } from "../ui/theme";
 export interface RolesScreenProps {
   root: string;
   state: ConfigState;
-  /** `null` tant que la détection d'installation n'a pas répondu (voir `App`). */
+  /** `null` until the installation detection has answered (see `App`). */
   installed: Map<string, boolean> | null;
   onChange: (next: ConfigState) => void;
-  /** Signale à `App` qu'une saisie ou l'éditeur de prompt possède le clavier. */
+  /** Signals to `App` that a text input or the prompt editor owns the keyboard. */
   onEditingChange: (editing: boolean) => void;
   notify: (message: string, isError?: boolean) => void;
 }
@@ -72,31 +72,31 @@ export interface RolesScreenProps {
 type Field_ = "name" | "purpose" | "agents" | "mode" | "isolation" | "network" | "timeout" | "prompt";
 const FIELDS: Field_[] = ["name", "purpose", "agents", "mode", "isolation", "network", "timeout", "prompt"];
 const FIELD_LABELS: Record<Field_, string> = {
-  name: "Nom",
-  purpose: "Intention",
+  name: "Name",
+  purpose: "Purpose",
   agents: "Agents",
   mode: "Mode",
   isolation: "Isolation",
-  network: "Réseau",
-  timeout: "Délai",
-  prompt: "Prompt système",
+  network: "Network",
+  timeout: "Timeout",
+  prompt: "System prompt",
 };
 
-/** Ce que fait le champ, montré seulement quand on s'arrête dessus — la moitié de ces réglages n'était explicitée nulle part. */
+/** What the field does, shown only when one pauses on it — half of these settings were explained nowhere. */
 const FIELD_HINTS: Record<Field_, string> = {
-  name: 'Le nom écrit dans "caesar run --role" et dans les sous-agents Claude Code.',
-  purpose: "À quoi sert ce rôle. Repris tel quel par « caesar role list ».",
-  agents: "Ordre de repli : le premier agent installé et autorisé est retenu.",
-  mode: 'read-only : l\'agent ne doit rien modifier. write : il peut écrire.',
-  isolation: "worktree : copie de travail jetable. inplace : le dépôt lui-même. auto : worktree en écriture, et pour toute lecture seule sans mode natif.",
+  name: 'The name written in "caesar run --role" and in Claude Code sub-agents.',
+  purpose: 'What this role is for. Reproduced as-is by "caesar role list".',
+  agents: "Fallback order: the first installed and allowed agent is picked.",
+  mode: 'read-only: the agent must not modify anything. write: it may write.',
+  isolation: "worktree: disposable working copy. inplace: the repository itself. auto: worktree for writes, and for any read-only task without a native mode.",
   network:
-    "auto : ouvert partout où l'agent le permet. on : refuse la délégation si l'agent ne sait pas l'ouvrir — codex ne le sait qu'en écriture. off : fermé là où c'est possible.",
-  timeout: 'Au-delà, la tâche est interrompue. Formes acceptées : "10m", "90s", "1h".',
-  prompt: "Le texte placé en tête du contexte de l'agent, avant l'objectif. Entrée : l'éditer.",
+    "auto: open wherever the agent allows it. on: refuses the delegation if the agent cannot open it — codex only knows how in write mode. off: closed where possible.",
+  timeout: 'Beyond this, the task is interrupted. Accepted forms: "10m", "90s", "1h".',
+  prompt: "The text placed at the head of the agent's context, before the objective. Enter: edit it.",
 };
 
 const LABEL_WIDTH = 15;
-/** Panneau de gauche : assez pour un nom de rôle, pas plus — la place appartient à l'édition. */
+/** Left panel: enough for a role name, no more — the room belongs to the editing. */
 const LIST_WIDTH = 22;
 
 export function RolesScreen({ root, state, installed, onChange, onEditingChange, notify }: RolesScreenProps) {
@@ -114,9 +114,9 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
   const role: RoleConfig | undefined = roles[clampedRoleIndex];
   const promptFile = role?.system_prompt_file;
 
-  // Aperçu du prompt : rechargé quand le rôle ou son chemin change, jamais à
-  // chaque frappe. Une lecture qui échoue laisse l'aperçu vide plutôt que de
-  // bloquer l'écran — le chemin, lui, reste affiché.
+  // Prompt preview: reloaded when the role or its path changes, never on
+  // each keystroke. A failed read leaves the preview empty rather than
+  // blocking the screen — the path, for its part, stays displayed.
   useEffect(() => {
     if (!promptFile) {
       setPreview(null);
@@ -144,12 +144,12 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
   function openPrompt(): void {
     if (!role) return;
     if (!role.system_prompt_file) {
-      // Un rôle sans prompt déclaré : plutôt que de refuser, on propose le
-      // chemin conventionnel (celui que `caesar init` écrit) et on le pose comme
-      // modification en attente. Le fichier, lui, ne naîtra qu'à Ctrl+S.
+      // A role without a declared prompt: rather than refusing, we propose
+      // the conventional path (the one `caesar init` writes) and set it as a
+      // pending change. The file, for its part, is only born at Ctrl+S.
       const file = defaultPromptFileFor(role.name);
       onChange(updateRole(state, role.name, { system_prompt_file: file }));
-      notify(`Prompt du rôle "${role.name}" à créer : ${file}. Écrivez-le, puis Ctrl+S — et "s" pour enregistrer le chemin dans la configuration.`);
+      notify(`Prompt for role "${role.name}" to be created: ${file}. Write it, then Ctrl+S — and "s" to save the path into the configuration.`);
     }
     setPromptOpen(true);
     onEditingChange(true);
@@ -161,7 +161,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
     if (editing.kind === "new-role") {
       const name = editing.buffer.trim();
       if (name.length === 0) {
-        notify("Le nom du rôle ne peut pas être vide.", true);
+        notify("The role name cannot be empty.", true);
         return;
       }
       const replaced = roles.some((r) => r.name === name);
@@ -176,7 +176,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
       };
       onChange(upsertRole(state, newRole));
       setRoleIndex(replaced ? roles.findIndex((r) => r.name === name) : roles.length);
-      notify(replaced ? `Rôle "${name}" remplacé.` : `Rôle "${name}" créé — Entrée pour le décrire.`);
+      notify(replaced ? `Role "${name}" replaced.` : `Role "${name}" created — Enter to describe it.`);
       setEditingAndNotifyApp(null);
       return;
     }
@@ -189,22 +189,22 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
         return;
       }
       if (name.length === 0) {
-        notify("Le nom du rôle ne peut pas être vide.", true);
+        notify("The role name cannot be empty.", true);
         return;
       }
       if (roles.some((r) => r.name === name)) {
-        notify(`Un rôle "${name}" existe déjà.`, true);
+        notify(`A role "${name}" already exists.`, true);
         return;
       }
       if (!roleDeclaredByActiveLayer(state, role.name)) {
         notify(
-          `"${role.name}" n'est pas déclaré par la couche active${formatInheritedMark(roleMark(state, role.name))} : le renommer ici laisserait l'ancien nom vivre dans la couche dont il vient. Changez de portée (p) pour le renommer là où il est déclaré.`,
+          `"${role.name}" is not declared by the active layer${formatInheritedMark(roleMark(state, role.name))}: renaming it here would let the old name live on in the layer it comes from. Switch scope (p) to rename it where it is declared.`,
           true,
         );
         return;
       }
       onChange(renameRole(state, role.name, name));
-      notify(`Rôle renommé "${name}".`);
+      notify(`Role renamed "${name}".`);
     } else if (editing.kind === "purpose") {
       onChange(updateRole(state, role.name, { purpose: editing.buffer }));
     } else if (editing.kind === "prompt-file") {
@@ -231,7 +231,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
   }
 
   useKeyboard((key) => {
-    if (editing || promptOpen) return; // Une saisie ou l'éditeur possède le clavier.
+    if (editing || promptOpen) return; // A text input or the editor owns the keyboard.
 
     if (focus === "roles") {
       if (key.name === "up" || key.name === "k") setRoleIndex((i) => Math.max(0, i - 1));
@@ -240,13 +240,13 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
       else if (key.name === "x" && role) {
         if (!roleDeclaredByActiveLayer(state, role.name)) {
           notify(
-            `"${role.name}" n'est pas déclaré par la couche active${formatInheritedMark(roleMark(state, role.name))} : rien à supprimer ici. Modifiez-le (Entrée) pour le redéfinir sur cette couche, ou changez de portée (p) pour éditer la couche dont il vient.`,
+            `"${role.name}" is not declared by the active layer${formatInheritedMark(roleMark(state, role.name))}: nothing to delete here. Edit it (Enter) to redefine it on this layer, or switch scope (p) to edit the layer it comes from.`,
             true,
           );
           return;
         }
         onChange(removeRole(state, role.name));
-        notify(`Rôle "${role.name}" supprimé.`);
+        notify(`Role "${role.name}" deleted.`);
         setRoleIndex((i) => Math.max(0, Math.min(i, roles.length - 2)));
       } else if ((key.name === "return" || key.name === "right") && role) {
         setFieldIndex(0);
@@ -294,10 +294,10 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
       setFocus("roles");
       return;
     }
-    // Les deux gestes "Maj" passent avant leurs homologues sans modificateur :
-    // une frappe Maj+K porte `name === "k"`, elle serait donc absorbée par le
-    // déplacement de curseur si celui-ci était testé en premier — le
-    // réordonnancement, geste central de cet écran, ne marcherait plus.
+    // The two "Shift" gestures go before their modifier-less counterparts:
+    // a Shift+K keystroke carries `name === "k"`, so it would be absorbed
+    // by the cursor movement if that were tested first — reordering, the
+    // central gesture of this screen, would no longer work.
     if (key.name === "j" && key.shift) {
       onChange(moveRoleAgent(state, role.name, agentIndex, "down"));
       setAgentIndex((i) => Math.min(role.agents.length - 1, i + 1));
@@ -310,7 +310,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
     else if (key.name === "a") {
       const next = catalogIds(effectiveConfig(state).agents).find((id) => !role.agents.includes(id));
       if (next) onChange(addRoleAgent(state, role.name, next));
-      else notify("Tous les agents du catalogue sont déjà dans la liste.", true);
+      else notify("Every catalog agent is already in the list.", true);
     } else if (key.name === "r" || key.name === "delete") {
       if (role.agents.length > 0) {
         onChange(removeRoleAgentAt(state, role.name, agentIndex));
@@ -337,38 +337,38 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
   const pick = role ? pickAgentForRoleName(state, role.name, installed ?? new Map()) : null;
   const pickedAgentId = pick && "agentId" in pick ? pick.agentId : undefined;
   const declaredHere = role ? roleDeclaredByActiveLayer(state, role.name) : false;
-  // Bordures et retraits du panneau de droite : 2 bordures + 2 espaces de
-  // remplissage, plus la largeur du panneau de gauche et la marge entre eux.
+  // Borders and indents of the right panel: 2 borders + 2 padding spaces,
+  // plus the width of the left panel and the margin between them.
   const detailWidth = Math.max(30, width - LIST_WIDTH - 1 - 4 - 2);
 
   const hints: Hint[] =
     focus === "roles"
       ? [
-          { key: "↑↓", label: "rôle" },
-          { key: "Entrée", label: "éditer" },
-          { key: "n", label: "nouveau" },
-          { key: "x", label: "supprimer" },
+          { key: "↑↓", label: "role" },
+          { key: "Enter", label: "edit" },
+          { key: "n", label: "new" },
+          { key: "x", label: "delete" },
         ]
       : focus === "fields"
         ? [
-            { key: "↑↓", label: "champ" },
-            { key: "Entrée", label: FIELDS[fieldIndex] === "prompt" ? "éditer le prompt" : "modifier" },
-            ...(FIELDS[fieldIndex] === "prompt" ? [{ key: "f", label: "changer le fichier" }] : []),
-            { key: "Échap", label: "revenir aux rôles" },
+            { key: "↑↓", label: "field" },
+            { key: "Enter", label: FIELDS[fieldIndex] === "prompt" ? "edit the prompt" : "edit" },
+            ...(FIELDS[fieldIndex] === "prompt" ? [{ key: "f", label: "change the file" }] : []),
+            { key: "Esc", label: "back to roles" },
           ]
         : [
             { key: "↑↓", label: "agent" },
-            { key: "Maj+J/K", label: "déplacer" },
-            { key: "a", label: "ajouter" },
-            { key: "r", label: "retirer" },
-            { key: "Échap", label: "revenir aux champs" },
+            { key: "Shift+J/K", label: "move" },
+            { key: "a", label: "add" },
+            { key: "r", label: "remove" },
+            { key: "Esc", label: "back to fields" },
           ];
 
   return (
     <box flexDirection="column" flexGrow={1}>
       <box flexDirection="row" flexGrow={1}>
-        <Panel title="Rôles" focused={focus === "roles"} width={LIST_WIDTH}>
-          {roles.length === 0 ? <text fg={DIM}>(aucun — "n")</text> : null}
+        <Panel title="Roles" focused={focus === "roles"} width={LIST_WIDTH}>
+          {roles.length === 0 ? <text fg={DIM}>(none — "n")</text> : null}
           {roles.map((r, index) => {
             const isSelected = index === clampedRoleIndex;
             return (
@@ -379,7 +379,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
           })}
           {editing?.kind === "new-role" ? (
             <box flexDirection="column" marginTop={1}>
-              <text fg={ACCENT}>Nom :</text>
+              <text fg={ACCENT}>Name:</text>
               <input
                 focused
                 value={editing.buffer}
@@ -395,19 +395,19 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
 
         <box flexGrow={1} marginLeft={1}>
           <Panel
-            title={role ? role.name : "Aucun rôle"}
+            title={role ? role.name : "No role"}
             focused={focus !== "roles"}
             flexGrow={1}
             note={
               !role
                 ? undefined
                 : declaredHere
-                  ? "Déclaré par la couche active."
-                  : `Hérité${formatInheritedMark(roleMark(state, role.name))} — le modifier le redéfinira sur la couche active.`
+                  ? "Declared by the active layer."
+                  : `Inherited${formatInheritedMark(roleMark(state, role.name))} — editing it will redefine it on the active layer.`
             }
           >
             {!role ? (
-              <text fg={DIM}>Sélectionnez un rôle, ou créez-en un avec "n".</text>
+              <text fg={DIM}>Select a role, or create one with "n".</text>
             ) : (
               FIELDS.map((field, index) => {
                 const selected = focus !== "roles" && index === fieldIndex;
@@ -450,7 +450,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
                       />
                     </Field>
                   ) : (
-                    <Field key={field} {...common} value={role.purpose || "(non précisée)"} valueFg={role.purpose ? undefined : DIM} />
+                    <Field key={field} {...common} value={role.purpose || "(not specified)"} valueFg={role.purpose ? undefined : DIM} />
                   );
                 }
 
@@ -477,22 +477,22 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
                 }
 
                 if (field === "agents") {
-                  const retenu =
+                  const picked =
                     pickedAgentId ??
-                    (pick && "error" in pick ? "aucun — voir ci-dessous" : installed === null ? "(détection en cours…)" : "(aucun)");
+                    (pick && "error" in pick ? "none — see below" : installed === null ? "(detecting…)" : "(none)");
                   return (
                     <Field
                       key={field}
                       {...common}
-                      value={retenu}
+                      value={picked}
                       valueFg={pickedAgentId ? OK : WARN}
                       below={
                         <box flexDirection="column" marginLeft={LABEL_WIDTH + 2}>
-                          {role.agents.length === 0 ? <text fg={DIM}>(vide — "a" pour ajouter un agent)</text> : null}
+                          {role.agents.length === 0 ? <text fg={DIM}>(empty — "a" to add an agent)</text> : null}
                           {role.agents.map((agentId, agentPos) => {
                             const isAgentSelected = focus === "agents" && agentPos === agentIndex;
                             const isPicked = agentId === pickedAgentId;
-                            const presence = installed === null ? "…" : installed.get(agentId) ? "installé" : "absent";
+                            const presence = installed === null ? "…" : installed.get(agentId) ? "installed" : "missing";
                             return (
                               <text
                                 key={`${agentId}-${agentPos}`}
@@ -500,7 +500,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
                               >
                                 {(isAgentSelected ? "› " : "  ") +
                                   `${agentPos + 1}. ${agentId} (${presence})` +
-                                  (isPicked ? "  ← retenu" : "")}
+                                  (isPicked ? "  ← picked" : "")}
                               </text>
                             );
                           })}
@@ -517,7 +517,7 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
                     <input
                       focused
                       value={editing.buffer}
-                      placeholder="(aucun — chemin relatif sous .caesar/)"
+                      placeholder="(none — relative path under .caesar/)"
                       onInput={(value) => setEditing({ kind: "prompt-file", buffer: value })}
                       onSubmit={commitEdit}
                       onKeyDown={(key) => {
@@ -531,8 +531,8 @@ export function RolesScreen({ root, state, installed, onChange, onEditingChange,
                     {...common}
                     value={
                       role.system_prompt_file
-                        ? `${role.system_prompt_file}${preview ? (preview.exists ? ` — ${preview.bytes} caractères` : " — à créer") : ""}`
-                        : "(aucun — Entrée pour en écrire un)"
+                        ? `${role.system_prompt_file}${preview ? (preview.exists ? ` — ${preview.bytes} characters` : " — to be created") : ""}`
+                        : "(none — Enter to write one)"
                     }
                     valueFg={role.system_prompt_file ? undefined : DIM}
                     below={

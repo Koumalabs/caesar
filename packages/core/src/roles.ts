@@ -1,7 +1,7 @@
 /**
- * Rôles : à quoi sert chaque sous-agent, et quel agent retenir pour un rôle
- * donné une fois le repli (agent préféré indisponible ou refusé) pris en
- * compte.
+ * Roles: what each sub-agent is for, and which agent to select for a given
+ * role once fallback (preferred agent unavailable or refused) is taken
+ * into account.
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -16,27 +16,27 @@ export interface ResolvedRole extends RoleConfig {
 }
 
 /**
- * Où un `system_prompt_file` est réellement lu : sous `<root>/.caesar/`,
- * toujours — y compris quand le rôle vient de la couche globale, dont les
- * chemins sont donc résolus dans le projet courant (limite connue, pas une
- * décision de cette fonction).
+ * Where a `system_prompt_file` is actually read: under `<root>/.caesar/`,
+ * always — including when the role comes from the global layer, whose
+ * paths are therefore resolved in the current project (known limitation,
+ * not a decision of this function).
  *
- * Exportée pour que les interfaces qui *écrivent* ce fichier — l'éditeur de
- * prompt du TUI — visent exactement le fichier que `resolveRole` lira. Sans
- * elle, chacune recomposerait le chemin de son côté, et un jour pas au même
- * endroit : le prompt édité ne serait alors plus celui transmis à l'agent,
- * sans que rien ne le signale.
+ * Exported so that the interfaces that *write* this file — the TUI's
+ * prompt editor — target exactly the file `resolveRole` will read. Without
+ * it, each would recompose the path on its own, and one day not at the
+ * same place: the edited prompt would then no longer be the one passed to
+ * the agent, with nothing signaling it.
  */
 export function rolePromptPath(root: string, systemPromptFile: string): string {
   return join(root, ".caesar", systemPromptFile);
 }
 
 /**
- * Résout un rôle par nom et charge son prompt système. `null` si aucun rôle
- * de ce nom n'existe. `system_prompt_file` est résolu relativement à
- * `<root>/.caesar/` (`rolePromptPath`) ; un fichier absent n'est pas une
- * erreur, `systemPrompt` vaut simplement la chaîne vide — un rôle sans
- * prompt système reste parfaitement utilisable.
+ * Resolves a role by name and loads its system prompt. `null` if no role
+ * of that name exists. `system_prompt_file` is resolved relative to
+ * `<root>/.caesar/` (`rolePromptPath`); a missing file is not an
+ * error, `systemPrompt` is simply the empty string — a role without a
+ * system prompt remains perfectly usable.
  */
 export async function resolveRole(config: CaesarConfig, root: string, name: string): Promise<ResolvedRole | null> {
   const role = config.roles.find((candidate) => candidate.name === name);
@@ -50,7 +50,7 @@ export async function resolveRole(config: CaesarConfig, root: string, name: stri
     } catch (error) {
       if (!isEnoent(error)) {
         throw new Error(
-          `Impossible de lire le prompt système du rôle "${name}" (${path}) : ${error instanceof Error ? error.message : String(error)}`,
+          `Cannot read the system prompt of role "${name}" (${path}): ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -60,17 +60,17 @@ export async function resolveRole(config: CaesarConfig, root: string, name: stri
 }
 
 /**
- * Résout, pour un ensemble d'identifiants d'agents, si chacun est installé
- * (binaire trouvé sur le `PATH`) — le prédicat synchrone attendu par
- * `pickAgentForRole`, précalculé une fois pour toutes. Partagé par
- * `resolveDelegation` (ci-dessous, un rôle à la fois) et par `caesar role list`
- * (`packages/cli/src/commands/role.ts`, tous les rôles d'un coup) : les deux
- * façades resolvaient jusqu'ici cette même carte chacune de leur côté (tâche
+ * Resolves, for a set of agent identifiers, whether each one is installed
+ * (binary found on the `PATH`) — the synchronous predicate expected by
+ * `pickAgentForRole`, precomputed once and for all. Shared by
+ * `resolveDelegation` (below, one role at a time) and by `caesar role list`
+ * (`packages/cli/src/commands/role.ts`, all roles at once): the two
+ * facades used to resolve this same map each on their own side (task
  * 10, B).
  *
- * `extraAgents` (agents de configuration, `CaesarConfig.agents`) permet à
- * `role.agents` de nommer un agent générique, pas seulement le catalogue
- * natif — voir C1 de la revue finale.
+ * `extraAgents` (configuration agents, `CaesarConfig.agents`) lets
+ * `role.agents` name a generic agent, not only the native catalog —
+ * see C1 of the final review.
  */
 export async function resolveInstalledMap(
   agentIds: Iterable<string>,
@@ -92,17 +92,17 @@ export interface AgentPick {
 }
 
 /**
- * Parcourt `role.agents` dans l'ordre et retient le premier agent à la fois
- * installé et autorisé par la politique. Chaque agent écarté est conservé
- * dans `skipped` avec un motif autonome (il nomme l'agent, pas seulement la
- * cause) : c'est ce qui rend le repli diagnosticable, l'intérêt même de
- * cette fonction.
+ * Walks `role.agents` in order and selects the first agent both installed
+ * and allowed by the policy. Every agent set aside is kept in `skipped`
+ * with a self-contained reason (it names the agent, not just the cause):
+ * that is what makes the fallback diagnosable, the very point of this
+ * function.
  *
- * La profondeur de délégation n'entre pas en jeu ici — elle n'a de sens que
- * pour une tâche en cours (`checkDelegation`, appelé par le moteur avec une
- * profondeur réelle) et pas pour la simple sélection d'un agent candidat.
- * Les deux autres dimensions de la politique (listes allowed/denied,
- * récursion) s'appliquent en revanche pleinement.
+ * Delegation depth plays no part here — it only makes sense for an
+ * in-flight task (`checkDelegation`, called by the engine with a real
+ * depth) and not for the mere selection of a candidate agent.
+ * The two other dimensions of the policy (allowed/denied lists,
+ * recursion) do apply in full, however.
  */
 export function pickAgentForRole(
   role: RoleConfig,
@@ -112,7 +112,7 @@ export function pickAgentForRole(
 
   for (const agentId of role.agents) {
     if (!options.isInstalled(agentId)) {
-      skipped.push({ agentId, reason: `Agent "${agentId}" non installé : binaire introuvable dans le PATH.` });
+      skipped.push({ agentId, reason: `Agent "${agentId}" not installed: binary not found in the PATH.` });
       continue;
     }
 
@@ -132,9 +132,9 @@ export function pickAgentForRole(
   }
 
   if (role.agents.length === 0) {
-    return { error: `Aucun agent candidat pour le rôle "${role.name}" : la liste "agents" du rôle est vide.` };
+    return { error: `No candidate agent for role "${role.name}": the role's "agents" list is empty.` };
   }
   return {
-    error: `Aucun agent disponible pour le rôle "${role.name}" : ${skipped.map((entry) => entry.reason).join(" ; ")}`,
+    error: `No agent available for role "${role.name}": ${skipped.map((entry) => entry.reason).join(" ; ")}`,
   };
 }

@@ -1,11 +1,11 @@
 /**
- * Résolution de la couche visée par `--global`/`--local`, partagée par les
- * sous-commandes qui écrivent (`policy allow|deny`, `agents enable|disable`,
- * `role add|remove`) — voir le brief de la tâche 13. Sans option : couche
- * "project", le comportement d'avant cette tâche. `--global` et `--local`
- * sont mutuellement exclusifs — le dire clairement plutôt que de laisser la
- * dernière option lue l'emporter en silence (`commander` ne le fait pas pour
- * nous : les deux flags sont indépendants de son point de vue).
+ * Resolution of the layer targeted by `--global`/`--local`, shared by the
+ * subcommands that write (`policy allow|deny`, `agents enable|disable`,
+ * `role add|remove`) — see the task 13 brief. Without an option: the
+ * "project" layer, the behavior from before that task. `--global` and
+ * `--local` are mutually exclusive — say it clearly rather than letting the
+ * last option read win silently (`commander` does not do it for us: the two
+ * flags are independent from its point of view).
  */
 import type { ConfigScope } from "@caesar/core";
 
@@ -14,52 +14,52 @@ export interface ScopeOptions {
   local?: boolean;
 }
 
-/** `{ error }` si `--global` et `--local` sont donnés ensemble ; sinon la couche visée, "project" par défaut. */
+/** `{ error }` if `--global` and `--local` are given together; otherwise the targeted layer, "project" by default. */
 export function resolveScope(options: ScopeOptions): ConfigScope | { error: string } {
   if (options.global && options.local) {
-    return { error: '--global et --local sont mutuellement exclusifs : précisez l\'un ou l\'autre, jamais les deux.' };
+    return { error: '--global and --local are mutually exclusive: specify one or the other, never both.' };
   }
   if (options.global) return "global";
   if (options.local) return "local";
   return "project";
 }
 
-/** Description humaine d'une couche, pour les messages de confirmation ("... (couche <label>)."). */
+/** Human description of a layer, for confirmation messages ("... (<label> layer)."). */
 export function scopeLabel(scope: ConfigScope): string {
   switch (scope) {
     case "global":
-      return "globale (~/.config/caesar/config.toml)";
+      return "global (~/.config/caesar/config.toml)";
     case "project":
-      return "projet (.caesar/config.toml)";
+      return "project (.caesar/config.toml)";
     case "local":
-      return "locale (.caesar/config.local.toml)";
+      return "local (.caesar/config.local.toml)";
   }
 }
 
-/** Le flag à utiliser pour cibler explicitement `scope` depuis la ligne de commande — pour les messages qui orientent vers la bonne couche. */
+/** The flag to use to explicitly target `scope` from the command line — for messages steering toward the right layer. */
 export function scopeFlagHint(scope: ConfigScope): string {
   switch (scope) {
     case "global":
       return "--global";
     case "project":
-      return "sans --global ni --local (couche projet, la couche par défaut)";
+      return "without --global or --local (project layer, the default layer)";
     case "local":
       return "--local";
   }
 }
 
 /**
- * Message affiché quand une liste (`allowed`/`denied`) n'était pas déclarée
- * par la couche qu'on vient d'éditer : elle en prend désormais la main sur
- * la liste entière (voir `materializePolicyList`, `@caesar/core`) — modifier
- * ensuite une couche moins spécifique n'aura plus d'effet sur ce champ ici.
- * Même précédent que l'avertissement déjà en place quand une liste "allowed"
- * vide bascule en liste restrictive (`packages/cli/src/commands/policy.ts`).
+ * Message shown when a list (`allowed`/`denied`) was not declared by the
+ * layer we just edited: it now takes over the entire list (see
+ * `materializePolicyList`, `@caesar/core`) — editing a less specific layer
+ * afterwards will no longer have any effect on this field here. Same
+ * precedent as the warning already in place when an empty "allowed" list
+ * becomes a restrictive one (`packages/cli/src/commands/policy.ts`).
  */
 export function materializationNotice(field: "allowed" | "denied", scope: ConfigScope, effective: readonly string[]): string {
   return (
-    `Attention : la liste "${field}" n'était pas déclarée par la couche ${scopeLabel(scope)} ; elle en prend ` +
-    `désormais la main avec la valeur effective actuelle (${effective.length > 0 ? effective.join(", ") : "vide"}) — ` +
-    `modifier une couche moins spécifique (global ou défaut) n'affectera plus ce champ ici.`
+    `Warning: the "${field}" list was not declared by the ${scopeLabel(scope)} layer; it now takes it ` +
+    `over with the current effective value (${effective.length > 0 ? effective.join(", ") : "empty"}) — ` +
+    `editing a less specific layer (global or default) will no longer affect this field here.`
   );
 }

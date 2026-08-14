@@ -19,11 +19,11 @@ describe("caesar_status", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("tâche connue : statut, métadonnées, et dernier événement", async () => {
+  it("known task: status, metadata, and last event", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await caesarDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
+        const delegated = await caesarDelegate(session, { objective: "task", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
         const entry = session.tasks.get(taskId);
@@ -42,16 +42,16 @@ describe("caesar_status", () => {
     );
   }, 20_000);
 
-  it("tâche inconnue : erreur claire", async () => {
+  it("unknown task: clear error", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await caesarStatus(session, { task_id: "t_inexistant" });
+      const result = await caesarStatus(session, { task_id: "t_nonexistent" });
       expect(result.isError).toBe(true);
-      expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);
+      expect((result.content?.[0] as { text: string }).text).toMatch(/unknown task/i);
     });
   });
 
-  it("une question en attente est visible dans pending_questions — c'est ce qui rend le canal utile", async () => {
+  it("a pending question is visible in pending_questions — that is what makes the channel useful", async () => {
     const taskDir = join(root, ".caesar", "tasks", "t_q");
     await mkdir(taskDir, { recursive: true });
     const session = await createSession(root);
@@ -69,10 +69,10 @@ describe("caesar_status", () => {
       report_via: "channel",
       depth: 0,
     });
-    await writeQuestion(taskDir, { id: "q1", question: "Quelle branche ?", options: ["main", "dev"], asked_at: new Date().toISOString() });
+    await writeQuestion(taskDir, { id: "q1", question: "Which branch?", options: ["main", "dev"], asked_at: new Date().toISOString() });
 
     const result = await caesarStatus(session, { task_id: "t_q" });
     const data = result.structuredContent as { pending_questions: Array<{ id: string; question: string; options: string[] }> };
-    expect(data.pending_questions).toEqual([expect.objectContaining({ id: "q1", question: "Quelle branche ?", options: ["main", "dev"] })]);
+    expect(data.pending_questions).toEqual([expect.objectContaining({ id: "q1", question: "Which branch?", options: ["main", "dev"] })]);
   });
 });

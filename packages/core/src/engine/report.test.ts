@@ -23,7 +23,7 @@ function sampleTask(overrides: Partial<Task> = {}): Task {
     id: "t_report_test",
     created_at: "2026-08-09T10:00:00.000Z",
     agent: "fake",
-    objective: "Corriger la régression",
+    objective: "Fix the regression",
     mode: "write",
     isolation: "worktree",
     workspace: "/tmp/wt",
@@ -47,7 +47,7 @@ function minimalReport(overrides: Partial<Report> = {}): Report {
     protocol: REPORT_PROTOCOL,
     task_id: "t_report_test",
     status: "success",
-    summary: "résumé",
+    summary: "summary",
     details: "",
     changes: [],
     commands_run: [],
@@ -72,14 +72,14 @@ describe("resolveReport", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("palier 1, source \"file\" : report.json présent, aucun canal configuré", async () => {
-    await writeReport(paths, minimalReport({ summary: "écrit par fichier" }));
+  it("tier 1, source \"file\": report.json present, no channel configured", async () => {
+    await writeReport(paths, minimalReport({ summary: "written via file" }));
     const resolved = await resolveReport({ task: sampleTask(), paths, run: sampleRun() });
     expect(resolved.source).toBe("file");
-    expect(resolved.report.summary).toBe("écrit par fichier");
+    expect(resolved.report.summary).toBe("written via file");
   });
 
-  it("palier 1, source \"channel\" : report.json présent, un canal était configuré", async () => {
+  it("tier 1, source \"channel\": report.json present, a channel was configured", async () => {
     await writeReport(paths, minimalReport());
     const task = sampleTask({
       channel: { transport: "mcp-stdio", command: "caesar-channel", args: [], server_name: "caesar" },
@@ -88,36 +88,36 @@ describe("resolveReport", () => {
     expect(resolved.source).toBe("channel");
   });
 
-  it("palier 2, source \"schema\" : rapport dans le texte final, palier retenu \"schema\"", async () => {
-    const embedded = minimalReport({ summary: "rapport en sortie structurée" });
+  it("tier 2, source \"schema\": report in the final text, retained tier \"schema\"", async () => {
+    const embedded = minimalReport({ summary: "report via structured output" });
     const run = sampleRun({ finalText: JSON.stringify(embedded) });
     const resolved = await resolveReport({ task: sampleTask(), paths, run, reportVia: "schema" });
     expect(resolved.source).toBe("schema");
-    expect(resolved.report.summary).toBe("rapport en sortie structurée");
+    expect(resolved.report.summary).toBe("report via structured output");
   });
 
-  it("palier 2, source \"extracted\" : rapport dans le texte final, mais palier retenu \"file\"", async () => {
-    const embedded = minimalReport({ summary: "l'agent devait écrire un fichier, il a parlé à la place" });
+  it("tier 2, source \"extracted\": report in the final text, but retained tier \"file\"", async () => {
+    const embedded = minimalReport({ summary: "the agent was supposed to write a file, it spoke instead" });
     const run = sampleRun({ finalText: JSON.stringify(embedded) });
     const resolved = await resolveReport({ task: sampleTask(), paths, run, reportVia: "file" });
     expect(resolved.source).toBe("extracted");
   });
 
-  describe("palier 2, fichier de message final", () => {
-    it("source \"schema\" quand le palier retenu est \"schema\"", async () => {
-      const embedded = minimalReport({ summary: "déposé par le CLI dans final-message.txt" });
+  describe("tier 2, final message file", () => {
+    it("source \"schema\" when the retained tier is \"schema\"", async () => {
+      const embedded = minimalReport({ summary: "deposited by the CLI in final-message.txt" });
       await mkdir(paths.dir, { recursive: true });
       const finalMessageFile = join(paths.dir, "final-message.txt");
       await writeFile(finalMessageFile, JSON.stringify(embedded), "utf8");
 
       const resolved = await resolveReport({ task: sampleTask(), paths, run: sampleRun(), reportVia: "schema", finalMessageFile });
       expect(resolved.source).toBe("schema");
-      expect(resolved.report.summary).toBe("déposé par le CLI dans final-message.txt");
+      expect(resolved.report.summary).toBe("deposited by the CLI in final-message.txt");
     });
 
-    it("l'emporte sur un finalText de stdout divergent : plus fiable, consulté en premier", async () => {
-      const fromFile = minimalReport({ summary: "la bonne réponse, déposée par le CLI" });
-      const fromStdout = minimalReport({ summary: "une reconstitution stdout qui diverge" });
+    it("wins over a diverging stdout finalText: more reliable, consulted first", async () => {
+      const fromFile = minimalReport({ summary: "the right answer, deposited by the CLI" });
+      const fromStdout = minimalReport({ summary: "a diverging stdout reconstitution" });
       await mkdir(paths.dir, { recursive: true });
       const finalMessageFile = join(paths.dir, "final-message.txt");
       await writeFile(finalMessageFile, JSON.stringify(fromFile), "utf8");
@@ -125,48 +125,48 @@ describe("resolveReport", () => {
       const run = sampleRun({ finalText: JSON.stringify(fromStdout) });
       const resolved = await resolveReport({ task: sampleTask(), paths, run, reportVia: "file", finalMessageFile });
 
-      expect(resolved.report.summary).toBe("la bonne réponse, déposée par le CLI");
+      expect(resolved.report.summary).toBe("the right answer, deposited by the CLI");
       expect(resolved.source).toBe("extracted");
     });
 
-    it("absent ou illisible : se rabat sur le finalText de stdout", async () => {
-      const embedded = minimalReport({ summary: "repli sur stdout" });
+    it("absent or unreadable: falls back to the stdout finalText", async () => {
+      const embedded = minimalReport({ summary: "fallback to stdout" });
       const run = sampleRun({ finalText: JSON.stringify(embedded) });
       const resolved = await resolveReport({
         task: sampleTask(),
         paths,
         run,
-        finalMessageFile: join(paths.dir, "n-existe-pas.txt"),
+        finalMessageFile: join(paths.dir, "does-not-exist.txt"),
       });
-      expect(resolved.report.summary).toBe("repli sur stdout");
+      expect(resolved.report.summary).toBe("fallback to stdout");
     });
   });
 
-  it("palier 3, source \"extracted\" : rapport noyé dans raw.log, absent de finalText", async () => {
-    const embedded = minimalReport({ summary: "rapport retrouvé dans le journal brut" });
+  it("tier 3, source \"extracted\": report buried in raw.log, absent from finalText", async () => {
+    const embedded = minimalReport({ summary: "report found in the raw log" });
     await mkdir(paths.dir, { recursive: true });
-    await writeFile(paths.rawLog, `bruit avant\n${JSON.stringify(embedded)}\nbruit après\n`, "utf8");
-    const run = sampleRun({ finalText: "juste un message, pas de rapport ici" });
+    await writeFile(paths.rawLog, `noise before\n${JSON.stringify(embedded)}\nnoise after\n`, "utf8");
+    const run = sampleRun({ finalText: "just a message, no report here" });
     const resolved = await resolveReport({ task: sampleTask(), paths, run });
     expect(resolved.source).toBe("extracted");
-    expect(resolved.report.summary).toBe("rapport retrouvé dans le journal brut");
+    expect(resolved.report.summary).toBe("report found in the raw log");
   });
 
-  describe("palier 4, synthèse", () => {
-    it("échec : code de sortie non nul", async () => {
+  describe("tier 4, synthesis", () => {
+    it("failure: non-zero exit code", async () => {
       const run = sampleRun({ exitCode: 1 });
       const resolved = await resolveReport({ task: sampleTask(), paths, run });
       expect(resolved.source).toBe("synthesized");
       expect(resolved.report.status).toBe("failed");
     });
 
-    it("échec : timeout", async () => {
+    it("failure: timeout", async () => {
       const run = sampleRun({ exitCode: null, timedOut: true });
       const resolved = await resolveReport({ task: sampleTask(), paths, run });
       expect(resolved.report.status).toBe("failed");
     });
 
-    it("partiel : diff non vide sans rapport", async () => {
+    it("partial: non-empty diff without a report", async () => {
       const run = sampleRun({ exitCode: 0 });
       const diff = sampleDiff([{ path: "a.txt", action: "modified", summary: "" }]);
       const resolved = await resolveReport({ task: sampleTask(), paths, run, diff });
@@ -174,59 +174,59 @@ describe("resolveReport", () => {
       expect(resolved.report.changes).toEqual(diff.files);
     });
 
-    it("succès : code de sortie nul, diff vide ou absent", async () => {
+    it("success: zero exit code, empty or absent diff", async () => {
       const run = sampleRun({ exitCode: 0 });
       const resolved = await resolveReport({ task: sampleTask(), paths, run, diff: sampleDiff([]) });
       expect(resolved.report.status).toBe("success");
     });
 
-    it("résumé bâti depuis les dernières lignes utiles de raw.log, à défaut de finalText", async () => {
+    it("summary built from the last useful lines of raw.log, failing a finalText", async () => {
       await mkdir(paths.dir, { recursive: true });
-      await writeFile(paths.rawLog, "ligne 1\nligne 2\nligne finale utile\n", "utf8");
+      await writeFile(paths.rawLog, "line 1\nline 2\nfinal useful line\n", "utf8");
       const run = sampleRun({ exitCode: 0 });
       const resolved = await resolveReport({ task: sampleTask(), paths, run });
-      expect(resolved.report.summary).toContain("ligne finale utile");
+      expect(resolved.report.summary).toContain("final useful line");
     });
   });
 });
 
 describe("reconcileChanges", () => {
-  it("remplace changes par le diff git, qui fait foi", () => {
-    const report = minimalReport({ changes: [{ path: "a.txt", action: "modified", summary: "déclaré" }] });
+  it("replaces changes with the git diff, which is the source of truth", () => {
+    const report = minimalReport({ changes: [{ path: "a.txt", action: "modified", summary: "declared" }] });
     const diff = sampleDiff([{ path: "a.txt", action: "modified", summary: "" }]);
     const result = reconcileChanges(report, diff);
     expect(result.changes).toEqual(diff.files);
   });
 
-  it("signale un fichier modifié que l'agent n'a pas déclaré", () => {
+  it("flags a modified file the agent did not declare", () => {
     const report = minimalReport({ changes: [] });
-    const diff = sampleDiff([{ path: "oublie.txt", action: "modified", summary: "" }]);
+    const diff = sampleDiff([{ path: "forgotten.txt", action: "modified", summary: "" }]);
     const result = reconcileChanges(report, diff);
     expect(result.findings).toEqual([
-      expect.objectContaining({ severity: "medium", file: "oublie.txt" }),
+      expect.objectContaining({ severity: "medium", file: "forgotten.txt" }),
     ]);
-    expect(result.findings[0]!.detail).toContain("oublie.txt");
+    expect(result.findings[0]!.detail).toContain("forgotten.txt");
   });
 
-  it("signale un fichier déclaré que git ne voit pas modifié", () => {
-    const report = minimalReport({ changes: [{ path: "invente.txt", action: "modified", summary: "" }] });
+  it("flags a declared file that git does not see modified", () => {
+    const report = minimalReport({ changes: [{ path: "invented.txt", action: "modified", summary: "" }] });
     const diff = sampleDiff([]);
     const result = reconcileChanges(report, diff);
     expect(result.findings).toEqual([
-      expect.objectContaining({ severity: "medium", file: "invente.txt" }),
+      expect.objectContaining({ severity: "medium", file: "invented.txt" }),
     ]);
-    expect(result.findings[0]!.detail).toContain("invente.txt");
+    expect(result.findings[0]!.detail).toContain("invented.txt");
   });
 
-  it("aucun constat quand la déclaration correspond exactement au diff", () => {
+  it("no finding when the declaration matches the diff exactly", () => {
     const changes: Change[] = [{ path: "a.txt", action: "modified", summary: "" }];
     const report = minimalReport({ changes });
     const result = reconcileChanges(report, sampleDiff(changes));
     expect(result.findings).toEqual([]);
   });
 
-  it("conserve les constats déjà présents dans le rapport", () => {
-    const existing = { severity: "info" as const, title: "déjà là", detail: "" };
+  it("keeps the findings already present in the report", () => {
+    const existing = { severity: "info" as const, title: "already there", detail: "" };
     const report = minimalReport({ changes: [], findings: [existing] });
     const result = reconcileChanges(report, sampleDiff([]));
     expect(result.findings).toEqual([existing]);

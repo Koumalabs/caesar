@@ -28,7 +28,7 @@ function record(overrides: Partial<TaskRecord> = {}): TaskRecord {
   return {
     id,
     agent: "codex",
-    objective: "Relire le parseur de configuration",
+    objective: "Reread the configuration parser",
     status: "running",
     created_at: "2026-08-11T10:00:00.000Z",
     started_at: new Date(Date.now() - 5_000).toISOString(),
@@ -42,7 +42,7 @@ function record(overrides: Partial<TaskRecord> = {}): TaskRecord {
   };
 }
 
-/** Dépose une tâche dans le store et écrit son journal d'événements. */
+/** Deposits a task in the store and writes its event journal. */
 async function plant(
   overrides: Partial<TaskRecord>,
   events: Omit<CaesarEventInput, "protocol" | "seq" | "at" | "task_id">[],
@@ -67,77 +67,78 @@ async function plant(
 }
 
 describe("caesar watch --once", () => {
-  it("montre ce que chaque tâche fait à l'instant", async () => {
+  it("shows what each task is doing right now", async () => {
     await plant({ id: "t_a", agent: "codex", role: "reviewer" }, [
       { type: "started", agent: "codex", command: "codex exec" },
       { type: "tool_use", tool: "shell", id: "item_1", input_summary: "npm test", status: "started" },
     ]);
-    await plant({ id: "t_b", agent: "opencode", objective: "Ajouter un test" }, [
+    await plant({ id: "t_b", agent: "opencode", objective: "Add a test" }, [
       { type: "started", agent: "opencode", command: "opencode run" },
       { type: "file_changed", path: "src/a.ts", action: "modified" },
-      { type: "message", text: "J'ai modifié le module de configuration." },
+      { type: "message", text: "I modified the configuration module." },
     ]);
 
     expect(await runWatch(root, [], { once: true }, io)).toBe(EXIT_OK);
     const out = io.stdoutText();
 
-    expect(out).toContain("2 actives");
+    expect(out).toContain("2 active");
     expect(out).toContain("t_a");
     expect(out).toContain("▸ shell npm test");
     expect(out).toContain("t_b");
-    expect(out).toContain("« J'ai modifié le module de configuration. »");
-    // L'objectif accompagne toujours la tâche : un identifiant seul ne dit
-    // pas ce qu'on regarde.
-    expect(out).toContain("Relire le parseur de configuration");
-    expect(out).toContain("Ajouter un test");
+    expect(out).toContain("“I modified the configuration module.”");
+    // The objective always accompanies the task: an identifier alone does
+    // not say what one is watching.
+    expect(out).toContain("Reread the configuration parser");
+    expect(out).toContain("Add a test");
   });
 
-  it("n'émet aucune séquence ANSI hors terminal", async () => {
-    // La sortie capturée d'un test n'est pas un TTY, pas plus qu'une
-    // redirection vers un fichier : ni couleur, ni écran alterné, ni
-    // effacement d'écran ne doivent s'y glisser.
+  it("emits no ANSI sequence outside a terminal", async () => {
+    // A test's captured output is not a TTY, no more than a redirection to
+    // a file: neither color, nor alternate screen, nor screen clearing must
+    // slip into it.
     await plant({ id: "t_a" }, [{ type: "started", agent: "codex", command: "codex exec" }]);
     await runWatch(root, [], { once: true }, io);
     // eslint-disable-next-line no-control-regex
     expect(io.stdoutText()).not.toMatch(/\x1b\[/);
   });
 
-  it("dit clairement qu'il n'y a rien à voir plutôt que d'afficher une page vide", async () => {
+  it("clearly says there is nothing to see rather than displaying an empty page", async () => {
     expect(await runWatch(root, [], { once: true }, io)).toBe(EXIT_OK);
-    expect(io.stdoutText()).toContain("Aucune tâche en cours");
+    expect(io.stdoutText()).toContain("No task in progress");
   });
 
-  it("met en avant une question en attente, et rappelle comment y répondre", async () => {
-    // C'est l'état qui ressemble le plus à un blocage sans en être un : un
-    // sous-agent qui attend une réponse paraît figé.
+  it("puts a pending question forward, and recalls how to answer it", async () => {
+    // This is the state that most resembles a hang without being one: a
+    // sub-agent waiting for an answer looks frozen.
     const rec = await plant({ id: "t_q" }, [{ type: "started", agent: "codex", command: "codex exec" }]);
-    // Déposée par la fonction du canal plutôt qu'à la main : la disposition
-    // exacte (`<taskDir>/questions/<id>.json`) appartient à `@caesar/mcp-channel`,
-    // et un test qui la recopie de mémoire vérifie sa propre supposition.
+    // Deposited by the channel's function rather than by hand: the exact
+    // layout (`<taskDir>/questions/<id>.json`) belongs to
+    // `@caesar/mcp-channel`, and a test copying it from memory checks its
+    // own assumption.
     await writeQuestion(taskPaths(rec.task_dir).dir, {
       id: "q1",
-      question: "Dois-je supprimer le fichier obsolète ?",
-      options: ["oui", "non"],
+      question: "Should I delete the obsolete file?",
+      options: ["yes", "no"],
       asked_at: new Date().toISOString(),
     });
 
     await runWatch(root, [], { once: true }, io);
     const out = io.stdoutText();
-    expect(out).toContain("Dois-je supprimer le fichier obsolète ?");
-    // Le rappel nomme l'outil MCP, seul moyen de répondre aujourd'hui — il
-    // n'existe aucune commande `caesar answer`, et l'inventer ici enverrait
-    // l'utilisateur droit dans le mur.
+    expect(out).toContain("Should I delete the obsolete file?");
+    // The reminder names the MCP tool, the only way to answer today — there
+    // is no `caesar answer` command, and inventing one here would send the
+    // user straight into a wall.
     expect(out).toContain("caesar_answer");
     expect(out).toContain("q1");
     expect(out).not.toMatch(/caesar answer\b/);
   });
 
-  it("garde les tâches terminées à l'écran, avec leur statut de rapport", async () => {
-    // Une tâche qui disparaît au moment où elle finit est une tâche dont on
-    // ne saura jamais comment elle s'est terminée.
+  it("keeps finished tasks on screen, with their report status", async () => {
+    // A task that disappears the moment it finishes is a task whose ending
+    // will never be known.
     await plant(
       {
-        id: "t_fin",
+        id: "t_end",
         status: "succeeded",
         report_status: "partial",
         ended_at: new Date(Date.now() - 10_000).toISOString(),
@@ -147,22 +148,22 @@ describe("caesar watch --once", () => {
 
     await runWatch(root, [], { once: true }, io);
     const out = io.stdoutText();
-    expect(out).toContain("Terminées récemment");
-    expect(out).toContain("t_fin");
-    expect(out).toContain("rapport partial");
+    expect(out).toContain("Recently finished");
+    expect(out).toContain("t_end");
+    expect(out).toContain("report partial");
   });
 
-  it("ignore une tâche terminée depuis longtemps", async () => {
-    // Sans cette borne, ouvrir la fenêtre déroulerait l'historique entier.
+  it("ignores a task finished a long time ago", async () => {
+    // Without this bound, opening the window would scroll the whole history.
     await plant(
-      { id: "t_vieux", status: "succeeded", report_status: "success", ended_at: "2026-08-01T10:00:00.000Z" },
+      { id: "t_old", status: "succeeded", report_status: "success", ended_at: "2026-08-01T10:00:00.000Z" },
       [{ type: "finished", status: "success", summary: "", exit_code: 0 }],
     );
     await runWatch(root, [], { once: true }, io);
-    expect(io.stdoutText()).not.toContain("t_vieux");
+    expect(io.stdoutText()).not.toContain("t_old");
   });
 
-  it("se restreint aux identifiants demandés", async () => {
+  it("restricts itself to the requested identifiers", async () => {
     await plant({ id: "t_a" }, [{ type: "started", agent: "codex", command: "c" }]);
     await plant({ id: "t_b" }, [{ type: "started", agent: "codex", command: "c" }]);
     await runWatch(root, ["t_a"], { once: true }, io);
@@ -170,22 +171,22 @@ describe("caesar watch --once", () => {
     expect(io.stdoutText()).not.toContain("t_b");
   });
 
-  it("refuse un identifiant inconnu au lieu de veiller sur rien", async () => {
-    expect(await runWatch(root, ["t_fantome"], { once: true }, io)).toBe(EXIT_USAGE);
-    expect(io.stderrText()).toContain("t_fantome");
+  it("refuses an unknown identifier instead of watching over nothing", async () => {
+    expect(await runWatch(root, ["t_ghost"], { once: true }, io)).toBe(EXIT_USAGE);
+    expect(io.stderrText()).toContain("t_ghost");
   });
 
-  it("compte les lignes illisibles au lieu de les taire", async () => {
-    // Un moniteur qui crie à chaque ligne devient inutilisable ; un moniteur
-    // qui les avale masque un désalignement de schéma.
+  it("counts the unreadable lines instead of silencing them", async () => {
+    // A monitor that yells on every line becomes unusable; a monitor that
+    // swallows them masks a schema mismatch.
     const rec = await plant({ id: "t_x" }, [{ type: "started", agent: "codex", command: "c" }]);
     const paths = taskPaths(rec.task_dir);
-    await writeFile(paths.eventsPath, `{"pas":"un événement"}\nceci n'est pas du JSON\n`, { flag: "a" });
+    await writeFile(paths.eventsPath, `{"not":"an event"}\nthis is not JSON\n`, { flag: "a" });
     await runWatch(root, [], { once: true }, io);
-    expect(io.stdoutText()).toContain("2 ligne(s) illisible(s)");
+    expect(io.stdoutText()).toContain("2 unreadable line(s)");
   });
 
-  it("signale un silence prolongé", async () => {
+  it("flags a prolonged silence", async () => {
     const rec = await plant({ id: "t_mute" }, []);
     const paths = taskPaths(rec.task_dir);
     await mkdir(paths.dir, { recursive: true });
@@ -198,7 +199,7 @@ describe("caesar watch --once", () => {
           at: new Date(Date.now() - 120_000).toISOString(),
           task_id: "t_mute",
           type: "message",
-          text: "Je commence.",
+          text: "I am starting.",
         }),
       ) + "\n",
       "utf8",
@@ -209,7 +210,7 @@ describe("caesar watch --once", () => {
 });
 
 describe("caesar watch --json", () => {
-  it("rend du NDJSON : un événement par ligne, relisible tel quel", async () => {
+  it("renders NDJSON: one event per line, re-readable as-is", async () => {
     await plant({ id: "t_a" }, [
       { type: "started", agent: "codex", command: "codex exec" },
       { type: "tool_use", tool: "shell", id: "item_1", input_summary: "ls", status: "started" },
@@ -223,7 +224,7 @@ describe("caesar watch --json", () => {
     expect(parsed.every((e) => e.task_id === "t_a")).toBe(true);
   });
 
-  it("fusionne les journaux de plusieurs tâches dans un seul flux", async () => {
+  it("merges the journals of several tasks into a single stream", async () => {
     await plant({ id: "t_a" }, [{ type: "started", agent: "codex", command: "c" }]);
     await plant({ id: "t_b" }, [{ type: "started", agent: "opencode", command: "c" }]);
     await runWatch(root, [], { once: true, json: true }, io);

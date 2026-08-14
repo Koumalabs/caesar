@@ -50,13 +50,13 @@ describe("worktree", () => {
   });
 
   describe("repoRoot", () => {
-    it("résout la racine d'un dépôt git", async () => {
+    it("resolves the root of a git repository", async () => {
       const resolved = await repoRoot(root);
-      // macOS résout /tmp en /private/tmp : on compare les chemins réels.
+      // macOS resolves /tmp to /private/tmp: we compare the real paths.
       expect(resolved).toBe(await realpath(root));
     });
 
-    it("renvoie null hors d'un dépôt git", async () => {
+    it("returns null outside a git repository", async () => {
       const outside = await mkdtemp(join(tmpdir(), "caesar-not-a-repo-"));
       try {
         expect(await repoRoot(outside)).toBeNull();
@@ -67,12 +67,12 @@ describe("worktree", () => {
   });
 
   describe("createWorktree / diffWorktree", () => {
-    it("crée le worktree sous <root>/.caesar/wt/<taskId> sur la branche caesar/<taskId>", async () => {
+    it("creates the worktree under <root>/.caesar/wt/<taskId> on the caesar/<taskId> branch", async () => {
       const handle = await createWorktree(root, "task-1");
       expect(handle.path).toBe(join(root, ".caesar", "wt", "task-1"));
       expect(handle.branch).toBe("caesar/task-1");
-      // Un SHA, jamais la chaîne "HEAD" : c'est ce qui rend le diff insensible
-      // aux commits que l'agent fait dans son atelier.
+      // A SHA, never the "HEAD" string: that is what makes the diff immune
+      // to the commits the agent makes in its workshop.
       expect(handle.baseRef).toMatch(/^[0-9a-f]{40}$/);
       expect(handle.baseRef).toBe((await git(root, ["rev-parse", "HEAD"])).trim());
 
@@ -83,24 +83,24 @@ describe("worktree", () => {
       expect(branches).toContain("caesar/task-1");
     });
 
-    it("voit un fichier créé sans commit, grâce à --intent-to-add", async () => {
+    it("sees a file created without a commit, thanks to --intent-to-add", async () => {
       const handle = await createWorktree(root, "task-2");
-      await writeFile(join(handle.path, "nouveau.txt"), "contenu\n", "utf8");
-      await writeFile(join(handle.path, "a.txt"), "hello\nmodifié\n", "utf8");
+      await writeFile(join(handle.path, "new.txt"), "content\n", "utf8");
+      await writeFile(join(handle.path, "a.txt"), "hello\nmodified\n", "utf8");
 
       const diff = await diffWorktree(handle);
       expect(diff.isEmpty).toBe(false);
       expect(diff.files).toEqual(
         expect.arrayContaining([
-          { path: "nouveau.txt", action: "created", summary: "" },
+          { path: "new.txt", action: "created", summary: "" },
           { path: "a.txt", action: "modified", summary: "" },
         ]),
       );
-      expect(diff.patch).toContain("nouveau.txt");
-      expect(diff.patch).toContain("+contenu");
+      expect(diff.patch).toContain("new.txt");
+      expect(diff.patch).toContain("+content");
     });
 
-    it("diff vide quand le worktree n'a subi aucun changement", async () => {
+    it("empty diff when the worktree underwent no change", async () => {
       const handle = await createWorktree(root, "task-3");
       const diff = await diffWorktree(handle);
       expect(diff.isEmpty).toBe(true);
@@ -108,7 +108,7 @@ describe("worktree", () => {
       expect(diff.patch).toBe("");
     });
 
-    it("rapporte une suppression comme telle", async () => {
+    it("reports a deletion as such", async () => {
       const handle = await createWorktree(root, "task-4");
       await rm(join(handle.path, "a.txt"));
       const diff = await diffWorktree(handle);
@@ -116,68 +116,68 @@ describe("worktree", () => {
     });
 
     /**
-     * L'atelier lève l'hypothèse sous laquelle ce module a été écrit — « les
-     * agents ne committent pas ». Un sous-agent qui installe, lance les tests
-     * et jalonne son travail par des commits est exactement ce que le worktree
-     * doit permettre ; le diff doit y survivre.
+     * The workshop lifts the hypothesis under which this module was written —
+     * "agents do not commit". A sub-agent that installs, runs the tests
+     * and punctuates its work with commits is exactly what the worktree
+     * must allow; the diff must survive it.
      */
-    describe("un agent qui commite dans son atelier", () => {
+    describe("an agent that commits in its workshop", () => {
       async function commitAll(dir: string, message: string): Promise<void> {
         await git(dir, ["config", "user.email", "agent@example.com"]);
-        await git(dir, ["config", "user.name", "Sous-agent"]);
+        await git(dir, ["config", "user.name", "Sub-agent"]);
         await git(dir, ["add", "-A"]);
         await git(dir, ["commit", "-q", "-m", message]);
       }
 
-      it("voit son travail dans le diff, exactement comme s'il n'avait pas commité", async () => {
-        // Diffé contre `HEAD`, ce diff serait vide : `HEAD` désignerait le
-        // commit de l'agent lui-même. `caesar` aurait conclu « aucun
-        // changement », `caesar apply` n'aurait rien appliqué, et tout le
-        // travail se serait évaporé en silence.
+      it("sees its work in the diff, exactly as if it had not committed", async () => {
+        // Diffed against `HEAD`, this diff would be empty: `HEAD` would
+        // designate the agent's own commit. `caesar` would have concluded "no
+        // changes", `caesar apply` would have applied nothing, and all the
+        // work would have evaporated in silence.
         const handle = await createWorktree(root, "task-commit");
-        await writeFile(join(handle.path, "nouveau.txt"), "contenu\n", "utf8");
-        await writeFile(join(handle.path, "a.txt"), "hello\nmodifié\n", "utf8");
-        await commitAll(handle.path, "travail de l'agent");
+        await writeFile(join(handle.path, "new.txt"), "content\n", "utf8");
+        await writeFile(join(handle.path, "a.txt"), "hello\nmodified\n", "utf8");
+        await commitAll(handle.path, "the agent's work");
 
         const diff = await diffWorktree(handle);
         expect(diff.isEmpty).toBe(false);
         expect(diff.files).toEqual(
           expect.arrayContaining([
-            { path: "nouveau.txt", action: "created", summary: "" },
+            { path: "new.txt", action: "created", summary: "" },
             { path: "a.txt", action: "modified", summary: "" },
           ]),
         );
-        expect(diff.patch).toContain("+contenu");
+        expect(diff.patch).toContain("+content");
       });
 
-      it("cumule plusieurs commits en un seul diff contre le point de départ", async () => {
+      it("accumulates several commits into a single diff against the starting point", async () => {
         const handle = await createWorktree(root, "task-commits");
-        await writeFile(join(handle.path, "un.txt"), "1\n", "utf8");
-        await commitAll(handle.path, "premier jalon");
-        await writeFile(join(handle.path, "deux.txt"), "2\n", "utf8");
-        await commitAll(handle.path, "second jalon");
+        await writeFile(join(handle.path, "one.txt"), "1\n", "utf8");
+        await commitAll(handle.path, "first milestone");
+        await writeFile(join(handle.path, "two.txt"), "2\n", "utf8");
+        await commitAll(handle.path, "second milestone");
 
         const diff = await diffWorktree(handle);
-        expect(diff.files.map((f) => f.path).sort()).toEqual(["deux.txt", "un.txt"]);
+        expect(diff.files.map((f) => f.path).sort()).toEqual(["one.txt", "two.txt"]);
       });
 
-      it("mêle un commit et du travail non commité dans le même diff", async () => {
-        // Le cas réel de fin de tâche : quelques commits, puis des
-        // modifications encore dans l'arbre de travail. Les deux mécanismes —
-        // le SHA de départ et `--intent-to-add` — doivent jouer ensemble.
-        const handle = await createWorktree(root, "task-mixte");
-        await writeFile(join(handle.path, "commite.txt"), "commité\n", "utf8");
-        await commitAll(handle.path, "jalon");
-        await writeFile(join(handle.path, "en-cours.txt"), "pas encore\n", "utf8");
+      it("mixes a commit and uncommitted work in the same diff", async () => {
+        // The real end-of-task case: a few commits, then modifications
+        // still in the working tree. The two mechanisms —
+        // the starting SHA and `--intent-to-add` — must play together.
+        const handle = await createWorktree(root, "task-mixed");
+        await writeFile(join(handle.path, "committed.txt"), "committed\n", "utf8");
+        await commitAll(handle.path, "milestone");
+        await writeFile(join(handle.path, "in-progress.txt"), "not yet\n", "utf8");
 
         const diff = await diffWorktree(handle);
-        expect(diff.files.map((f) => f.path).sort()).toEqual(["commite.txt", "en-cours.txt"]);
+        expect(diff.files.map((f) => f.path).sort()).toEqual(["committed.txt", "in-progress.txt"]);
       });
     });
   });
 
   describe("removeWorktree", () => {
-    it("supprime le worktree et sa branche", async () => {
+    it("removes the worktree and its branch", async () => {
       const handle = await createWorktree(root, "task-remove");
       await removeWorktree(root, handle);
 
@@ -189,37 +189,37 @@ describe("worktree", () => {
     });
 
     /**
-     * La garantie sur laquelle repose `[worktree] link` : la cible du lien vit
-     * dans le dépôt principal, et sa survie ne doit pas être une supposition.
-     * Ces deux tests la constatent plutôt que de la présumer — ils échoueraient
-     * le jour où `git worktree remove --force` se mettrait à suivre les liens,
-     * ce qui rendrait la matérialisation par lien indéfendable telle quelle.
+     * The guarantee `[worktree] link` rests on: the link's target lives
+     * in the main repository, and its survival must not be an assumption.
+     * These two tests observe it rather than presume it — they would fail
+     * the day `git worktree remove --force` started following links,
+     * which would make link materialization indefensible as it stands.
      */
-    it("un lien vers le dépôt principal est détaché, jamais suivi : sa cible survit", async () => {
+    it("a link to the main repository is detached, never followed: its target survives", async () => {
       await mkdir(join(root, "node_modules"), { recursive: true });
-      await writeFile(join(root, "node_modules", "marqueur.txt"), "précieux\n", "utf8");
+      await writeFile(join(root, "node_modules", "marker.txt"), "precious\n", "utf8");
 
-      const handle = await createWorktree(root, "task-lien");
+      const handle = await createWorktree(root, "task-link");
       await symlink(join(root, "node_modules"), join(handle.path, "node_modules"), "dir");
       await removeWorktree(root, handle);
 
-      expect(await readFile(join(root, "node_modules", "marqueur.txt"), "utf8")).toBe("précieux\n");
+      expect(await readFile(join(root, "node_modules", "marker.txt"), "utf8")).toBe("precious\n");
       const worktrees = await git(root, ["worktree", "list"]);
-      expect(worktrees).not.toContain("task-lien");
+      expect(worktrees).not.toContain("task-link");
     });
 
-    it("y compris pour un lien posé sous un chemin imbriqué", async () => {
-      // `[worktree] link` accepte `packages/api/node_modules` : la garantie ne
-      // vaut rien si elle s'arrête à la racine du worktree.
-      await mkdir(join(root, "cible"), { recursive: true });
-      await writeFile(join(root, "cible", "dedans.txt"), "intact\n", "utf8");
+    it("including for a link placed under a nested path", async () => {
+      // `[worktree] link` accepts `packages/api/node_modules`: the guarantee
+      // is worthless if it stops at the worktree root.
+      await mkdir(join(root, "target"), { recursive: true });
+      await writeFile(join(root, "target", "inside.txt"), "intact\n", "utf8");
 
-      const handle = await createWorktree(root, "task-imbrique");
+      const handle = await createWorktree(root, "task-nested");
       await mkdir(join(handle.path, "packages", "api"), { recursive: true });
-      await symlink(join(root, "cible"), join(handle.path, "packages", "api", "node_modules"), "dir");
+      await symlink(join(root, "target"), join(handle.path, "packages", "api", "node_modules"), "dir");
       await removeWorktree(root, handle);
 
-      expect(await readFile(join(root, "cible", "dedans.txt"), "utf8")).toBe("intact\n");
+      expect(await readFile(join(root, "target", "inside.txt"), "utf8")).toBe("intact\n");
     });
   });
 
@@ -228,7 +228,7 @@ describe("worktree", () => {
       return {
         id: "task-handle",
         agent: "codex",
-        objective: "tâche",
+        objective: "task",
         status: "succeeded",
         created_at: new Date().toISOString(),
         task_dir: join(root, ".caesar", "tasks", "task-handle"),
@@ -242,17 +242,17 @@ describe("worktree", () => {
       };
     }
 
-    it("null quand l'isolation n'est pas \"worktree\"", async () => {
+    it('null when isolation is not "worktree"', async () => {
       const handle = await loadWorktreeHandle(record({ isolation: "inplace", branch: undefined }));
       expect(handle).toBeNull();
     });
 
-    it("null quand isolation \"worktree\" mais sans branche enregistrée", async () => {
+    it('null when isolation is "worktree" but no branch is recorded', async () => {
       const handle = await loadWorktreeHandle(record({ branch: undefined }));
       expect(handle).toBeNull();
     });
 
-    it("reconstruit le handle depuis task.json, base_ref compris", async () => {
+    it("rebuilds the handle from task.json, base_ref included", async () => {
       const rec = record();
       const paths = taskPaths(rec.task_dir);
       const task: Task = {
@@ -279,7 +279,7 @@ describe("worktree", () => {
       expect(handle).toEqual({ path: rec.workspace, branch: "caesar/task-handle", baseRef: "deadbeef" });
     });
 
-    it("base_ref absent de task.json : replie sur \"HEAD\"", async () => {
+    it('base_ref absent from task.json: falls back to "HEAD"', async () => {
       const rec = record({ id: "task-handle-2", task_dir: join(root, ".caesar", "tasks", "task-handle-2") });
       const paths = taskPaths(rec.task_dir);
       const task: Task = {
@@ -308,16 +308,16 @@ describe("worktree", () => {
 });
 
 /**
- * L'étape 0 du skill `superpowers:using-git-worktrees`, que ce projet
- * supposait acquise : détecter avant de créer. Deux angles morts que `caesar`
- * n'avait nulle part — l'état du `.gitignore`, et le décalage entre la racine
- * sur laquelle il délègue et celle où l'on travaille.
+ * Step 0 of the `superpowers:using-git-worktrees` skill, which this project
+ * assumed settled: detect before creating. Two blind spots that `caesar`
+ * had nowhere — the state of the `.gitignore`, and the gap between the root
+ * it delegates on and the one where the work happens.
  */
-describe("étape 0 — détecter avant de créer", () => {
+describe("step 0 — detect before creating", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), "caesar-etape0-")));
+    root = await realpath(await mkdtemp(join(tmpdir(), "caesar-step0-")));
     await initRepo(root);
   });
 
@@ -326,45 +326,45 @@ describe("étape 0 — détecter avant de créer", () => {
   });
 
   describe("worktreesDirIgnored", () => {
-    it("faux quand rien n'ignore .caesar/wt/", async () => {
+    it("false when nothing ignores .caesar/wt/", async () => {
       expect(await worktreesDirIgnored(root, "t_1")).toBe(false);
     });
 
-    it("vrai avec la ligne que caesar init écrit — motif terminé par un slash", async () => {
-      // Le cas qui a demandé de reformuler la question : un motif de
-      // répertoire ne s'applique à `.caesar/wt` qu'à la condition que ce
-      // répertoire existe déjà. Interroger le chemin qu'on va occuper
-      // (`.caesar/wt/<taskId>`) répond dans tous les cas.
+    it("true with the line caesar init writes — pattern ending with a slash", async () => {
+      // The case that demanded rephrasing the question: a directory
+      // pattern only applies to `.caesar/wt` on the condition that this
+      // directory already exists. Querying the path we are about to occupy
+      // (`.caesar/wt/<taskId>`) answers in every case.
       await writeFile(join(root, ".gitignore"), ".caesar/wt/\n", "utf8");
       expect(await worktreesDirIgnored(root, "t_1")).toBe(true);
     });
 
-    it("vrai aussi quand tout .caesar/ est ignoré", async () => {
+    it("true also when all of .caesar/ is ignored", async () => {
       await writeFile(join(root, ".gitignore"), ".caesar/\n", "utf8");
       expect(await worktreesDirIgnored(root, "t_1")).toBe(true);
     });
 
-    it("faux quand le .gitignore parle d'autre chose", async () => {
+    it("false when the .gitignore talks about something else", async () => {
       await writeFile(join(root, ".gitignore"), "node_modules/\n.caesar/tasks/\n", "utf8");
       expect(await worktreesDirIgnored(root, "t_1")).toBe(false);
     });
   });
 
   describe("listGitWorktrees", () => {
-    it("rend le dépôt principal puis chaque worktree, avec sa branche", async () => {
-      const handle = await createWorktree(root, "t_liste");
+    it("returns the main repository then each worktree, with its branch", async () => {
+      const handle = await createWorktree(root, "t_list");
       const entries = await listGitWorktrees(root);
 
       expect(entries[0]!.path).toBe(root);
       const found = entries.find((entry) => entry.path === handle.path);
-      // La branche vient de git, jamais d'une déduction sur le nom du
-      // répertoire : c'est ce qui permet au gc de nettoyer une branche dont le
-      // nom ne se devine pas.
-      expect(found!.branch).toBe("caesar/t_liste");
+      // The branch comes from git, never from a deduction on the directory
+      // name: that is what lets the gc clean up a branch whose name cannot
+      // be guessed.
+      expect(found!.branch).toBe("caesar/t_list");
     });
 
-    it("rend une liste vide hors d'un dépôt git, plutôt que de lever", async () => {
-      const outside = await mkdtemp(join(tmpdir(), "caesar-pas-un-depot-"));
+    it("returns an empty list outside a git repository, rather than throwing", async () => {
+      const outside = await mkdtemp(join(tmpdir(), "caesar-not-a-repo-"));
       try {
         expect(await listGitWorktrees(outside)).toEqual([]);
       } finally {
@@ -374,15 +374,15 @@ describe("étape 0 — détecter avant de créer", () => {
   });
 
   describe("describeWorkspaceMismatch", () => {
-    it("silencieux quand les deux racines coïncident", async () => {
+    it("silent when the two roots coincide", async () => {
       expect(await describeWorkspaceMismatch(root, root)).toBeNull();
     });
 
-    it("silencieux quand le répertoire courant n'est pas dans un dépôt", async () => {
-      // Le répertoire courant du serveur MCP n'est pas une preuve d'intention :
-      // hors dépôt, il n'y a aucune raison de croire qu'il désigne un lieu de
-      // travail.
-      const outside = await mkdtemp(join(tmpdir(), "caesar-hors-depot-"));
+    it("silent when the current directory is not inside a repository", async () => {
+      // The MCP server's current directory is not proof of intent:
+      // outside a repository, there is no reason to believe it designates a
+      // place of work.
+      const outside = await mkdtemp(join(tmpdir(), "caesar-outside-repo-"));
       try {
         expect(await describeWorkspaceMismatch(root, outside)).toBeNull();
       } finally {
@@ -390,11 +390,11 @@ describe("étape 0 — détecter avant de créer", () => {
       }
     });
 
-    it("signale le cas Superpowers : on travaille dans un worktree, caesar délègue sur le dépôt d'origine", async () => {
-      // `caesar mcp install` fige `--root` une fois pour toutes. Que l'agent
-      // principal passe dans un worktree — ce que le skill lui recommande — et
-      // les sous-agents travaillent dans un arbre que plus personne ne regarde.
-      const handle = await createWorktree(root, "t_ailleurs");
+    it("flags the Superpowers case: we work in a worktree, caesar delegates on the original repository", async () => {
+      // `caesar mcp install` freezes `--root` once and for all. Let the main
+      // agent move into a worktree — which the skill recommends — and
+      // the sub-agents work in a tree nobody is looking at anymore.
+      const handle = await createWorktree(root, "t_elsewhere");
       const message = await describeWorkspaceMismatch(root, handle.path);
       expect(message).toContain(root);
       expect(message).toContain("caesar mcp install");
@@ -414,13 +414,13 @@ describe("applyRecordedWorktree", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  /** Une tâche worktree enregistrée, avec le task.json que relira loadWorktreeHandle. */
+  /** A recorded worktree task, with the task.json that loadWorktreeHandle will re-read. */
   async function recordedTask(id: string): Promise<TaskRecord> {
     const handle = await createWorktree(root, id);
     const record: TaskRecord = {
       id,
       agent: "codex",
-      objective: "appliquer et enregistrer",
+      objective: "apply and record",
       status: "succeeded",
       created_at: "2026-08-12T09:00:00.000Z",
       ended_at: "2026-08-12T09:01:00.000Z",
@@ -451,22 +451,22 @@ describe("applyRecordedWorktree", () => {
     return record;
   }
 
-  it("applique le patch et inscrit applied_at + empreinte dans l'enregistrement", async () => {
-    const record = await recordedTask("t_enregistre");
-    await writeFile(join(record.workspace, "b.txt"), "travail\n", "utf8");
+  it("applies the patch and writes applied_at + digest into the record", async () => {
+    const record = await recordedTask("t_recorded");
+    await writeFile(join(record.workspace, "b.txt"), "work\n", "utf8");
 
     const result = await applyRecordedWorktree(root, fileTaskStore(root), record);
 
     expect(result).toEqual({ outcome: "applied", conflicts: [], isEmpty: false });
-    expect(await readFile(join(root, "b.txt"), "utf8")).toBe("travail\n");
-    const relu = await fileTaskStore(root).get(record.id);
-    expect(relu?.applied_at).toBeDefined();
-    const handle = await loadWorktreeHandle(relu!);
-    expect(relu?.applied_patch_digest).toBe(patchDigest((await diffWorktree(handle!)).patch));
+    expect(await readFile(join(root, "b.txt"), "utf8")).toBe("work\n");
+    const reread = await fileTaskStore(root).get(record.id);
+    expect(reread?.applied_at).toBeDefined();
+    const handle = await loadWorktreeHandle(reread!);
+    expect(reread?.applied_patch_digest).toBe(patchDigest((await diffWorktree(handle!)).patch));
   });
 
-  it("diff vide : outcome applied mais rien d'appliqué, rien d'enregistré", async () => {
-    const record = await recordedTask("t_vide");
+  it("empty diff: outcome applied but nothing applied, nothing recorded", async () => {
+    const record = await recordedTask("t_empty");
 
     const result = await applyRecordedWorktree(root, fileTaskStore(root), record);
 
@@ -474,10 +474,10 @@ describe("applyRecordedWorktree", () => {
     expect((await fileTaskStore(root).get(record.id))?.applied_at).toBeUndefined();
   });
 
-  it("conflit : fichiers nommés, rien d'enregistré", async () => {
-    const record = await recordedTask("t_conflit");
-    await writeFile(join(record.workspace, "a.txt"), "version worktree\n", "utf8");
-    await writeFile(join(root, "a.txt"), "version workspace divergente\n", "utf8");
+  it("conflict: files named, nothing recorded", async () => {
+    const record = await recordedTask("t_conflict");
+    await writeFile(join(record.workspace, "a.txt"), "worktree version\n", "utf8");
+    await writeFile(join(root, "a.txt"), "diverging workspace version\n", "utf8");
     await git(root, ["add", "a.txt"]);
     await git(root, ["commit", "-q", "-m", "divergence"]);
 
@@ -488,11 +488,11 @@ describe("applyRecordedWorktree", () => {
     expect((await fileTaskStore(root).get(record.id))?.applied_at).toBeUndefined();
   });
 
-  it("tâche sans worktree (inplace) : no_worktree, rien d'enregistré", async () => {
+  it("task without a worktree (inplace): no_worktree, nothing recorded", async () => {
     const record: TaskRecord = {
       id: "t_inplace",
       agent: "codex",
-      objective: "tâche sur place",
+      objective: "in-place task",
       status: "succeeded",
       created_at: "2026-08-12T09:00:00.000Z",
       task_dir: join(root, ".caesar", "tasks", "t_inplace"),

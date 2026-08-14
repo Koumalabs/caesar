@@ -1,24 +1,23 @@
 /**
- * `caesar channel serve --task-dir <dir>` : démarre le serveur du canal retour
- * (`@caesar/mcp-channel`) sur stdio, à l'intérieur du binaire `caesar` lui-même.
+ * `caesar channel serve --task-dir <dir>`: starts the return channel server
+ * (`@caesar/mcp-channel`) on stdio, inside the `caesar` binary itself.
  *
- * Sous-commande interne (tâche 12), masquée de l'aide (`bin.ts`) : elle n'a
- * pas vocation à être tapée par un humain, seulement atteinte par
- * auto-invocation. Le point d'entrée Bun (`bun-entry.ts`) la relie à
- * `@caesar/core` via `configureChannelLauncher` — un binaire compilé n'a plus
- * de `node_modules` où résoudre `@caesar/mcp-channel` (voir le brief). Le
- * chemin Node ne l'emprunte jamais par défaut : `defaultChannelLauncher`
- * (`packages/core/src/engine/runner.ts`) continue de résoudre et lancer
- * `@caesar/mcp-channel/dist/bin.js` en sous-processus séparé, comportement
- * inchangé — cette sous-commande existe malgré tout dans les deux mondes
- * (même programme commander, voir `bin.ts`), simplement inutilisée par le
- * chemin Node par défaut.
+ * Internal subcommand (task 12), masked from the help (`bin.ts`): it is not
+ * meant to be typed by a human, only reached by self-invocation. The Bun
+ * entry point (`bun-entry.ts`) hooks it into `@caesar/core` via
+ * `configureChannelLauncher` — a compiled binary no longer has a
+ * `node_modules` to resolve `@caesar/mcp-channel` from (see the brief). The
+ * Node path never takes it by default: `defaultChannelLauncher`
+ * (`packages/core/src/engine/runner.ts`) keeps resolving and launching
+ * `@caesar/mcp-channel/dist/bin.js` as a separate subprocess, behavior
+ * unchanged — this subcommand nevertheless exists in both worlds (same
+ * commander program, see `bin.ts`), simply unused by the default Node path.
  *
- * Reprend le corps de `packages/mcp-channel/src/bin.ts` (le binaire
- * `caesar-channel` autonome, toujours résolu tel quel par le chemin Node) :
- * même construction du serveur, même transport stdio. Rien d'autre que le
- * protocole MCP n'écrit sur stdout ici — même exigence que `caesar mcp serve`
- * (voir `mcp.ts`).
+ * Reuses the body of `packages/mcp-channel/src/bin.ts` (the standalone
+ * `caesar-channel` binary, still resolved as-is by the Node path): same
+ * server construction, same stdio transport. Nothing but the MCP protocol
+ * writes to stdout here — same requirement as `caesar mcp serve` (see
+ * `mcp.ts`).
  */
 import type { Readable, Writable } from "node:stream";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -26,7 +25,7 @@ import { buildChannelServer } from "@caesar/mcp-channel";
 import { EXIT_OK } from "../output.js";
 
 export interface ChannelServeOptions {
-  /** Overrides de test : jamais renseignés en usage réel (défaut : `process.stdin`/`process.stdout`, voir `StdioServerTransport`). */
+  /** Test overrides: never set in real use (default: `process.stdin`/`process.stdout`, see `StdioServerTransport`). */
   stdin?: Readable;
   stdout?: Writable;
 }

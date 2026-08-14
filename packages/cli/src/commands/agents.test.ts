@@ -24,7 +24,7 @@ describe("caesar agents list", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("--json liste le catalogue avec présence, capacités et politique, sans ANSI", async () => {
+  it("--json lists the catalog with presence, capabilities and policy, without ANSI", async () => {
     await withFakeHome(async () => {
       const code = await runAgentsList(root, { json: true }, io);
       expect(code).toBe(EXIT_OK);
@@ -48,7 +48,7 @@ describe("caesar agents enable / disable", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("disable puis enable : la modification est persistée dans le TOML et relue", async () => {
+  it("disable then enable: the change is persisted in the TOML and re-read", async () => {
     await withFakeHome(async () => {
       expect(await runAgentsDisable(root, "codex", {}, io)).toBe(EXIT_OK);
       let loaded = await loadConfig(root);
@@ -61,7 +61,7 @@ describe("caesar agents enable / disable", () => {
     });
   });
 
-  it("--json rapporte l'état final de la liste denied", async () => {
+  it("--json reports the final state of the denied list", async () => {
     await withFakeHome(async () => {
       const code = await runAgentsDisable(root, "opencode", { json: true }, io);
       expect(code).toBe(EXIT_OK);
@@ -84,7 +84,7 @@ describe("caesar agents add / remove", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("déclare un agent, qui rejoint aussitôt le catalogue effectif", async () => {
+  it("declares an agent, which immediately joins the effective catalog", async () => {
     await withFakeHome(async () => {
       const code = await runAgentsAdd(root, "aider", { bin: "aider", args: "--message {{prompt}} --yes" }, io);
       expect(code).toBe(EXIT_OK);
@@ -94,78 +94,78 @@ describe("caesar agents add / remove", () => {
         { id: "aider", bin: "aider", args: ["--message", "{{prompt}}", "--yes"], cwdMode: "process" },
       ]);
 
-      // Ce qui compte vraiment : `caesar agents list` le voit, donc `caesar run
-      // --agent aider` peut le résoudre.
+      // What really matters: `caesar agents list` sees it, so `caesar run
+      // --agent aider` can resolve it.
       const listIo = makeIo();
       await runAgentsList(root, { json: true }, listIo);
       expect(JSON.parse(listIo.stdoutText()).agents.map((a: { id: string }) => a.id)).toContain("aider");
     });
   });
 
-  it("découpe le gabarit en respectant les guillemets", async () => {
+  it("splits the template while honoring quotes", async () => {
     await withFakeHome(async () => {
-      expect(await runAgentsAdd(root, "mon-cli", { bin: "mon-cli", args: '--system "tu es {{prompt}}"' }, io)).toBe(EXIT_OK);
+      expect(await runAgentsAdd(root, "my-cli", { bin: "my-cli", args: '--system "you are {{prompt}}"' }, io)).toBe(EXIT_OK);
       const { config } = await loadConfig(root);
-      expect(config.agents[0]!.args).toEqual(["--system", "tu es {{prompt}}"]);
+      expect(config.agents[0]!.args).toEqual(["--system", "you are {{prompt}}"]);
     });
   });
 
-  it("refuse un gabarit sans {{prompt}} : l'agent ne recevrait jamais l'objectif", async () => {
+  it("refuses a template without {{prompt}}: the agent would never receive the objective", async () => {
     await withFakeHome(async () => {
-      const code = await runAgentsAdd(root, "muet", { bin: "muet", args: "exec --json" }, io);
+      const code = await runAgentsAdd(root, "mute", { bin: "mute", args: "exec --json" }, io);
       expect(code).toBe(EXIT_USAGE);
-      expect(io.stderrText()).toMatch(/objectif de la tâche/);
+      expect(io.stderrText()).toMatch(/task's objective/);
       expect((await loadConfig(root)).config.agents).toEqual([]);
     });
   });
 
-  it("refuse un jeton mal orthographié en le nommant", async () => {
+  it("refuses a misspelled token while naming it", async () => {
     await withFakeHome(async () => {
-      const code = await runAgentsAdd(root, "faute", { bin: "x", args: "--message {{promt}}" }, io);
+      const code = await runAgentsAdd(root, "typo", { bin: "x", args: "--message {{promt}}" }, io);
       expect(code).toBe(EXIT_USAGE);
       expect(io.stderrText()).toMatch(/\{\{promt\}\}/);
     });
   });
 
-  it("refuse un guillemet non refermé plutôt que d'enregistrer une ligne de commande tronquée", async () => {
+  it("refuses an unclosed quote rather than recording a truncated command line", async () => {
     await withFakeHome(async () => {
-      const code = await runAgentsAdd(root, "x", { bin: "x", args: '--system "tu es {{prompt}}' }, io);
+      const code = await runAgentsAdd(root, "x", { bin: "x", args: '--system "you are {{prompt}}' }, io);
       expect(code).toBe(EXIT_USAGE);
-      expect(io.stderrText()).toMatch(/non refermé/);
+      expect(io.stderrText()).toMatch(/[Uu]nclosed/);
     });
   });
 
-  it("signale que le binaire est absent du PATH, sans refuser la déclaration", async () => {
+  it("flags that the binary is missing from the PATH, without refusing the declaration", async () => {
     await withFakeHome(async () => {
-      const code = await runAgentsAdd(root, "absent", { bin: "binaire-qui-n-existe-pas-caesar", args: "{{prompt}}" }, io);
+      const code = await runAgentsAdd(root, "absent", { bin: "binary-that-does-not-exist-caesar", args: "{{prompt}}" }, io);
       expect(code).toBe(EXIT_OK);
-      expect(io.stdoutText()).toMatch(/introuvable dans le PATH/);
+      expect(io.stdoutText()).toMatch(/not found in the PATH/);
       expect((await loadConfig(root)).config.agents).toHaveLength(1);
     });
   });
 
-  it("un chemin explicite est vérifié tel quel, et le message n'envoie pas chercher dans le PATH", async () => {
+  it("an explicit path is checked as-is, and the message does not send people to the PATH", async () => {
     await withFakeHome(async () => {
-      // Chemin absolu vers un exécutable réel : aucun avertissement.
-      expect(await runAgentsAdd(root, "reel", { bin: process.execPath, args: "{{prompt}}" }, io)).toBe(EXIT_OK);
-      expect(io.stdoutText()).not.toMatch(/introuvable|n'existe pas/);
+      // Absolute path to a real executable: no warning.
+      expect(await runAgentsAdd(root, "real", { bin: process.execPath, args: "{{prompt}}" }, io)).toBe(EXIT_OK);
+      expect(io.stdoutText()).not.toMatch(/not found|does not exist/);
 
-      // Chemin absolu vers rien : avertissement, mais formulé sur le fichier.
+      // Absolute path to nothing: warning, but phrased about the file.
       const io2 = makeIo();
-      expect(await runAgentsAdd(root, "fantome", { bin: "/opt/rien/du/tout", args: "{{prompt}}" }, io2)).toBe(EXIT_OK);
-      expect(io2.stdoutText()).toMatch(/n'existe pas ou n'est pas exécutable/);
+      expect(await runAgentsAdd(root, "ghost", { bin: "/opt/nothing/at/all", args: "{{prompt}}" }, io2)).toBe(EXIT_OK);
+      expect(io2.stdoutText()).toMatch(/does not exist or is not executable/);
       expect(io2.stdoutText()).not.toMatch(/PATH/);
     });
   });
 
-  it("avertit qu'une déclaration portant un identifiant natif remplace l'adaptateur", async () => {
+  it("warns that a declaration carrying a native identifier replaces the adapter", async () => {
     await withFakeHome(async () => {
       expect(await runAgentsAdd(root, "codex", { bin: "codex", args: "{{prompt}}" }, io)).toBe(EXIT_OK);
-      expect(io.stdoutText()).toMatch(/catalogue natif/);
+      expect(io.stdoutText()).toMatch(/native catalog/);
     });
   });
 
-  it("--read-only-native survit à l'aller-retour, et vaut faux sans l'option", async () => {
+  it("--read-only-native survives the round trip, and is false without the option", async () => {
     await withFakeHome(async () => {
       await runAgentsAdd(root, "ro", { bin: "ro", args: "{{prompt}}", readOnlyNative: true }, io);
       await runAgentsAdd(root, "rw", { bin: "rw", args: "{{prompt}}" }, makeIo());
@@ -175,7 +175,7 @@ describe("caesar agents add / remove", () => {
     });
   });
 
-  it("écrit la couche visée, et elle seule", async () => {
+  it("writes the targeted layer, and it alone", async () => {
     await withFakeHome(async () => {
       await runAgentsAdd(root, "global-only", { bin: "x", args: "{{prompt}}", global: true }, io);
       const { layers } = await loadConfig(root);
@@ -184,7 +184,7 @@ describe("caesar agents add / remove", () => {
     });
   });
 
-  it("remplace une déclaration existante de la même couche plutôt que de la doubler", async () => {
+  it("replaces an existing declaration of the same layer rather than doubling it", async () => {
     await withFakeHome(async () => {
       await runAgentsAdd(root, "a", { bin: "v1", args: "{{prompt}}" }, io);
       await runAgentsAdd(root, "a", { bin: "v2", args: "{{prompt}}" }, makeIo());
@@ -194,7 +194,7 @@ describe("caesar agents add / remove", () => {
     });
   });
 
-  it("remove retire la déclaration de la couche qui la porte", async () => {
+  it("remove removes the declaration from the layer carrying it", async () => {
     await withFakeHome(async () => {
       await runAgentsAdd(root, "a", { bin: "x", args: "{{prompt}}" }, io);
       const removeIo = makeIo();
@@ -203,19 +203,19 @@ describe("caesar agents add / remove", () => {
     });
   });
 
-  it("remove sur une autre couche refuse et nomme celle qui déclare", async () => {
+  it("remove on another layer refuses and names the declaring one", async () => {
     await withFakeHome(async () => {
       await runAgentsAdd(root, "a", { bin: "x", args: "{{prompt}}", global: true }, io);
       const removeIo = makeIo();
-      // La fusion par clé ne sait pas exprimer une suppression : retirer "a"
-      // de la couche projet ne le ferait pas disparaître de la fusion.
+      // Keyed merging cannot express a deletion: removing "a" from the
+      // project layer would not make it disappear from the merge.
       expect(await runAgentsRemove(root, "a", {}, removeIo)).toBe(EXIT_USAGE);
       expect(removeIo.stderrText()).toMatch(/--global/);
       expect((await loadConfig(root)).config.agents).toHaveLength(1);
     });
   });
 
-  it("remove sur un agent natif renvoie vers \"agents disable\" plutôt que de faire semblant", async () => {
+  it("remove on a native agent points to \"agents disable\" rather than pretending", async () => {
     await withFakeHome(async () => {
       const code = await runAgentsRemove(root, "codex", {}, io);
       expect(code).toBe(EXIT_USAGE);
@@ -237,19 +237,19 @@ describe("caesar agents test", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("refuse un identifiant d'agent inconnu, sans lancer quoi que ce soit", async () => {
-    const code = await runAgentsTest(root, "agent-fantome", { yes: true }, io);
+  it("refuses an unknown agent identifier, without launching anything", async () => {
+    const code = await runAgentsTest(root, "ghost-agent", { yes: true }, io);
     expect(code).toBe(EXIT_USAGE);
-    expect(io.stderrText()).toMatch(/inconnu/);
+    expect(io.stderrText()).toMatch(/[Uu]nknown/);
   });
 
-  it("exige --yes : refuse de lancer une tâche réelle sans confirmation explicite", async () => {
+  it("requires --yes: refuses to launch a real task without explicit confirmation", async () => {
     const code = await runAgentsTest(root, "codex", {}, io);
     expect(code).toBe(EXIT_USAGE);
     expect(io.stderrText()).toMatch(/--yes/);
   });
 
-  it("respecte la politique : un agent refusé n'est jamais lancé, même avec --yes", async () => {
+  it("honors the policy: a denied agent is never launched, even with --yes", async () => {
     await withFakeHome(async () => {
       await runAgentsDisable(root, "codex", {}, makeIo());
       const code = await runAgentsTest(root, "codex", { yes: true }, io);
@@ -259,12 +259,12 @@ describe("caesar agents test", () => {
     });
   });
 
-  it("--yes : aller-retour complet avec un agent factice substitué au vrai binaire", async () => {
+  it("--yes: full round trip with a fake agent substituted for the real binary", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
-        // "git init" : `agents test` passe par `runTask`, dont l'isolation "inplace"
-        // explicite n'a pas besoin d'un dépôt git, mais un dépôt réel écarte
-        // toute ambiguïté sur le comportement observé.
+        // "git init": `agents test` goes through `runTask`, whose explicit
+        // "inplace" isolation does not need a git repository, but a real
+        // repository removes any ambiguity about the observed behavior.
         await execFileAsync("git", ["init", "-q"], { cwd: root });
         await execFileAsync("git", ["config", "user.email", "caesar-test@example.com"], { cwd: root });
         await execFileAsync("git", ["config", "user.name", "Caesar Test"], { cwd: root });

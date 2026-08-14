@@ -1,19 +1,19 @@
 /**
- * `caesar_cancel` : annule une tâche en cours — voir le brief de la tâche 7.
+ * `caesar_cancel`: cancels a running task — see the task 7 brief.
  *
- * Deux chemins, selon que la tâche a été lancée par cette session ou non :
+ * Two paths, depending on whether this session started the task or not:
  *
- * - connue de la session (le cas courant : c'est cette instance du serveur
- *   qui a lancé `runTask`) : on déclenche directement l'`AbortController`
- *   conservé par `caesar_delegate` — le moteur (`runAgentProcess`) l'honore
- *   déjà (SIGTERM puis, à défaut de réponse, SIGKILL). On attend ensuite la
- *   promesse (jamais rejetée — voir `session.ts`) pour rendre le statut final
- *   réellement constaté, pas une supposition ;
- * - inconnue de la session (tâche lancée par un autre processus — `caesar run`
- *   en CLI, ou une précédente instance du serveur) : repli sur le `pid`
- *   enregistré dans le store, exactement comme `caesar cancel` en CLI
- *   (`packages/cli/src/commands/tasks.ts`) — même technique, dupliquée ici
- *   faute d'un point d'export commun (voir le rapport de la tâche 7).
+ * - known to the session (the common case: this server instance is the one
+ *   that launched `runTask`): we trigger directly the `AbortController`
+ *   kept by `caesar_delegate` — the engine (`runAgentProcess`) already
+ *   honors it (SIGTERM then, absent a response, SIGKILL). We then await the
+ *   promise (never rejected — see `session.ts`) to return the final status
+ *   actually observed, not a guess;
+ * - unknown to the session (task started by another process — `caesar run`
+ *   from the CLI, or a previous server instance): fall back on the `pid`
+ *   recorded in the store, exactly like `caesar cancel` in the CLI
+ *   (`packages/cli/src/commands/tasks.ts`) — same technique, duplicated
+ *   here for lack of a shared export point (see the task 7 report).
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -48,14 +48,14 @@ export async function caesarCancel(session: McpSession, input: CaesarCancelInput
   }
 
   const record = await session.store.get(input.task_id);
-  if (!record) return errorResult(`Tâche inconnue : "${input.task_id}".`);
+  if (!record) return errorResult(`Unknown task: "${input.task_id}".`);
 
   if (!ACTIVE_STATUSES.includes(record.status)) {
     return jsonResult({ task_id: input.task_id, cancelled: false, status: record.status });
   }
   if (record.pid === undefined) {
     return errorResult(
-      `Tâche "${input.task_id}" en cours, mais aucun identifiant de processus n'est enregistré : impossible de l'annuler depuis ce serveur.`,
+      `Task "${input.task_id}" is running, but no process id is recorded: it cannot be cancelled from this server.`,
     );
   }
 

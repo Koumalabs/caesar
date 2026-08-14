@@ -1,16 +1,15 @@
 /**
- * `sampleTask`/`sampleContext` de test, pour un agent donné — recopiés à
- * l'identique dans les cinq tests d'adaptateur (`src/adapters/*.test.ts`) et
- * `src/registry/generic.test.ts` jusqu'ici (tâche 10, B) : un champ
- * obligatoire ajouté à `Task` demandait six corrections identiques plutôt
- * qu'une seule ici. Seul `agent` varie d'un fichier à l'autre (l'identifiant
- * de l'agent testé) — `makeSampleFactory` le fixe une fois, le reste est
- * partagé tel quel.
+ * Test `sampleTask`/`sampleContext`, for a given agent — until now copied
+ * identically into the five adapter tests (`src/adapters/*.test.ts`) and
+ * `src/registry/generic.test.ts` (task 10, B): a required field added to
+ * `Task` demanded six identical fixes rather than a single one here. Only
+ * `agent` varies from one file to another (the identifier of the agent
+ * under test) — `makeSampleFactory` pins it once, the rest is shared as is.
  */
 import { taskPaths, TaskSchema, TASK_PROTOCOL, type Task, type TaskPaths } from "@caesar/protocol";
 import type { BuildContext } from "../src/registry/types.js";
 
-/** `TaskPaths` de `sampleContext` — exporté séparément : plusieurs tests l'utilisent aussi directement (ex. `paths.dir`, `join(paths.dir, …)`). */
+/** `TaskPaths` of `sampleContext` — exported separately: several tests also use it directly (e.g. `paths.dir`, `join(paths.dir, …)`). */
 export const paths: TaskPaths = taskPaths("/tmp/task");
 
 export function makeSampleFactory(defaultAgentId: string): {
@@ -23,7 +22,7 @@ export function makeSampleFactory(defaultAgentId: string): {
       id: "t_0001",
       created_at: "2026-08-09T10:00:00.000Z",
       agent: defaultAgentId,
-      objective: "Corriger la régression",
+      objective: "Fix the regression",
       mode: "write",
       isolation: "worktree",
       workspace: "/tmp/wt",

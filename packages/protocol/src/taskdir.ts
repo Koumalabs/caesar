@@ -13,7 +13,7 @@ export interface TaskPaths {
   rawLog: string;
 }
 
-/** Disposition normalisée d'un répertoire de tâche. */
+/** Normalized layout of a task directory. */
 export function taskPaths(taskDir: string): TaskPaths {
   return {
     dir: taskDir,
@@ -25,9 +25,9 @@ export function taskPaths(taskDir: string): TaskPaths {
 }
 
 /**
- * Les variables d'environnement d'un sous-agent. C'est le contrat minimal :
- * un agent extérieur qui sait lire `$CAESAR_TASK_FILE` et écrire `$CAESAR_REPORT_PATH`
- * est orchestrable, sans rien connaître de cette implémentation.
+ * A sub-agent's environment variables. This is the minimal contract: an
+ * outside agent that can read `$CAESAR_TASK_FILE` and write `$CAESAR_REPORT_PATH`
+ * is orchestrable, without knowing anything about this implementation.
  */
 export function taskEnv(task: Task, paths: TaskPaths): Record<string, string> {
   return {
@@ -58,8 +58,8 @@ export async function appendEvent(paths: TaskPaths, event: CaesarEvent): Promise
 }
 
 /**
- * Relit le journal en ignorant les lignes illisibles : un journal partiellement
- * corrompu reste plus utile qu'une erreur.
+ * Reads the log back, skipping unreadable lines: a partially corrupted log
+ * remains more useful than an error.
  */
 export async function readEvents(paths: TaskPaths): Promise<CaesarEvent[]> {
   let raw: string;
@@ -78,18 +78,19 @@ export async function readEvents(paths: TaskPaths): Promise<CaesarEvent[]> {
 }
 
 /**
- * Ramène tout `null` à un champ absent, récursivement.
+ * Collapses every `null` back to an absent field, recursively.
  *
- * Le standard dit « facultatif = absent », mais les sorties structurées natives
- * imposent l'inverse : leur mode strict exige que `required` couvre toutes les
- * propriétés, si bien qu'un champ facultatif s'y déclare nullable et revient
- * rempli d'un `null` explicite (voir `strictReportJsonSchema` dans
- * `jsonschema.ts`). Sans cette normalisation, un `"usage": null` parfaitement
- * légitime ferait échouer la validation d'un rapport par ailleurs impeccable, et
- * l'orchestrateur retomberait sur un palier dégradé pour rien.
+ * The standard says "optional = absent", but native structured outputs impose
+ * the opposite: their strict mode requires `required` to cover every
+ * property, so an optional field is declared nullable there and comes back
+ * filled with an explicit `null` (see `strictReportJsonSchema` in
+ * `jsonschema.ts`). Without this normalization, a perfectly legitimate
+ * `"usage": null` would fail the validation of an otherwise impeccable
+ * report, and the orchestrator would fall back to a degraded tier for
+ * nothing.
  *
- * Les tableaux sont parcourus mais leurs éléments conservés tels quels : un
- * `null` y est une valeur, pas un champ omis.
+ * Arrays are traversed but their elements kept as-is: a `null` there is a
+ * value, not an omitted field.
  */
 function dropNulls(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(dropNulls);
@@ -102,12 +103,12 @@ function dropNulls(value: unknown): unknown {
   return out;
 }
 
-/** Valide un rapport, quelle que soit sa provenance. */
+/** Validates a report, whatever its origin. */
 export function parseReport(value: unknown): Report {
   return ReportSchema.parse(dropNulls(value));
 }
 
-/** Lit `report.json` s'il existe et s'il est conforme. */
+/** Reads `report.json` if it exists and if it conforms. */
 export async function readReport(paths: TaskPaths): Promise<Report | null> {
   try {
     const raw = await readFile(paths.reportPath, "utf8");
@@ -124,30 +125,30 @@ export async function writeReport(paths: TaskPaths, report: Report): Promise<voi
 }
 
 /**
- * Dernier recours : retrouver un rapport noyé dans la sortie texte d'un agent.
+ * Last resort: recovering a report drowned in an agent's text output.
  *
- * On cherche d'abord un bloc explicitement balisé, puis, à défaut, n'importe quel
- * objet JSON du texte qui se déclare comme un rapport. Le balayage suit les
- * accolades en tenant compte des chaînes et des échappements, afin de ne pas se
- * faire piéger par une accolade à l'intérieur d'une chaîne.
+ * We first look for an explicitly fenced block, then, failing that, any JSON
+ * object in the text that declares itself a report. The scan follows the
+ * braces while accounting for strings and escapes, so as not to be fooled
+ * by a brace inside a string.
  */
 export function extractReportFromText(text: string): Report | null {
   const candidates: string[] = [];
 
-  // Blocs de code balisés : ```json caesar:report, ```caesar:report, ```json …
+  // Fenced code blocks: ```json caesar:report, ```caesar:report, ```json …
   const fence = /```[ \t]*(?:json)?[ \t]*(?:caesar:report)?[ \t]*\r?\n([\s\S]*?)```/g;
   for (const match of text.matchAll(fence)) {
     const body = match[1];
     if (body && body.includes(REPORT_PROTOCOL)) candidates.push(body);
   }
 
-  // Objets JSON bruts contenant le marqueur de protocole.
+  // Raw JSON objects containing the protocol marker.
   for (const start of markerObjectStarts(text)) {
     const obj = readBalancedObject(text, start);
     if (obj) candidates.push(obj);
   }
 
-  // Le dernier rapport valide l'emporte : un agent qui se reprend a le dernier mot.
+  // The last valid report wins: an agent that corrects itself has the last word.
   for (const candidate of candidates.reverse()) {
     const parsed = ReportSchema.safeParse(dropNulls(safeJsonParse(candidate)));
     if (parsed.success) return parsed.data;
@@ -156,21 +157,21 @@ export function extractReportFromText(text: string): Report | null {
 }
 
 /**
- * Positions d'ouverture d'objet plausibles, remontées depuis chaque marqueur
- * trouvé — voir I1 de la revue finale. Ne retenir que la première `{`
- * rencontrée en arrière perdait un rapport pourtant valide dès qu'un objet
- * imbriqué précédait le champ `protocol` dans le même objet (p. ex.
- * `changes[0]` avant `protocol`, en fin de rapport) : c'est alors l'accolade
- * de cet objet imbriqué qui était prise, jamais celle du rapport lui-même.
- * Toutes les positions d'ouverture avant chaque marqueur sont donc
- * collectées, pour être essayées de la plus proche à la plus lointaine par
- * `extractReportFromText` — l'ordre de la valeur de retour ci-dessous est
- * délibérément inversé (le plus loin en premier) : `extractReportFromText`
- * relit ses candidats via `.reverse()` pour que la dernière occurrence du
- * marqueur l'emporte (un agent qui se reprend a le dernier mot) ; les
- * empiler ici du plus loin au plus proche est ce qui fait qu'après ce
- * `reverse()` global, les candidats d'une même occurrence ressortent bien
- * du plus proche au plus lointain, sans perdre l'ordre entre occurrences.
+ * Plausible object-opening positions, walked back from each marker found —
+ * see I1 of the final review. Keeping only the first `{` encountered
+ * backwards lost a perfectly valid report as soon as a nested object
+ * preceded the `protocol` field in the same object (e.g. `changes[0]`
+ * before `protocol`, at the end of a report): it was then the brace of
+ * that nested object that got picked, never the report's own. All the
+ * opening positions before each marker are therefore collected, to be
+ * tried from nearest to farthest by `extractReportFromText` — the order of
+ * the return value below is deliberately inverted (farthest first):
+ * `extractReportFromText` reads its candidates back through `.reverse()`
+ * so that the last occurrence of the marker wins (an agent that corrects
+ * itself has the last word); stacking them here from farthest to nearest
+ * is what makes the candidates of a single occurrence come out from
+ * nearest to farthest after that global `reverse()`, without losing the
+ * order between occurrences.
  */
 function markerObjectStarts(text: string): number[] {
   const starts: number[] = [];

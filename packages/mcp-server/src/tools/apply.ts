@@ -1,8 +1,8 @@
 /**
- * `caesar_apply` : applique au dépôt principal le diff du worktree d'une tâche
- * isolée, par `git apply --3way` — sans jamais committer ni toucher aux
- * branches (voir `packages/core/src/engine/worktree.ts`). Voir le brief de
- * la tâche 7.
+ * `caesar_apply`: applies the worktree diff of an isolated task to the main
+ * repository, via `git apply --3way` — without ever committing or touching
+ * branches (see `packages/core/src/engine/worktree.ts`). See the task 7
+ * brief.
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -29,14 +29,14 @@ export type CaesarApplyInput = z.infer<typeof CaesarApplyInputSchema>;
 
 export async function caesarApply(session: McpSession, input: CaesarApplyInput): Promise<CallToolResult> {
   const record = await session.store.get(input.task_id);
-  if (!record) return errorResult(`Tâche inconnue : "${input.task_id}".`);
+  if (!record) return errorResult(`Unknown task: "${input.task_id}".`);
 
   const result = await applyRecordedWorktree(session.root, session.store, record);
   if (result.outcome === "conflicts") {
     return jsonResult({ task_id: input.task_id, applied: false, conflicts: result.conflicts });
   }
-  // "no_worktree" reste applied: true — le contrat existant de l'outil pour
-  // les tâches inplace ou sans changement, décrit dans sa description.
+  // "no_worktree" stays applied: true — the tool's existing contract for
+  // inplace or no-change tasks, spelled out in its description.
   return jsonResult({ task_id: input.task_id, applied: true, conflicts: [] });
 }
 

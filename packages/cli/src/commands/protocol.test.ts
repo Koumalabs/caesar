@@ -4,14 +4,14 @@ import { runProtocolSchema } from "./protocol.js";
 import { EXIT_OK, EXIT_USAGE } from "../output.js";
 
 describe("caesar protocol schema", () => {
-  it("sans argument : liste les trois documents disponibles", async () => {
+  it("without an argument: lists the three available documents", async () => {
     const io: CapturedIo = makeIo();
     const code = await runProtocolSchema(undefined, { json: true }, io);
     expect(code).toBe(EXIT_OK);
     expect(JSON.parse(io.stdoutText())).toEqual({ documents: ["task", "report", "event"] });
   });
 
-  it.each(["task", "report"] as const)("publie un JSON Schema valide pour \"%s\"", async (name) => {
+  it.each(["task", "report"] as const)("publishes a valid JSON Schema for \"%s\"", async (name) => {
     const io: CapturedIo = makeIo();
     const code = await runProtocolSchema(name, {}, io);
     expect(code).toBe(EXIT_OK);
@@ -21,7 +21,7 @@ describe("caesar protocol schema", () => {
     expect(io.stdoutText()).not.toMatch(/\x1b\[/);
   });
 
-  it("publie un JSON Schema valide pour \"event\" (union discriminée : oneOf)", async () => {
+  it("publishes a valid JSON Schema for \"event\" (discriminated union: oneOf)", async () => {
     const io: CapturedIo = makeIo();
     const code = await runProtocolSchema("event", {}, io);
     expect(code).toBe(EXIT_OK);
@@ -32,15 +32,15 @@ describe("caesar protocol schema", () => {
     expect(io.stdoutText()).not.toMatch(/\x1b\[/);
   });
 
-  it("--strict : variante \"report\" avec additionalProperties: false et tout requis, l'optionnel étant rendu nullable", async () => {
-    // Ce que publie la commande doit être exactement ce que le fournisseur
-    // accepte : `required` couvre l'intégralité de `properties`, faute de quoi
-    // l'API refuse la requête entière (constaté sur une délégation réelle à
-    // Codex, sur `commands_run.items.exit_code`). L'intention d'I2 — ne pas
-    // faire fabriquer un `usage.cost_usd` mesuré ni une `findings[].line`
-    // inventée — tient par la nullabilité de ces champs. La règle elle-même
-    // est vérifiée à toute profondeur côté `@caesar/protocol` ; ici on vérifie
-    // que la commande la publie sans la déformer.
+  it("--strict: \"report\" variant with additionalProperties: false and everything required, the optional being made nullable", async () => {
+    // What the command publishes must be exactly what the provider accepts:
+    // `required` covers the entirety of `properties`, failing which the API
+    // refuses the whole request (observed on a real delegation to Codex, on
+    // `commands_run.items.exit_code`). The intent of I2 — not making it
+    // fabricate a measured `usage.cost_usd` nor an invented
+    // `findings[].line` — holds through the nullability of those fields.
+    // The rule itself is checked at every depth on the `@caesar/protocol`
+    // side; here we check that the command publishes it undistorted.
     const io: CapturedIo = makeIo();
     const code = await runProtocolSchema("report", { strict: true }, io);
     expect(code).toBe(EXIT_OK);
@@ -53,14 +53,14 @@ describe("caesar protocol schema", () => {
     );
   });
 
-  it("--strict sur autre chose que \"report\" : erreur d'usage", async () => {
+  it("--strict on anything but \"report\": usage error", async () => {
     const io: CapturedIo = makeIo();
     const code = await runProtocolSchema("task", { strict: true }, io);
     expect(code).toBe(EXIT_USAGE);
     expect(io.stderrText()).toMatch(/--strict/);
   });
 
-  it("document inconnu : erreur d'usage", async () => {
+  it("unknown document: usage error", async () => {
     const io: CapturedIo = makeIo();
     const code = await runProtocolSchema("bogus", {}, io);
     expect(code).toBe(EXIT_USAGE);

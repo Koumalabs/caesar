@@ -8,11 +8,11 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 }
 
 describe("createQueue", () => {
-  it("lève si la limite est inférieure à 1", () => {
+  it("throws if the limit is below 1", () => {
     expect(() => createQueue(0)).toThrow();
   });
 
-  it("laisse passer immédiatement tant que la limite n'est pas atteinte", async () => {
+  it("lets tasks through immediately as long as the limit is not reached", async () => {
     const queue = createQueue(2);
     const result = await queue.run(async () => 42);
     expect(result).toBe(42);
@@ -20,7 +20,7 @@ describe("createQueue", () => {
     expect(queue.pending()).toBe(0);
   });
 
-  it("plafonne le nombre de tâches actives en parallèle", async () => {
+  it("caps the number of tasks active in parallel", async () => {
     const queue = createQueue(2);
     const gates = [deferred<void>(), deferred<void>(), deferred<void>()];
     let activePeak = 0;
@@ -33,7 +33,7 @@ describe("createQueue", () => {
       }),
     );
 
-    // Laisse les micro-tâches s'installer avant d'observer l'état de la file.
+    // Let the microtasks settle before observing the queue's state.
     await new Promise((resolve) => setImmediate(resolve));
     expect(queue.active()).toBe(2);
     expect(queue.pending()).toBe(1);
@@ -51,7 +51,7 @@ describe("createQueue", () => {
     expect(queue.active()).toBe(0);
   });
 
-  it("une tâche qui lève libère quand même sa place", async () => {
+  it("a task that throws still frees its place", async () => {
     const queue = createQueue(1);
 
     await expect(
@@ -62,12 +62,12 @@ describe("createQueue", () => {
 
     expect(queue.active()).toBe(0);
 
-    // La place a bien été libérée : la tâche suivante s'exécute sans attendre.
-    const result = await queue.run(async () => "suivante");
-    expect(result).toBe("suivante");
+    // The place was indeed freed: the next task runs without waiting.
+    const result = await queue.run(async () => "next");
+    expect(result).toBe("next");
   });
 
-  it("sert les tâches en attente dans l'ordre d'arrivée", async () => {
+  it("serves the waiting tasks in arrival order", async () => {
     const queue = createQueue(1);
     const first = deferred<void>();
     const order: number[] = [];

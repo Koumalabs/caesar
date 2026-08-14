@@ -1,29 +1,29 @@
 /**
- * `caesar run` : résout la racine → charge la config → résout la délégation
- * (rôle/agent/mode/isolation/politique/timeout/contexte, via
- * `resolveDelegation` d'`@caesar/core`) → `runTask`. Voir le brief pour
- * l'enchaînement d'origine.
+ * `caesar run`: resolves the root → loads the config → resolves the
+ * delegation (role/agent/mode/isolation/policy/timeout/context, via
+ * `resolveDelegation` from `@caesar/core`) → `runTask`. See the brief for
+ * the original sequence.
  *
- * La résolution rôle → agent → politique elle-même n'est plus dupliquée ici :
- * `resolveDelegation` est le point d'assemblage partagé avec `caesar_delegate`
- * (serveur MCP), voir son en-tête (`packages/core/src/delegation.ts`) et le
- * rapport de correction de la tâche 7. Ce qui reste propre à ce fichier :
- * valider la *forme* de `--mode`/`--isolation` (chaînes brutes issues de
- * commander) et résoudre `--context @fichier` — deux affinages purement
- * CLI, qui n'ont pas leur place dans une fonction partagée avec le serveur
- * MCP (dont les entrées sont déjà typées par son schéma zod).
+ * The role → agent → policy resolution itself is no longer duplicated here:
+ * `resolveDelegation` is the assembly point shared with `caesar_delegate`
+ * (MCP server), see its header (`packages/core/src/delegation.ts`) and the
+ * task 7 correction report. What remains specific to this file: validating
+ * the *shape* of `--mode`/`--isolation` (raw strings coming from commander)
+ * and resolving `--context @file` — two purely CLI refinements, which have
+ * no place in a function shared with the MCP server (whose inputs are
+ * already typed by its zod schema).
  *
- * `Ctrl-C` interrompt proprement : un `AbortController` créé ici est transmis
- * à `runTask` (`RunTaskInput.signal`, relayé jusqu'à `runAgentProcess`, qui
- * sait déjà l'honorer — SIGTERM puis, à défaut de réponse, SIGKILL). Le
- * sous-processus est donc explicitement signalé, sans dépendre du
- * regroupement de processus POSIX. L'avancement, en mode humain, est affiché
- * au fil de l'eau via `RunTaskInput.onEvent` plutôt que relu après coup.
- * `taskId` est généré ici (plutôt que par le moteur) pour que le répertoire
- * de la tâche soit connu dès l'appel — pas strictement nécessaire à
- * l'affichage en direct (qui passe par `onEvent`), mais c'est le même
- * contrat que celui dont le serveur MCP a besoin (`caesar_delegate`
- * asynchrone, rendant un identifiant immédiatement).
+ * `Ctrl-C` interrupts cleanly: an `AbortController` created here is passed
+ * to `runTask` (`RunTaskInput.signal`, relayed all the way to
+ * `runAgentProcess`, which already knows how to honor it — SIGTERM then,
+ * absent a response, SIGKILL). The subprocess is thus explicitly signaled,
+ * without depending on POSIX process grouping. Progress, in human mode, is
+ * displayed as it happens via `RunTaskInput.onEvent` rather than re-read
+ * afterwards. `taskId` is generated here (rather than by the engine) so
+ * that the task directory is known from the call on — not strictly needed
+ * for the live display (which goes through `onEvent`), but it is the same
+ * contract the MCP server needs (asynchronous `caesar_delegate`, returning
+ * an identifier immediately).
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -58,13 +58,13 @@ export interface RunOptions {
   json?: boolean;
   channel?: boolean;
   /**
-   * Arguments bruts transmis tels quels au CLI de l'agent, saisis après
-   * « -- ». Échappatoire assumée pour ce que caesar n'expose pas encore : le
-   * moteur les portait déjà de bout en bout, aucune façade ne les ouvrait.
+   * Raw arguments passed as-is to the agent's CLI, typed after "--". An
+   * assumed escape hatch for what caesar does not expose yet: the engine
+   * already carried them end to end, no facade opened them up.
    *
-   * Volontairement absent du tool MCP `caesar_delegate` : c'est un geste que
-   * l'utilisateur tape, pas une latitude qu'on laisse à l'orchestrateur, qui
-   * pourrait sinon élever seul les privilèges d'un sous-agent.
+   * Deliberately absent from the `caesar_delegate` MCP tool: it is a
+   * gesture the user types, not a latitude left to the orchestrator, which
+   * could otherwise raise a sub-agent's privileges on its own.
    */
   extraArgs?: string[];
 }
@@ -78,90 +78,90 @@ async function resolveContext(raw: string | undefined): Promise<string | undefin
   return raw;
 }
 
-/** Une ligne d'avancement, décomposée pour que seule la marque porte la couleur. */
+/** A progress line, decomposed so that only the mark carries the color. */
 export interface EventLine {
-  /** La marque, tirée du jeu de glyphes courant. */
+  /** The mark, taken from the current glyph set. */
   glyph: string;
-  /** Ce dont il s'agit, en un mot — aligné en colonne d'une ligne à l'autre. */
+  /** What it is about, in one word — column-aligned from one line to the next. */
   label: string;
-  /** Le rôle du thème pour la marque et le libellé. */
+  /** The theme role for the mark and the label. */
   token: ThemeToken;
   text: string;
-  /** Le rôle du thème pour le texte lui-même. Absent : le texte reste neutre. */
+  /** The theme role for the text itself. Absent: the text stays neutral. */
   textToken?: ThemeToken;
 }
 
-/** Largeur de la colonne des libellés, pour que les textes s'alignent. */
+/** Width of the label column, so that the texts line up. */
 const LABEL_WIDTH = 10;
 
 /**
- * L'avancement, une ligne par événement.
+ * Progress, one line per event.
  *
- * `message` et `thinking` étaient absents : ce que le sous-agent *dit* était
- * écrit dans `events.jsonl` depuis toujours et affiché nulle part. Sur une
- * tâche qui réfléchit longtemps entre deux outils, c'était la seule chose à
- * voir, et on ne la voyait pas.
+ * `message` and `thinking` were missing: what the sub-agent *says* had
+ * always been written to `events.jsonl` and displayed nowhere. On a task
+ * that thinks for a long time between two tools, it was the only thing to
+ * see, and it went unseen.
  *
- * Chaque ligne est mise à plat : antigravity émet un `message` par bribe de
- * texte, retours à la ligne compris, et une bribe par ligne d'affichage
- * déroulerait l'écran sans rien apprendre.
+ * Each line is flattened: antigravity emits one `message` per snippet of
+ * text, newlines included, and one snippet per display line would scroll
+ * the screen without teaching anything.
  *
- * Le libellé remplace les crochets d'origine (`[outil]`, `[agent]`) : à
- * largeur fixe, les textes s'alignent d'une ligne à l'autre, et la colonne
- * ainsi formée se parcourt d'un coup d'œil là où des crochets de longueur
- * variable obligeaient à lire chaque début de ligne.
+ * The label replaces the original brackets (`[tool]`, `[agent]`): at fixed
+ * width, the texts line up from one line to the next, and the column thus
+ * formed scans at a glance where variable-length brackets forced reading
+ * every line start.
  *
- * Exportée pour être éprouvée directement : l'agent factice des tests n'émet
- * pas de lignes au format d'un CLI réel, aucun test de bout en bout ne
- * passerait donc par ces branches.
+ * Exported to be exercised directly: the tests' fake agent does not emit
+ * lines in a real CLI's format, so no end-to-end test would go through
+ * these branches.
  */
 export function describeEvent(event: CaesarEvent, glyphs: Glyphs = activeGlyphs()): EventLine | undefined {
   const g = glyphs.status;
   switch (event.type) {
     case "started":
-      return { glyph: g.running, label: "départ", token: "accent", text: `agent "${event.agent}"` };
+      return { glyph: g.running, label: "start", token: "accent", text: `agent "${event.agent}"` };
     case "tool_use":
-      // Le nom est vide quand l'agent ne le porte pas sur la fermeture (le
-      // `tool_result` de claude n'a que l'identifiant d'appel).
+      // The name is empty when the agent does not carry it on the closing
+      // event (claude's `tool_result` only has the call identifier).
       return {
         glyph: g.tool,
-        label: "outil",
+        label: "tool",
         token: "accent",
-        text: `${event.tool || "(fin)"}${event.input_summary ? ` — ${event.input_summary}` : ""} (${event.status})`,
+        text: `${event.tool || "(end)"}${event.input_summary ? ` — ${event.input_summary}` : ""} (${event.status})`,
       };
     case "file_changed":
-      return { glyph: g.file, label: "fichier", token: "warn", text: `${event.action} ${event.path}` };
+      return { glyph: g.file, label: "file", token: "warn", text: `${event.action} ${event.path}` };
     case "progress":
-      return { glyph: g.bullet, label: "avancement", token: "dim", text: event.message, textToken: "dim" };
+      return { glyph: g.bullet, label: "progress", token: "dim", text: event.message, textToken: "dim" };
     case "message":
-      // `readableMessage` plutôt que le texte brut : les `agent_message` de
-      // codex sont des rapports JSON sérialisés, illisibles tels quels.
+      // `readableMessage` rather than the raw text: codex's `agent_message`
+      // are serialized JSON reports, unreadable as-is.
       return { glyph: g.speech, label: "agent", token: "dim", text: flatten(readableMessage(event.text)) };
     case "thinking":
-      return { glyph: g.bullet, label: "réflexion", token: "dim", text: flatten(event.text), textToken: "dim" };
+      return { glyph: g.bullet, label: "thinking", token: "dim", text: flatten(event.text), textToken: "dim" };
     case "error":
-      return { glyph: g.warn, label: "erreur", token: "bad", text: event.message, textToken: "bad" };
+      return { glyph: g.warn, label: "error", token: "bad", text: event.message, textToken: "bad" };
     default:
       return undefined;
   }
 }
 
 /**
- * Assemble une ligne d'avancement.
+ * Assembles a progress line.
  *
- * La marque et le libellé portent la couleur ; **le texte de l'agent reste
- * neutre**. C'est ce que dit la palette : le texte principal hérite de
- * l'avant-plan du terminal, seul ce qui le classe est coloré. Teinter la
- * parole de l'agent la rendrait moins lisible qu'elle ne l'est, sans rien
- * apprendre — elle est déjà nommée par son libellé.
+ * The mark and the label carry the color; **the agent's text stays
+ * neutral**. That is what the palette says: main text inherits the
+ * terminal's foreground, only what classifies it is colored. Tinting the
+ * agent's speech would make it less readable than it is, without teaching
+ * anything — it is already named by its label.
  */
 export function formatEventLine(line: EventLine, io: Io): string {
-  const marque = colorize(`${line.glyph} ${line.label.padEnd(LABEL_WIDTH)}`, line.token, io.stdout);
-  const texte = line.textToken ? colorize(line.text, line.textToken, io.stdout) : line.text;
-  return `  ${marque} ${texte}`;
+  const mark = colorize(`${line.glyph} ${line.label.padEnd(LABEL_WIDTH)}`, line.token, io.stdout);
+  const text = line.textToken ? colorize(line.text, line.textToken, io.stdout) : line.text;
+  return `  ${mark} ${text}`;
 }
 
-/** Une seule ligne, sans blancs superflus. Vide si le texte n'en portait aucun. */
+/** A single line, without superfluous whitespace. Empty if the text carried none. */
 function flatten(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -169,37 +169,36 @@ function flatten(text: string): string {
 export async function runRun(root: string, objective: string, options: RunOptions, io: Io): Promise<number> {
   const { config } = await loadConfig(root);
 
-  // Précédence délibérée, fixée par un test (voir run.test.ts) : toute
-  // validation de *forme*, propre au CLI (chaînes brutes issues de
-  // commander, aucune E/S ni lecture de configuration nécessaire) sort
-  // avant même de tenter de résoudre rôle/agent via `resolveDelegation`. Un
-  // `--mode bogus` est une erreur d'usage immédiate ; elle ne doit pas
-  // attendre la résolution d'un `--role` par ailleurs invalide pour être
-  // signalée. C'était différent avant l'extraction de `resolveDelegation`
-  // (tâche 7) — le repli sur ces mêmes vérifications, alors postérieures à
-  // la résolution du rôle/agent, est resté sans effet observable jusqu'à ce
-  // que la revue le relève.
+  // Deliberate precedence, pinned by a test (see run.test.ts): any *shape*
+  // validation specific to the CLI (raw strings coming from commander, no
+  // I/O nor configuration read required) exits before even attempting to
+  // resolve role/agent via `resolveDelegation`. A `--mode bogus` is an
+  // immediate usage error; it must not wait for the resolution of an
+  // otherwise invalid `--role` to be reported. It was different before the
+  // extraction of `resolveDelegation` (task 7) — the fallback onto these
+  // same checks, then posterior to the role/agent resolution, stayed
+  // without observable effect until the review flagged it.
   if (options.mode && !TASK_MODES.includes(options.mode as TaskMode)) {
-    printError(io, `--mode invalide (attendu l'une de : ${TASK_MODES.join(", ")}).`);
+    printError(io, `Invalid --mode (expected one of: ${TASK_MODES.join(", ")}).`);
     return EXIT_USAGE;
   }
   if (options.isolation && !ISOLATIONS.includes(options.isolation as Isolation | "auto")) {
-    printError(io, `--isolation invalide (attendu l'une de : ${ISOLATIONS.join(", ")}).`);
+    printError(io, `Invalid --isolation (expected one of: ${ISOLATIONS.join(", ")}).`);
     return EXIT_USAGE;
   }
   if (options.network && !NETWORK_REQUEST_VALUES.includes(options.network as NetworkRequest)) {
-    printError(io, `--network invalide (attendu l'une de : ${NETWORK_REQUEST_VALUES.join(", ")}).`);
+    printError(io, `Invalid --network (expected one of: ${NETWORK_REQUEST_VALUES.join(", ")}).`);
     return EXIT_USAGE;
   }
-  // Même logique : la présence d'un agent ou d'un rôle est une condition de
-  // forme, vérifiable sans résoudre quoi que ce soit. `resolveDelegation`
-  // porte sa propre garde pour ses autres appelants (le serveur MCP,
-  // notamment, dont les paramètres se nomment "agent"/"role") avec un motif
-  // générique ; ici, on la précède pour rendre le message historique du CLI,
-  // qui nomme les flags exacts à taper — perdu sans bruit lors de
-  // l'extraction, restauré par la revue.
+  // Same logic: the presence of an agent or of a role is a shape condition,
+  // checkable without resolving anything. `resolveDelegation` carries its
+  // own guard for its other callers (the MCP server, notably, whose
+  // parameters are named "agent"/"role") with a generic wording; here, we
+  // precede it to render the CLI's historical message, which names the
+  // exact flags to type — lost silently during the extraction, restored by
+  // the review.
   if (!options.agent && !options.role) {
-    printError(io, "Précisez --agent <id> ou --role <name>.");
+    printError(io, "Specify --agent <id> or --role <name>.");
     return EXIT_USAGE;
   }
 
@@ -207,14 +206,14 @@ export async function runRun(root: string, objective: string, options: RunOption
   try {
     context = await resolveContext(options.context);
   } catch (error) {
-    printError(io, `Impossible de lire --context : ${error instanceof Error ? error.message : String(error)}`);
+    printError(io, `Cannot read --context: ${error instanceof Error ? error.message : String(error)}`);
     return EXIT_USAGE;
   }
 
-  // Profondeur héritée de `$CAESAR_DEPTH` (+1) : voir C4 de la revue finale.
-  // `caesar run` peut lui-même tourner comme sous-agent d'une délégation
-  // précédente — c'est le seul moyen pour `max_depth`/le garde-fou anti-
-  // récursion de s'appliquer au-delà du premier niveau.
+  // Depth inherited from `$CAESAR_DEPTH` (+1): see C4 of the final review.
+  // `caesar run` can itself run as the sub-agent of a previous delegation —
+  // it is the only way for `max_depth`/the anti-recursion guard to apply
+  // beyond the first level.
   const depth = nextDelegationDepth();
 
   const resolved = await resolveDelegation(config, root, {
@@ -233,51 +232,49 @@ export async function runRun(root: string, objective: string, options: RunOption
   }
   const { agentId, mode, isolation, allowInplaceWrite, network, networkWarning, timeoutMs, context: resolvedContext } = resolved;
 
-  // Après la branche d'erreur, et seulement en mode humain : `--json` ne doit
-  // porter que le résultat final sur stdout.
+  // After the error branch, and only in human mode: `--json` must carry
+  // nothing but the final result on stdout.
   if (!options.json) sectionHeader(io, "run");
 
   const store = fileTaskStore(root);
   const taskId = generateTaskId();
-  // Le contrôleur précède la file : l'attente d'un créneau se produit *avant*
-  // que `runTask` ne soit appelé, et Ctrl-C doit pouvoir l'interrompre aussi —
-  // pas seulement la tâche une fois lancée.
+  // The controller precedes the queue: waiting for a slot happens *before*
+  // `runTask` is called, and Ctrl-C must be able to interrupt that too —
+  // not only the task once launched.
   const controller = new AbortController();
 
-  // Créneaux sur disque plutôt que sémaphore en mémoire : chaque `caesar run`
-  // est un processus distinct, et une file par processus laissait six
-  // terminaux lancer six agents quel que soit `max_parallel`. Les créneaux
-  // sont partagés par tout ce qui délègue sous cette racine, session MCP
-  // comprise.
+  // Slots on disk rather than an in-memory semaphore: each `caesar run` is
+  // a distinct process, and a per-process queue let six terminals launch
+  // six agents whatever `max_parallel` said. The slots are shared by
+  // everything that delegates under this root, MCP session included.
   const queue = createSlotQueue({
     root,
     limit: config.policy.max_parallel,
     label: `caesar run — ${objective.slice(0, 60)}`,
     signal: controller.signal,
     onWait: (holders) => {
-      // Une attente muette se lit comme un blocage. Nommer qui occupe la
-      // place, et combien il y en a, la rend compréhensible — et montre du
-      // même geste quel réglage la gouverne.
+      // A silent wait reads as a hang. Naming who holds the slots, and how
+      // many there are, makes it understandable — and shows in the same
+      // gesture which setting governs it.
       printWarning(
         io,
-        `${holders.length} tâche(s) déjà en cours sous ce projet (max_parallel = ${config.policy.max_parallel}) — en attente d'un créneau. Ctrl-C pour renoncer.`,
+        `${holders.length} task(s) already running under this project (max_parallel = ${config.policy.max_parallel}) — waiting for a slot. Ctrl-C to give up.`,
       );
       for (const holder of holders) {
-        printWarning(io, `  · pid ${holder.pid}${holder.label ? ` — ${holder.label}` : ""} (depuis ${holder.startedAt})`);
+        printWarning(io, `  · pid ${holder.pid}${holder.label ? ` — ${holder.label}` : ""} (since ${holder.startedAt})`);
       }
     },
   });
 
   const onSigint = (): void => {
-    printError(io, `Interruption demandée : arrêt de la tâche "${taskId}" (SIGTERM au sous-processus, SIGKILL s'il ne répond pas)…`);
+    printError(io, `Interruption requested: stopping task "${taskId}" (SIGTERM to the subprocess, SIGKILL if it does not respond)…`);
     controller.abort();
   };
   process.on("SIGINT", onSigint);
 
-  // En --json, la consigne du brief ("n'écrire que le résultat final sur
-  // stdout") exclut tout affichage en direct : `onEvent` reste alors
-  // silencieux, les événements ne sont utiles qu'au fil de l'eau en mode
-  // humain.
+  // In --json, the brief's instruction ("write only the final result to
+  // stdout") rules out any live display: `onEvent` then stays silent, the
+  // events are only useful as they happen in human mode.
   const glyphs = activeGlyphs();
   const onEvent = options.json
     ? undefined
@@ -333,32 +330,32 @@ export async function runRun(root: string, objective: string, options: RunOption
   }
 
   const g = glyphs.status;
-  const réussi = outcome.record.status === "succeeded" && outcome.report.status === "success";
+  const succeeded = outcome.record.status === "succeeded" && outcome.report.status === "success";
   writeLine(io.stdout);
   writeLine(
     io.stdout,
-    `${colorize(réussi ? g.done : g.failed, réussi ? "ok" : "bad", io.stdout)} ` +
-      `Tâche ${outcome.record.id} — statut : ${colorize(outcome.record.status, réussi ? "ok" : "bad", io.stdout)} ` +
-      colorize(`(rapport "${outcome.report.status}" via "${outcome.source}")`, "dim", io.stdout),
+    `${colorize(succeeded ? g.done : g.failed, succeeded ? "ok" : "bad", io.stdout)} ` +
+      `Task ${outcome.record.id} — status: ${colorize(outcome.record.status, succeeded ? "ok" : "bad", io.stdout)} ` +
+      colorize(`(report "${outcome.report.status}" via "${outcome.source}")`, "dim", io.stdout),
   );
   writeLine(io.stdout, `  ${outcome.report.summary}`);
 
   if (outcome.diff && !outcome.diff.isEmpty) {
     writeLine(io.stdout);
-    writeLine(io.stdout, colorize("Fichiers modifiés (d'après git)", "dim", io.stdout));
+    writeLine(io.stdout, colorize("Modified files (according to git)", "dim", io.stdout));
     for (const change of outcome.diff.files) {
       writeLine(io.stdout, `  ${colorize(g.file, "warn", io.stdout)} ${change.action} ${change.path}`);
     }
   }
   if (outcome.report.findings.length > 0) {
     writeLine(io.stdout);
-    writeLine(io.stdout, colorize("Constats", "dim", io.stdout));
+    writeLine(io.stdout, colorize("Findings", "dim", io.stdout));
     for (const finding of outcome.report.findings) {
-      const grave = finding.severity === "high" || finding.severity === "critical";
+      const severe = finding.severity === "high" || finding.severity === "critical";
       writeLine(
         io.stdout,
-        `  ${colorize(g.warn, grave ? "bad" : "warn", io.stdout)} ` +
-          `${colorize(`[${finding.severity}]`, grave ? "bad" : "warn", io.stdout)} ` +
+        `  ${colorize(g.warn, severe ? "bad" : "warn", io.stdout)} ` +
+          `${colorize(`[${finding.severity}]`, severe ? "bad" : "warn", io.stdout)} ` +
           `${finding.title}${finding.file ? colorize(` (${finding.file})`, "dim", io.stdout) : ""}`,
       );
     }
@@ -368,7 +365,7 @@ export async function runRun(root: string, objective: string, options: RunOption
     writeLine(
       io.stdout,
       colorize(
-        `Isolée dans un worktree : "caesar diff ${outcome.record.id}" pour voir le diff, "caesar apply ${outcome.record.id}" pour l'intégrer.`,
+        `Isolated in a worktree: "caesar diff ${outcome.record.id}" to see the diff, "caesar apply ${outcome.record.id}" to integrate it.`,
         "dim",
         io.stdout,
       ),
@@ -379,13 +376,13 @@ export async function runRun(root: string, objective: string, options: RunOption
 }
 
 /**
- * Croise le statut du processus (`record.status`) et celui déclaré par
- * l'agent dans son rapport (`report.status`) — voir I3 de la revue finale :
- * `record.status === "succeeded"` seul ne dit que "le processus est sorti
- * en code 0", pas "l'agent a réussi sa mission". Un agent qui écrit
- * `{"status":"failed"}` puis sort en code 0 rendait jusqu'ici un exit code
- * 0 à une automatisation qui enchaîne sur `caesar run` — conclusion de succès
- * sur une tâche que l'agent lui-même déclare `failed`/`partial`/`blocked`.
+ * Crosses the process status (`record.status`) with the one the agent
+ * declared in its report (`report.status`) — see I3 of the final review:
+ * `record.status === "succeeded"` alone only says "the process exited with
+ * code 0", not "the agent succeeded at its mission". An agent that writes
+ * `{"status":"failed"}` then exits with code 0 used to hand exit code 0 to
+ * an automation chaining on `caesar run` — a success conclusion on a task
+ * the agent itself declares `failed`/`partial`/`blocked`.
  */
 function exitCodeFor(outcome: TaskOutcome): number {
   return outcome.record.status === "succeeded" && outcome.report.status === "success" ? EXIT_OK : EXIT_RUNTIME;

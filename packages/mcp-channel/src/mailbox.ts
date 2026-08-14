@@ -1,15 +1,14 @@
 /**
- * Questions et réponses du canal retour, sur le système de fichiers.
+ * Return-channel questions and answers, on the filesystem.
  *
- * Le sous-agent (via `caesar-channel`, ce paquet) et l'agent principal (via
- * `caesar_answer`, `@caesar/mcp-server`) tournent dans deux processus qui ne
- * partagent aucune mémoire : ils se coordonnent en lisant et en écrivant les
- * mêmes fichiers sous le répertoire de la tâche, exactement comme le reste du
- * standard (`task.json`, `report.json`, `events.jsonl`) — voir le brief de la
- * tâche 9.
+ * The subagent (via `caesar-channel`, this package) and the main agent (via
+ * `caesar_answer`, `@caesar/mcp-server`) run in two processes that share no
+ * memory: they coordinate by reading and writing the same files under the
+ * task directory, exactly like the rest of the standard (`task.json`,
+ * `report.json`, `events.jsonl`) — see the task 9 brief.
  *
- * `<taskDir>/questions/<id>.json` : déposée par `ask_orchestrator`.
- * `<taskDir>/answers/<id>.json`   : déposée par `caesar_answer`.
+ * `<taskDir>/questions/<id>.json`: dropped off by `ask_orchestrator`.
+ * `<taskDir>/answers/<id>.json`  : dropped off by `caesar_answer`.
  */
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -56,7 +55,7 @@ async function readJsonSafe<T>(path: string, schema: z.ZodType<T>): Promise<T | 
   }
 }
 
-/** Dépose une question en attente. Écrase silencieusement une question du même id : `ask_orchestrator` en génère un nouveau à chaque appel, ce cas ne survient donc pas en pratique. */
+/** Drops off a pending question. Silently overwrites a question with the same id: `ask_orchestrator` generates a fresh one on every call, so this case does not arise in practice. */
 export async function writeQuestion(taskDir: string, question: PendingQuestion): Promise<void> {
   await mkdir(questionsDir(taskDir), { recursive: true });
   await writeFile(questionPath(taskDir, question.id), JSON.stringify(question, null, 2) + "\n", "utf8");
@@ -73,11 +72,11 @@ export async function readAnswer(taskDir: string, id: string): Promise<MailboxAn
 export type WriteAnswerResult = { ok: true } | { ok: false; reason: "unknown_question" | "already_answered" };
 
 /**
- * Écrit la réponse à une question — jamais si la question est inconnue ou a
- * déjà reçu une réponse : voir le brief de la tâche 9 ("répondre à une
- * question inconnue ou déjà répondue doit le dire clairement plutôt que
- * d'écrire en silence"). C'est `caesar_answer` (côté orchestrateur) qui
- * transforme ce résultat discriminé en message pour l'agent principal.
+ * Writes the answer to a question — never if the question is unknown or has
+ * already received an answer: see the task 9 brief ("answering an unknown or
+ * already-answered question must say so clearly rather than writing
+ * silently"). It is `caesar_answer` (orchestrator side) that turns this
+ * discriminated result into a message for the main agent.
  */
 export async function writeAnswer(taskDir: string, answer: MailboxAnswer): Promise<WriteAnswerResult> {
   const question = await readQuestion(taskDir, answer.id);
@@ -90,10 +89,10 @@ export async function writeAnswer(taskDir: string, answer: MailboxAnswer): Promi
 }
 
 /**
- * Questions déposées mais encore sans réponse, les plus anciennes d'abord.
- * C'est ce qui permet à `caesar_status`/`caesar_await` de faire apparaître ce
- * qu'un sous-agent attend, sans que l'agent principal ait à deviner qu'on lui
- * demande quelque chose (voir le brief : « c'est la moitié qu'on oublie »).
+ * Questions dropped off but still unanswered, oldest first. This is what lets
+ * `caesar_status`/`caesar_await` surface what a subagent is waiting on,
+ * without the main agent having to guess that something is being asked of it
+ * (see the brief: "that is the half everyone forgets").
  */
 export async function listPendingQuestions(taskDir: string): Promise<PendingQuestion[]> {
   let entries: string[];
@@ -113,14 +112,14 @@ export async function listPendingQuestions(taskDir: string): Promise<PendingQues
 }
 
 /**
- * Attend l'apparition d'une réponse, par scrutation à `pollIntervalMs`. Rend
- * `null` si `timeoutMs` s'écoule avant qu'une réponse apparaisse — jamais une
- * erreur : c'est `ask_orchestrator` qui décide comment le formuler à l'agent
- * (voir son brief : « pas une erreur, une instruction exploitable »).
+ * Waits for an answer to appear, polling at `pollIntervalMs`. Returns `null`
+ * if `timeoutMs` elapses before an answer appears — never an error: it is
+ * `ask_orchestrator` that decides how to phrase it for the agent (see its
+ * brief: "not an error, an actionable instruction").
  *
- * Vérifie une première fois avant toute attente, de sorte qu'un `timeoutMs`
- * déjà nul ou négatif (budget de tâche épuisé) rend immédiatement sans jamais
- * dormir.
+ * Checks once before any waiting, so that a `timeoutMs` that is already zero
+ * or negative (task budget exhausted) returns immediately without ever
+ * sleeping.
  */
 export async function waitForAnswer(taskDir: string, id: string, timeoutMs: number, pollIntervalMs: number): Promise<MailboxAnswer | null> {
   const deadline = Date.now() + timeoutMs;

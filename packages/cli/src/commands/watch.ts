@@ -1,25 +1,25 @@
 /**
- * `caesar watch` : regarder les sous-agents travailler.
+ * `caesar watch`: watching the sub-agents work.
  *
- * `caesar ps` est un instantané, `caesar logs --follow` suit une tâche dont il
- * faut déjà connaître l'identifiant. Quand trois délégations tournent en
- * parallèle, rien ne les montrait ensemble.
+ * `caesar ps` is a snapshot, `caesar logs --follow` follows one task whose
+ * identifier one must already know. When three delegations run in parallel,
+ * nothing showed them together.
  *
- * Rien d'un démon n'est nécessaire pour cela : le moteur écrit `events.jsonl`
- * ligne à ligne **pendant** l'exécution (`spawn.ts`) et publie l'état des
- * tâches par `rename`/`link` atomiques (`store.ts`). Cette commande ne fait
- * que lire ce que d'autres processus écrivent — la même propriété qui fait
- * marcher `caesar cancel` par pid et les créneaux de `max_parallel`.
+ * Nothing daemon-like is needed for that: the engine writes `events.jsonl`
+ * line by line **during** execution (`spawn.ts`) and publishes task state
+ * via atomic `rename`/`link` (`store.ts`). This command only reads what
+ * other processes write — the same property that makes `caesar cancel` by
+ * pid and the `max_parallel` slots work.
  *
- * Deux rendus, selon la destination :
+ * Two renderings, depending on the destination:
  *
- * - **terminal** — écran alterné, image redessinée, une vue d'ensemble ;
- * - **hors terminal** (redirigé, `| tee`, tests) — une ligne par événement,
- *   sans ANSI ni redessin. C'est la règle que `colorEnabled` applique déjà
- *   aux couleurs, étendue au redessin : une sortie capturée doit rester
- *   lisible et diffable.
+ * - **terminal** — alternate screen, redrawn frame, an overview;
+ * - **outside a terminal** (redirected, `| tee`, tests) — one line per
+ *   event, without ANSI or redraw. It is the rule `colorEnabled` already
+ *   applies to colors, extended to redrawing: captured output must stay
+ *   readable and diffable.
  *
- * Regarder ne modifie rien : aucune interaction hors `q`/Ctrl-C pour sortir.
+ * Watching modifies nothing: no interaction beyond `q`/Ctrl-C to exit.
  */
 import type { PendingQuestion } from "@caesar/mcp-channel";
 import { listPendingQuestions } from "@caesar/mcp-channel";
@@ -32,10 +32,10 @@ import { EXIT_OK, EXIT_USAGE, activeGlyphs, colorize, printError, terminalWidth,
 import { createLineTail } from "../tail.js";
 import type { LineTail } from "../tail.js";
 
-/** Cadence de redessin. Assez court pour paraître vivant, assez long pour ne rien coûter. */
+/** Redraw cadence. Short enough to feel alive, long enough to cost nothing. */
 const POLL_MS = 200;
 
-/** Combien de temps une tâche terminée reste affichée, et combien on en garde. */
+/** How long a finished task stays displayed, and how many we keep. */
 const RECENT_MS = 5 * 60_000;
 const RECENT_MAX = 5;
 
@@ -45,7 +45,7 @@ function isActive(status: TaskStatus): boolean {
   return ACTIVE_STATUSES.includes(status);
 }
 
-/** Assez pour désigner une tâche sans occuper la moitié de la ligne. */
+/** Enough to designate a task without occupying half the line. */
 function shortId(id: string): string {
   return id.length <= 10 ? id : id.slice(0, 10);
 }
@@ -58,7 +58,7 @@ function clip(text: string, width: number): string {
 
 export interface WatchOptions {
   json?: boolean;
-  /** Une seule image, puis sortie — pour un script ou un test. */
+  /** A single frame, then exit — for a script or a test. */
   once?: boolean;
 }
 
@@ -67,19 +67,19 @@ interface Tracked {
   state: ActivityState;
   tail: LineTail;
   questions: readonly PendingQuestion[];
-  /** Instant où l'on a constaté la fin, pour la faire disparaître au bout d'un moment. */
+  /** Instant when the end was observed, to make it disappear after a while. */
   endedSeenAt?: number;
-  /** Lignes du journal qu'on n'a pas su relire : comptées plutôt que tues. */
+  /** Journal lines we could not re-read: counted rather than silenced. */
   unreadable: number;
 }
 
 /**
- * Lit les nouvelles lignes du journal d'une tâche et les replie.
+ * Reads a task's new journal lines and folds them.
  *
- * Une ligne illisible est comptée, pas signalée à l'écran : un moniteur qui
- * crie à chaque ligne devient inutilisable. Le total, lui, s'affiche en pied
- * d'image — un désalignement entre ce que le moteur écrit et ce que ce CLI
- * sait lire ne doit pas se perdre en silence.
+ * An unreadable line is counted, not reported on screen: a monitor that
+ * yells on every line becomes unusable. The total, however, is displayed in
+ * the frame's footer — a mismatch between what the engine writes and what
+ * this CLI knows how to read must not get lost in silence.
  */
 async function pump(tracked: Tracked): Promise<CaesarEvent[]> {
   const fresh: CaesarEvent[] = [];
@@ -102,20 +102,20 @@ async function pump(tracked: Tracked): Promise<CaesarEvent[]> {
   return fresh;
 }
 
-/** Une ligne par événement, pour le rendu hors terminal. */
+/** One line per event, for the outside-a-terminal rendering. */
 function describeEventLine(record: TaskRecord, event: CaesarEvent): string | undefined {
   const prefix = `${shortId(record.id)} ${record.agent}`;
   switch (event.type) {
     case "started":
-      return `${prefix}  démarré`;
+      return `${prefix}  started`;
     case "tool_use":
-      return `${prefix}  ${event.status === "started" ? "▸" : event.status === "succeeded" ? "✓" : "✗"} ${event.tool || "outil"}${event.input_summary ? ` ${event.input_summary}` : ""}`;
+      return `${prefix}  ${event.status === "started" ? "▸" : event.status === "succeeded" ? "✓" : "✗"} ${event.tool || "tool"}${event.input_summary ? ` ${event.input_summary}` : ""}`;
     case "file_changed":
       return `${prefix}  ~ ${event.action} ${event.path}`;
     case "message":
-      // Même traitement que la vue d'ensemble et que `caesar run` : les
-      // `agent_message` de codex sont des rapports JSON sérialisés.
-      return `${prefix}  « ${readableMessage(event.text).replace(/\s+/g, " ").trim()} »`;
+      // Same treatment as the overview and as `caesar run`: codex's
+      // `agent_message` are serialized JSON reports.
+      return `${prefix}  “${readableMessage(event.text).replace(/\s+/g, " ").trim()}”`;
     case "thinking":
       return `${prefix}  … ${event.text.replace(/\s+/g, " ").trim()}`;
     case "progress":
@@ -127,86 +127,86 @@ function describeEventLine(record: TaskRecord, event: CaesarEvent): string | und
     case "error":
       return `${prefix}  ⚠ ${event.message}`;
     case "finished":
-      return `${prefix}  terminé — ${event.status}`;
+      return `${prefix}  finished — ${event.status}`;
   }
 }
 
-/** L'image complète, en lignes prêtes à écrire. */
+/** The full frame, as lines ready to write. */
 function renderFrame(tracked: readonly Tracked[], maxParallel: number, now: number, width: number, io: Io): string[] {
   const active = tracked.filter((t) => isActive(t.record.status));
   const recent = tracked.filter((t) => !isActive(t.record.status)).slice(-RECENT_MAX);
   const lines: string[] = [];
 
   const g = activeGlyphs().status;
-  const heure = new Date(now).toTimeString().slice(0, 8);
-  const titre = `${g.mark} caesar ${g.bullet} watch`;
-  const compte = `${active.length} active${active.length > 1 ? "s" : ""} ${g.bullet} max_parallel ${maxParallel}`;
-  const gauche = `${titre}   ${compte}`;
+  const time = new Date(now).toTimeString().slice(0, 8);
+  const title = `${g.mark} caesar ${g.bullet} watch`;
+  const count = `${active.length} active ${g.bullet} max_parallel ${maxParallel}`;
+  const left = `${title}   ${count}`;
   lines.push(
-    colorize(titre, "title", io.stdout) +
+    colorize(title, "title", io.stdout) +
       "   " +
-      colorize(compte, "dim", io.stdout) +
-      " ".repeat(Math.max(1, width - gauche.length - heure.length)) +
-      colorize(heure, "faint", io.stdout),
+      colorize(count, "dim", io.stdout) +
+      " ".repeat(Math.max(1, width - left.length - time.length)) +
+      colorize(time, "faint", io.stdout),
   );
   lines.push("");
 
   if (active.length === 0) {
-    lines.push(colorize("Aucune tâche en cours. La fenêtre reste ouverte.", "dim", io.stdout));
+    lines.push(colorize("No task in progress. The window stays open.", "dim", io.stdout));
     lines.push("");
   }
 
   for (const t of active) {
     const { headline, silentMs, stalled } = describeActivity(t.state, now);
     const age = t.record.started_at ? formatDuration(now - Date.parse(t.record.started_at)) : "—";
-    const puce = stalled ? colorize(g.stalled, "warn", io.stdout) : colorize(g.running, "accent", io.stdout);
+    const bullet = stalled ? colorize(g.stalled, "warn", io.stdout) : colorize(g.running, "accent", io.stdout);
 
-    const entete = `${shortId(t.record.id)}  ${t.record.agent.padEnd(12)} ${(t.record.role ?? "—").padEnd(12)} ${age.padStart(6)}  ${t.record.isolation} ${g.bullet} ${t.record.mode}`;
-    lines.push(`${puce} ${clip(entete, width - 2)}`);
+    const header = `${shortId(t.record.id)}  ${t.record.agent.padEnd(12)} ${(t.record.role ?? "—").padEnd(12)} ${age.padStart(6)}  ${t.record.isolation} ${g.bullet} ${t.record.mode}`;
+    lines.push(`${bullet} ${clip(header, width - 2)}`);
     lines.push(`  ${colorize(clip(t.record.objective, width - 2), "dim", io.stdout)}`);
 
-    // Une question en attente prime sur tout : un sous-agent qui attend une
-    // réponse ressemble exactement à un sous-agent bloqué, et n'est pas du
-    // tout la même chose.
+    // A pending question takes precedence over everything: a sub-agent
+    // waiting for an answer looks exactly like a stuck sub-agent, and is
+    // not at all the same thing.
     if (t.questions.length > 0) {
       const q = t.questions[0];
-      const reste = t.questions.length > 1 ? ` (+${t.questions.length - 1})` : "";
-      lines.push(`  ${colorize(clip(`${g.question} ${q?.question ?? ""}${reste}`, width - 2), "warn", io.stdout)}`);
-      // Aucune commande CLI ne répond aujourd'hui : `caesar_answer` est un outil
-      // MCP, donc le geste appartient à l'agent principal. Le dire plutôt que
-      // de suggérer un `caesar answer` qui n'existe pas.
-      lines.push(`  ${colorize(`en attente d'une réponse — l'agent principal répond par caesar_answer (id ${q?.id ?? ""})`, "dim", io.stdout)}`);
+      const rest = t.questions.length > 1 ? ` (+${t.questions.length - 1})` : "";
+      lines.push(`  ${colorize(clip(`${g.question} ${q?.question ?? ""}${rest}`, width - 2), "warn", io.stdout)}`);
+      // No CLI command answers today: `caesar_answer` is an MCP tool, so
+      // the gesture belongs to the main agent. Say it rather than suggest a
+      // `caesar answer` that does not exist.
+      lines.push(`  ${colorize(`waiting for an answer — the main agent answers via caesar_answer (id ${q?.id ?? ""})`, "dim", io.stdout)}`);
     } else {
       lines.push(`  ${clip(headline, width - 2)}`);
     }
 
-    const compteurs: string[] = [];
-    if (t.state.filesTouched.length > 0) compteurs.push(`${g.file} ${t.state.filesTouched.length} fichier(s)`);
-    compteurs.push(`${t.state.eventCount} événement(s)`);
-    if (t.unreadable > 0) compteurs.push(`${t.unreadable} ligne(s) illisible(s)`);
-    if (stalled) compteurs.push(colorize(`silence ${formatDuration(silentMs)}`, "warn", io.stdout));
-    lines.push(`  ${colorize(compteurs.join(`  ${g.bullet}  `), "dim", io.stdout)}`);
+    const counters: string[] = [];
+    if (t.state.filesTouched.length > 0) counters.push(`${g.file} ${t.state.filesTouched.length} file(s)`);
+    counters.push(`${t.state.eventCount} event(s)`);
+    if (t.unreadable > 0) counters.push(`${t.unreadable} unreadable line(s)`);
+    if (stalled) counters.push(colorize(`silence ${formatDuration(silentMs)}`, "warn", io.stdout));
+    lines.push(`  ${colorize(counters.join(`  ${g.bullet}  `), "dim", io.stdout)}`);
     lines.push("");
   }
 
   if (recent.length > 0) {
-    lines.push(colorize("Terminées récemment", "dim", io.stdout));
+    lines.push(colorize("Recently finished", "dim", io.stdout));
     for (const t of recent) {
-      const fin = t.record.ended_at ? `il y a ${formatDuration(now - Date.parse(t.record.ended_at))}` : "";
+      const ended = t.record.ended_at ? `${formatDuration(now - Date.parse(t.record.ended_at))} ago` : "";
       const ok = t.record.status === "succeeded" && t.record.report_status === "success";
-      const marque = colorize(ok ? g.done : g.failed, ok ? "ok" : "bad", io.stdout);
+      const mark = colorize(ok ? g.done : g.failed, ok ? "ok" : "bad", io.stdout);
       lines.push(
-        `  ${marque} ${clip(`${shortId(t.record.id)}  ${t.record.agent}  ${t.record.status} / rapport ${t.record.report_status ?? "—"}   ${fin}`, width - 4)}`,
+        `  ${mark} ${clip(`${shortId(t.record.id)}  ${t.record.agent}  ${t.record.status} / report ${t.record.report_status ?? "—"}   ${ended}`, width - 4)}`,
       );
     }
     lines.push("");
   }
 
-  lines.push(colorize("q ou Ctrl-C pour quitter — regarder ne modifie rien.", "dim", io.stdout));
+  lines.push(colorize("q or Ctrl-C to quit — watching modifies nothing.", "dim", io.stdout));
   return lines;
 }
 
-/** Vrai quand la sortie est un vrai terminal : seul cas où redessiner a un sens. */
+/** True when the output is a real terminal: the only case where redrawing makes sense. */
 function isTty(io: Io): boolean {
   return Boolean((io.stdout as { isTTY?: boolean }).isTTY);
 }
@@ -217,10 +217,10 @@ export async function runWatch(root: string, ids: readonly string[], options: Wa
   const wanted = new Set(ids);
 
   if (wanted.size > 0) {
-    const inconnus: string[] = [];
-    for (const id of wanted) if ((await store.get(id)) === null) inconnus.push(id);
-    if (inconnus.length > 0) {
-      printError(io, `Tâche(s) inconnue(s) : ${inconnus.join(", ")}.`);
+    const unknownIds: string[] = [];
+    for (const id of wanted) if ((await store.get(id)) === null) unknownIds.push(id);
+    if (unknownIds.length > 0) {
+      printError(io, `Unknown task(s): ${unknownIds.join(", ")}.`);
       return EXIT_USAGE;
     }
   }
@@ -228,7 +228,7 @@ export async function runWatch(root: string, ids: readonly string[], options: Wa
   const tracked = new Map<string, Tracked>();
   const redraw = isTty(io) && !options.json && !options.once;
 
-  /** Met à jour la liste des tâches suivies, replie les nouveaux événements, et rend ceux-ci. */
+  /** Updates the list of followed tasks, folds the new events, and returns them. */
   async function step(now: number): Promise<{ tracked: Tracked[]; fresh: { record: TaskRecord; event: CaesarEvent }[] }> {
     for (const record of await store.list()) {
       if (wanted.size > 0 && !wanted.has(record.id)) continue;
@@ -238,9 +238,9 @@ export async function runWatch(root: string, ids: readonly string[], options: Wa
         if (!isActive(record.status) && known.endedSeenAt === undefined) known.endedSeenAt = now;
         continue;
       }
-      // Une tâche déjà terminée avant qu'on regarde n'est reprise que si sa
-      // fin est récente : sans cette borne, ouvrir la fenêtre déroulerait
-      // l'historique entier du projet.
+      // A task already finished before we started watching is only picked
+      // up if its end is recent: without this bound, opening the window
+      // would scroll through the project's entire history.
       const ended = record.ended_at ? Date.parse(record.ended_at) : undefined;
       if (!isActive(record.status) && (ended === undefined || now - ended > RECENT_MS)) continue;
       tracked.set(record.id, {
@@ -253,7 +253,7 @@ export async function runWatch(root: string, ids: readonly string[], options: Wa
       });
     }
 
-    // Une tâche terminée depuis assez longtemps cesse d'occuper l'écran.
+    // A task finished long enough ago stops occupying the screen.
     for (const [id, t] of tracked) {
       if (t.endedSeenAt !== undefined && now - t.endedSeenAt > RECENT_MS) tracked.delete(id);
     }
@@ -280,8 +280,8 @@ export async function runWatch(root: string, ids: readonly string[], options: Wa
       const { tracked: ordered, fresh } = await step(now);
 
       if (options.json) {
-        // NDJSON : un objet par ligne, pas l'indentation de `printJson` —
-        // c'est un flux destiné à être consommé au fil de l'eau, pas relu.
+        // NDJSON: one object per line, not `printJson`'s indentation —
+        // this is a stream meant to be consumed as it flows, not re-read.
         for (const { event } of fresh) writeLine(io.stdout, JSON.stringify(event));
       } else if (redraw) {
         io.stdout.write("\x1b[H\x1b[2J" + renderFrame(ordered, config.policy.max_parallel, now, terminalWidth(io.stdout), io).join("\n") + "\n");
@@ -306,13 +306,13 @@ export async function runWatch(root: string, ids: readonly string[], options: Wa
 }
 
 /**
- * Passe en écran alterné et cache le curseur ; rend de quoi tout remettre en
- * place.
+ * Switches to the alternate screen and hides the cursor; returns what it
+ * takes to put everything back.
  *
- * La restauration est aussi posée sur `exit` : un moniteur qui laisse le
- * terminal en écran alterné ou sans curseur après un arrêt brutal est pire
- * que pas de moniteur, et un `finally` ne couvre pas tous les chemins de
- * sortie du processus.
+ * The restoration is also hooked on `exit`: a monitor that leaves the
+ * terminal on the alternate screen or without a cursor after a hard stop is
+ * worse than no monitor, and a `finally` does not cover every process exit
+ * path.
  */
 function enterAltScreen(io: Io): () => void {
   let restored = false;
@@ -327,10 +327,10 @@ function enterAltScreen(io: Io): () => void {
 }
 
 /**
- * Écoute « q » sur l'entrée standard, quand elle est un terminal.
+ * Listens for "q" on standard input, when it is a terminal.
  *
- * Le mode brut est restauré dans tous les cas — c'est le réglage qui, laissé
- * en place, rend le shell inutilisable après coup.
+ * Raw mode is restored in every case — it is the setting that, left in
+ * place, makes the shell unusable afterwards.
  */
 function listenForQuit(onQuit: () => void): () => void {
   const stdin = process.stdin as NodeJS.ReadStream & { setRawMode?: (mode: boolean) => void };
@@ -338,7 +338,7 @@ function listenForQuit(onQuit: () => void): () => void {
 
   const onData = (chunk: Buffer): void => {
     const key = chunk.toString("utf8");
-    // Ctrl-C compris : en mode brut, il n'est plus transformé en SIGINT.
+    // Ctrl-C included: in raw mode, it is no longer turned into SIGINT.
     if (key === "q" || key === "\u0003") onQuit();
   };
 

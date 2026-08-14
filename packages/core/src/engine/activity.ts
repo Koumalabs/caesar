@@ -1,67 +1,65 @@
 /**
- * Ce qu'une tâche est en train de faire, replié depuis son journal
- * d'événements.
+ * What a task is currently doing, folded from its event log.
  *
- * Fonction pure, dans l'esprit de `policy.ts` et `network.ts` : aucune E/S,
- * et chaque sortie porte une phrase lisible plutôt qu'un état brut à
- * interpréter par l'appelant.
+ * A pure function, in the spirit of `policy.ts` and `network.ts`: no I/O,
+ * and every output carries a readable sentence rather than a raw state for
+ * the caller to interpret.
  *
- * **Un pli, pas une relecture.** L'appelant garde un `ActivityState` par
- * tâche et y pousse les événements au fur et à mesure qu'ils arrivent :
- * `caesar watch` relit `events.jsonl` par décalage et n'analyse que les
- * lignes neuves. Relire tout le journal à chaque image coûterait, pour une
- * tâche bavarde suivie pendant dix minutes, de reparser des milliers de
- * lignes cinq fois par seconde.
+ * **A fold, not a re-read.** The caller keeps one `ActivityState` per task
+ * and pushes events into it as they arrive: `caesar watch` re-reads
+ * `events.jsonl` by offset and only parses the new lines. Re-reading the
+ * whole log on every frame would cost, for a chatty task followed for ten
+ * minutes, re-parsing thousands of lines five times per second.
  */
 import type { CaesarEvent, ReportStatus } from "@caesar/protocol";
 
-/** Au-delà, un silence mérite d'être signalé plutôt que simplement compté. */
+/** Beyond this, a silence deserves to be flagged rather than merely counted. */
 export const STALL_MS = 30_000;
 
 /**
- * Longueur maximale de la parole conservée. Les fragments s'accumulent —
- * antigravity émet un `message` par bribe — et seule la fin intéresse.
+ * Maximum length of the speech kept. Fragments accumulate — antigravity
+ * emits one `message` per snippet — and only the end is of interest.
  */
 const SPEECH_MAX = 400;
 
 /**
- * Plafond du nombre d'outils tenus pour ouverts. Un adaptateur qui
- * annoncerait des départs sans jamais les fermer ferait sinon croître cette
- * liste indéfiniment ; le plus ancien cède la place.
+ * Cap on the number of tools considered open. An adapter that announced
+ * starts without ever closing them would otherwise grow this list
+ * indefinitely; the oldest one gives up its place.
  */
 const RUNNING_TOOLS_MAX = 8;
 
 export interface RunningTool {
-  /** Identifiant d'appel donné par l'agent, vide s'il n'en fournit pas. */
+  /** Call identifier given by the agent, empty if it provides none. */
   id: string;
   tool: string;
   summary: string;
-  /** Horodatage ISO de l'ouverture. */
+  /** ISO timestamp of the opening. */
   since: string;
 }
 
 export interface ActivityState {
   eventCount: number;
-  /** Horodatage ISO du dernier événement, quel qu'en soit le type. */
+  /** ISO timestamp of the last event, whatever its type. */
   lastAt?: string;
-  /** Départ d'exécution effectif, tel que le journal le date. */
+  /** Actual execution start, as the log dates it. */
   startedAt?: string;
   runningTools: readonly RunningTool[];
-  /** Chemins touchés, dans l'ordre d'apparition, sans doublon. */
+  /** Paths touched, in order of appearance, without duplicates. */
   filesTouched: readonly string[];
-  /** Le dernier outil refermé, pour dire ce qui vient de se terminer. */
+  /** The last tool closed, to say what just finished. */
   lastTool?: { tool: string; summary: string; ok: boolean };
-  /** La parole de l'agent, fragments consécutifs recollés. */
+  /** The agent's speech, consecutive fragments glued back together. */
   speech: string;
   /**
-   * Le dernier événement replié était-il un `message` ? Sert au seul
-   * recollage de `speech` : deux fragments qui se suivent forment une phrase,
-   * deux fragments séparés par un outil sont deux phrases.
+   * Was the last folded event a `message`? Serves only the gluing of
+   * `speech`: two fragments that follow each other form one sentence, two
+   * fragments separated by a tool are two sentences.
    */
   lastEventWasMessage?: boolean;
   lastProgress?: string;
   lastError?: string;
-  /** Renseigné dès que l'agent annonce sa fin, avec le statut qu'il déclare. */
+  /** Set as soon as the agent announces its end, with the status it declares. */
   finished?: ReportStatus;
 }
 
@@ -70,16 +68,16 @@ export function emptyActivity(): ActivityState {
 }
 
 /**
- * Le texte qu'un humain veut lire d'un `message`.
+ * The text a human wants to read from a `message`.
  *
- * codex n'envoie pas de prose : chacun de ses `agent_message` est un rapport
- * `caesar.report/v1` sérialisé. Affiché tel quel, c'est un mur de JSON là où
- * l'on attend une phrase. Quand le message est un objet JSON portant un
- * `summary`, c'est celui-ci qui parle.
+ * codex does not send prose: each of its `agent_message` is a serialized
+ * `caesar.report/v1` report. Displayed as-is, it is a wall of JSON where a
+ * sentence is expected. When the message is a JSON object carrying a
+ * `summary`, that is what speaks.
  *
- * Exportée parce que `caesar run` affiche les mêmes messages au fil de l'eau et
- * souffrait exactement du même mur de JSON : un seul traitement, pas deux qui
- * dériveraient.
+ * Exported because `caesar run` displays the same messages as they stream
+ * and suffered exactly the same wall of JSON: one treatment, not two that
+ * would drift apart.
  */
 export function readableMessage(text: string): string {
   const trimmed = text.trim();
@@ -91,24 +89,24 @@ export function readableMessage(text: string): string {
       if (typeof summary === "string" && summary !== "") return summary;
     }
   } catch {
-    // Pas du JSON malgré l'accolade : c'est de la prose, on la garde telle quelle.
+    // Not JSON despite the brace: it is prose, we keep it as-is.
   }
   return text;
 }
 
-/** Garde la fin de `text`, seule partie encore fraîche, sous `SPEECH_MAX`. */
+/** Keeps the end of `text`, the only part still fresh, under `SPEECH_MAX`. */
 function clampSpeech(text: string): string {
   return text.length <= SPEECH_MAX ? text : `…${text.slice(-SPEECH_MAX)}`;
 }
 
 /**
- * Retire de `running` l'appel que ferme cet événement.
+ * Removes from `running` the call that this event closes.
  *
- * Trois recoupements, du plus sûr au plus approximatif. L'identifiant
- * d'abord : c'est le seul qui distingue deux exécutions successives de la
- * même commande, et le seul disponible pour claude, dont la fermeture ne
- * porte pas le nom de l'outil (voir `CaesarEvent.id`). À défaut, le couple
- * (nom, résumé). À défaut encore, le plus ancien appel du même outil.
+ * Three matches, from surest to most approximate. The identifier first: it
+ * is the only one that distinguishes two successive executions of the same
+ * command, and the only one available for claude, whose closing does not
+ * carry the tool name (see `CaesarEvent.id`). Failing that, the (name,
+ * summary) pair. Failing that again, the oldest call of the same tool.
  */
 function closeTool(running: readonly RunningTool[], id: string, tool: string, summary: string): RunningTool[] {
   const byId = id !== "" ? running.findIndex((t) => t.id === id) : -1;
@@ -119,9 +117,9 @@ function closeTool(running: readonly RunningTool[], id: string, tool: string, su
 }
 
 /**
- * Replie un événement dans l'état courant. Ne modifie jamais `state` : rend
- * toujours un nouvel état, pour qu'un appelant puisse le comparer au
- * précédent (React, mémoïsation d'affichage) sans surprise.
+ * Folds an event into the current state. Never modifies `state`: always
+ * returns a new state, so a caller can compare it to the previous one
+ * (React, display memoization) without surprise.
  */
 export function foldActivity(state: ActivityState, event: CaesarEvent): ActivityState {
   const next: ActivityState = { ...state, eventCount: state.eventCount + 1, lastAt: event.at };
@@ -133,10 +131,10 @@ export function foldActivity(state: ActivityState, event: CaesarEvent): Activity
 
     case "message": {
       const text = readableMessage(event.text);
-      // Les `message` consécutifs se recollent — antigravity en émet un par
-      // bribe de texte, et une ligne par fragment ne se lit pas. Tout autre
-      // type d'événement referme le paragraphe : la parole qui suit un outil
-      // est une nouvelle phrase, pas la suite de la précédente.
+      // Consecutive `message` events get glued back together — antigravity
+      // emits one per snippet of text, and one line per fragment does not
+      // read. Any other event type closes the paragraph: speech following a
+      // tool is a new sentence, not the continuation of the previous one.
       const glue = state.lastEventWasMessage === true ? state.speech : "";
       next.speech = clampSpeech(glue + text);
       break;
@@ -156,10 +154,10 @@ export function foldActivity(state: ActivityState, event: CaesarEvent): Activity
           (t) => (event.id !== "" && t.id === event.id) || (t.tool === event.tool && t.summary === event.input_summary),
         );
         next.runningTools = closeTool(state.runningTools, event.id, event.tool, event.input_summary);
-        // Le nom vient de l'ouverture quand la fermeture ne le porte pas —
-        // le cas de claude, dont le `tool_result` n'a que l'identifiant.
+        // The name comes from the opening when the closing does not carry
+        // it — the case of claude, whose `tool_result` has only the id.
         next.lastTool = {
-          tool: event.tool !== "" ? event.tool : (closing?.tool ?? "outil"),
+          tool: event.tool !== "" ? event.tool : (closing?.tool ?? "tool"),
           summary: event.input_summary !== "" ? event.input_summary : (closing?.summary ?? ""),
           ok: event.status === "succeeded",
         };
@@ -192,17 +190,17 @@ export function foldActivity(state: ActivityState, event: CaesarEvent): Activity
   return next;
 }
 
-/** Ce qu'il faut afficher d'une tâche, à cet instant. */
+/** What should be displayed of a task, at this instant. */
 export interface ActivityDescription {
-  /** Une ligne : ce que la tâche fait maintenant. */
+  /** One line: what the task is doing now. */
   headline: string;
-  /** Depuis combien de temps plus rien n'est arrivé. */
+  /** How long since anything last arrived. */
   silentMs: number;
-  /** Vrai quand ce silence est assez long pour mériter d'être signalé. */
+  /** True when that silence is long enough to deserve being flagged. */
   stalled: boolean;
 }
 
-/** « 2m14s », « 47s » — durée courte, sans unité superflue. */
+/** "2m14s", "47s" — short duration, without superfluous units. */
 export function formatDuration(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000));
   if (total < 60) return `${total}s`;
@@ -212,21 +210,21 @@ export function formatDuration(ms: number): string {
 }
 
 /**
- * La phrase qui décrit l'instant présent.
+ * The sentence describing the present instant.
  *
- * L'ordre de préséance est celui de l'information : un outil encore ouvert
- * dit davantage que la dernière parole de l'agent (« ▸ shell npm test, 12s »
- * situe la tâche, une phrase générale non), et une erreur récente prime sur
- * tout dès lors que plus rien ne tourne. Quand il n'y a rien à dire, on le
- * dit — le silence et sa durée sont eux-mêmes une information, la seule qui
- * distingue une tâche bloquée d'une tâche qui travaille.
+ * The order of precedence is that of information: a tool still open says
+ * more than the agent's last words ("▸ shell npm test, 12s" situates the
+ * task, a general sentence does not), and a recent error takes precedence
+ * over everything once nothing is running anymore. When there is nothing to
+ * say, we say so — the silence and its duration are themselves information,
+ * the only thing that distinguishes a stuck task from a working one.
  */
 export function describeActivity(state: ActivityState, now: number): ActivityDescription {
   const silentMs = state.lastAt === undefined ? 0 : Math.max(0, now - Date.parse(state.lastAt));
   const stalled = state.lastAt !== undefined && silentMs > STALL_MS;
 
   const headline = ((): string => {
-    if (state.finished !== undefined) return `terminé — rapport « ${state.finished} »`;
+    if (state.finished !== undefined) return `finished — report "${state.finished}"`;
 
     const [tool] = state.runningTools;
     if (tool) {
@@ -236,11 +234,11 @@ export function describeActivity(state: ActivityState, now: number): ActivityDes
     }
 
     if (state.lastError !== undefined) return `⚠ ${state.lastError}`;
-    if (state.speech !== "") return `« ${state.speech} »`;
+    if (state.speech !== "") return `“${state.speech}”`;
     if (state.lastTool) return `${state.lastTool.ok ? "✓" : "✗"} ${state.lastTool.tool} ${state.lastTool.summary}`.trimEnd();
     if (state.lastProgress !== undefined) return state.lastProgress;
-    if (state.eventCount === 0) return "aucun événement pour l'instant";
-    return "sans nouvelle";
+    if (state.eventCount === 0) return "no events yet";
+    return "no news";
   })();
 
   return { headline, silentMs, stalled };

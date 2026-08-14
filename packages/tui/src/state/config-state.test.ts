@@ -1,13 +1,13 @@
 /**
- * Tests de `config-state.ts` — le cœur du TUI, sans aucun rendu. Sous
- * `bun test` (voir `packages/tui/package.json`, script "test") : c'est le
- * seul runtime dont ce package dépend, et ces tests sont du TypeScript pur,
- * sans OpenTUI.
+ * Tests for `config-state.ts` — the heart of the TUI, with no rendering.
+ * Under `bun test` (see `packages/tui/package.json`, "test" script): it is
+ * the only runtime this package depends on, and these tests are pure
+ * TypeScript, without OpenTUI.
  *
- * Aucune configuration réelle de l'utilisateur n'est touchée : chaque test
- * qui a besoin du disque passe par un répertoire temporaire dédié
- * (`mkdtemp`) et neutralise `HOME` — même garde-fou que
- * `packages/core/src/config.test.ts` et `packages/cli/test/support.ts`.
+ * No real user configuration is ever touched: every test that needs the
+ * disk goes through a dedicated temporary directory (`mkdtemp`) and
+ * neutralizes `HOME` — same safeguard as
+ * `packages/core/src/config.test.ts` and `packages/cli/test/support.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -49,7 +49,7 @@ import {
 import { NETWORK_OPTIONS, cycle } from "../screens/shared";
 import { emptyConfigState as emptyState } from "./test-helpers";
 
-/** Exécute `fn` avec `HOME` pointé vers un répertoire temporaire : aucun `~/.config/caesar/config.toml` réel n'est lu. */
+/** Runs `fn` with `HOME` pointed at a temporary directory: no real `~/.config/caesar/config.toml` is read. */
 async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
   const home = await mkdtemp(join(tmpdir(), "caesar-tui-home-"));
   const previous = process.env["HOME"];
@@ -65,7 +65,7 @@ async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
 
 const ROLE: RoleConfig = {
   name: "reviewer-test",
-  purpose: "Relit un diff.",
+  purpose: "Reviews a diff.",
   agents: ["codex", "antigravity", "opencode"],
   mode: "read-only",
   isolation: "inplace",
@@ -74,7 +74,7 @@ const ROLE: RoleConfig = {
 };
 
 describe("isDirty", () => {
-  it("faux juste après le chargement, vrai dès la première modification, faux après enregistrement", async () => {
+  it("false right after loading, true from the first modification, false after saving", async () => {
     let root: string;
     await withFakeHome(async () => {
       root = await mkdtemp(join(tmpdir(), "caesar-tui-dirty-"));
@@ -94,8 +94,8 @@ describe("isDirty", () => {
   });
 });
 
-describe("basculer l'autorisation d'un agent", () => {
-  it("ajoute puis retire l'agent de la liste \"denied\", sans toucher \"allowed\"", () => {
+describe("toggling an agent's permission", () => {
+  it("adds then removes the agent from the \"denied\" list, without touching \"allowed\"", () => {
     const state = emptyState();
     expect(effectiveConfig(state).policy.denied).not.toContain("codex");
 
@@ -104,17 +104,17 @@ describe("basculer l'autorisation d'un agent", () => {
 
     const twice = toggleAgentDenied(once, "codex");
     expect(effectiveConfig(twice).policy.denied).not.toContain("codex");
-    // La copie de travail d'origine reste intacte (mutation pure).
+    // The original working copy stays intact (pure mutation).
     expect(effectiveConfig(state).policy.denied).not.toContain("codex");
   });
 });
 
-describe("réordonner les agents d'un rôle", () => {
+describe("reordering a role's agents", () => {
   function stateWithRole(): ConfigState {
     return upsertRole(emptyState(), ROLE);
   }
 
-  it("déplace un agent vers le haut puis vers le bas", () => {
+  it("moves an agent up then down", () => {
     const state = stateWithRole();
     expect(findRole(state, ROLE.name)?.agents).toEqual(["codex", "antigravity", "opencode"]);
 
@@ -125,7 +125,7 @@ describe("réordonner les agents d'un rôle", () => {
     expect(findRole(down, ROLE.name)?.agents).toEqual(["codex", "antigravity", "opencode"]);
   });
 
-  it("ne fait rien si le déplacement sortirait de la liste", () => {
+  it("does nothing if the move would leave the list", () => {
     const state = stateWithRole();
     const first = moveRoleAgent(state, ROLE.name, 0, "up");
     expect(findRole(first, ROLE.name)?.agents).toEqual(ROLE.agents);
@@ -134,7 +134,7 @@ describe("réordonner les agents d'un rôle", () => {
     expect(findRole(last, ROLE.name)?.agents).toEqual(ROLE.agents);
   });
 
-  it("ajoute un agent absent de la liste, ignore un agent déjà présent", () => {
+  it("adds an agent absent from the list, ignores an agent already present", () => {
     const state = stateWithRole();
     const added = addRoleAgent(state, ROLE.name, "claude");
     expect(findRole(added, ROLE.name)?.agents).toEqual(["codex", "antigravity", "opencode", "claude"]);
@@ -143,26 +143,26 @@ describe("réordonner les agents d'un rôle", () => {
     expect(findRole(unchanged, ROLE.name)?.agents).toEqual(findRole(added, ROLE.name)?.agents);
   });
 
-  it("retire un agent par position", () => {
+  it("removes an agent by position", () => {
     const state = stateWithRole();
     const removed = removeRoleAgentAt(state, ROLE.name, 1);
     expect(findRole(removed, ROLE.name)?.agents).toEqual(["codex", "opencode"]);
   });
 });
 
-describe("créer et supprimer un rôle", () => {
-  it("upsertRole crée un rôle nouveau, puis le remplace entièrement s'il existe déjà", () => {
+describe("creating and deleting a role", () => {
+  it("upsertRole creates a new role, then replaces it entirely if it already exists", () => {
     const state = emptyState();
     const created = upsertRole(state, ROLE);
     expect(findRole(created, ROLE.name)).toEqual(ROLE);
     expect(effectiveConfig(created).roles.length).toBe(effectiveConfig(state).roles.length + 1);
 
-    const replaced = upsertRole(created, { ...ROLE, purpose: "Nouvelle intention." });
+    const replaced = upsertRole(created, { ...ROLE, purpose: "New purpose." });
     expect(effectiveConfig(replaced).roles.length).toBe(effectiveConfig(created).roles.length);
-    expect(findRole(replaced, ROLE.name)?.purpose).toBe("Nouvelle intention.");
+    expect(findRole(replaced, ROLE.name)?.purpose).toBe("New purpose.");
   });
 
-  it("removeRole retire le rôle et lui seul, quand la couche active le déclare", () => {
+  it("removeRole removes the role and it alone, when the active layer declares it", () => {
     const state = emptyState();
     const withRole = upsertRole(state, ROLE);
     const countBefore = effectiveConfig(withRole).roles.length;
@@ -173,18 +173,18 @@ describe("créer et supprimer un rôle", () => {
     expect(effectiveConfig(removed).roles.length).toBe(countBefore - 1);
   });
 
-  it("removeRole n'a aucun effet sur un rôle hérité (pas déclaré par la couche active)", async () => {
+  it("removeRole has no effect on an inherited role (not declared by the active layer)", async () => {
     await withFakeHome(async () => {
       const root = await mkdtemp(join(tmpdir(), "caesar-tui-role-inherited-"));
       try {
         await saveLayer("global", root, { roles: [ROLE] });
-        const state = await loadConfigState(root); // activeScope "project" par défaut
+        const state = await loadConfigState(root); // activeScope "project" by default
 
         expect(roleDeclaredByActiveLayer(state, ROLE.name)).toBe(false);
-        expect(findRole(state, ROLE.name)).toEqual(ROLE); // hérité, visible dans la fusion effective
+        expect(findRole(state, ROLE.name)).toEqual(ROLE); // inherited, visible in the effective merge
 
         const attempted = removeRole(state, ROLE.name);
-        expect(findRole(attempted, ROLE.name)).toEqual(ROLE); // toujours là : rien n'a bougé
+        expect(findRole(attempted, ROLE.name)).toEqual(ROLE); // still there: nothing moved
         expect(isDirty(attempted)).toBe(false);
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -192,27 +192,28 @@ describe("créer et supprimer un rôle", () => {
     });
   });
 
-  it("renameRole change le nom en conservant tout le reste du rôle", () => {
+  it("renameRole changes the name while keeping everything else about the role", () => {
     const state = upsertRole(emptyState(), ROLE);
-    const renamed = renameRole(state, ROLE.name, "relecteur");
+    const renamed = renameRole(state, ROLE.name, "proofreader");
 
     expect(findRole(renamed, ROLE.name)).toBeUndefined();
-    expect(findRole(renamed, "relecteur")).toEqual({ ...ROLE, name: "relecteur" });
+    expect(findRole(renamed, "proofreader")).toEqual({ ...ROLE, name: "proofreader" });
     expect(effectiveConfig(renamed).roles.length).toBe(effectiveConfig(state).roles.length);
   });
 
-  it("renameRole n'a aucun effet sur un rôle hérité — sinon l'ancien nom survivrait dans la couche du dessous", async () => {
+  it("renameRole has no effect on an inherited role — otherwise the old name would survive in the layer below", async () => {
     await withFakeHome(async () => {
       const root = await mkdtemp(join(tmpdir(), "caesar-tui-role-rename-"));
       try {
         await saveLayer("global", root, { roles: [ROLE] });
-        const state = await loadConfigState(root); // couche active "project"
+        const state = await loadConfigState(root); // active layer "project"
 
-        const attempted = renameRole(state, ROLE.name, "relecteur");
-        // Renommer ici n'aurait pas *déplacé* le rôle : il en serait apparu un
-        // second, l'ancien continuant d'exister, hérité du global.
+        const attempted = renameRole(state, ROLE.name, "proofreader");
+        // Renaming here would not have *moved* the role: a second one would
+        // have appeared, the old one continuing to exist, inherited from
+        // global.
         expect(findRole(attempted, ROLE.name)).toEqual(ROLE);
-        expect(findRole(attempted, "relecteur")).toBeUndefined();
+        expect(findRole(attempted, "proofreader")).toBeUndefined();
         expect(isDirty(attempted)).toBe(false);
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -220,7 +221,7 @@ describe("créer et supprimer un rôle", () => {
     });
   });
 
-  it("updateRole modifie un champ sans toucher aux autres", () => {
+  it("updateRole modifies one field without touching the others", () => {
     const state = upsertRole(emptyState(), ROLE);
     const updated = updateRole(state, ROLE.name, { mode: "write", timeout_ms: 120_000 });
     const role = findRole(updated, ROLE.name)!;
@@ -231,56 +232,56 @@ describe("créer et supprimer un rôle", () => {
   });
 });
 
-describe("déclarer et retirer un agent", () => {
+describe("declaring and removing an agent", () => {
   const SPEC: GenericAgentSpec = { id: "aider", bin: "aider", args: ["--message", "{{prompt}}"], cwdMode: "process" };
 
-  it("upsertAgentSpec ajoute l'agent au catalogue effectif, sans toucher au catalogue natif", () => {
+  it("upsertAgentSpec adds the agent to the effective catalog, without touching the native catalog", () => {
     const state = emptyState();
     const declared = upsertAgentSpec(state, SPEC);
 
     expect(findAgentSpec(declared, "aider")).toEqual(SPEC);
     const ids = listAgentDefinitions(effectiveConfig(declared).agents).map((def) => def.id);
     expect(ids).toContain("aider");
-    expect(ids).toContain("codex"); // les natifs restent
+    expect(ids).toContain("codex"); // the native ones remain
     expect(agentDeclaredByActiveLayer(declared, "aider")).toBe(true);
   });
 
-  it("upsertAgentSpec remplace l'entrée existante plutôt que de la doubler", () => {
+  it("upsertAgentSpec replaces the existing entry rather than doubling it", () => {
     const state = upsertAgentSpec(emptyState(), SPEC);
     const replaced = upsertAgentSpec(state, { ...SPEC, bin: "/opt/aider" });
     expect(effectiveConfig(replaced).agents).toHaveLength(1);
     expect(findAgentSpec(replaced, "aider")?.bin).toBe("/opt/aider");
   });
 
-  it("updateAgentSpec modifie un champ sans toucher aux autres, et ignore un agent natif", () => {
+  it("updateAgentSpec modifies one field without touching the others, and ignores a native agent", () => {
     const state = upsertAgentSpec(emptyState(), SPEC);
     const updated = updateAgentSpec(state, "aider", { cwdMode: "flag" });
     expect(findAgentSpec(updated, "aider")).toEqual({ ...SPEC, cwdMode: "flag" });
 
-    // "codex" est câblé dans le registre : aucune entrée `[[agent]]` à modifier.
-    expect(updateAgentSpec(state, "codex", { bin: "autre" })).toBe(state);
+    // "codex" is wired into the registry: no `[[agent]]` entry to modify.
+    expect(updateAgentSpec(state, "codex", { bin: "other" })).toBe(state);
   });
 
-  it("removeAgentSpec retire la déclaration quand la couche active la porte", () => {
+  it("removeAgentSpec removes the declaration when the active layer carries it", () => {
     const state = upsertAgentSpec(emptyState(), SPEC);
     const removed = removeAgentSpec(state, "aider");
     expect(findAgentSpec(removed, "aider")).toBeUndefined();
     expect(listAgentDefinitions(effectiveConfig(removed).agents).map((d) => d.id)).not.toContain("aider");
   });
 
-  it("removeAgentSpec n'a aucun effet sur une déclaration héritée, et la marque le dit", async () => {
+  it("removeAgentSpec has no effect on an inherited declaration, and the mark says so", async () => {
     await withFakeHome(async () => {
       const root = await mkdtemp(join(tmpdir(), "caesar-tui-agent-inherited-"));
       try {
         await saveLayer("global", root, { agents: [SPEC] });
-        const state = await loadConfigState(root); // activeScope "project" par défaut
+        const state = await loadConfigState(root); // activeScope "project" by default
 
         expect(agentDeclaredByActiveLayer(state, "aider")).toBe(false);
-        expect(findAgentSpec(state, "aider")).toEqual(SPEC); // hérité, visible dans la fusion
+        expect(findAgentSpec(state, "aider")).toEqual(SPEC); // inherited, visible in the merge
         expect(agentMark(state, "aider")).toBe("global");
 
-        // Même limite que `removeRole` et `caesar agents remove` : la fusion par
-        // clé ne sait pas exprimer la suppression d'une entrée héritée.
+        // Same limit as `removeRole` and `caesar agents remove`: the merge by
+        // key cannot express the deletion of an inherited entry.
         const attempted = removeAgentSpec(state, "aider");
         expect(findAgentSpec(attempted, "aider")).toEqual(SPEC);
         expect(isDirty(attempted)).toBe(false);
@@ -290,7 +291,7 @@ describe("déclarer et retirer un agent", () => {
     });
   });
 
-  it("une déclaration héritée modifiée bascule en entier sur la couche active", async () => {
+  it("an inherited declaration, once modified, moves in full to the active layer", async () => {
     await withFakeHome(async () => {
       const root = await mkdtemp(join(tmpdir(), "caesar-tui-agent-override-"));
       try {
@@ -299,8 +300,8 @@ describe("déclarer et retirer un agent", () => {
 
         const updated = updateAgentSpec(state, "aider", { bin: "/opt/aider" });
         expect(agentDeclaredByActiveLayer(updated, "aider")).toBe(true);
-        expect(agentMark(updated, "aider")).toBeNull(); // plus rien à surcharger
-        // L'entrée bascule entière, arguments compris : c'est la fusion par clé.
+        expect(agentMark(updated, "aider")).toBeNull(); // nothing left to override
+        // The entry moves in full, arguments included: that is the merge by key.
         expect(findAgentSpec(updated, "aider")).toEqual({ ...SPEC, bin: "/opt/aider" });
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -308,7 +309,7 @@ describe("déclarer et retirer un agent", () => {
     });
   });
 
-  it("survit à l'aller-retour disque, capacité comprise", async () => {
+  it("survives the disk round-trip, capability included", async () => {
     await withFakeHome(async () => {
       const root = await mkdtemp(join(tmpdir(), "caesar-tui-agent-save-"));
       try {
@@ -325,8 +326,8 @@ describe("déclarer et retirer un agent", () => {
   });
 });
 
-describe("modifier la politique", () => {
-  it("updatePolicy fusionne les champs donnés sans toucher aux autres", () => {
+describe("editing the policy", () => {
+  it("updatePolicy merges the given fields without touching the others", () => {
     const state = emptyState();
     const updated = updatePolicy(state, { max_parallel: 8, allow_recursion: true });
     expect(effectiveConfig(updated).policy.max_parallel).toBe(8);
@@ -334,10 +335,10 @@ describe("modifier la politique", () => {
     expect(effectiveConfig(updated).policy.default_mode).toBe(effectiveConfig(state).policy.default_mode);
   });
 
-  it("le réseau par défaut se règle comme les autres champs, et cycle sur ses trois valeurs", () => {
-    // Le pendant du geste de l'écran Politique (Entrée sur « Réseau par
-    // défaut »), que le harnais de rendu ne peut pas prouver : il monte
-    // l'écran avec un `onChange` no-op.
+  it("the default network is set like the other fields, and cycles through its three values", () => {
+    // The counterpart of the Policy screen's gesture (Enter on "Default
+    // network"), which the render harness cannot prove: it mounts the
+    // screen with a no-op `onChange`.
     const state = emptyState();
     expect(effectiveConfig(state).policy.default_network).toBe("auto");
     const updated = updatePolicy(state, { default_network: cycle(NETWORK_OPTIONS, "auto") });
@@ -345,7 +346,7 @@ describe("modifier la politique", () => {
     expect(cycle(NETWORK_OPTIONS, "off")).toBe("auto");
   });
 
-  it("setPolicyListEntry : \"denied\" l'emporte, mais ce module ne fait qu'ajouter/retirer — la règle reste dans @caesar/core", () => {
+  it("setPolicyListEntry: \"denied\" wins, but this module only adds/removes — the rule stays in @caesar/core", () => {
     const state = emptyState();
     const withAllowed = setPolicyListEntry(state, "allowed", "codex", true);
     expect(effectiveConfig(withAllowed).policy.allowed).toContain("codex");
@@ -357,7 +358,7 @@ describe("modifier la politique", () => {
     expect(effectiveConfig(withDenied).policy.denied).toContain("codex");
   });
 
-  it("matérialise la liste effective (héritée comprise), pas seulement l'id ajouté — même règle que materializePolicyList", async () => {
+  it("materializes the effective list (inherited included), not only the added id — same rule as materializePolicyList", async () => {
     await withFakeHome(async () => {
       const root = await mkdtemp(join(tmpdir(), "caesar-tui-materialize-"));
       try {
@@ -365,8 +366,8 @@ describe("modifier la politique", () => {
         const state = await loadConfigState(root); // activeScope "project"
 
         const edited = setPolicyListEntry(state, "denied", "opencode", true);
-        // La couche projet porte désormais la liste effective entière ("copilot" hérité + "opencode"),
-        // jamais "opencode" seul — sans quoi le refus hérité de "copilot" disparaîtrait du disque.
+        // The project layer now carries the whole effective list (inherited "copilot" + "opencode"),
+        // never "opencode" alone — without which the inherited denial of "copilot" would vanish from disk.
         expect(edited.draft.policy?.denied).toEqual(["copilot", "opencode"]);
         expect(effectiveConfig(edited).policy.denied).toEqual(["copilot", "opencode"]);
       } finally {
@@ -376,8 +377,8 @@ describe("modifier la politique", () => {
   });
 });
 
-describe("aller-retour save/load", () => {
-  it("saveConfigState puis loadConfigState rendent exactement ce qui a été modifié", async () => {
+describe("save/load round-trip", () => {
+  it("saveConfigState then loadConfigState return exactly what was modified", async () => {
     await withFakeHome(async () => {
       const root = await mkdtemp(join(tmpdir(), "caesar-tui-roundtrip-"));
       try {
@@ -392,7 +393,7 @@ describe("aller-retour save/load", () => {
         expect(effectiveConfig(reloaded).policy.denied).toContain("codex");
         expect(effectiveConfig(reloaded).policy.max_parallel).toBe(9);
         expect(findRole(reloaded, ROLE.name)).toEqual(ROLE);
-        // Un rechargement frais n'a plus de modification en attente.
+        // A fresh reload has no pending change anymore.
         expect(isDirty(reloaded)).toBe(false);
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -402,7 +403,7 @@ describe("aller-retour save/load", () => {
 });
 
 describe("pickAgentForRoleName", () => {
-  it("retient le premier agent installé et autorisé, dans l'ordre du rôle", () => {
+  it("picks the first installed and allowed agent, in the role's order", () => {
     const state = upsertRole(emptyState(), ROLE);
     const installed = new Map([
       ["codex", false],
@@ -413,7 +414,7 @@ describe("pickAgentForRoleName", () => {
     expect(pick && "agentId" in pick ? pick.agentId : undefined).toBe("antigravity");
   });
 
-  it("bascule sur le second choix si le premier est refusé par la politique (\"denied\")", () => {
+  it("falls back to the second choice if the first is denied by the policy (\"denied\")", () => {
     let state = upsertRole(emptyState(), ROLE);
     state = setPolicyListEntry(state, "denied", "codex", true);
     const installed = new Map([
@@ -425,13 +426,13 @@ describe("pickAgentForRoleName", () => {
     expect(pick && "agentId" in pick ? pick.agentId : undefined).toBe("antigravity");
   });
 
-  it("renvoie null pour un rôle inconnu", () => {
-    expect(pickAgentForRoleName(emptyState(), "rôle-fantôme", new Map())).toBeNull();
+  it("returns null for an unknown role", () => {
+    expect(pickAgentForRoleName(emptyState(), "ghost-role", new Map())).toBeNull();
   });
 });
 
-describe("portée d'édition", () => {
-  it("loadConfigState porte la portée \"project\" par défaut", async () => {
+describe("editing scope", () => {
+  it("loadConfigState carries the \"project\" scope by default", async () => {
     await withFakeHome(async () => {
       const root = await mkdtemp(join(tmpdir(), "caesar-tui-scope-default-"));
       try {
@@ -443,30 +444,30 @@ describe("portée d'édition", () => {
     });
   });
 
-  it("nextScope cycle global → projet → local → global", () => {
+  it("nextScope cycles global → project → local → global", () => {
     expect(nextScope("global")).toBe("project");
     expect(nextScope("project")).toBe("local");
     expect(nextScope("local")).toBe("global");
   });
 
-  it("setScope repart de la dernière version enregistrée de la nouvelle couche, jamais du draft de l'ancienne", async () => {
+  it("setScope restarts from the new layer's last saved version, never from the old layer's draft", async () => {
     await withFakeHome(async () => {
       const root = await mkdtemp(join(tmpdir(), "caesar-tui-scope-switch-"));
       try {
         await saveLayer("global", root, { policy: { max_parallel: 5 } });
         const state = await loadConfigState(root); // "project"
-        const edited = updatePolicy(state, { max_parallel: 42 }); // modification en attente sur "project"
+        const edited = updatePolicy(state, { max_parallel: 42 }); // pending change on "project"
         expect(isDirty(edited)).toBe(true);
 
         const onGlobal = setScope(edited, "global");
         expect(onGlobal.activeScope).toBe("global");
-        // Repart du disque pour "global" (max_parallel=5), pas de "42" qui appartenait au draft "project".
+        // Restarts from disk for "global" (max_parallel=5), not from the "42" that belonged to the "project" draft.
         expect(onGlobal.draft.policy?.max_parallel).toBe(5);
         expect(isDirty(onGlobal)).toBe(false);
 
-        // Revenir sur "project" retrouve bien sa dernière version *enregistrée* (vide ici, jamais sauvegardée) —
-        // la modification à 42 n'a jamais été enregistrée, elle est donc bien perdue, comme prévu par le
-        // changement de portée explicite (confirmé par l'appelant, voir `App.tsx`).
+        // Coming back to "project" indeed finds its last *saved* version (empty here, never saved) —
+        // the change to 42 was never saved, so it is indeed lost, as expected for the explicit scope
+        // switch (confirmed by the caller, see `App.tsx`).
         const backToProject = setScope(onGlobal, "project");
         expect(backToProject.draft.policy?.max_parallel).toBeUndefined();
       } finally {
@@ -475,22 +476,22 @@ describe("portée d'édition", () => {
     });
   });
 
-  describe("marques d'héritage", () => {
-    it("policyFieldMark signale une couche moins spécifique que la couche active, jamais la couche active elle-même", async () => {
+  describe("inheritance marks", () => {
+    it("policyFieldMark signals a layer less specific than the active layer, never the active layer itself", async () => {
       await withFakeHome(async () => {
         const root = await mkdtemp(join(tmpdir(), "caesar-tui-mark-policy-"));
         try {
           await saveLayer("global", root, { policy: { max_parallel: 9 } });
-          const state = await loadConfigState(root); // "project" : n'a pas encore surchargé max_parallel
+          const state = await loadConfigState(root); // "project": has not overridden max_parallel yet
 
           expect(policyFieldMark(state, "max_parallel")).toBe("global");
-          expect(policyFieldMark(state, "allow_recursion")).toBe("default"); // jamais déclaré nulle part
+          expect(policyFieldMark(state, "allow_recursion")).toBe("default"); // never declared anywhere
 
-          // Sur la couche global elle-même, plus rien à surcharger pour ce champ : pas de marque.
+          // On the global layer itself, nothing left to override for this field: no mark.
           const onGlobal = setScope(state, "global");
           expect(policyFieldMark(onGlobal, "max_parallel")).toBeNull();
 
-          // Une fois que "project" déclare le champ à son tour, la marque disparaît.
+          // Once "project" declares the field in turn, the mark disappears.
           const overridden = updatePolicy(state, { max_parallel: 3 });
           expect(policyFieldMark(overridden, "max_parallel")).toBeNull();
         } finally {
@@ -499,7 +500,7 @@ describe("portée d'édition", () => {
       });
     });
 
-    it("roleMark et roleDeclaredByActiveLayer reflètent la provenance d'un rôle", async () => {
+    it("roleMark and roleDeclaredByActiveLayer reflect a role's provenance", async () => {
       await withFakeHome(async () => {
         const root = await mkdtemp(join(tmpdir(), "caesar-tui-mark-role-"));
         try {
@@ -519,31 +520,31 @@ describe("portée d'édition", () => {
     });
   });
 
-  it("le scénario qui compte : enregistrer en portée globale depuis un projet ne touche que le fichier global", async () => {
+  it("the scenario that matters: saving in global scope from a project only touches the global file", async () => {
     await withFakeHome(async (home) => {
       const root = await mkdtemp(join(tmpdir(), "caesar-tui-scope-global-save-"));
       try {
         const projectPath = configPathFor("project", root);
         const globalPath = configPathFor("global", root);
-        expect(globalPath.startsWith(home)).toBe(true); // s'assure qu'on vise bien le HOME neutralisé, pas le vrai
+        expect(globalPath.startsWith(home)).toBe(true); // makes sure we target the neutralized HOME, not the real one
 
-        let state = await loadConfigState(root); // "project" par défaut, comme le TUI au démarrage
-        state = setScope(state, "global"); // bascule explicite de portée (la touche "p")
-        state = updatePolicy(state, { max_parallel: 7 }); // une modification, en attente sur "global"
+        let state = await loadConfigState(root); // "project" by default, like the TUI at startup
+        state = setScope(state, "global"); // explicit scope switch (the "p" key)
+        state = updatePolicy(state, { max_parallel: 7 }); // one change, pending on "global"
         expect(isDirty(state)).toBe(true);
 
-        await saveConfigState(root, state); // "s" : n'enregistre que la couche active
+        await saveConfigState(root, state); // "s": saves only the active layer
 
-        // Le fichier global a changé...
+        // The global file changed...
         const globalContent = await readFile(globalPath, "utf8");
         expect(globalContent).toContain("max_parallel");
         expect(globalContent).toContain("7");
 
-        // ...et le fichier projet n'a jamais été créé (aucune écriture n'a touché la couche projet).
+        // ...and the project file was never created (no write touched the project layer).
         await expect(readFile(projectPath, "utf8")).rejects.toThrow();
 
         const reloaded = await loadConfigState(root, "project");
-        expect(effectiveConfig(reloaded).policy.max_parallel).toBe(7); // le projet hérite bien du global
+        expect(effectiveConfig(reloaded).policy.max_parallel).toBe(7); // the project does inherit from global
       } finally {
         await rm(root, { recursive: true, force: true });
       }

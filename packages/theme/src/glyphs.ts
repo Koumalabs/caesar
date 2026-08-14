@@ -1,16 +1,15 @@
 /**
- * Les caractères qui dessinent : traits d'encadré et marques d'état.
+ * The characters that draw: box strokes and status marks.
  *
- * Deux jeux, et non un seul. Les traits fins (`─ │ ╭`) et les marques (`● ✓`)
- * sont des caractères Unicode : sur un terminal qui n'est pas en UTF-8, ils
- * n'apparaissent pas en dégradé — ils apparaissent en charabia, et un tableau
- * encadré devient alors moins lisible qu'un tableau sans cadre. Le jeu ASCII
- * n'est donc pas une politesse, c'est la condition pour que l'encadré soit
- * une amélioration partout plutôt qu'une amélioration en moyenne.
+ * Two sets, not one. The thin strokes (`─ │ ╭`) and the marks (`● ✓`) are
+ * Unicode characters: on a terminal that is not in UTF-8, they do not
+ * appear degraded — they appear as gibberish, and a framed table then
+ * becomes less readable than an unframed one. The ASCII set is therefore
+ * not a courtesy, it is the condition for the frame to be an improvement
+ * everywhere rather than an improvement on average.
  *
- * Les deux jeux ont **la même largeur par caractère** (une colonne), de sorte
- * que tout le calcul de largeur de `renderTable` vaut pour l'un comme pour
- * l'autre.
+ * Both sets have **the same width per character** (one column), so that all
+ * of `renderTable`'s width arithmetic holds for either one.
  */
 import type { Environment } from "./ansi.js";
 
@@ -29,34 +28,34 @@ export interface BoxGlyphs {
 }
 
 export interface StatusGlyphs {
-  /** La marque de l'outil, en tête du bandeau de chaque commande. */
+  /** The tool's mark, at the head of every command's banner. */
   mark: string;
-  /** Une tâche qui travaille. */
+  /** A task that is working. */
   running: string;
-  /** Une tâche silencieuse depuis trop longtemps. */
+  /** A task silent for too long. */
   stalled: string;
-  /** Issue favorable. */
+  /** Favorable outcome. */
   done: string;
-  /** Issue défavorable. */
+  /** Unfavorable outcome. */
   failed: string;
-  /** Ce qui appelle l'attention sans être un échec. */
+  /** What calls for attention without being a failure. */
   warn: string;
-  /** Un outil en cours d'exécution. */
+  /** A tool being executed. */
   tool: string;
-  /** Un fichier touché. */
+  /** A touched file. */
   file: string;
-  /** Une question en attente. */
+  /** A pending question. */
   question: string;
-  /** Ce que l'agent dit, par opposition à ce qu'il fait. */
+  /** What the agent says, as opposed to what it does. */
   speech: string;
-  /** Séparateur entre deux informations d'une même ligne. */
+  /** Separator between two pieces of information on the same line. */
   bullet: string;
 }
 
 export interface Glyphs {
   box: BoxGlyphs;
   status: StatusGlyphs;
-  /** Marque de troncature d'une cellule trop étroite. */
+  /** Truncation mark for a cell that is too narrow. */
   ellipsis: string;
 }
 
@@ -117,20 +116,20 @@ const ASCII: Glyphs = {
     speech: "\"",
     bullet: "-",
   },
-  // Un seul point, et non trois : la troncature doit coûter une colonne, la
-  // même que "…", sinon toute la largeur calculée par `renderTable` est fausse.
+  // One dot, not three: truncation must cost one column, the same as "…",
+  // otherwise every width `renderTable` computes is wrong.
   ellipsis: ".",
 };
 
 /**
- * Le terminal sait-il afficher de l'Unicode ?
+ * Can the terminal display Unicode?
  *
- * `LC_ALL` l'emporte sur `LC_CTYPE`, qui l'emporte sur `LANG` — c'est l'ordre
- * de la norme POSIX. **Quand aucune des trois n'est posée, on répond oui** :
- * c'est le cas courant sous macOS, où les terminaux sont en UTF-8 sans rien
- * déclarer. Répondre non par prudence priverait la majorité des utilisateurs
- * du thème pour protéger une minorité qui, elle, se signale toujours
- * explicitement (`LC_ALL=C`).
+ * `LC_ALL` wins over `LC_CTYPE`, which wins over `LANG` — the order the
+ * POSIX standard sets. **When none of the three is set, we answer yes**:
+ * that is the common case on macOS, where terminals are in UTF-8 without
+ * declaring anything. Answering no out of caution would deprive the
+ * majority of users of the theme to protect a minority that, for its part,
+ * always signals itself explicitly (`LC_ALL=C`).
  */
 export function supportsUnicode(env: Environment): boolean {
   const locale = env["LC_ALL"] ?? env["LC_CTYPE"] ?? env["LANG"];

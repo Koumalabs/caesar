@@ -1,7 +1,7 @@
 /**
- * L'éditeur de prompt est le seul écran du TUI qui écrit un fichier sans
- * passer par "s" : ces tests portent donc autant sur ce qu'il **écrit** que
- * sur ce qu'il affiche.
+ * The prompt editor is the only TUI screen that writes a file without
+ * going through "s": these tests therefore cover what it **writes** as
+ * much as what it displays.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -39,12 +39,12 @@ async function mount(file = "roles/reviewer.md"): Promise<Harness> {
         onClose={(saved) => closes.push(saved)}
         notify={(text, isError = false) => messages.push({ text, isError })}
       />,
-      // 120 et non 100 : le chemin absolu affiché (tmpdir + « caesar-prompt-editor-… »)
-      // dépasse 100 colonnes sur macOS, et un chemin replié échapperait à toContain.
+      // 120 and not 100: the displayed absolute path (tmpdir + "caesar-prompt-editor-…")
+      // exceeds 100 columns on macOS, and a wrapped path would escape toContain.
       { width: 120, height: 24 },
     ),
   );
-  // La lecture du fichier est asynchrone : le champ n'est monté qu'ensuite.
+  // The file read is asynchronous: the textarea is only mounted afterwards.
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     await setup.renderOnce();
@@ -53,47 +53,48 @@ async function mount(file = "roles/reviewer.md"): Promise<Harness> {
 }
 
 /**
- * Une touche Échap isolée reste en attente dans le décodeur du clavier —
- * `\x1b` est aussi le premier octet de toutes les séquences d'échappement,
- * qu'il faut donc laisser arriver avant de trancher. Un vrai terminal purge
- * cette attente au bout de quelques millisecondes ; le harnais de test, lui,
- * n'avance pas seul : sans cette pause, Échap n'atteint jamais l'écran.
+ * A lone Escape key stays pending in the keyboard decoder — `\x1b` is also
+ * the first byte of every escape sequence, which must be allowed to arrive
+ * before deciding. A real terminal flushes that wait after a few
+ * milliseconds; the test harness, for its part, does not advance on its
+ * own: without this pause, Escape never reaches the screen.
  */
 async function pressEscape(setup: Harness["setup"]): Promise<void> {
   await act(async () => {
     setup.mockInput.pressEscape();
     await new Promise((resolve) => setTimeout(resolve, 80));
   });
-  // Second `act` : le premier ne rend que ce que React avait déjà validé
-  // avant la frappe. Peindre dans le même bloc capturerait l'écran d'avant.
+  // Second `act`: the first only renders what React had already committed
+  // before the keystroke. Painting in the same block would capture the
+  // previous screen.
   await act(async () => setup.renderOnce());
 }
 
 describe("PromptEditor", () => {
-  it("montre le chemin absolu réellement lu par le moteur", async () => {
-    // Sans lui, on édite à l'aveugle : un rôle venu de la couche globale
-    // résout son prompt dans le projet courant, ce que seul le chemin montre.
+  it("shows the absolute path actually read by the engine", async () => {
+    // Without it, one edits blindly: a role coming from the global layer
+    // resolves its prompt in the current project, which only the path shows.
     await mkdir(join(root, ".caesar", "roles"), { recursive: true });
-    await writeFile(join(root, ".caesar", "roles", "reviewer.md"), "Tu es strict.", "utf8");
+    await writeFile(join(root, ".caesar", "roles", "reviewer.md"), "You are strict.", "utf8");
 
     const { setup } = await mount();
     const frame = setup.captureCharFrame();
     expect(frame).toContain(join(root, ".caesar", "roles", "reviewer.md"));
-    expect(frame).toContain("Tu es strict.");
+    expect(frame).toContain("You are strict.");
     setup.renderer.destroy();
   });
 
-  it("annonce un fichier qui n'existe pas encore plutôt que d'afficher un vide ambigu", async () => {
+  it("announces a file that does not exist yet rather than showing an ambiguous blank", async () => {
     const { setup } = await mount();
-    expect(setup.captureCharFrame()).toContain("Nouveau fichier");
+    expect(setup.captureCharFrame()).toContain("New file");
     setup.renderer.destroy();
   });
 
-  it("Ctrl+S écrit le fichier, le dit, et rend la main", async () => {
+  it("Ctrl+S writes the file, says so, and hands control back", async () => {
     const { setup, closes, messages } = await mount();
 
     await act(async () => {
-      await setup.mockInput.typeText("Ne corrige rien toi-même.");
+      await setup.mockInput.typeText("Do not fix anything yourself.");
       await setup.renderOnce();
     });
     await act(async () => setup.mockInput.pressKey("s", { ctrl: true }));
@@ -103,40 +104,40 @@ describe("PromptEditor", () => {
     });
 
     const written = await readFile(join(root, ".caesar", "roles", "reviewer.md"), "utf8");
-    expect(written).toBe("Ne corrige rien toi-même.");
+    expect(written).toBe("Do not fix anything yourself.");
     expect(closes).toEqual([true]);
-    expect(messages[0]?.text).toContain("enregistré");
+    expect(messages[0]?.text).toContain("saved");
     setup.renderer.destroy();
   });
 
-  it("Échap sur un texte modifié prévient d'abord, n'abandonne qu'à la seconde frappe", async () => {
+  it("Esc on a modified text warns first, only abandons on the second keystroke", async () => {
     const { setup, closes } = await mount();
 
     await act(async () => {
-      await setup.mockInput.typeText("un ajout");
+      await setup.mockInput.typeText("an addition");
       await new Promise((resolve) => setTimeout(resolve, 30));
       await setup.renderOnce();
     });
 
     await pressEscape(setup);
-    expect(closes).toEqual([]); // rien n'est abandonné sur la première frappe
-    expect(setup.captureCharFrame()).toContain("Modifications non enregistrées");
+    expect(closes).toEqual([]); // nothing is abandoned on the first keystroke
+    expect(setup.captureCharFrame()).toContain("Unsaved changes");
 
     await pressEscape(setup);
     expect(closes).toEqual([false]);
     setup.renderer.destroy();
   });
 
-  it("Échap sur un texte inchangé rend la main tout de suite", async () => {
+  it("Esc on an unchanged text hands control back immediately", async () => {
     const { setup, closes } = await mount();
     await pressEscape(setup);
     expect(closes).toEqual([false]);
     setup.renderer.destroy();
   });
 
-  it("dit que l'écriture est indépendante du \"s\" global", async () => {
+  it("says that the write is independent of the global \"s\"", async () => {
     const { setup } = await mount();
-    expect(setup.captureCharFrame()).toContain("enregistrer le fichier");
+    expect(setup.captureCharFrame()).toContain("save the file");
     setup.renderer.destroy();
   });
 });

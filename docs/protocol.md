@@ -1,127 +1,127 @@
-# Le standard OACP — Orchestrator–Agent Contract Protocol
+# The OACP standard — Orchestrator–Agent Contract Protocol
 
 Version `1` · documents `caesar.task/v1`, `caesar.report/v1`, `caesar.event/v1`
 
-Ce document décrit le contrat qui permet à un orchestrateur de confier une tâche à un agent de code, quel qu'il soit, et d'en recevoir un compte rendu exploitable.
+This document describes the contract that lets an orchestrator entrust a task to a code agent, whichever it may be, and receive a usable report back.
 
-Le contrat repose sur le **système de fichiers**, pas sur un SDK. Aucune bibliothèque n'est requise : un programme qui sait lire et écrire du JSON peut jouer le rôle de sous-agent. C'est délibéré — un standard qui exige une dépendance n'est adopté que par ceux qui l'écrivent.
+The contract rests on the **file system**, not on an SDK. No library is required: a program that can read and write JSON can play the role of a sub-agent. This is deliberate — a standard that requires a dependency is only adopted by those who write it.
 
-## Le cycle
+## The cycle
 
 ```
-orchestrateur                                      agent
+orchestrator                                       agent
      │
-     │  écrit task.json
-     │  lance le processus avec $CAESAR_* dans l'environnement
+     │  writes task.json
+     │  starts the process with $CAESAR_* in the environment
      ├────────────────────────────────────────────────►
-     │                                                │  lit $CAESAR_TASK_FILE
-     │                                                │  travaille
-     │            ◄─ events.jsonl (facultatif) ───────┤
-     │                                                │  écrit $CAESAR_REPORT_PATH
-     │  ◄─────────────────────────────────────────────┤  se termine
-     │  lit report.json, recoupe avec git diff
+     │                                                │  reads $CAESAR_TASK_FILE
+     │                                                │  works
+     │            ◄─ events.jsonl (optional) ─────────┤
+     │                                                │  writes $CAESAR_REPORT_PATH
+     │  ◄─────────────────────────────────────────────┤  exits
+     │  reads report.json, reconciles with git diff
 ```
 
-## Le répertoire de tâche
+## The task directory
 
-Chaque tâche possède son répertoire, dont le chemin est transmis par `$CAESAR_TASK_DIR` :
+Each task owns its directory, whose path is passed through `$CAESAR_TASK_DIR`:
 
-| Fichier | Sens | Auteur |
+| File | Meaning | Author |
 |---|---|---|
-| `task.json` | La mission | orchestrateur |
-| `report.json` | Le compte rendu | agent |
-| `events.jsonl` | Le flux d'avancement, une ligne JSON par événement | agent ou adaptateur |
-| `raw.log` | Sortie brute du processus, pour le diagnostic | orchestrateur |
-| `questions/<id>.json` | Une question posée via le canal retour (facultatif) | agent |
-| `answers/<id>.json` | La réponse à cette question | orchestrateur |
+| `task.json` | The task | orchestrator |
+| `report.json` | The report | agent |
+| `events.jsonl` | The progress stream, one JSON line per event | agent or adapter |
+| `raw.log` | Raw process output, for diagnosis | orchestrator |
+| `questions/<id>.json` | A question asked through the return channel (optional) | agent |
+| `answers/<id>.json` | The answer to that question | orchestrator |
 
-`questions/` et `answers/` n'existent que si la tâche utilise le canal retour (ci-dessous) : c'est là que `ask_orchestrator` et sa réponse se rencontrent, sur le système de fichiers comme le reste du standard — aucune mémoire n'est partagée entre le processus de l'agent et celui de l'orchestrateur.
+`questions/` and `answers/` only exist if the task uses the return channel (below): that is where `ask_orchestrator` and its answer meet, on the file system like the rest of the standard — no memory is shared between the agent's process and the orchestrator's.
 
-## Variables d'environnement
+## Environment variables
 
-Le contrat minimal tient dans deux d'entre elles : `CAESAR_TASK_FILE` pour lire, `CAESAR_REPORT_PATH` pour écrire.
+The minimal contract fits in two of them: `CAESAR_TASK_FILE` to read, `CAESAR_REPORT_PATH` to write.
 
-| Variable | Contenu |
+| Variable | Contents |
 |---|---|
-| `CAESAR_TASK_DIR` | Répertoire de la tâche |
-| `CAESAR_TASK_FILE` | Chemin de `task.json` |
-| `CAESAR_REPORT_PATH` | Chemin où déposer `report.json` |
-| `CAESAR_EVENTS_PATH` | Chemin de `events.jsonl` |
-| `CAESAR_TASK_ID` | Identifiant de la tâche |
-| `CAESAR_AGENT` | Identifiant de l'agent exécutant |
-| `CAESAR_DEPTH` | Profondeur de délégation, `0` pour l'agent principal |
-| `CAESAR_PROTOCOL_VERSION` | Version du standard |
+| `CAESAR_TASK_DIR` | Task directory |
+| `CAESAR_TASK_FILE` | Path of `task.json` |
+| `CAESAR_REPORT_PATH` | Path where `report.json` must be dropped |
+| `CAESAR_EVENTS_PATH` | Path of `events.jsonl` |
+| `CAESAR_TASK_ID` | Task identifier |
+| `CAESAR_AGENT` | Identifier of the executing agent |
+| `CAESAR_DEPTH` | Delegation depth, `0` for the main agent |
+| `CAESAR_PROTOCOL_VERSION` | Version of the standard |
 
-## `task.json` — la mission
+## `task.json` — the task
 
 ```jsonc
 {
   "protocol": "caesar.task/v1",
   "id": "t_7f3a",
   "created_at": "2026-08-09T10:00:00.000Z",
-  "role": "reviewer",              // facultatif : le profil demandé
-  "agent": "codex",                // l'agent retenu
-  "objective": "Corriger la régression du parseur sur les entrées vides",
-  "context": "…",                  // extraits, historique, liens
-  "constraints": ["Ne pas toucher à l'API publique"],
-  "acceptance_criteria": ["pnpm test passe"],
+  "role": "reviewer",              // optional: the requested profile
+  "agent": "codex",                // the selected agent
+  "objective": "Fix the parser regression on empty inputs",
+  "context": "…",                  // excerpts, history, links
+  "constraints": ["Do not touch the public API"],
+  "acceptance_criteria": ["pnpm test passes"],
   "mode": "write",                 // "read-only" | "write"
   "isolation": "worktree",         // "inplace" | "worktree"
-  "network": true,                 // le réseau est-il disponible ? (défaut : true)
-  "workspace": "/abs/path",        // racine de travail
-  "base_ref": "3f2a91c…",          // en isolation worktree : le SHA du point de départ
+  "network": true,                 // is the network available? (default: true)
+  "workspace": "/abs/path",        // working root
+  "base_ref": "3f2a91c…",          // under worktree isolation: the SHA of the starting point
   "deadline_ms": 600000,
   "depth": 1,
   "report_path": "/abs/.caesar/tasks/t_7f3a/report.json",
   "events_path": "/abs/.caesar/tasks/t_7f3a/events.jsonl",
-  "channel": null                  // coordonnées du canal retour, si disponible
+  "channel": null                  // return channel coordinates, if available
 }
 ```
 
-`network` est un résultat, pas une demande : l'orchestrateur y a déjà confronté ce que l'appelant souhaitait à ce que l'agent retenu permet. À `false`, il affirme que le réseau est coupé, et le brief le dit à l'agent — ce qui n'arrive que lorsque l'orchestrateur le sait. Un agent dont il ne pilote pas le confinement reçoit `true`, faute de pouvoir affirmer le contraire. Le champ est facultatif à la lecture et vaut `true` par défaut, de sorte qu'un `task.json` écrit avant son introduction se relit inchangé.
+`network` is a result, not a request: the orchestrator has already confronted what the caller wanted with what the selected agent allows. At `false`, it asserts that the network is cut off, and the brief tells the agent so — which only happens when the orchestrator knows it. An agent whose confinement it does not control receives `true`, for lack of being able to assert otherwise. The field is optional on read and defaults to `true`, so that a `task.json` written before its introduction reads back unchanged.
 
-## `report.json` — le compte rendu
+## `report.json` — the report
 
-Seuls `protocol`, `status` et `summary` sont exigés. Tout le reste a une valeur par défaut : un rapport minimal est valide.
+Only `protocol`, `status` and `summary` are required. Everything else has a default value: a minimal report is valid.
 
 ```jsonc
 {
   "protocol": "caesar.report/v1",
   "task_id": "t_7f3a",
   "status": "success",             // success | partial | failed | blocked
-  "summary": "Deux fichiers corrigés, les tests passent.",
+  "summary": "Two files fixed, the tests pass.",
   "details": "…",
   "changes": [
-    { "path": "src/parser.ts", "action": "modified", "summary": "garde sur entrée vide" }
+    { "path": "src/parser.ts", "action": "modified", "summary": "guard on empty input" }
   ],
   "commands_run": [{ "command": "pnpm test", "exit_code": 0 }],
   "findings": [
     { "severity": "medium", "title": "…", "file": "src/x.ts", "line": 42, "detail": "…" }
   ],
-  "questions": [{ "id": "q1", "question": "Faut-il conserver l'ancien comportement ?", "options": ["oui", "non"] }],
-  "next_steps": ["Documenter le changement"],
-  "artifacts": [{ "path": "bench.json", "description": "mesures avant/après" }],
+  "questions": [{ "id": "q1", "question": "Should the old behavior be kept?", "options": ["yes", "no"] }],
+  "next_steps": ["Document the change"],
+  "artifacts": [{ "path": "bench.json", "description": "before/after measurements" }],
   "usage": { "input_tokens": 12000, "output_tokens": 3000, "duration_ms": 84000 }
 }
 ```
 
-Le sens des statuts :
+The meaning of the statuses:
 
-- **`success`** — les critères d'acceptation sont remplis.
-- **`partial`** — une partie du travail est faite ; ce qui reste est décrit dans `next_steps`.
-- **`failed`** — l'agent n'a pas abouti et n'a pas de chemin de sortie.
-- **`blocked`** — une décision hors de son périmètre est requise ; elle est posée dans `questions`.
+- **`success`** — the acceptance criteria are met.
+- **`partial`** — part of the work is done; what remains is described in `next_steps`.
+- **`failed`** — the agent did not succeed and has no way out.
+- **`blocked`** — a decision outside its scope is required; it is asked in `questions`.
 
-`changes` relève de la déclaration de l'agent. Quand le workspace de la tâche est un dépôt git — en isolation `worktree` comme `inplace` — l'orchestrateur la recoupe avec l'état git constaté, **qui seul fait foi** ; c'est alors le seul cas où `changes` reflète la réalité plutôt que la seule parole de l'agent. Hors dépôt git (aucun recoupement possible), `changes` reste la déclaration brute. Le rapport normalisé rendu par `caesar_await`/`caesar_delegate` porte cette distinction dans `changes_verified_by` (`"git"` ou `"declaration"`).
+`changes` is the agent's declaration. When the task's workspace is a git repository — under `worktree` as well as `inplace` isolation — the orchestrator reconciles it with the observed git state, **which alone is the source of truth**; that is then the only case where `changes` reflects reality rather than the agent's word alone. Outside a git repository (no reconciliation possible), `changes` remains the raw declaration. The normalized report returned by `caesar_await`/`caesar_delegate` carries this distinction in `changes_verified_by` (`"git"` or `"declaration"`).
 
-Deux propriétés de ce recoupement méritent d'être dites, parce que le worktree est un **atelier** où le sous-agent installe, exécute et vérifie :
+Two properties of this reconciliation deserve to be spelled out, because the worktree is a **workshop** where the sub-agent installs, runs and verifies:
 
-- **Le diff porte contre `base_ref`, jamais contre `HEAD`.** `base_ref` est le SHA du point de départ, figé à la création du worktree. Un agent qui commite son travail — ce qu'un atelier l'autorise à faire — déplacerait `HEAD` sur son propre commit, et un diff contre `HEAD` rendrait vide : l'orchestrateur conclurait « aucun changement » et `caesar apply` n'appliquerait rien. Contre le SHA de départ, le résultat est le même que l'agent commite ou non.
-- **Ce que l'orchestrateur a lui-même posé est exclu.** Les chemins matérialisés dans le worktree depuis `[worktree] copy`/`link` (dépendances, `.env`) sont retirés du diff, avec une sémantique de préfixe — un répertoire posé exclut ce qu'il contient. Ils sont notés dans l'enregistrement de la tâche, de sorte que `caesar diff` et `caesar apply`, qui recalculent le diff longtemps après, les excluent aussi.
+- **The diff is taken against `base_ref`, never against `HEAD`.** `base_ref` is the SHA of the starting point, frozen at worktree creation. An agent that commits its work — which a workshop allows it to do — would move `HEAD` onto its own commit, and a diff against `HEAD` would come out empty: the orchestrator would conclude "no changes" and `caesar apply` would apply nothing. Against the starting SHA, the result is the same whether the agent commits or not.
+- **What the orchestrator itself laid down is excluded.** The paths materialized into the worktree by `[worktree] copy`/`link` (dependencies, `.env`) are removed from the diff, with prefix semantics — a laid-down directory excludes what it contains. They are recorded in the task's record, so that `caesar diff` and `caesar apply`, which recompute the diff long afterwards, exclude them too.
 
-## `events.jsonl` — le flux
+## `events.jsonl` — the stream
 
-Une ligne JSON par événement, en append-only. Chaque ligne se suffit à elle-même. C'est le vocabulaire commun vers lequel chaque adaptateur traduit le flux natif de son CLI, et c'est ce qui rend les providers interchangeables vus de l'agent principal.
+One JSON line per event, append-only. Each line stands on its own. This is the common vocabulary into which each adapter translates its CLI's native stream, and it is what makes providers interchangeable as seen from the main agent.
 
 ```jsonc
 {"protocol":"caesar.event/v1","seq":0,"at":"…","task_id":"t_7f3a","type":"started","agent":"codex","command":"codex exec …"}
@@ -130,69 +130,69 @@ Une ligne JSON par événement, en append-only. Chaque ligne se suffit à elle-m
 {"protocol":"caesar.event/v1","seq":3,"at":"…","task_id":"t_7f3a","type":"finished","status":"success","summary":"…"}
 ```
 
-Types disponibles : `started`, `thinking`, `message`, `tool_use`, `file_changed`, `progress`, `question`, `answer`, `error`, `finished`.
+Available types: `started`, `thinking`, `message`, `tool_use`, `file_changed`, `progress`, `question`, `answer`, `error`, `finished`.
 
-Deux points sur `tool_use`, qui décident de ce qu'un observateur (`caesar watch`) peut montrer d'une tâche en cours :
+Two points on `tool_use`, which decide what an observer (`caesar watch`) can show of a running task:
 
-- **Émettez le `started`, pas seulement l'issue.** Un outil signalé une fois terminé n'apprend rien pendant qu'il tourne, et c'est justement le moment où l'on regarde. `codex` le fait, `opencode` non — la différence se voit à l'écran.
-- **`id`** porte l'identifiant d'appel de l'agent, quand son flux en fournit un, et sert à apparier le départ et la fin d'un même appel. Sans lui, il faut recouper sur (nom, résumé), ce qui confond deux exécutions successives de la même commande. Il est parfois le seul recours : chez `claude`, la fin d'un outil arrive dans un bloc qui ne porte que cet identifiant, jamais le nom — l'événement de fermeture a donc un `tool` vide. Champ facultatif, vide par défaut : les journaux écrits avant son introduction se relisent.
+- **Emit the `started`, not only the outcome.** A tool reported once finished teaches nothing while it runs, and that is precisely when one is watching. `codex` does it, `opencode` does not — the difference shows on screen.
+- **`id`** carries the agent's call identifier, when its stream provides one, and serves to pair the start and the end of one and the same call. Without it, you have to reconcile on (name, summary), which conflates two successive executions of the same command. It is sometimes the only recourse: with `claude`, the end of a tool arrives in a block that carries only this identifier, never the name — the closing event therefore has an empty `tool`. Optional field, empty by default: logs written before its introduction read back fine.
 
-Émettre des événements est **facultatif**. Un agent qui se contente d'écrire son rapport final reste parfaitement conforme — mais il sera, littéralement, invisible pendant tout son travail.
+Emitting events is **optional**. An agent that merely writes its final report remains perfectly conformant — but it will be, literally, invisible during all of its work.
 
-## Comment le rapport est récupéré
+## How the report is retrieved
 
-L'orchestrateur essaie quatre paliers, du plus fiable au plus tolérant, et retient le meilleur que l'agent sait honorer :
+The orchestrator tries four tiers, from most reliable to most tolerant, and keeps the best one the agent can honor:
 
-1. **Canal retour MCP** — l'agent appelle le tool `submit_report`, validé à la volée.
-2. **Schéma natif** — le fournisseur contraint la réponse finale (`codex --output-schema`, `agy --json-schema`).
-3. **Contrat de fichier** — l'agent écrit `$CAESAR_REPORT_PATH`. C'est le palier universel, celui des agents extérieurs.
-4. **Dégradé** — l'orchestrateur cherche dans la sortie un bloc ` ```json caesar:report `, à défaut tout objet JSON se déclarant comme un rapport, et en dernier ressort synthétise un compte rendu à partir de `raw.log` et du diff git.
+1. **MCP return channel** — the agent calls the `submit_report` tool, validated on the fly.
+2. **Native schema** — the provider constrains the final response (`codex --output-schema`, `agy --json-schema`).
+3. **File contract** — the agent writes `$CAESAR_REPORT_PATH`. This is the universal tier, the one for outside agents.
+4. **Degraded** — the orchestrator looks in the output for a ` ```json caesar:report ` block, failing that any JSON object declaring itself a report, and as a last resort synthesizes a report from `raw.log` and the git diff.
 
-## Le canal retour, facultatif
+## The return channel, optional
 
-Quand `task.channel` est renseigné, un serveur MCP est joignable pendant l'exécution et expose quatre tools :
+When `task.channel` is filled in, an MCP server is reachable during execution and exposes four tools:
 
 | Tool | Usage |
 |---|---|
-| `get_task` | Relire la mission |
-| `report_progress` | Signaler un avancement (`message`, `pct`) |
-| `ask_orchestrator` | Poser une question et **attendre** la réponse de l'agent principal |
-| `submit_report` | Remettre le rapport, validé immédiatement |
+| `get_task` | Read the task back |
+| `report_progress` | Signal progress (`message`, `pct`) |
+| `ask_orchestrator` | Ask a question and **wait** for the main agent's answer |
+| `submit_report` | Hand in the report, validated immediately |
 
-C'est ce qui transforme la délégation en dialogue plutôt qu'en aller-retour muet. Un agent qui ne sait pas charger de serveur MCP ignore simplement ce champ.
+This is what turns the delegation into a dialogue rather than a mute round trip. An agent that cannot load an MCP server simply ignores this field.
 
-`ask_orchestrator` dépose la question dans `questions/<id>.json` puis attend l'apparition d'`answers/<id>.json` (scrutation), au plus 5 minutes par défaut et jamais au-delà du temps restant sur `deadline_ms` de la tâche. Sans réponse dans ce délai, l'appel rend la main normalement — ce n'est pas une erreur — avec une invitation à poursuivre au meilleur jugement de l'agent plutôt que d'attendre indéfiniment. Côté orchestrateur, répondre est symétrique : le tool `caesar_answer` du serveur MCP principal (`@caesar/mcp-server`, hors du périmètre de ce standard mais fourni par l'implémentation de référence) écrit `answers/<id>.json` ; répondre à une question inconnue ou déjà répondue échoue explicitement plutôt que d'écrire en silence.
+`ask_orchestrator` drops the question into `questions/<id>.json` then waits for `answers/<id>.json` to appear (polling), at most 5 minutes by default and never beyond the time remaining on the task's `deadline_ms`. Without an answer within that window, the call returns normally — it is not an error — with an invitation to proceed on the agent's best judgment rather than waiting indefinitely. On the orchestrator side, answering is symmetrical: the `caesar_answer` tool of the main MCP server (`@caesar/mcp-server`, outside the scope of this standard but provided by the reference implementation) writes `answers/<id>.json`; answering an unknown or already-answered question fails explicitly rather than writing silently.
 
-## Se conformer, en pratique
+## Conforming, in practice
 
-Le plus court agent conforme tient en quelques lignes :
+The shortest conformant agent fits in a few lines:
 
 ```bash
 #!/usr/bin/env bash
 objective=$(jq -r .objective "$CAESAR_TASK_FILE")
 
-# … faire le travail …
+# … do the work …
 
-jq -n --arg s "Traité : $objective" '{
+jq -n --arg s "Handled: $objective" '{
   protocol: "caesar.report/v1",
   status: "success",
   summary: $s
 }' > "$CAESAR_REPORT_PATH"
 ```
 
-Déclaré dans `.caesar/config.toml` (section `[[agent]]`), il est orchestrable au même titre que Codex.
+Declared in `.caesar/config.toml` (section `[[agent]]`), it is orchestrable on the same footing as Codex.
 
-## Schémas exécutables
+## Executable schemas
 
-Les schémas font autorité sous forme de code, et sont publiables en JSON Schema :
+The schemas are authoritative as code, and publishable as JSON Schema:
 
 ```bash
-caesar protocol schema report          # JSON Schema du rapport
-caesar protocol schema report --strict # variante pour sorties structurées natives
+caesar protocol schema report          # JSON Schema of the report
+caesar protocol schema report --strict # variant for native structured outputs
 caesar protocol schema task
 caesar protocol schema event
 ```
 
-## Versionnement
+## Versioning
 
-Le champ `protocol` porte la version de chaque document. Un lecteur qui rencontre une version inconnue doit refuser explicitement plutôt que d'interpréter au mieux. Une évolution incompatible incrémentera le suffixe (`caesar.report/v2`), et l'orchestrateur acceptera les deux le temps de la transition.
+The `protocol` field carries each document's version. A reader that encounters an unknown version must refuse explicitly rather than interpret as best it can. An incompatible evolution will increment the suffix (`caesar.report/v2`), and the orchestrator will accept both for the duration of the transition.

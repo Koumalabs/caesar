@@ -14,13 +14,12 @@ interface AgentRow {
 }
 
 /**
- * Un `PATH` réduit au strict répertoire donné : contrairement à
- * `withShimmedPath` (partagé avec les tests qui exécutent réellement un
- * script factice), aucun processus n'est lancé ici — `caesarListAgents` ne
- * fait que sonder la présence de binaires (`access`). Inclure le répertoire
- * de `node` lui-même, comme le fait `withShimmedPath`, exposerait sur cette
- * machine de développement de vrais binaires d'agents installés à côté de
- * `node` (via nvm) et fausserait le test.
+ * A `PATH` reduced to strictly the given directory: unlike
+ * `withShimmedPath` (shared with tests that actually execute a fake
+ * script), no process is launched here — `caesarListAgents` only probes for
+ * the presence of binaries (`access`). Including `node`'s own directory,
+ * as `withShimmedPath` does, would expose on this development machine real
+ * agent binaries installed next to `node` (via nvm) and skew the test.
  */
 async function withEmptyPath<T>(dir: string, fn: () => Promise<T>): Promise<T> {
   const previous = process.env["PATH"];
@@ -44,10 +43,10 @@ describe("caesar_list_agents", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("reflète le catalogue, la présence des binaires, et l'autorisation de la politique chargée", async () => {
+  it("reflects the catalog, binary presence, and the loaded policy's authorization", async () => {
     await withFakeHome(() =>
       withEmptyPath(root, async () => {
-        // Aucun binaire d'agent "installé" sur ce PATH entièrement maîtrisé.
+        // No agent binary "installed" on this fully controlled PATH.
         const { config } = await loadConfig(root);
         await saveLayer("project", root, { ...config, policy: { ...config.policy, denied: ["codex"] } });
 
@@ -61,7 +60,7 @@ describe("caesar_list_agents", () => {
 
         const codex = agents.find((a) => a.id === "codex");
         expect(codex?.policy.allowed).toBe(false);
-        expect(codex?.policy.reason).toBe('Agent "codex" refusé : présent dans la liste "denied" de la politique.');
+        expect(codex?.policy.reason).toBe('Agent "codex" refused: present in the policy\'s "denied" list.');
 
         const antigravity = agents.find((a) => a.id === "antigravity");
         expect(antigravity?.policy.allowed).toBe(true);

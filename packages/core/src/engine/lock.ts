@@ -1,25 +1,25 @@
 /**
- * Verrou exclusif entre processus, adossé au système de fichiers.
+ * Exclusive inter-process lock, backed by the filesystem.
  *
- * `mkdir` est atomique sur tous les systèmes de fichiers qui nous intéressent :
- * il réussit pour un seul appelant et échoue en `EEXIST` pour tous les autres,
- * sans fenêtre entre le test et la prise. C'est ce qui permet à plusieurs
- * processus `caesar` — un `caesar run` dans un terminal, une session MCP, un
- * `caesar gc` — de se coordonner sans démon ni service.
+ * `mkdir` is atomic on every filesystem we care about:
+ * it succeeds for a single caller and fails with `EEXIST` for all the others,
+ * with no window between the test and the take. That is what lets several
+ * `caesar` processes — a `caesar run` in a terminal, an MCP session, a
+ * `caesar gc` — coordinate without a daemon or a service.
  *
- * Le mécanisme vivait dans `gc.ts`, où il protégeait les worktrees en cours de
- * création d'un ramasse-miettes concurrent. Il est ici parce qu'un second
- * usage l'a réclamé, exactement le même à la clé près : empêcher deux tâches
- * en écriture de partager le même arbre de travail. Extrait plutôt que
- * recopié — deux implémentations d'un verrou finissent toujours par diverger,
- * et celle qui diverge est celle qu'on ne teste pas.
+ * The mechanism used to live in `gc.ts`, where it protected worktrees being
+ * created from a concurrent garbage collector. It is here because a second
+ * use asked for it, exactly the same one down to the key: keeping two write
+ * tasks from sharing the same working tree. Extracted rather than
+ * copied — two implementations of a lock always end up diverging,
+ * and the one that diverges is the one that is not tested.
  *
- * Un verrou survit à la mort de son propriétaire, et c'est le point délicat :
- * le marqueur porte le `pid` du détenteur, de sorte qu'un verrou dont le
- * processus n'existe plus soit reconnu comme périmé et repris, plutôt que de
- * bloquer le projet jusqu'à une intervention manuelle. Le `token` distingue
- * deux prises successives de la même clé : sans lui, un propriétaire tardif
- * pourrait libérer le verrou d'un autre.
+ * A lock survives the death of its owner, and that is the delicate point:
+ * the marker carries the holder's `pid`, so that a lock whose
+ * process no longer exists is recognized as stale and reclaimed, rather than
+ * blocking the project until a manual intervention. The `token` distinguishes
+ * two successive takes of the same key: without it, a late owner
+ * could release someone else's lock.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
@@ -28,7 +28,7 @@ import { join } from "node:path";
 interface LockMarker {
   pid: number;
   token: string;
-  /** Ce que le détenteur fait, pour que le refus le nomme. Absent : le refus reste générique. */
+  /** What the holder is doing, so the refusal can name it. Absent: the refusal stays generic. */
   label?: string;
 }
 
@@ -46,12 +46,12 @@ export type LeaseInspection =
   | { state: "unknown"; error: string };
 
 /**
- * Répertoire-verrou d'une clé, sous `dir`.
+ * Lock directory of a key, under `dir`.
  *
- * L'empreinte plutôt que la clé : celle-ci est fournie par l'appelant avant
- * toute validation (un identifiant de tâche, un chemin de workspace), et une
- * empreinte de taille fixe, sans séparateur, ne peut jamais s'échapper du
- * répertoire des marqueurs.
+ * The digest rather than the key: the latter is supplied by the caller before
+ * any validation (a task identifier, a workspace path), and a
+ * fixed-size digest, without separators, can never escape the
+ * markers directory.
  */
 export function lockDirectory(dir: string, key: string): string {
   return join(dir, `${createHash("sha256").update(key).digest("hex")}.lock`);
@@ -62,11 +62,11 @@ function lockFile(dir: string, key: string): string {
 }
 
 /**
- * Prend le verrou `key` sous `dir`, ou lève.
+ * Takes the lock `key` under `dir`, or throws.
  *
- * `describeHolder` compose le motif du refus à partir de ce que le détenteur
- * avait déclaré : c'est à l'appelant de savoir si « une tâche est déjà en
- * préparation » ou « une autre tâche écrit déjà dans ce répertoire ».
+ * `describeHolder` composes the refusal message from what the holder
+ * had declared: it is up to the caller to know whether "a task is already
+ * being prepared" or "another task is already writing in this directory".
  */
 export async function acquireLease(
   dir: string,
@@ -81,26 +81,26 @@ export async function acquireLease(
     const token = randomUUID();
     const marker: LockMarker = { pid: process.pid, token, ...(options.label !== undefined ? { label: options.label } : {}) };
     try {
-      // Le répertoire joue le rôle de verrou exclusif. Il reste occupé
-      // jusqu'à la libération du propriétaire et ne peut pas être remplacé
-      // entre la vérification du jeton et sa suppression.
+      // The directory plays the role of exclusive lock. It stays occupied
+      // until the owner releases it and cannot be replaced
+      // between the token check and its deletion.
       await mkdir(directory);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const inspection = await inspectLease(dir, key);
       if (inspection.state === "active") {
-        const describe = options.describeHolder ?? ((holder) => `Verrou "${key}" déjà détenu par le processus ${holder.pid}.`);
+        const describe = options.describeHolder ?? ((holder) => `Lock "${key}" already held by process ${holder.pid}.`);
         throw new Error(
           describe({ pid: inspection.marker.pid, ...(inspection.marker.label !== undefined ? { label: inspection.marker.label } : {}) }),
         );
       }
       if (inspection.state === "unknown") {
-        throw new Error(`Impossible de vérifier le marqueur "${key}" : ${inspection.error}`);
+        throw new Error(`Unable to check the "${key}" marker: ${inspection.error}`);
       }
       if (inspection.state === "stale" && !(await purgeLease(inspection))) {
-        throw new Error(`Impossible de réclamer le marqueur périmé "${key}" : une autre opération le nettoie.`);
+        throw new Error(`Unable to reclaim the stale "${key}" marker: another operation is cleaning it up.`);
       }
-      // Marqueur absent ou périmé purgé : retente la prise exclusive.
+      // Marker absent or stale and purged: retry the exclusive take.
       continue;
     }
 
@@ -115,12 +115,12 @@ export async function acquireLease(
   }
 }
 
-/** Retire au mieux le marqueur, seulement si le jeton du propriétaire correspond encore. */
+/** Removes the marker on a best-effort basis, only if the owner's token still matches. */
 export async function releaseLease(lease: Lease): Promise<void> {
   try {
     await removeMarker(lease.directory, lease.path, lease.token);
   } catch {
-    // La libération ne doit jamais masquer l'issue de ce qu'elle protégeait.
+    // The release must never mask the outcome of what it was protecting.
   }
 }
 
@@ -129,7 +129,7 @@ function processIsAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    // EPERM signifie que le processus existe mais ne peut pas être signalé.
+    // EPERM means the process exists but cannot be signaled.
     return (error as NodeJS.ErrnoException).code !== "ESRCH";
   }
 }
@@ -143,12 +143,12 @@ export async function inspectLease(dir: string, key: string): Promise<LeaseInspe
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
-      // Le répertoire peut ne pas exister (absence normale) ou être présent
-      // sans fichier (prise/libération interrompue) : seul le premier cas est
-      // réellement absent.
+      // The directory may not exist (normal absence) or be present
+      // without the file (interrupted take/release): only the first case is
+      // truly absent.
       try {
         await access(directory);
-        return { state: "unknown", error: "répertoire de marqueur incomplet" };
+        return { state: "unknown", error: "incomplete marker directory" };
       } catch {
         return { state: "absent" };
       }
@@ -163,11 +163,11 @@ export async function inspectLease(dir: string, key: string): Promise<LeaseInspe
     return { state: "unknown", error: error instanceof Error ? error.message : String(error) };
   }
   if (typeof parsed !== "object" || parsed === null || !("pid" in parsed) || !("token" in parsed)) {
-    return { state: "unknown", error: "contenu de marqueur invalide" };
+    return { state: "unknown", error: "invalid marker content" };
   }
   const { pid, token, label } = parsed as { pid?: unknown; token?: unknown; label?: unknown };
   if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0 || typeof token !== "string" || token === "") {
-    return { state: "unknown", error: "contenu de marqueur invalide" };
+    return { state: "unknown", error: "invalid marker content" };
   }
   const marker: LockMarker = { pid, token, ...(typeof label === "string" ? { label } : {}) };
   return processIsAlive(pid) ? { state: "active", marker, directory, path } : { state: "stale", marker, directory, path };
@@ -190,12 +190,12 @@ async function removeMarker(directory: string, path: string, token: string): Pro
     await rmdir(directory);
     return true;
   } finally {
-    // Encore présent seulement si la vérification ou la suppression a échoué.
+    // Still present only if the check or the deletion failed.
     await rmdir(cleanupLock).catch(() => {});
   }
 }
 
-/** Reprend un verrou dont le processus détenteur n'existe plus. `false` si une autre opération le nettoie déjà. */
+/** Reclaims a lock whose holding process no longer exists. `false` if another operation is already cleaning it up. */
 export async function purgeLease(inspection: Extract<LeaseInspection, { state: "stale" }>): Promise<boolean> {
   return removeMarker(inspection.directory, inspection.path, inspection.marker.token);
 }

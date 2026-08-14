@@ -1,19 +1,20 @@
 /**
- * Le sous-ensemble compact d'un `Report` que rendent `caesar_delegate` (à
- * l'issue synthétique près) et `caesar_await` : statut, résumé, fichiers
- * modifiés, constats et questions. Le détail brut (commandes exécutées,
- * artefacts, usage, patch complet) reste accessible via `caesar_logs`/`caesar_diff`
- * plutôt que d'être déversé ici (voir le brief).
+ * The compact subset of a `Report` returned by `caesar_delegate` (synthetic
+ * outcome aside) and `caesar_await`: status, summary, changed files,
+ * findings and questions. The raw detail (commands run, artifacts, usage,
+ * full patch) stays reachable via `caesar_logs`/`caesar_diff` rather than
+ * being dumped here (see the brief).
  *
- * `changes_verified_by` (voir C2 de la revue finale) : `"git"` quand
- * `changes` a été recoupé avec l'état git constaté (`reconcileChanges`,
- * `packages/core/src/engine/report.ts`) — en isolation `worktree`, ou
- * `inplace` dans un dépôt git (`diffWorkspaceStatus`,
- * `packages/core/src/engine/worktree.ts`) — `"declaration"` seulement quand
- * aucun recoupement n'était possible (workspace hors dépôt git), auquel cas
- * `changes` reste la seule parole de l'agent. Avant ce champ, la donnée ne
- * distinguait pas les deux : un modèle consommant `caesar_await` n'avait aucun
- * moyen de savoir laquelle des deux situations il regardait.
+ * `changes_verified_by` (see C2 of the final review): `"git"` when
+ * `changes` was reconciled against the observed git state
+ * (`reconcileChanges`, `packages/core/src/engine/report.ts`) — under
+ * `worktree` isolation, or `inplace` in a git repository
+ * (`diffWorkspaceStatus`, `packages/core/src/engine/worktree.ts`) —
+ * `"declaration"` only when no reconciliation was possible (workspace
+ * outside a git repository), in which case `changes` remains the agent's
+ * word alone. Before this field, the data did not distinguish the two: a
+ * model consuming `caesar_await` had no way to know which of the two
+ * situations it was looking at.
  */
 import type { ChangesVerifiedBy } from "@caesar/core";
 import type { Change, Finding, Question, Report, ReportStatus } from "@caesar/protocol";

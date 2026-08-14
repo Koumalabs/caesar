@@ -1,13 +1,12 @@
 /**
- * `caesar doctor` : diagnostic d'installation. Une ligne par agent du
- * catalogue — présence, version, capacités, statut vis-à-vis de la politique —
- * suivie de ce qui manque et de comment y remédier.
+ * `caesar doctor`: installation diagnosis. One line per agent of the
+ * catalog — presence, version, capabilities, status with respect to the
+ * policy — followed by what is missing and how to remedy it.
  *
- * Le tableau est compact par défaut : l'énumération des capacités en toutes
- * lettres, additionnée du chemin du binaire, dépassait la largeur d'un
- * terminal et s'y repliait sur la ligne suivante, rendant illisible la vue
- * d'ensemble que cette commande existe pour donner. `--verbose` rétablit le
- * détail pour qui le cherche.
+ * The table is compact by default: the capabilities enumerated in full,
+ * plus the binary path, exceeded a terminal's width and wrapped onto the
+ * next line, making unreadable the overview this command exists to give.
+ * `--verbose` restores the detail for whoever looks for it.
  */
 import {
   describeAgentCapabilities,
@@ -41,8 +40,8 @@ export interface DoctorOptions {
 
 export async function runDoctor(root: string, options: DoctorOptions, io: Io): Promise<number> {
   const { config, layers } = await loadConfig(root);
-  // Catalogue natif étendu des agents de configuration ([[agent]]) : voir C1
-  // de la revue finale.
+  // Native catalog extended with the configuration's agents ([[agent]]): see
+  // C1 of the final review.
   const defs = listAgentDefinitions(config.agents);
 
   const rows = await Promise.all(
@@ -56,8 +55,8 @@ export async function runDoctor(root: string, options: DoctorOptions, io: Io): P
         path: status.path,
         version: status.version,
         capabilities: describeAgentCapabilities(def),
-        // Seulement pour la mise en forme compacte : `capabilities` reste ce
-        // que `--json` publie, inchangé.
+        // For the compact layout only: `capabilities` remains what `--json`
+        // publishes, unchanged.
         capabilitiesShort: describeAgentCapabilitiesShort(def),
         policy: describeAgentPolicy(config.policy, def.id),
       };
@@ -78,84 +77,86 @@ export async function runDoctor(root: string, options: DoctorOptions, io: Io): P
 
   sectionHeader(io, "doctor");
 
-  const version = (r: (typeof rows)[number]): string => r.version ?? (r.installed ? "version inconnue" : "-");
-  // La politique se lit à la couleur avant de se lire au mot : c'est la seule
-  // colonne de ce tableau dont on cherche la valeur plutôt que le contenu.
+  const version = (r: (typeof rows)[number]): string => r.version ?? (r.installed ? "unknown version" : "-");
+  // Policy is read by color before it is read by word: it is the only
+  // column of this table whose value one looks for rather than its content.
   const policyCell = (r: (typeof rows)[number]): Cell =>
-    r.policy.allowed ? { text: "autorisé", token: "ok" } : { text: "refusé", token: "bad" };
+    r.policy.allowed ? { text: "allowed", token: "ok" } : { text: "denied", token: "bad" };
   const tableRows: Cell[][] = options.verbose
     ? rows.map((r) => [
         r.id,
-        r.installed ? homePath(r.path ?? "trouvé") : { text: "absent", token: "bad" },
+        r.installed ? homePath(r.path ?? "found") : { text: "missing", token: "bad" },
         version(r),
         r.capabilities.join(", ") || "-",
         policyCell(r),
       ])
     : rows.map((r) => [
         r.id,
-        r.installed ? version(r) : { text: "absent", token: "bad" },
+        r.installed ? version(r) : { text: "missing", token: "bad" },
         { text: r.capabilitiesShort.join(" ") || "-", token: "dim" },
         policyCell(r),
       ]);
   const headers = options.verbose
-    ? ["agent", "binaire", "version", "capacités", "politique"]
-    : ["agent", "version", "capacités", "politique"];
+    ? ["agent", "binary", "version", "capabilities", "policy"]
+    : ["agent", "version", "capabilities", "policy"];
   printTable(io, headers, tableRows);
   writeLine(io.stdout);
 
   if (missing.length === 0 && denied.length === 0) {
-    printDone(io, "Tous les agents du catalogue sont installés et autorisés par la politique.");
-    if (!options.verbose) printNote(io, 'Chemins et capacités en toutes lettres : "caesar doctor --verbose".');
+    printDone(io, "All the agents of the catalog are installed and allowed by the policy.");
+    if (!options.verbose) printNote(io, 'Paths and capabilities spelled out: "caesar doctor --verbose".');
     return EXIT_OK;
   }
 
-  // Deux rubriques, et non plus un « À corriger » unique : un binaire absent
-  // appelle une action, un agent refusé n'en appelle aucune. Les confondre
-  // conduisait cette commande à proposer de lever un refus délibéré — celui
-  // de `claude` par `allow_recursion`, qui est le réglage par défaut, ou
-  // celui qu'on venait soi-même de poser.
-  // Une puce dont la suite revient en colonne zéro se confond avec l'élément
-  // suivant : on replie sur les mots, et on indente les lignes de continuation.
+  // Two sections, and no longer a single "To fix": a missing binary calls
+  // for an action, a denied agent calls for none. Conflating them led this
+  // command to suggest lifting a deliberate denial — that of `claude` by
+  // `allow_recursion`, which is the default setting, or one that had just
+  // been set by hand.
+  // A bullet whose continuation comes back to column zero blends into the
+  // next item: we wrap on words, and indent the continuation lines.
   const bullet = (text: string): void => {
     for (const line of wrapText(text, terminalWidth(io.stdout), "  - ", "    ")) writeLine(io.stdout, line);
   };
 
   if (missing.length > 0) {
-    printHeading(io, "à installer");
+    printHeading(io, "to install");
     for (const r of missing) {
-      // Un agent déclaré en configuration porte souvent un chemin explicite
-      // plutôt qu'un nom : le PATH n'entre alors pas en jeu (voir
-      // `findBinaryInPath`), et parler de lui enverrait chercher au mauvais
-      // endroit. Le conseil change avec la cause : on installe un binaire
-      // absent du PATH, on corrige un chemin qui ne désigne rien.
+      // An agent declared in the configuration often carries an explicit
+      // path rather than a name: the PATH plays no part then (see
+      // `findBinaryInPath`), and mentioning it would send people looking in
+      // the wrong place. The advice changes with the cause: one installs a
+      // binary missing from the PATH, one fixes a path that points at
+      // nothing.
       const explicitPath = r.bin.includes("/");
       bullet(
         explicitPath
-          ? `"${r.id}" (${r.display_name}) : "${r.bin}" n'existe pas ou n'est pas exécutable. Corrigez le chemin ("caesar agents add ${r.id} --bin <chemin>"), puis relancez "caesar doctor".`
-          : `"${r.id}" (${r.display_name}) : binaire "${r.bin}" introuvable dans le PATH. Installez-le, puis relancez "caesar doctor".`,
+          ? `"${r.id}" (${r.display_name}): "${r.bin}" does not exist or is not executable. Fix the path ("caesar agents add ${r.id} --bin <path>"), then rerun "caesar doctor".`
+          : `"${r.id}" (${r.display_name}): binary "${r.bin}" not found in the PATH. Install it, then rerun "caesar doctor".`,
       );
     }
     if (denied.length > 0) writeLine(io.stdout);
   }
 
   if (denied.length > 0) {
-    printHeading(io, "refusés par la politique");
-    printNote(io, "État voulu, sauf si vous en décidez autrement.");
+    printHeading(io, "denied by the policy");
+    printNote(io, "Intended state, unless you decide otherwise.");
     for (const r of denied) {
-      // `denied` est filtré sur `!r.policy.allowed` ci-dessus ; ce garde ne
-      // change rien à l'exécution, il resserre le type de `r.policy` pour que
-      // `.reason`/`.rule` soient accessibles ci-dessous sans cast.
+      // `denied` is filtered on `!r.policy.allowed` above; this guard
+      // changes nothing at runtime, it narrows the type of `r.policy` so
+      // that `.reason`/`.rule` are accessible below without a cast.
       if (r.policy.allowed) continue;
-      // CONTRÔLEUR-1 de la revue finale : le remède dépend de la règle qui a
-      // refusé — ni "caesar agents enable" ni "caesar policy allow" ne lèvent un
-      // refus par récursion (`allow_recursion`), et seul le premier lève un
-      // refus par "denied" (voir `remedyFor`, `@caesar/core`).
+      // CONTROLLER-1 of the final review: the remedy depends on the rule
+      // that denied — neither "caesar agents enable" nor "caesar policy
+      // allow" lifts a recursion denial (`allow_recursion`), and only the
+      // former lifts a "denied" denial (see `remedyFor`, `@caesar/core`).
       //
-      // La couche qui déclare la règle compte autant que la règle : une
-      // commande sans `--global` écrit dans la couche projet et laisse donc
-      // intact un refus venu du global, sans que rien ne le signale.
+      // The layer declaring the rule matters as much as the rule: a command
+      // without `--global` writes into the project layer and therefore
+      // leaves a denial coming from the global one intact, without anything
+      // flagging it.
       const scope = policyFieldProvenance(layers, r.policy.rule === "denied" ? "denied" : "allowed");
-      bullet(`"${r.id}" : ${r.policy.reason} ${remedyFor(r.id, r.policy.rule, scope)}`);
+      bullet(`"${r.id}": ${r.policy.reason} ${remedyFor(r.id, r.policy.rule, scope)}`);
     }
   }
   return EXIT_OK;

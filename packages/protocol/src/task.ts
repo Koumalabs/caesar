@@ -2,14 +2,14 @@ import { z } from "zod";
 import { TASK_PROTOCOL } from "./version.js";
 
 /**
- * Coordonnées du canal retour. Quand il est présent, l'agent peut dialoguer avec
- * l'orchestrateur en cours de route plutôt que de se contenter d'un rapport final.
+ * Return channel coordinates. When present, the agent can talk with the
+ * orchestrator along the way rather than settling for a final report.
  */
 export const ChannelSchema = z.object({
   transport: z.literal("mcp-stdio"),
   command: z.string(),
   args: z.array(z.string()).default([]),
-  /** Nom sous lequel le serveur est déclaré côté agent. */
+  /** Name under which the server is declared on the agent side. */
   server_name: z.string().default("caesar"),
 });
 
@@ -17,54 +17,53 @@ export const TaskModeSchema = z.enum(["read-only", "write"]);
 export const IsolationSchema = z.enum(["inplace", "worktree"]);
 
 /**
- * La mission confiée à un sous-agent. Écrite par l'orchestrateur dans
- * `task.json`, elle constitue la seule entrée dont un agent a besoin.
+ * The task entrusted to a sub-agent. Written by the orchestrator into
+ * `task.json`, it is the only input an agent needs.
  */
 export const TaskSchema = z.object({
   protocol: z.literal(TASK_PROTOCOL),
   id: z.string(),
   created_at: z.iso.datetime(),
 
-  /** Rôle demandé, quand la délégation passe par un profil plutôt qu'un agent nommé. */
+  /** Requested role, when the delegation goes through a profile rather than a named agent. */
   role: z.string().optional(),
-  /** Agent effectivement retenu pour l'exécution. */
+  /** Agent actually selected for execution. */
   agent: z.string(),
 
-  /** L'objectif, en une phrase. C'est le champ que lira un humain pressé. */
+  /** The objective, in one sentence. This is the field a hurried human will read. */
   objective: z.string().min(1),
-  /** Contexte long : extraits de code, historique, liens. */
+  /** Long-form context: code excerpts, history, links. */
   context: z.string().default(""),
-  /** Interdits et obligations explicites. */
+  /** Explicit prohibitions and obligations. */
   constraints: z.array(z.string()).default([]),
-  /** Ce qui permettra de juger la tâche réussie. */
+  /** What will allow the task to be judged successful. */
   acceptance_criteria: z.array(z.string()).default([]),
 
   mode: TaskModeSchema,
   isolation: IsolationSchema,
   /**
-   * Le réseau est-il disponible pour cette tâche, aussi loin que
-   * l'orchestrateur puisse l'affirmer ?
+   * Is the network available for this task, as far as the orchestrator
+   * can assert it?
    *
-   * Ce n'est pas une demande — la demande est tri-état (`auto`/`on`/`off`) et
-   * vit dans la configuration ; c'est le résultat de sa confrontation à ce que
-   * l'agent retenu permet réellement (voir `decideNetwork`, packages/core).
-   * Le brief s'en sert pour prévenir l'agent quand le réseau est coupé, plutôt
-   * que de le laisser brûler plusieurs tours sur une installation vouée à
-   * l'échec.
+   * This is not a request — the request is tri-state (`auto`/`on`/`off`) and
+   * lives in the configuration; it is the result of confronting it with what
+   * the selected agent actually allows (see `decideNetwork`, packages/core).
+   * The brief uses it to warn the agent when the network is cut off, rather
+   * than letting it burn several turns on an install doomed to fail.
    *
-   * Le défaut vaut `true` et n'est pas là par commodité : les `task.json`
-   * écrits dans `.caesar/tasks/` avant l'existence de ce champ doivent continuer
-   * de se relire — `caesar ps`, `caesar logs` et `caesar diff` les rouvrent tous.
+   * The default is `true` and is not there for convenience: the `task.json`
+   * files written into `.caesar/tasks/` before this field existed must remain
+   * readable — `caesar ps`, `caesar logs` and `caesar diff` all reopen them.
    */
   network: z.boolean().default(true),
-  /** Racine de travail de l'agent, en chemin absolu. */
+  /** Agent's working root, as an absolute path. */
   workspace: z.string(),
-  /** Référence git de départ, renseignée en isolation worktree. */
+  /** Starting git reference, filled in under worktree isolation. */
   base_ref: z.string().optional(),
 
-  /** Budget de temps, en millisecondes. */
+  /** Time budget, in milliseconds. */
   deadline_ms: z.number().int().positive(),
-  /** Profondeur de délégation : 0 pour l'agent principal. */
+  /** Delegation depth: 0 for the main agent. */
   depth: z.number().int().min(0).default(0),
 
   report_path: z.string(),

@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 /**
- * Agent extérieur factice, utilisé par les tests du moteur d'exécution.
+ * Fake external agent, used by the execution engine's tests.
  *
- * Il ne dépend d'aucun package du monorepo : c'est délibéré. Un agent
- * extérieur réel ne connaîtrait rien de cette implémentation, seulement le
- * contrat minimal documenté par `@caesar/protocol` — lire `$CAESAR_TASK_FILE`,
- * écrire `$CAESAR_REPORT_PATH`. Ce script prouve que ce contrat suffit : s'il
- * est orchestrable au même titre que Codex ou Antigravity, n'importe quel
- * CLI extérieur l'est aussi.
+ * It depends on no package of the monorepo: that is deliberate. A real
+ * external agent would know nothing of this implementation, only the
+ * minimal contract documented by `@caesar/protocol` — read `$CAESAR_TASK_FILE`,
+ * write `$CAESAR_REPORT_PATH`. This script proves that contract is enough: if
+ * it can be orchestrated on par with Codex or Antigravity, any external
+ * CLI can be too.
  *
- * Son comportement est piloté par `task.context`, un JSON optionnel de la
- * forme suivante (tous les champs ont une valeur par défaut) :
+ * Its behavior is driven by `task.context`, an optional JSON of the
+ * following shape (every field has a default value):
  *
  * {
  *   "mode": "success" | "fail" | "silent" | "hang" | "ask",
  *   "exitCode": 0,
- *   "files": [{ "path": "relatif/au/workspace.txt", "content": "…" }],
+ *   "files": [{ "path": "relative/to/workspace.txt", "content": "…" }],
  *   "declaredChanges": [{ "path": "…", "action": "modified", "summary": "…" }],
  *   "writeReport": true,
  *   "status": "success",
@@ -27,44 +27,44 @@
  *   "options": ["…"]
  * }
  *
- * - "success" (par défaut) : écrit les `files` déclarés, un rapport valide.
- * - "fail" : sort avec un code non nul (1 par défaut) ; écrit tout de même
- *   un rapport sauf si `writeReport` est faux.
- * - "silent" : n'écrit jamais de rapport, quel que soit `writeReport` —
- *   simule un agent qui ignore le contrat, pour éprouver la synthèse.
- * - "hang" : ne fait jamais rien de plus qu'attendre `sleepMs` (défaut : un
- *   jour, en pratique indéfiniment), pour éprouver le timeout et
- *   l'annulation. Avec `ignoreSigterm`, installe un gestionnaire qui absorbe
- *   SIGTERM, pour éprouver l'escalade vers SIGKILL.
- * - "ask" (tâche 9, canal retour) : si `task.channel` est renseigné, se
- *   connecte à `caesar-channel` comme client MCP (voir
- *   `@modelcontextprotocol/sdk/client`), appelle `ask_orchestrator` avec
- *   `question`/`options`, puis `submit_report` avec un résumé qui rapporte
- *   littéralement la réponse reçue — c'est ce qui permet à un test de
- *   vérifier que la réponse a bien fait l'aller-retour, pas seulement que le
- *   canal a répondu quelque chose. Si `task.channel` est absent (canal non
- *   activé pour cette tâche), dégrade silencieusement vers l'écriture directe
- *   de `report.json`, exactement comme le mode "success" : c'est le
- *   comportement attendu d'un agent réel qui ignorerait le canal (voir la
- *   consigne de repli documentée par `renderTaskPrompt`).
+ * - "success" (default): writes the declared `files`, a valid report.
+ * - "fail": exits with a non-zero code (1 by default); still writes a
+ *   report unless `writeReport` is false.
+ * - "silent": never writes a report, whatever `writeReport` says —
+ *   simulates an agent ignoring the contract, to exercise synthesis.
+ * - "hang": never does anything more than wait `sleepMs` (default: one
+ *   day, in practice indefinitely), to exercise the timeout and
+ *   cancellation. With `ignoreSigterm`, installs a handler that absorbs
+ *   SIGTERM, to exercise the escalation to SIGKILL.
+ * - "ask" (task 9, return channel): if `task.channel` is set, connects
+ *   to `caesar-channel` as an MCP client (see
+ *   `@modelcontextprotocol/sdk/client`), calls `ask_orchestrator` with
+ *   `question`/`options`, then `submit_report` with a summary that
+ *   literally reports the answer received — this is what lets a test
+ *   verify the answer made the round trip, not merely that the channel
+ *   answered something. If `task.channel` is absent (channel not enabled
+ *   for this task), silently degrades to writing `report.json` directly,
+ *   exactly like the "success" mode: that is the expected behavior of a
+ *   real agent that would ignore the channel (see the fallback
+ *   instruction documented by `renderTaskPrompt`).
  *
- * Dans les trois modes "success", "fail", "silent", `sleepMs`, s'il est
- * fourni explicitement, retarde d'autant le traitement avant l'écriture du
- * rapport (par défaut : aucune pause) — utile pour prouver qu'un appelant
- * attend plusieurs tâches en parallèle sans que l'attente conjointe ne coûte
- * la somme de leurs délais (voir `packages/mcp-server/src/tools/await.test.ts`).
+ * In the three modes "success", "fail", "silent", `sleepMs`, if provided
+ * explicitly, delays processing by that much before writing the report
+ * (default: no pause) — useful to prove a caller awaits several tasks in
+ * parallel without the joint wait costing the sum of their delays (see
+ * `packages/mcp-server/src/tools/await.test.ts`).
  *
- * `declaredChanges`, quand fourni, remplace la déclaration de `changes` du
- * rapport indépendamment des `files` réellement écrits — de quoi simuler un
- * agent qui ment, dans les deux sens (fichier tu, fichier inventé), pour
- * éprouver `reconcileChanges`.
+ * `declaredChanges`, when provided, replaces the report's `changes`
+ * declaration independently of the `files` actually written — enough to
+ * simulate a lying agent, in both directions (file kept quiet, file made
+ * up), to exercise `reconcileChanges`.
  *
- * `finalMessage`, quand fourni, simule un CLI dont `capabilities.finalMessageFile`
- * est vrai (Codex avec `-o`, par exemple) : le message est écrit tel quel
- * dans `final-message.txt`, sous le répertoire de la tâche. Ce script ne
- * reçoit ce chemin par aucun jeton dédié — `GenericAgentSpec` (tâche 3) n'en
- * prévoit pas pour un CLI générique — mais le retrouve lui-même sous
- * `$CAESAR_TASK_DIR`, exactement comme le calcule le runner.
+ * `finalMessage`, when provided, simulates a CLI whose `capabilities.finalMessageFile`
+ * is true (Codex with `-o`, for instance): the message is written as is
+ * into `final-message.txt`, under the task's directory. This script
+ * receives that path through no dedicated token — `GenericAgentSpec` (task 3)
+ * provides none for a generic CLI — but finds it itself under
+ * `$CAESAR_TASK_DIR`, exactly as the runner computes it.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
@@ -81,17 +81,18 @@ function sleep(ms) {
 }
 
 /**
- * Mode "ask" : le round-trip complet du canal retour (tâche 9). Écrit
- * toujours `report.json`, soit via `submit_report` (canal disponible), soit
- * directement (dégradation, canal absent) — jamais les deux.
+ * "ask" mode: the full round trip of the return channel (task 9). Always
+ * writes `report.json`, either via `submit_report` (channel available) or
+ * directly (degradation, channel absent) — never both.
  *
- * Le SDK MCP n'est importé qu'ici, dynamiquement : les autres modes n'en ont
- * pas besoin, et ce script reste sans dépendance de paquet du monorepo (voir
- * l'en-tête) — seul `@modelcontextprotocol/sdk`, un paquet tiers, tout comme
- * un agent extérieur réel en embarquerait un pour parler MCP.
+ * The MCP SDK is imported only here, dynamically: the other modes have no
+ * need for it, and this script stays free of any monorepo package
+ * dependency (see the header) — only `@modelcontextprotocol/sdk`, a
+ * third-party package, just as a real external agent would embed one to
+ * speak MCP.
  */
 async function handleAskMode(task, directive, reportPath) {
-  const baseSummary = directive.summary ?? "Traité.";
+  const baseSummary = directive.summary ?? "Handled.";
   const channel = task.channel;
 
   if (!channel) {
@@ -102,7 +103,7 @@ async function handleAskMode(task, directive, reportPath) {
           protocol: REPORT_PROTOCOL,
           task_id: task.id,
           status: "success",
-          summary: `${baseSummary} (canal indisponible, question non posée)`,
+          summary: `${baseSummary} (channel unavailable, question not asked)`,
         },
         null,
         2,
@@ -121,10 +122,10 @@ async function handleAskMode(task, directive, reportPath) {
 
   const asked = await client.callTool({
     name: "ask_orchestrator",
-    arguments: { question: directive.question ?? "Quelle couleur ?", options: directive.options ?? [] },
+    arguments: { question: directive.question ?? "What color?", options: directive.options ?? [] },
   });
   const askedData = asked.structuredContent ?? {};
-  const answerText = askedData.answered ? askedData.answer : `(sans réponse) ${askedData.message ?? ""}`;
+  const answerText = askedData.answered ? askedData.answer : `(no answer) ${askedData.message ?? ""}`;
 
   await client.callTool({
     name: "submit_report",
@@ -132,7 +133,7 @@ async function handleAskMode(task, directive, reportPath) {
       protocol: REPORT_PROTOCOL,
       task_id: task.id,
       status: "success",
-      summary: `${baseSummary} Réponse reçue : ${answerText}`,
+      summary: `${baseSummary} Answer received: ${answerText}`,
     },
   });
 
@@ -143,7 +144,7 @@ async function main() {
   const taskFile = process.env["CAESAR_TASK_FILE"];
   const reportPath = process.env["CAESAR_REPORT_PATH"];
   if (!taskFile || !reportPath) {
-    process.stderr.write("fake-agent: CAESAR_TASK_FILE / CAESAR_REPORT_PATH manquants\n");
+    process.stderr.write("fake-agent: CAESAR_TASK_FILE / CAESAR_REPORT_PATH missing\n");
     process.exitCode = 1;
     return;
   }
@@ -153,7 +154,7 @@ async function main() {
   try {
     directive = JSON.parse(task.context);
   } catch {
-    // task.context n'est pas un JSON de pilotage : comportement par défaut.
+    // task.context is not a steering JSON: default behavior.
   }
 
   const mode = directive.mode ?? "success";
@@ -163,23 +164,23 @@ async function main() {
 
   if (directive.ignoreSigterm) {
     process.on("SIGTERM", () => {
-      // Absorbe volontairement le signal, pour forcer le moteur à escalader vers SIGKILL.
+      // Deliberately absorbs the signal, to force the engine to escalate to SIGKILL.
     });
   }
 
-  log("progress", "démarrage");
+  log("progress", "starting");
 
   if (mode === "hang") {
-    log("progress", "en attente indéfiniment");
+    log("progress", "waiting indefinitely");
     await sleep(sleepMs);
-    // Jamais atteint en pratique : le processus est terminé avant.
+    // Never reached in practice: the process is terminated before.
     return;
   }
 
   if (mode === "ask") {
     log("progress", "question");
     await handleAskMode(task, directive, reportPath);
-    log("progress", "terminé");
+    log("progress", "done");
     process.exitCode = directive.exitCode ?? 0;
     return;
   }
@@ -188,7 +189,7 @@ async function main() {
     await sleep(directive.sleepMs);
   }
 
-  log("progress", "traitement");
+  log("progress", "processing");
 
   for (const file of files) {
     const target = isAbsolute(file.path) ? file.path : join(task.workspace, file.path);
@@ -209,17 +210,17 @@ async function main() {
       protocol: REPORT_PROTOCOL,
       task_id: task.id,
       status: directive.status ?? (mode === "fail" ? "failed" : "success"),
-      summary: directive.summary ?? "Mission traitée par l'agent factice.",
+      summary: directive.summary ?? "Task handled by the fake agent.",
       changes,
     };
     writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
   }
 
-  log("progress", "terminé");
+  log("progress", "done");
   process.exitCode = exitCode;
 }
 
 main().catch((error) => {
-  process.stderr.write(`fake-agent: erreur inattendue : ${error?.stack ?? error}\n`);
+  process.stderr.write(`fake-agent: unexpected error: ${error?.stack ?? error}\n`);
   process.exitCode = 1;
 });

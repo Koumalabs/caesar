@@ -42,13 +42,13 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 /**
- * Au-delà de toute valeur que `kill(pid, 0)` puisse trouver vivante, sur macOS
- * comme sous Linux : le marqueur qui le porte est périmé par construction,
- * sans avoir à tuer un vrai processus ni à parier sur un pid non réattribué.
+ * Beyond any value `kill(pid, 0)` could find alive, on macOS as on Linux:
+ * the marker carrying it is stale by construction, without having to kill a
+ * real process or bet on a pid not being reassigned.
  */
 const DEAD_PID = 2_147_483_647;
 
-/** Le marqueur qu'un orchestrateur tué laisse derrière lui. Rend son chemin. */
+/** The marker a killed orchestrator leaves behind. Returns its path. */
 async function staleMarker(root: string, id: string): Promise<string> {
   const lease = await markWorktreeInUse(root, id);
   await writeFile(lease.path, JSON.stringify({ pid: DEAD_PID, token: lease.token }) + "\n", "utf8");
@@ -72,7 +72,7 @@ describe("garbageCollectWorktrees", () => {
     const record: TaskRecord = {
       id,
       agent: "codex",
-      objective: "tester le ramasse-miettes",
+      objective: "exercise the garbage collector",
       status,
       created_at: "2026-08-11T10:00:00.000Z",
       ended_at: status === "pending" || status === "running" ? undefined : "2026-08-11T10:01:00.000Z",
@@ -88,10 +88,10 @@ describe("garbageCollectWorktrees", () => {
     return record;
   }
 
-  /** Une tâche terminée dont le travail a été appliqué par le chemin officiel. */
+  /** A finished task whose work was applied through the official path. */
   async function appliedRecordedWorktree(id: string): Promise<TaskRecord> {
     const record = await createRecordedWorktree(id, "succeeded");
-    await writeFile(join(record.workspace, `${id}.txt`), "travail\n", "utf8");
+    await writeFile(join(record.workspace, `${id}.txt`), "work\n", "utf8");
     const paths = taskPaths(record.task_dir);
     const baseRef = (await git(record.workspace, ["rev-parse", "HEAD"])).trim();
     await writeTask(paths, TaskSchema.parse({
@@ -114,8 +114,8 @@ describe("garbageCollectWorktrees", () => {
     return (await fileTaskStore(root).get(id))!;
   }
 
-  it("supprime le worktree d'une tâche appliquée dont rien n'a bougé depuis", async () => {
-    const record = await appliedRecordedWorktree("t_appliquee");
+  it("removes the worktree of an applied task where nothing has moved since", async () => {
+    const record = await appliedRecordedWorktree("t_applied");
 
     const result = await garbageCollectWorktrees(root);
 
@@ -126,8 +126,8 @@ describe("garbageCollectWorktrees", () => {
     expect((await git(root, ["branch", "--list", record.branch!])).trim()).toBe("");
   });
 
-  it("--dry-run annonce la collecte d'une tâche appliquée sans supprimer ni réécrire", async () => {
-    const record = await appliedRecordedWorktree("t_appliquee_dry");
+  it("--dry-run announces the collection of an applied task without removing or rewriting", async () => {
+    const record = await appliedRecordedWorktree("t_applied_dry");
 
     const result = await garbageCollectWorktrees(root, { dryRun: true });
 
@@ -138,9 +138,9 @@ describe("garbageCollectWorktrees", () => {
     expect((await fileTaskStore(root).get(record.id))?.applied_patch_digest).toBe(record.applied_patch_digest);
   });
 
-  it("conserve un worktree modifié depuis son application, applied_at exposé", async () => {
-    const record = await appliedRecordedWorktree("t_retouchee");
-    await writeFile(join(record.workspace, "t_retouchee.txt"), "retouche postérieure à l'application\n", "utf8");
+  it("keeps a worktree modified since its apply, applied_at exposed", async () => {
+    const record = await appliedRecordedWorktree("t_reworked");
+    await writeFile(join(record.workspace, "t_reworked.txt"), "touch-up after the apply\n", "utf8");
 
     const result = await garbageCollectWorktrees(root);
 
@@ -150,8 +150,8 @@ describe("garbageCollectWorktrees", () => {
     expect(await pathExists(record.workspace)).toBe(true);
   });
 
-  it("vérification impossible (task.json disparu) : conservé, jamais supprimé sur un doute", async () => {
-    const record = await appliedRecordedWorktree("t_sans_task_json");
+  it("verification impossible (task.json gone): kept, never removed on a doubt", async () => {
+    const record = await appliedRecordedWorktree("t_no_task_json");
     await rm(taskPaths(record.task_dir).taskFile, { force: true });
 
     const result = await garbageCollectWorktrees(root);
@@ -162,8 +162,8 @@ describe("garbageCollectWorktrees", () => {
     expect(await pathExists(record.workspace)).toBe(true);
   });
 
-  it("--dry-run annonce un worktree terminé propre sans supprimer le worktree ni la branche", async () => {
-    const record = await createRecordedWorktree("t_propre", "succeeded");
+  it("--dry-run announces a clean finished worktree without removing the worktree or the branch", async () => {
+    const record = await createRecordedWorktree("t_clean", "succeeded");
 
     const result = await garbageCollectWorktrees(root, { dryRun: true });
 
@@ -180,8 +180,8 @@ describe("garbageCollectWorktrees", () => {
     expect(await git(root, ["branch", "--list", record.branch!])).toContain(record.branch!);
   });
 
-  it("supprime le worktree terminé propre et sa branche", async () => {
-    const record = await createRecordedWorktree("t_supprimee", "failed");
+  it("removes the clean finished worktree and its branch", async () => {
+    const record = await createRecordedWorktree("t_removed", "failed");
 
     const result = await garbageCollectWorktrees(root);
 
@@ -193,9 +193,9 @@ describe("garbageCollectWorktrees", () => {
     expect((await git(root, ["branch", "--list", record.branch!])).trim()).toBe("");
   });
 
-  it("conserve un worktree terminé modifié, puis le supprime avec --force", async () => {
-    const record = await createRecordedWorktree("t_modifiee", "cancelled");
-    await writeFile(join(record.workspace, "travail.txt"), "important\n", "utf8");
+  it("keeps a modified finished worktree, then removes it with --force", async () => {
+    const record = await createRecordedWorktree("t_modified", "cancelled");
+    await writeFile(join(record.workspace, "work.txt"), "important\n", "utf8");
     const statusBefore = await git(record.workspace, ["status", "--porcelain"]);
 
     const kept = await garbageCollectWorktrees(root);
@@ -213,9 +213,9 @@ describe("garbageCollectWorktrees", () => {
     expect(await pathExists(record.workspace)).toBe(false);
   });
 
-  it.each(["pending", "running"] as const)("ne supprime jamais une tâche %s, même avec --force", async (status) => {
+  it.each(["pending", "running"] as const)("never removes a %s task, even with --force", async (status) => {
     const record = await createRecordedWorktree(`t_${status}`, status);
-    await writeFile(join(record.workspace, "en-cours.txt"), "écriture\n", "utf8");
+    await writeFile(join(record.workspace, "in-progress.txt"), "writing\n", "utf8");
 
     const result = await garbageCollectWorktrees(root, { force: true });
 
@@ -226,14 +226,14 @@ describe("garbageCollectWorktrees", () => {
     expect(await git(root, ["branch", "--list", record.branch!])).toContain(record.branch!);
   });
 
-  it("détecte et supprime un worktree orphelin absent du store", async () => {
-    const handle = await createWorktree(root, "t_orpheline");
+  it("detects and removes an orphan worktree absent from the store", async () => {
+    const handle = await createWorktree(root, "t_orphan");
 
     const result = await garbageCollectWorktrees(root);
 
     expect(result.entries).toEqual([
       expect.objectContaining({
-        id: "t_orpheline",
+        id: "t_orphan",
         action: "removed",
         reason: "clean",
         orphan: true,
@@ -245,47 +245,47 @@ describe("garbageCollectWorktrees", () => {
   });
 
   /**
-   * Le pendant, côté ramasse-miettes, de la garantie constatée dans
-   * `worktree.test.ts` : c'est le chemin le plus exposé — nettoyage
-   * automatique, sans supervision, sur un worktree dont plus rien ne dit
-   * quels chemins avaient été liés (`[worktree] link`) — et celui qui doit le
-   * moins pouvoir détruire le `node_modules` du dépôt principal.
+   * The garbage-collector counterpart of the guarantee established in
+   * `worktree.test.ts`: this is the most exposed path — automatic,
+   * unsupervised cleanup of a worktree where nothing remains to say which
+   * paths had been linked (`[worktree] link`) — and the one that must be
+   * least able to destroy the main repository's `node_modules`.
    */
-  it("un worktree contenant un lien vers le dépôt principal est nettoyé sans détruire sa cible", async () => {
+  it("a worktree containing a link to the main repository is cleaned up without destroying its target", async () => {
     const { mkdir, readFile, symlink } = await import("node:fs/promises");
     await mkdir(join(root, "node_modules"), { recursive: true });
-    await writeFile(join(root, "node_modules", "marqueur.txt"), "précieux\n", "utf8");
+    await writeFile(join(root, "node_modules", "marker.txt"), "precious\n", "utf8");
 
-    const handle = await createWorktree(root, "t_lien");
+    const handle = await createWorktree(root, "t_link");
     await symlink(join(root, "node_modules"), join(handle.path, "node_modules"), "dir");
 
     const result = await garbageCollectWorktrees(root, { force: true });
 
-    expect(result.entries).toEqual([expect.objectContaining({ id: "t_lien", action: "removed", orphan: true })]);
+    expect(result.entries).toEqual([expect.objectContaining({ id: "t_link", action: "removed", orphan: true })]);
     expect(await pathExists(handle.path)).toBe(false);
-    expect(await readFile(join(root, "node_modules", "marqueur.txt"), "utf8")).toBe("précieux\n");
+    expect(await readFile(join(root, "node_modules", "marker.txt"), "utf8")).toBe("precious\n");
   });
 
-  it("protège un worktree en cours de création avant son apparition dans le store", async () => {
-    const lease = await markWorktreeInUse(root, "t_demarrage");
-    const handle = await createWorktree(root, "t_demarrage");
+  it("protects a worktree being created before it appears in the store", async () => {
+    const lease = await markWorktreeInUse(root, "t_startup");
+    const handle = await createWorktree(root, "t_startup");
 
     const protectedResult = await garbageCollectWorktrees(root, { force: true });
 
     expect(protectedResult.entries).toEqual([
-      expect.objectContaining({ id: "t_demarrage", action: "kept", reason: "active", orphan: true }),
+      expect.objectContaining({ id: "t_startup", action: "kept", reason: "active", orphan: true }),
     ]);
     expect(await pathExists(handle.path)).toBe(true);
 
     await clearWorktreeInUse(lease);
     const collectedResult = await garbageCollectWorktrees(root);
     expect(collectedResult.entries).toEqual([
-      expect.objectContaining({ id: "t_demarrage", action: "removed", reason: "clean", orphan: true }),
+      expect.objectContaining({ id: "t_startup", action: "removed", reason: "clean", orphan: true }),
     ]);
   });
 
-  it("--dry-run ne purge pas un marqueur laissé par un processus mort", async () => {
-    const id = "t_marqueur_perime";
+  it("--dry-run does not purge a marker left by a dead process", async () => {
+    const id = "t_stale_marker";
     const lease = await markWorktreeInUse(root, id);
     const marker = lease.path;
     await writeFile(marker, JSON.stringify({ pid: 2_147_483_647, token: lease.token }) + "\n", "utf8");
@@ -301,14 +301,14 @@ describe("garbageCollectWorktrees", () => {
   });
 
   /**
-   * La conséquence composée, et la raison d'être du balayage : le statut
-   * "running" d'une tâche dont l'orchestrateur est mort protégeait son
-   * worktree à vie (`kept: active`), et le processus qui aurait dû lever cette
-   * protection n'existait plus. Le worktree, sa branche et tout ce qu'on y
-   * avait cloné restaient là pour toujours.
+   * The compound consequence, and the sweep's reason for existing: the
+   * "running" status of a task whose orchestrator died protected its
+   * worktree for life (`kept: active`), and the process that should have
+   * lifted that protection no longer existed. The worktree, its branch and
+   * everything cloned into it stayed there forever.
    */
-  it("conclut une tâche abandonnée, puis collecte le worktree qu'elle retenait", async () => {
-    const record = await createRecordedWorktree("t_abandonnee", "running");
+  it("concludes an abandoned task, then collects the worktree it was holding", async () => {
+    const record = await createRecordedWorktree("t_abandoned", "running");
     await staleMarker(root, record.id);
 
     const result = await garbageCollectWorktrees(root);
@@ -321,8 +321,8 @@ describe("garbageCollectWorktrees", () => {
     expect((await fileTaskStore(root).get(record.id))?.status).toBe("failed");
   });
 
-  it("--dry-run annonce la tâche abandonnée et son worktree, sans rien écrire", async () => {
-    const record = await createRecordedWorktree("t_abandonnee_apercu", "running");
+  it("--dry-run announces the abandoned task and its worktree, without writing anything", async () => {
+    const record = await createRecordedWorktree("t_abandoned_preview", "running");
     const marker = await staleMarker(root, record.id);
 
     const result = await garbageCollectWorktrees(root, { dryRun: true });
@@ -336,10 +336,10 @@ describe("garbageCollectWorktrees", () => {
     expect((await fileTaskStore(root).get(record.id))?.status).toBe("running");
   });
 
-  it("conserve un orphelin dont le marqueur est illisible, même avec --force", async () => {
-    const id = "t_marqueur_invalide";
+  it("keeps an orphan whose marker is unreadable, even with --force", async () => {
+    const id = "t_invalid_marker";
     const lease = await markWorktreeInUse(root, id);
-    await writeFile(lease.path, "{json incomplet", "utf8");
+    await writeFile(lease.path, "{incomplete json", "utf8");
     const handle = await createWorktree(root, id);
 
     const result = await garbageCollectWorktrees(root, { force: true });
@@ -352,20 +352,21 @@ describe("garbageCollectWorktrees", () => {
 });
 
 /**
- * Le décalage entre la racine *caesar* et la racine *git*. `resolveRoot` (CLI)
- * s'arrête au premier `.caesar/` **ou** `.git/` : quand `.caesar/` vit dans un
- * sous-répertoire d'un dépôt, les deux divergent. `createWorktree` crée sous la
- * racine git ; le gc balayait `<root>/.caesar/wt`, c'est-à-dire un répertoire où
- * rien n'est jamais créé — les orphelins y étaient purement invisibles.
+ * The gap between the *caesar* root and the *git* root. `resolveRoot` (CLI)
+ * stops at the first `.caesar/` **or** `.git/`: when `.caesar/` lives in a
+ * subdirectory of a repository, the two diverge. `createWorktree` creates
+ * under the git root; the gc used to sweep `<root>/.caesar/wt`, that is, a
+ * directory where nothing is ever created — orphans there were purely
+ * invisible.
  */
-describe("garbageCollectWorktrees — racine caesar distincte de la racine git", () => {
+describe("garbageCollectWorktrees — caesar root distinct from the git root", () => {
   let repo: string;
   let caesarRoot: string;
 
   beforeEach(async () => {
     repo = await mkdtemp(join(tmpdir(), "caesar-gc-split-"));
     await initRepo(repo);
-    caesarRoot = join(repo, "sous-projet");
+    caesarRoot = join(repo, "subproject");
     await execFileAsync("mkdir", ["-p", join(caesarRoot, ".caesar")]);
   });
 
@@ -373,13 +374,13 @@ describe("garbageCollectWorktrees — racine caesar distincte de la racine git",
     await rm(repo, { recursive: true, force: true });
   });
 
-  it("trouve et nettoie un orphelin créé sous la racine git", async () => {
-    const handle = await createWorktree(repo, "t_sous_projet");
+  it("finds and cleans up an orphan created under the git root", async () => {
+    const handle = await createWorktree(repo, "t_subproject");
 
     const result = await garbageCollectWorktrees(caesarRoot);
 
     expect(result.entries).toEqual([
-      expect.objectContaining({ id: "t_sous_projet", action: "removed", orphan: true }),
+      expect.objectContaining({ id: "t_subproject", action: "removed", orphan: true }),
     ]);
     expect(await pathExists(handle.path)).toBe(false);
     expect((await git(repo, ["branch", "--list", handle.branch])).trim()).toBe("");
@@ -387,13 +388,12 @@ describe("garbageCollectWorktrees — racine caesar distincte de la racine git",
 });
 
 /**
- * La branche vient de `git worktree list --porcelain`, jamais d'une déduction
- * sur le nom du répertoire (`caesar/<dirname>`) : cette coïncidence de
- * construction laisserait des branches derrière elle dès que les deux
- * cesseraient d'être fabriqués ensemble — ce que le nommage lisible des
- * branches fait précisément.
+ * The branch comes from `git worktree list --porcelain`, never from a
+ * deduction on the directory name (`caesar/<dirname>`): that coincidence of
+ * construction would leave branches behind as soon as the two stopped being
+ * fabricated together — which readable branch naming does precisely.
  */
-describe("garbageCollectWorktrees — la branche vient de git", () => {
+describe("garbageCollectWorktrees — the branch comes from git", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -405,27 +405,27 @@ describe("garbageCollectWorktrees — la branche vient de git", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("nettoie la branche réelle d'un orphelin dont le nom ne se déduit pas du répertoire", async () => {
-    const path = join(root, ".caesar", "wt", "t_libre");
+  it("cleans up the real branch of an orphan whose name cannot be deduced from the directory", async () => {
+    const path = join(root, ".caesar", "wt", "t_free");
     await execFileAsync("mkdir", ["-p", join(root, ".caesar", "wt")]);
-    await git(root, ["worktree", "add", "-q", "-b", "caesar/implementer/refonte-du-cache-t_libre", path]);
+    await git(root, ["worktree", "add", "-q", "-b", "caesar/implement/cache-overhaul-t_free", path]);
 
     const result = await garbageCollectWorktrees(root);
 
     expect(result.entries).toEqual([
-      expect.objectContaining({ id: "t_libre", branch: "caesar/implementer/refonte-du-cache-t_libre", action: "removed" }),
+      expect.objectContaining({ id: "t_free", branch: "caesar/implement/cache-overhaul-t_free", action: "removed" }),
     ]);
-    expect((await git(root, ["branch", "--list", "caesar/implementer/refonte-du-cache-t_libre"])).trim()).toBe("");
+    expect((await git(root, ["branch", "--list", "caesar/implement/cache-overhaul-t_free"])).trim()).toBe("");
   });
 });
 
 /**
- * Le statut d'une tâche est écrit par le processus qui la conduit, dans son
- * `finally`. Tué — `kill -9`, fermeture de la session MCP qui l'hébergeait,
- * arrêt de la machine — il ne l'écrit jamais, et l'enregistrement reste
- * « running » à vie : `caesar ps` l'affiche indéfiniment en tête, `caesar watch`
- * la suit sans fin, et `caesar gc` protège son worktree comme celui d'une tâche
- * bien vivante. Rien ne réconciliait cet état.
+ * A task's status is written by the process driving it, in its `finally`.
+ * Killed — `kill -9`, closing of the MCP session hosting it, machine
+ * shutdown — it never writes it, and the record stays "running" for life:
+ * `caesar ps` displays it at the top indefinitely, `caesar watch` follows it
+ * endlessly, and `caesar gc` protects its worktree like that of a perfectly
+ * alive task. Nothing reconciled this state.
  */
 describe("sweepAbandonedTasks", () => {
   let root: string;
@@ -442,7 +442,7 @@ describe("sweepAbandonedTasks", () => {
     const value: TaskRecord = {
       id,
       agent: "codex",
-      objective: "tester la réconciliation",
+      objective: "exercise the reconciliation",
       status,
       created_at: "2026-08-11T10:00:00.000Z",
       started_at: "2026-08-11T10:00:00.000Z",
@@ -458,8 +458,8 @@ describe("sweepAbandonedTasks", () => {
     return value;
   }
 
-  it("conclut une tâche dont le marqueur nomme un processus disparu", async () => {
-    const task = await record("t_orpheline", "running");
+  it("concludes a task whose marker names a vanished process", async () => {
+    const task = await record("t_orphan", "running");
     const marker = await staleMarker(root, task.id);
 
     const abandoned = await sweepAbandonedTasks(root);
@@ -470,13 +470,13 @@ describe("sweepAbandonedTasks", () => {
     expect(updated?.ended_at).toBeDefined();
     expect(updated?.pid).toBeUndefined();
     expect(updated?.report_status).toBe("failed");
-    // Le marqueur périmé est repris : sans cela, il resterait sur le disque à
-    // jamais — le balayage des orphelins ne visite que ce que git connaît.
+    // The stale marker is reclaimed: without that, it would stay on disk
+    // forever — the orphan sweep only visits what git knows.
     expect(await pathExists(marker)).toBe(false);
   });
 
-  it("dit dans le rapport ce que le statut ne peut pas dire", async () => {
-    const task = await record("t_rapport", "running");
+  it("says in the report what the status cannot say", async () => {
+    const task = await record("t_report", "running");
     await staleMarker(root, task.id);
 
     await sweepAbandonedTasks(root);
@@ -484,32 +484,32 @@ describe("sweepAbandonedTasks", () => {
     const report = await readReport(taskPaths(task.task_dir));
     expect(report?.status).toBe("failed");
     expect(report?.summary).toContain(String(DEAD_PID));
-    expect(report?.summary).toContain("recoupé avec git");
+    expect(report?.summary).toContain("reconciled with git");
   });
 
-  it("n'écrase jamais le rapport que l'agent avait eu le temps d'écrire", async () => {
-    const task = await record("t_rapport_agent", "running");
+  it("never overwrites the report the agent had time to write", async () => {
+    const task = await record("t_agent_report", "running");
     await staleMarker(root, task.id);
     const paths = taskPaths(task.task_dir);
     await writeReport(paths, {
       protocol: REPORT_PROTOCOL,
       task_id: task.id,
       status: "partial",
-      summary: "La moitié du travail est faite.",
+      summary: "Half the work is done.",
     });
 
     await sweepAbandonedTasks(root);
 
     const report = await readReport(paths);
-    expect(report?.summary).toBe("La moitié du travail est faite.");
-    // Le processus, lui, reste en échec : personne n'a vu son code de sortie.
+    expect(report?.summary).toBe("Half the work is done.");
+    // The process, for its part, stays failed: no one saw its exit code.
     const updated = await fileTaskStore(root).get(task.id);
     expect(updated?.status).toBe("failed");
     expect(updated?.report_status).toBe("partial");
   });
 
-  it("ne touche pas à une tâche dont le marqueur nomme un processus vivant", async () => {
-    const task = await record("t_vivante", "running");
+  it("does not touch a task whose marker names a living process", async () => {
+    const task = await record("t_alive", "running");
     const lease = await markWorktreeInUse(root, task.id);
 
     expect(await sweepAbandonedTasks(root)).toEqual([]);
@@ -519,27 +519,27 @@ describe("sweepAbandonedTasks", () => {
   });
 
   /**
-   * L'absence n'est pas une preuve de mort : un enregistrement écrit par autre
-   * chose que le moteur n'a jamais pris de marqueur, et ne doit pas être
-   * déclaré mort pour autant. `caesar cancel` reste la sortie manuelle.
+   * Absence is not proof of death: a record written by something other than
+   * the engine never took a marker, and must not be declared dead for that.
+   * `caesar cancel` remains the manual exit.
    */
-  it("ne conclut rien d'une tâche sans marqueur", async () => {
-    const task = await record("t_sans_marqueur", "running");
+  it("concludes nothing about a task without a marker", async () => {
+    const task = await record("t_no_marker", "running");
 
     expect(await sweepAbandonedTasks(root)).toEqual([]);
     expect((await fileTaskStore(root).get(task.id))?.status).toBe("running");
   });
 
-  it("ne touche pas aux tâches déjà terminées", async () => {
-    const task = await record("t_terminee", "succeeded");
+  it("does not touch already-finished tasks", async () => {
+    const task = await record("t_finished", "succeeded");
     await staleMarker(root, task.id);
 
     expect(await sweepAbandonedTasks(root)).toEqual([]);
     expect((await fileTaskStore(root).get(task.id))?.status).toBe("succeeded");
   });
 
-  it("conclut aussi une tâche morte avant son lancement", async () => {
-    const task = await record("t_jamais_lancee", "pending");
+  it("also concludes a task that died before its launch", async () => {
+    const task = await record("t_never_launched", "pending");
     await staleMarker(root, task.id);
 
     const abandoned = await sweepAbandonedTasks(root);
@@ -548,8 +548,8 @@ describe("sweepAbandonedTasks", () => {
     expect((await fileTaskStore(root).get(task.id))?.status).toBe("failed");
   });
 
-  it("detectAbandonedTasks constate sans rien écrire", async () => {
-    const task = await record("t_constat", "running");
+  it("detectAbandonedTasks observes without writing anything", async () => {
+    const task = await record("t_finding", "running");
     const marker = await staleMarker(root, task.id);
 
     expect(await detectAbandonedTasks(root)).toEqual([{ id: task.id, status: "running", pid: DEAD_PID }]);

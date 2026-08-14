@@ -1,11 +1,11 @@
 /**
- * Ce que ces tests protègent, et pourquoi : chaque assertion correspond à un
- * défaut constaté à l'usage sur l'ancien écran — colonnes qui se touchent,
- * capacités remplacées par leur décompte, motif de refus parti hors de
- * l'écran. Vérifié via `captureCharFrame()`, la grille interne d'OpenTUI :
- * une capture pty réelle du binaire s'est révélée illisible (réécritures
- * successives entrelacées dans le flux), artefact de capture et non défaut du
- * TUI — voir le rapport de la tâche 15.
+ * What these tests protect, and why: each assertion matches a defect
+ * observed in use on the old screen — columns touching each other,
+ * capabilities replaced by their count, denial reason running off screen.
+ * Verified via `captureCharFrame()`, OpenTUI's internal grid: a real pty
+ * capture of the binary turned out unreadable (successive rewrites
+ * interleaved in the stream), a capture artifact and not a TUI defect —
+ * see the report of task 15.
  */
 import { describe, expect, it } from "bun:test";
 import { act } from "react";
@@ -14,10 +14,10 @@ import type { AgentInstallStatus } from "@caesar/core";
 import { emptyConfigState as makeState } from "../state/test-helpers";
 import { AgentsScreen } from "./AgentsScreen";
 
-/** Les rappels que l'écran ne déclenche que sur frappe : inertes dans un test de rendu. */
+/** The callbacks the screen only triggers on a keystroke: inert in a render test. */
 const callbacks = { onToggleDenied: () => {}, onChange: () => {}, onEditingChange: () => {}, notify: () => {} };
 
-/** Cinq agents natifs séparent la sélection initiale (codex) d'une déclaration ajoutée en fin de catalogue. */
+/** Five native agents separate the initial selection (codex) from a declaration appended at the end of the catalog. */
 const NATIVE_COUNT = 5;
 
 async function mount(
@@ -35,24 +35,24 @@ async function pressDown(setup: Awaited<ReturnType<typeof mount>>, times: number
   await act(async () => setup.renderOnce());
 }
 
-describe("AgentsScreen — le tableau", () => {
-  it("affiche le catalogue, ses capacités nommées, et l'état de détection", async () => {
+describe("AgentsScreen — the table", () => {
+  it("shows the catalog, its named capabilities, and the detection status", async () => {
     const setup = await mount();
     const frame = setup.captureCharFrame();
     expect(frame).toContain("codex");
     expect(frame).toContain("antigravity");
-    // Le défaut corrigé : la colonne annonçait « 7 notable(s) » — un décompte
-    // à la place de l'information.
+    // The fixed defect: the column announced "7 notable(s)" — a count in
+    // place of the information.
     expect(frame).not.toContain("notable(s)");
-    expect(frame).toContain("reprise");
-    expect(frame).toContain("Détection de l'installation en cours");
+    expect(frame).toContain("resume");
+    expect(frame).toContain("Detecting installation");
     setup.renderer.destroy();
   });
 
-  it("ne colle jamais deux colonnes l'une à l'autre, ni ne déborde de la largeur", async () => {
-    // Le défaut d'origine, exactement : une valeur tronquée venait toucher la
-    // colonne suivante ("…codex-cli 0.1…7 notable(s)"), et les deux se
-    // lisaient comme un seul mot.
+  it("never glues two columns together, nor overflows the width", async () => {
+    // The original defect, exactly: a truncated value came to touch the
+    // next column ("…codex-cli 0.1…7 notable(s)"), and the two read as a
+    // single word.
     for (const width of [60, 100, 200]) {
       const setup = await mount(makeState(), null, { width, height: 40 });
       for (const line of setup.captureCharFrame().split("\n")) {
@@ -64,116 +64,116 @@ describe("AgentsScreen — le tableau", () => {
   });
 });
 
-describe("AgentsScreen — le détail de l'agent sélectionné", () => {
-  it("montre le chemin du binaire, les capacités en toutes lettres et les rôles qui l'emploient", async () => {
+describe("AgentsScreen — the selected agent's detail", () => {
+  it("shows the binary path, the capabilities in full words, and the roles that employ it", async () => {
     const installed = new Map<string, AgentInstallStatus>([
       ["codex", { id: "codex", bin: "codex", installed: true, path: "/opt/toolchain/bin/codex", version: "1.2.3" }],
     ]);
     const setup = await mount(makeState(), installed);
     const frame = setup.captureCharFrame();
-    // Le chemin a quitté le tableau — même leçon que `caesar doctor` — pour le
-    // détail, où il ne dispute plus sa place aux colonnes utiles au survol.
+    // The path left the table — same lesson as `caesar doctor` — for the
+    // detail, where it no longer competes with the columns useful at a glance.
     expect(frame).toContain("/opt/toolchain/bin/codex");
-    expect(frame).toContain("lecture-seule native");
-    expect(frame).toContain("Employé par");
+    expect(frame).toContain("native read-only");
+    expect(frame).toContain("Used by");
     expect(frame).toContain("implementer");
     setup.renderer.destroy();
   });
 
-  it("replie le motif d'un refus au lieu de le laisser partir hors de l'écran", async () => {
+  it("wraps the reason for a denial instead of letting it run off screen", async () => {
     const state = makeState();
     state.draft = { policy: { denied: ["codex"] } };
     const setup = await mount(state, new Map());
     const frame = setup.captureCharFrame();
-    // Le motif complet fait plus de 80 caractères : il tenait sur une seule
-    // ligne dans l'ancien tableau, donc au-delà du bord de l'écran.
-    expect(frame).toContain('Agent "codex" refusé');
-    expect(frame).toContain('liste "denied"');
+    // The full reason is a long sentence: it sat on a single line in the
+    // old table, thus beyond the edge of the screen.
+    expect(frame).toContain('Agent "codex" refused');
+    expect(frame).toContain('"denied" list');
     setup.renderer.destroy();
   });
 
-  it("dit clairement qu'un agent natif ne s'édite pas", async () => {
+  it("says clearly that a native agent cannot be edited", async () => {
     const setup = await mount();
-    expect(setup.captureCharFrame()).toContain("catalogue natif");
+    expect(setup.captureCharFrame()).toContain("native catalog");
     setup.renderer.destroy();
   });
 });
 
-describe("AgentsScreen — déclarer un agent hors catalogue", () => {
-  it("liste un agent déclaré à la suite du catalogue natif, et le marque", async () => {
+describe("AgentsScreen — declaring an agent outside the catalog", () => {
+  it("lists a declared agent after the native catalog, and marks it", async () => {
     const state = makeState();
     state.draft = { agents: [{ id: "aider", bin: "aider", args: ["--message", "{{prompt}}"], cwdMode: "process" }] };
     const setup = await mount(state, new Map());
     const frame = setup.captureCharFrame();
-    expect(frame).toContain("codex"); // le natif reste
-    expect(frame).toContain("aider *"); // l'astérisque distingue une déclaration d'un agent câblé
-    expect(frame).toContain("* déclaré en configuration");
+    expect(frame).toContain("codex"); // the native ones remain
+    expect(frame).toContain("aider *"); // the asterisk distinguishes a declaration from a wired-in agent
+    expect(frame).toContain("* declared in configuration");
     setup.renderer.destroy();
   });
 
-  it("montre la ligne de commande et les champs éditables de l'agent déclaré sélectionné", async () => {
+  it("shows the command line and the editable fields of the selected declared agent", async () => {
     const state = makeState();
     state.draft = { agents: [{ id: "aider", bin: "aider", args: ["--message", "{{prompt}}"], cwdMode: "process" }] };
     const setup = await mount(state, new Map());
 
-    // Le panneau ne concerne que la ligne sélectionnée : les champs éditables
-    // n'apparaissent pas sur "codex" (sélection initiale, agent natif).
+    // The panel concerns only the selected row: the editable fields do not
+    // appear on "codex" (initial selection, a native agent).
     expect(setup.captureCharFrame()).not.toContain("Arguments");
 
     await pressDown(setup, NATIVE_COUNT);
     const frame = setup.captureCharFrame();
     expect(frame).toContain("aider --message {{prompt}}");
-    expect(frame).toContain("Déclaré par la couche active");
-    expect(frame).toContain("Binaire");
+    expect(frame).toContain("Declared by the active layer");
+    expect(frame).toContain("Binary");
     expect(frame).toContain("Arguments");
     setup.renderer.destroy();
   });
 
-  it("explique le champ sélectionné une fois entré dans l'édition", async () => {
+  it("explains the selected field once editing is entered", async () => {
     const state = makeState();
     state.draft = { agents: [{ id: "aider", bin: "aider", args: ["{{prompt}}"] }] };
     const setup = await mount(state, new Map());
     await pressDown(setup, NATIVE_COUNT);
 
-    // Tant qu'on est dans la liste, aucune explication de champ.
-    expect(setup.captureCharFrame()).not.toContain("À défaut, son identifiant");
+    // While still in the list, no field explanation.
+    expect(setup.captureCharFrame()).not.toContain("Defaults to its identifier");
 
     await act(async () => setup.mockInput.pressEnter());
     await act(async () => setup.renderOnce());
-    expect(setup.captureCharFrame()).toContain("À défaut, son identifiant");
+    expect(setup.captureCharFrame()).toContain("Defaults to its identifier");
     setup.renderer.destroy();
   });
 
-  it("signale qu'une déclaration héritée sera redéfinie sur la couche active si on l'édite", async () => {
-    const state = makeState(); // portée "project" active, "global" seule déclare l'agent
+  it("signals that an inherited declaration will be redefined on the active layer if edited", async () => {
+    const state = makeState(); // "project" scope active, only "global" declares the agent
     state.layers[0] = {
       ...state.layers[0]!,
       override: { agents: [{ id: "aider", bin: "aider", args: ["{{prompt}}"] }] },
     };
     const setup = await mount(state, new Map());
     await pressDown(setup, NATIVE_COUNT);
-    expect(setup.captureCharFrame()).toContain("Déclaré ← global");
+    expect(setup.captureCharFrame()).toContain("Declared ← global");
     setup.renderer.destroy();
   });
 
-  it("nomme le réseau de chaque agent du catalogue — l'information qui manquait", async () => {
+  it("names the network of every catalog agent — the information that was missing", async () => {
     const setup = await mount();
     const frame = setup.captureCharFrame();
-    // codex n'ouvre le réseau qu'en écriture, opencode l'a ouvert : les deux
-    // se présentaient à l'identique avant ce chantier.
+    // codex only opens the network in write mode, opencode has it open: the
+    // two presented themselves identically before this work.
     expect(frame).toContain("net(w)");
     expect(frame).toContain("net");
     setup.renderer.destroy();
   });
 
-  it('signale que "denied" est hérité de la couche globale tant que la couche active ne le déclare pas', async () => {
+  it('signals that "denied" is inherited from the global layer as long as the active layer does not declare it', async () => {
     const state = makeState();
     state.layers[0] = { ...state.layers[0]!, override: { policy: { denied: ["copilot"] } } };
     const setup = await mount(state);
     const frame = setup.captureCharFrame();
-    expect(frame).toContain('"denied" hérité ← global');
-    // "allowed" n'est déclaré nulle part : hérité du défaut, pas de "global".
-    expect(frame).toContain('"allowed" hérité ← défaut');
+    expect(frame).toContain('"denied" inherited ← global');
+    // "allowed" is declared nowhere: inherited from the default, not from "global".
+    expect(frame).toContain('"allowed" inherited ← default');
     setup.renderer.destroy();
   });
 });

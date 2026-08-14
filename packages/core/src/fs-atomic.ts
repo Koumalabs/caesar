@@ -1,31 +1,31 @@
 /**
- * Écriture atomique de fichiers texte : motif tmp+`rename` répété tel quel
- * dans `store.ts`, `config.ts` (`saveLayer`) et `mcp-registration.ts`
- * (`writeJsonFileAtomic`) avant cette extraction — un seul endroit pour le
- * définir puisque le chantier suivant (dépôt de skills/commandes chez les
- * runtimes d'agents) en aura de nouveau besoin.
+ * Atomic writing of text files: the tmp+`rename` pattern repeated verbatim
+ * in `store.ts`, `config.ts` (`saveLayer`) and `mcp-registration.ts`
+ * (`writeJsonFileAtomic`) before this extraction — a single place to
+ * define it since the next work stream (depositing skills/commands with
+ * agent runtimes) will need it again.
  *
- * Le temporaire vit dans le même répertoire que la cible — condition
- * nécessaire pour que `rename` soit atomique juste après (même système de
- * fichiers) — et porte un nom caché (`.` en tête) sans extension `.md` : un
- * scan récursif des fichiers Markdown du dépôt ne le ramasse donc jamais
- * entre l'écriture du temporaire et le `rename`.
+ * The temporary lives in the same directory as the target — a necessary
+ * condition for `rename` to be atomic right after (same
+ * filesystem) — and bears a hidden name (leading `.`) without an `.md`
+ * extension: a recursive scan of the repository's Markdown files therefore
+ * never picks it up between the write of the temporary and the `rename`.
  *
- * `store.ts` garde son propre motif (`writeTemp` partagé, puis `rename` ou
- * `link` selon l'opération) : sa sémantique de remplacement conditionnel via
- * `link` (voir son en-tête) sort du périmètre de ce helper, volontairement
- * limité au cas `rename` inconditionnel.
+ * `store.ts` keeps its own pattern (shared `writeTemp`, then `rename` or
+ * `link` depending on the operation): its conditional-replacement semantics
+ * via `link` (see its header) fall outside the scope of this helper,
+ * deliberately limited to the unconditional `rename` case.
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 /**
- * Écrit `content` dans `path` de façon atomique : un lecteur concurrent ne
- * voit jamais qu'une version complète du fichier (l'ancienne ou la
- * nouvelle), jamais un contenu partiel ou tronqué si le processus est
- * interrompu en cours d'écriture. Crée le répertoire parent au besoin
- * (`mkdir` récursif), pour que l'appelant n'ait pas à s'en assurer avant.
+ * Writes `content` to `path` atomically: a concurrent reader only ever
+ * sees a complete version of the file (the old one or the
+ * new one), never partial or truncated content if the process is
+ * interrupted mid-write. Creates the parent directory if needed
+ * (recursive `mkdir`), so the caller does not have to ensure it beforehand.
  */
 export async function writeFileAtomic(path: string, content: string): Promise<void> {
   const dir = dirname(path);

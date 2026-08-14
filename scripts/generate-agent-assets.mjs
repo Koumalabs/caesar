@@ -1,17 +1,17 @@
-// Génère `packages/core/src/agent-assets.generated.ts` à partir des sources
-// markdown du dépôt (skill Agent Skills + commandes, au format Claude Code).
+// Generates `packages/core/src/agent-assets.generated.ts` from the repository's
+// markdown sources (Agent Skills skill + commands, in Claude Code format).
 //
-// JavaScript pur, sans import du monorepo (uniquement node:fs/node:path/
-// node:url) : ce script doit pouvoir tourner avant tout `tsc -b`, puisque
-// c'est lui qui produit un fichier que `tsc -b` consomme ensuite. Voir
-// `agent-assets.generated.ts` pour le pourquoi complet du détour par un
-// fichier `.ts` généré plutôt qu'une lecture des `.md` au runtime — répété
-// ici en tête du fichier produit.
+// Pure JavaScript, with no monorepo import (only node:fs/node:path/
+// node:url): this script must be able to run before any `tsc -b`, since
+// it is the one producing a file that `tsc -b` then consumes. See
+// `agent-assets.generated.ts` for the full rationale of the detour through a
+// generated `.ts` file rather than reading the `.md` files at runtime —
+// repeated at the top of the produced file.
 //
-// Invocation : `node scripts/generate-agent-assets.mjs` (aussi exposé via
-// `pnpm run assets:sync`), depuis n'importe quel répertoire — la racine du
-// dépôt est résolue depuis la position de ce script (`import.meta.url`),
-// jamais depuis le cwd.
+// Invocation: `node scripts/generate-agent-assets.mjs` (also exposed via
+// `pnpm run assets:sync`), from any directory — the repository root is
+// resolved from this script's own location (`import.meta.url`),
+// never from the cwd.
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,7 @@ const SKILL_ROOT = join(ROOT, ".claude", "skills", "caesar");
 const COMMANDS_DIR = join(ROOT, ".claude", "commands");
 const OUTPUT_PATH = join(ROOT, "packages", "core", "src", "agent-assets.generated.ts");
 
-/** Préfixe que porte chaque commande source sur disque. Retiré à l'`id`/au `path` du catalogue : c'est `agent-assets.ts` (`dest = join(dir, "caesar-" + asset.path)`) qui le rajoute lui-même à l'installation — le catalogue ne doit JAMAIS le porter, sous peine d'installer "caesar-caesar-delegate.md". */
+/** Prefix carried by every source command on disk. Stripped from the catalog's `id`/`path`: `agent-assets.ts` (`dest = join(dir, "caesar-" + asset.path)`) re-adds it itself at install time — the catalog must NEVER carry it, on pain of installing "caesar-caesar-delegate.md". */
 const COMMAND_PREFIX = "caesar-";
 
 function toLf(content) {
@@ -33,22 +33,21 @@ function readTextFile(path) {
 }
 
 /**
- * Comparaison par code unit, jamais `localeCompare` : un tri dont l'ordre
- * dépendrait de la locale ICU de la machine qui lance le script romprait le
- * déterminisme (même sources, machines différentes → fichiers différents).
+ * Code-unit comparison, never `localeCompare`: a sort whose order depended
+ * on the ICU locale of the machine running the script would break
+ * determinism (same sources, different machines → different files).
  */
 function byName(a, b) {
   return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 }
 
 /**
- * Parcourt récursivement `dir`, en triant les entrées à CHAQUE niveau
- * (sinon l'ordre dépend de l'ordre de retour du système de fichiers, et le
- * fichier généré churne dans git sans que les sources aient changé). Ne
- * retient que les fichiers réguliers : `entry.isFile()`/`isDirectory()`
- * renvoient tous deux `false` pour un lien symbolique (readdirSync avec
- * `withFileTypes` ne le résout pas), ce qui l'exclut naturellement sans
- * jamais le suivre.
+ * Recursively walks `dir`, sorting the entries at EVERY level (otherwise
+ * the order depends on the file system's return order, and the generated
+ * file churns in git without the sources having changed). Keeps only
+ * regular files: `entry.isFile()`/`isDirectory()` both return `false` for
+ * a symbolic link (readdirSync with `withFileTypes` does not resolve it),
+ * which excludes it naturally without ever following it.
  */
 function walkSkillFiles(dir, relPrefix = "") {
   const entries = readdirSync(dir, { withFileTypes: true }).sort(byName);
@@ -60,18 +59,18 @@ function walkSkillFiles(dir, relPrefix = "") {
     } else if (entry.isFile()) {
       files.push({ path: rel, content: readTextFile(join(dir, entry.name)) });
     }
-    // Ni fichier ni dossier (lien symbolique, socket, ...) : ignoré.
+    // Neither file nor directory (symbolic link, socket, ...): ignored.
   }
   return files;
 }
 
-/** `.claude/skills/caesar/**`, absent → catalogue vide sans erreur (les sources n'existent pas encore, une tâche ultérieure les rédigera). */
+/** `.claude/skills/caesar/**`, absent → empty catalog without error (the sources do not exist yet, a later task will write them). */
 function collectSkillAssets() {
   if (!existsSync(SKILL_ROOT)) return [];
   return walkSkillFiles(SKILL_ROOT).map(({ path, content }) => ({ kind: "skill", id: "caesar", path, content }));
 }
 
-/** `.claude/commands/caesar-*.md`, à plat (pas de récursion) et trié ; absent → catalogue vide sans erreur. */
+/** `.claude/commands/caesar-*.md`, flat (no recursion) and sorted; absent → empty catalog without error. */
 function collectCommandAssets() {
   if (!existsSync(COMMANDS_DIR)) return [];
   const entries = readdirSync(COMMANDS_DIR, { withFileTypes: true })
@@ -84,13 +83,12 @@ function collectCommandAssets() {
 }
 
 /**
- * Sérialise un asset en littéral d'objet TypeScript via `JSON.stringify` sur
- * chaque champ — le seul procédé sûr face à un contenu markdown qui peut
- * contenir des backticks ou des `${...}` : un gabarit à backticks les
- * laisserait s'échapper de la chaîne et casserait le fichier généré (ou,
- * pire, y injecterait de l'interpolation). Appliqué uniformément aux quatre
- * champs, pas seulement à `content`, pour une seule règle à vérifier plutôt
- * que deux façons de faire.
+ * Serializes an asset into a TypeScript object literal via `JSON.stringify`
+ * on each field — the only safe procedure against markdown content that may
+ * contain backticks or `${...}`: a backtick template would let them escape
+ * the string and break the generated file (or, worse, inject interpolation
+ * into it). Applied uniformly to all four fields, not just `content`, so
+ * there is a single rule to check rather than two ways of doing it.
  */
 function serializeAsset(asset) {
   return `  { kind: ${JSON.stringify(asset.kind)}, id: ${JSON.stringify(asset.id)}, path: ${JSON.stringify(asset.path)}, content: ${JSON.stringify(asset.content)} },`;
@@ -102,36 +100,36 @@ function renderCatalog(assets) {
 }
 
 const HEADER = `/**
- * Catalogue des assets agentiques (skill + commandes) — généré par
- * \`scripts/generate-agent-assets.mjs\` à partir de \`.claude/skills/caesar/\`
- * et \`.claude/commands/caesar-*.md\`. NE PAS ÉDITER À LA MAIN : relancer
- * \`pnpm run assets:sync\` pour le régénérer.
+ * Catalog of the agentic assets (skill + commands) — generated by
+ * \`scripts/generate-agent-assets.mjs\` from \`.claude/skills/caesar/\`
+ * and \`.claude/commands/caesar-*.md\`. DO NOT EDIT BY HAND: re-run
+ * \`pnpm run assets:sync\` to regenerate it.
  *
- * Attention en éditant ces sources, dans CE dépôt : ce sont exactement les
- * chemins que \`caesar init\` dépose/rafraîchit pour la cible \`claude\` —
- * lancer \`caesar init\` pendant que vous les modifiez écrase vos éditions non
- * encore synchronisées dans ce catalogue. Lancez \`pnpm run assets:sync\`
- * avant, ou passez \`caesar init --no-skills\` le temps de l'édition.
+ * Careful when editing those sources, in THIS repository: they are exactly
+ * the paths that \`caesar init\` deposits/refreshes for the \`claude\` target —
+ * running \`caesar init\` while you are modifying them overwrites your edits
+ * not yet synchronized into this catalog. Run \`pnpm run assets:sync\`
+ * first, or pass \`caesar init --no-skills\` for the duration of the edit.
  *
- * Pourquoi passer par un fichier \`.ts\` généré plutôt que de lire les
- * sources \`.md\` au runtime :
+ * Why go through a generated \`.ts\` file rather than reading the \`.md\`
+ * sources at runtime:
  *
- * - \`tsc\` ne copie pas les fichiers non-\`.ts\` dans \`dist/\` — un import
- *   relatif vers un \`.md\` serait introuvable une fois \`@caesar/core\` compilé.
- * - \`bun build --compile\` (consommé par \`packages/tui\`) n'embarque dans le
- *   binaire unique que ce que le bundler voit statiquement suivre depuis les
- *   imports JS/TS ; un \`readFile\` relatif au source ne survit pas à cette
- *   compilation, et casserait le binaire en silence.
- * - \`import contenu from "./x.md" with { type: "text" }\` (import
- *   attributes) passe sous Bun mais échoue sous Node 24
- *   (\`ERR_UNKNOWN_FILE_EXTENSION\`) — or npm/Node est le chemin principal de
- *   ce monorepo (voir \`engines.node\` à la racine).
+ * - \`tsc\` does not copy non-\`.ts\` files into \`dist/\` — a relative import
+ *   of a \`.md\` would be unresolvable once \`@caesar/core\` is compiled.
+ * - \`bun build --compile\` (consumed by \`packages/tui\`) embeds into the
+ *   single binary only what the bundler statically sees reachable from the
+ *   JS/TS imports; a \`readFile\` relative to the source does not survive that
+ *   compilation, and would break the binary silently.
+ * - \`import content from "./x.md" with { type: "text" }\` (import
+ *   attributes) works under Bun but fails under Node 24
+ *   (\`ERR_UNKNOWN_FILE_EXTENSION\`) — and npm/Node is this monorepo's main
+ *   path (see \`engines.node\` at the root).
  *
- * L'annotation de type explicite ci-dessous (\`: readonly AgentAsset[]\`) est
- * obligatoire, pas cosmétique : sans elle, \`declaration: true\` (actif dans
- * \`tsconfig.base.json\`) inférerait un type littéral portant chaque contenu
- * markdown en toutes lettres dans les \`.d.ts\` générés — un alourdissement
- * pur, puisque rien n'a besoin de connaître ce contenu au niveau des types.
+ * The explicit type annotation below (\`: readonly AgentAsset[]\`) is
+ * mandatory, not cosmetic: without it, \`declaration: true\` (active in
+ * \`tsconfig.base.json\`) would infer a literal type carrying every markdown
+ * content verbatim into the generated \`.d.ts\` files — pure bloat, since
+ * nothing needs to know that content at the type level.
  */
 `;
 
@@ -150,12 +148,12 @@ function main() {
 
   const previous = existsSync(OUTPUT_PATH) ? readFileSync(OUTPUT_PATH, "utf8") : undefined;
   const unchanged = previous === generated;
-  // N'écrit que si le contenu diffère : une réécriture à l'identique ferait
-  // rebâtir `tsc -b` pour rien (mtime avancé sans que rien n'ait changé).
+  // Write only when the content differs: an identical rewrite would make
+  // `tsc -b` rebuild for nothing (mtime bumped without anything changing).
   if (!unchanged) writeFileSync(OUTPUT_PATH, generated);
 
   console.log(
-    `${skillAssets.length} fichier(s) skill, ${commandAssets.length} commande(s), ${unchanged ? "inchangé" : "écrit"} (${OUTPUT_PATH}).`,
+    `${skillAssets.length} skill file(s), ${commandAssets.length} command(s), ${unchanged ? "unchanged" : "written"} (${OUTPUT_PATH}).`,
   );
 }
 

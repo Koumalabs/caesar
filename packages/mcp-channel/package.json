@@ -1,7 +1,7 @@
 {
   "name": "@caesar/mcp-channel",
   "version": "0.1.0",
-  "description": "Canal retour MCP injecté dans les sous-agents : report_progress, ask_orchestrator, submit_report",
+  "description": "MCP return channel injected into subagents: report_progress, ask_orchestrator, submit_report",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

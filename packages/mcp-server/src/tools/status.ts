@@ -1,8 +1,7 @@
 /**
- * `caesar_status` : un coup d'œil non bloquant sur une tâche — son état et le
- * dernier événement connu, sans attendre ni rendre le rapport complet (c'est
- * `caesar_await` qui le rend, une fois la tâche terminée) — voir le brief de
- * la tâche 7.
+ * `caesar_status`: a non-blocking glance at a task — its state and the last
+ * known event, without waiting or returning the full report (that is what
+ * `caesar_await` returns, once the task is done) — see the task 7 brief.
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -36,16 +35,16 @@ const CaesarStatusInputSchema = z.object(caesarStatusInputShape);
 export type CaesarStatusInput = z.infer<typeof CaesarStatusInputSchema>;
 
 export async function caesarStatus(session: McpSession, input: CaesarStatusInput): Promise<CallToolResult> {
-  // Une tâche lancée par un serveur MCP qu'on a depuis fermé garde le statut
-  // "running" que son processus n'a jamais eu l'occasion de conclure. La
-  // rendre telle quelle ici serait dire à l'appelant d'attendre quelque chose
-  // que plus personne ne fait — voir `sweepAbandonedTasks`. Les tâches de
-  // cette session, elles, sont conduites par ce processus-ci : leur marqueur
-  // est vivant, le balayage ne les touche pas.
+  // A task launched by an MCP server that has since been closed keeps the
+  // "running" status its process never had the chance to conclude.
+  // Returning it as-is here would tell the caller to wait for something
+  // nobody is doing anymore — see `sweepAbandonedTasks`. This session's own
+  // tasks are driven by this very process: their marker is alive, the
+  // sweep does not touch them.
   await sweepAbandonedTasks(session.root, session.store);
 
   const record = await session.store.get(input.task_id);
-  if (!record) return errorResult(`Tâche inconnue : "${input.task_id}".`);
+  if (!record) return errorResult(`Unknown task: "${input.task_id}".`);
 
   const paths = taskPaths(record.task_dir);
   const events = await readEvents(paths);
@@ -55,8 +54,8 @@ export async function caesarStatus(session: McpSession, input: CaesarStatusInput
   return jsonResult({
     task_id: record.id,
     status: record.status,
-    // I3 de la revue finale : distinct de `status`, qui ne reflète que
-    // l'issue du processus — voir la description du tool.
+    // I3 of the final review: distinct from `status`, which reflects only
+    // the process outcome — see the tool's description.
     report_status: record.report_status,
     agent: record.agent,
     role: record.role,

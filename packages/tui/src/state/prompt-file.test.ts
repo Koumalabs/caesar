@@ -15,44 +15,45 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-describe("lecture", () => {
-  it("un fichier absent n'est pas une erreur : contenu vide, et il le dit", async () => {
+describe("reading", () => {
+  it("a missing file is not an error: empty content, and it says so", async () => {
     const file = await readPromptFile(root, "roles/reviewer.md");
     expect(file.exists).toBe(false);
     expect(file.content).toBe("");
     expect(file.path).toBe(join(root, ".caesar", "roles", "reviewer.md"));
   });
 
-  it("rend le contenu et le chemin absolu", async () => {
+  it("returns the content and the absolute path", async () => {
     await mkdir(join(root, ".caesar", "roles"), { recursive: true });
-    await writeFile(join(root, ".caesar", "roles", "reviewer.md"), "Tu es strict.", "utf8");
+    await writeFile(join(root, ".caesar", "roles", "reviewer.md"), "You are strict.", "utf8");
     const file = await readPromptFile(root, "roles/reviewer.md");
-    expect(file).toEqual({ path: join(root, ".caesar", "roles", "reviewer.md"), content: "Tu es strict.", exists: true });
+    expect(file).toEqual({ path: join(root, ".caesar", "roles", "reviewer.md"), content: "You are strict.", exists: true });
   });
 });
 
-describe("écriture", () => {
-  it("crée les répertoires intermédiaires — un rôle neuf n'a pas encore de roles/", async () => {
-    const path = await writePromptFile(root, "roles/nouveau.md", "Bonjour.");
-    expect(await readFile(path, "utf8")).toBe("Bonjour.");
+describe("writing", () => {
+  it("creates the intermediate directories — a fresh role does not have a roles/ yet", async () => {
+    const path = await writePromptFile(root, "roles/new.md", "Hello.");
+    expect(await readFile(path, "utf8")).toBe("Hello.");
   });
 
-  it("ne laisse aucun fichier temporaire derrière elle", async () => {
-    await writePromptFile(root, "roles/x.md", "un");
-    await writePromptFile(root, "roles/x.md", "deux");
+  it("leaves no temporary file behind", async () => {
+    await writePromptFile(root, "roles/x.md", "one");
+    await writePromptFile(root, "roles/x.md", "two");
     const entries = await readdir(join(root, ".caesar", "roles"));
     expect(entries).toEqual(["x.md"]);
   });
 
-  it("ce qu'on écrit est exactement ce que le moteur relira", async () => {
-    // La propriété qui compte, et la raison d'être de `rolePromptPath` : si
-    // l'éditeur et `resolveRole` ne visaient pas le même fichier, le prompt
-    // édité ne serait pas celui transmis à l'agent, sans que rien ne le dise.
+  it("what is written is exactly what the engine will read back", async () => {
+    // The property that matters, and the reason `rolePromptPath` exists: if
+    // the editor and `resolveRole` did not target the same file, the edited
+    // prompt would not be the one passed to the agent, without anything
+    // saying so.
     await saveLayer("project", root, {
       roles: [
         {
           name: "reviewer",
-          purpose: "Relit.",
+          purpose: "Reviews.",
           agents: ["codex"],
           mode: "read-only",
           isolation: "auto",
@@ -62,36 +63,36 @@ describe("écriture", () => {
         },
       ],
     });
-    await writePromptFile(root, "roles/reviewer.md", "Ne corrige rien toi-même.");
+    await writePromptFile(root, "roles/reviewer.md", "Do not fix anything yourself.");
 
     const { config } = await loadConfig(root);
     const resolved = await resolveRole(config, root, "reviewer");
-    expect(resolved?.systemPrompt).toBe("Ne corrige rien toi-même.");
+    expect(resolved?.systemPrompt).toBe("Do not fix anything yourself.");
   });
 });
 
-describe("validation du chemin", () => {
-  it("accepte un chemin relatif", () => {
+describe("path validation", () => {
+  it("accepts a relative path", () => {
     expect(validatePromptFile("roles/reviewer.md")).toBeNull();
   });
 
-  it("refuse un chemin vide", () => {
-    expect(validatePromptFile("  ")).toMatch(/ne peut pas être vide/);
+  it("refuses an empty path", () => {
+    expect(validatePromptFile("  ")).toMatch(/cannot be empty/);
   });
 
-  it("refuse un chemin absolu, qui deviendrait silencieusement relatif", () => {
-    // `join(root, ".caesar", "/etc/prompt.md")` rend `<root>/.caesar/etc/prompt.md` :
-    // on croit désigner un fichier du système, on en crée un autre.
-    expect(validatePromptFile("/etc/prompt.md")).toMatch(/absolu/);
+  it("refuses an absolute path, which would silently become relative", () => {
+    // `join(root, ".caesar", "/etc/prompt.md")` yields `<root>/.caesar/etc/prompt.md`:
+    // one believes one is naming a system file, another gets created.
+    expect(validatePromptFile("/etc/prompt.md")).toMatch(/Absolute/);
   });
 
-  it('refuse un ".." qui sortirait du répertoire de configuration', () => {
-    expect(validatePromptFile("../../ailleurs.md")).toMatch(/\.\./);
+  it('refuses a ".." that would leave the configuration directory', () => {
+    expect(validatePromptFile("../../elsewhere.md")).toMatch(/\.\./);
   });
 });
 
-describe("chemin par défaut", () => {
-  it("suit la convention qu'écrit déjà « caesar init »", () => {
+describe("default path", () => {
+  it('follows the convention "caesar init" already writes', () => {
     expect(defaultPromptFileFor("investigator")).toBe("roles/investigator.md");
   });
 });

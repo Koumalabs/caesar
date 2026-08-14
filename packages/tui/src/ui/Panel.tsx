@@ -1,22 +1,22 @@
 /**
- * Cadre titré dont la bordure dit s'il a le focus — la réponse à « où
- * suis-je ? », que l'ancien écran ne donnait nulle part : deux curseurs "›"
- * pouvaient être visibles en même temps (la liste des rôles et la liste des
- * champs) sans que rien ne distingue celui qui recevait les touches.
+ * Titled frame whose border says whether it has focus — the answer to
+ * "where am I?", which the old screen gave nowhere: two "›" cursors could
+ * be visible at the same time (the roles list and the fields list) with
+ * nothing distinguishing the one receiving the keys.
  *
- * `note` s'affiche en tête du contenu plutôt que dans le titre : OpenTUI
- * n'aligne un titre qu'à gauche, au centre ou à droite, et un titre composite
- * (« implementer — hérité ← global ») déborde du cadre dès que le nom
- * s'allonge.
+ * `note` is displayed at the top of the content rather than in the title:
+ * OpenTUI only aligns a title left, center or right, and a composite
+ * title ("implementer — inherited ← global") overflows the frame as soon
+ * as the name gets long.
  */
 import type { ReactNode } from "react";
 import { ACCENT, DIM, FAINT } from "./theme";
 
 export interface PanelProps {
   title: string;
-  /** Vrai quand ce panneau reçoit les touches — sa bordure et son titre s'allument. */
+  /** True when this panel receives the keys — its border and title light up. */
   focused?: boolean;
-  /** Précision affichée en première ligne, en retrait (provenance, rappel de règle…). */
+  /** Clarification shown on the first line, indented (provenance, rule reminder…). */
   note?: string;
   width?: number;
   flexGrow?: number;
@@ -34,14 +34,15 @@ export function Panel({ title, focused = false, note, width, flexGrow, children 
       titleColor={focused ? ACCENT : DIM}
       paddingLeft={1}
       paddingRight={1}
-      // Un panneau plus haut que la place restante débordait sur ses voisins
-      // — les caractères se superposaient et la frame devenait illisible.
-      // Sur un terminal trop court, mieux vaut couper net que brouiller.
+      // A panel taller than the remaining room overflowed onto its
+      // neighbors — the characters overlapped and the frame became
+      // unreadable. On a too-short terminal, better to cut cleanly than to
+      // blur.
       overflow="hidden"
-      // Un panneau ne se laisse jamais comprimer : privé de sa hauteur, yoga
-      // ramène ses lignes les unes sur les autres et le texte se superpose,
-      // illisible. Il garde donc la hauteur de son contenu, et c'est le corps
-      // de l'écran (`overflow: hidden`) qui coupe ce qui dépasse.
+      // A panel never lets itself be squeezed: deprived of its height,
+      // yoga collapses its lines onto one another and the text overlaps,
+      // unreadable. So it keeps the height of its content, and it is the
+      // screen body (`overflow: hidden`) that cuts what sticks out.
       flexShrink={0}
       {...(width !== undefined ? { width } : {})}
       {...(flexGrow !== undefined ? { flexGrow } : {})}

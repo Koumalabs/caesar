@@ -1,14 +1,14 @@
 /**
- * Persistance de l'état des tâches : un fichier JSON par tâche, sous
+ * Task state persistence: one JSON file per task, under
  * `<root>/.caesar/state/tasks/<id>.json`.
  *
- * L'écriture passe toujours par un fichier temporaire, jamais directement
- * par la cible finale — le serveur MCP et le CLI liront cet état pendant
- * qu'une exécution est en train d'écrire dedans : un lecteur ne doit jamais
- * voir un JSON à moitié écrit. Ce fichier temporaire est ensuite publié de
- * deux façons distinctes selon l'opération : `rename` pour `update`, qui
- * doit toujours remplacer l'existant ; `link` pour `create`, qui ne doit au
- * contraire jamais le faire (voir le commentaire de `create` ci-dessous).
+ * Writing always goes through a temporary file, never directly
+ * through the final target — the MCP server and the CLI will read this state
+ * while a run is writing into it: a reader must never
+ * see a half-written JSON. That temporary file is then published in
+ * two distinct ways depending on the operation: `rename` for `update`, which
+ * must always replace the existing file; `link` for `create`, which on the
+ * contrary must never do so (see the comment on `create` below).
  */
 import { randomUUID } from "node:crypto";
 import { link, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
@@ -19,16 +19,16 @@ import type { Isolation, ReportChannel, ReportStatus, TaskMode } from "@caesar/p
 
 export type TaskStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
 
-/** Provenance du rapport finalement retenu, du plus fiable au plus dégradé. */
+/** Provenance of the report finally retained, from most reliable to most degraded. */
 export type ReportSource = "channel" | "schema" | "file" | "extracted" | "synthesized";
 
 /**
- * Provenance de `report.changes` — voir C2 de la revue finale : "git" quand
- * l'orchestrateur a pu recouper la déclaration de l'agent avec l'état git
- * constaté du workspace (isolation `worktree`, ou `inplace` dans un dépôt
- * git), "declaration" quand aucun recoupement n'était possible (workspace
- * hors dépôt git) — dans ce seul cas, `changes` reste la parole de l'agent,
- * jamais présentée comme davantage.
+ * Provenance of `report.changes` — see C2 of the final review: "git" when
+ * the orchestrator was able to reconcile the agent's declaration with the
+ * observed git state of the workspace (isolation `worktree`, or `inplace` in
+ * a git repository), "declaration" when no reconciliation was possible
+ * (workspace outside a git repository) — in that case only, `changes` remains
+ * the agent's word, never presented as anything more.
  */
 export type ChangesVerifiedBy = "git" | "declaration";
 
@@ -47,15 +47,15 @@ export interface TaskRecord {
   mode: TaskMode;
   branch?: string;
   /**
-   * Chemins que l'orchestrateur a posés dans le worktree (`[worktree]
-   * copy`/`link`), à retirer du diff — voir `WorktreeHandle.excluded`.
+   * Paths the orchestrator placed in the worktree (`[worktree]
+   * copy`/`link`), to be removed from the diff — see `WorktreeHandle.excluded`.
    *
-   * Persisté ici parce que `caesar diff` et `caesar apply` recalculent le diff
-   * longtemps après la fin de la tâche, à partir du seul enregistrement : sans
-   * cette trace, un `.env` recopié redeviendrait applicable au dépôt
-   * principal. Absent pour toute tâche antérieure à `[worktree]`, ou sans
-   * matérialisation — le schéma n'est pas `.strict()`, l'ajout est
-   * rétrocompatible dans les deux sens.
+   * Persisted here because `caesar diff` and `caesar apply` recompute the diff
+   * long after the task has ended, from the record alone: without this
+   * trace, a copied `.env` would become applicable to the main
+   * repository again. Absent for any task predating `[worktree]`, or without
+   * materialization — the schema is not `.strict()`, the addition is
+   * backward-compatible in both directions.
    */
   excluded_paths?: string[];
   exit_code?: number | null;
@@ -63,35 +63,35 @@ export interface TaskRecord {
   report_source?: ReportSource;
   changes_verified_by?: ChangesVerifiedBy;
   /**
-   * Le `status` du rapport résolu (`report.ts`), distinct de `status`
-   * ci-dessus — voir I3 de la revue finale : `status` ne reflète que
-   * l'issue du *processus* (code de sortie, timeout, annulation), jamais ce
-   * que l'agent a déclaré dans son rapport. Un agent qui écrit
-   * `{"status":"failed"}` puis sort en code 0 produit `status: "succeeded"`
-   * et `report_status: "failed"` — les deux sont vrais, à des niveaux
-   * différents ; ni `caesar ps`, ni le code de sortie de `caesar run`, ni
-   * `caesar_status` ne doivent en ignorer un des deux.
+   * The `status` of the resolved report (`report.ts`), distinct from `status`
+   * above — see I3 of the final review: `status` only reflects the
+   * outcome of the *process* (exit code, timeout, cancellation), never what
+   * the agent declared in its report. An agent that writes
+   * `{"status":"failed"}` then exits with code 0 produces `status: "succeeded"`
+   * and `report_status: "failed"` — both are true, at different
+   * levels; neither `caesar ps`, nor the exit code of `caesar run`, nor
+   * `caesar_status` may ignore either of the two.
    */
   report_status?: ReportStatus;
   depth: number;
   /**
-   * Identifiant du processus du sous-agent, le temps qu'il tourne. Renseigné
-   * par le moteur au lancement, effacé à la fin (voir `runner.ts`) : c'est ce
-   * qui permet à `caesar cancel` (tâche CLI) d'envoyer SIGTERM à une tâche
-   * lancée par un autre processus (le serveur MCP, par exemple) sans autre
-   * moyen de retrouver son PID.
+   * Process identifier of the sub-agent, while it runs. Set
+   * by the engine at launch, cleared at the end (see `runner.ts`): this is
+   * what allows `caesar cancel` (CLI task) to send SIGTERM to a task
+   * launched by another process (the MCP server, for example) with no other
+   * way to find its PID.
    */
   pid?: number;
   /**
-   * Posés par `applyRecordedWorktree` (engine/worktree.ts) quand le diff du
-   * worktree a été appliqué au dépôt principal : l'instant de l'application,
-   * et le sha256 (hex) du texte du patch appliqué. Un nouvel apply réussi
-   * les écrase — c'est la dernière application qui fait foi. `caesar gc` s'en
-   * sert pour collecter un worktree dont le patch courant porte encore la
-   * même empreinte : un fait daté et positif, jamais une déduction depuis le
-   * contenu. Absents pour toute tâche jamais appliquée, appliquée à vide, ou
-   * antérieure à ce mécanisme — le schéma n'étant pas `.strict()`, l'ajout
-   * est rétrocompatible dans les deux sens.
+   * Set by `applyRecordedWorktree` (engine/worktree.ts) when the worktree's
+   * diff has been applied to the main repository: the moment of application,
+   * and the sha256 (hex) of the applied patch text. A new successful apply
+   * overwrites them — the last application is authoritative. `caesar gc` uses
+   * them to collect a worktree whose current patch still bears the
+   * same fingerprint: a dated, positive fact, never a deduction from the
+   * content. Absent for any task never applied, applied empty, or
+   * predating this mechanism — the schema not being `.strict()`, the addition
+   * is backward-compatible in both directions.
    */
   applied_at?: string;
   applied_patch_digest?: string;
@@ -99,16 +99,16 @@ export interface TaskRecord {
 
 export interface TaskStore {
   /**
-   * Crée l'enregistrement d'une nouvelle tâche. Lève si `record.id` est déjà
-   * pris — jamais un écrasement silencieux : deux exécutions qui partageraient
-   * le même identifiant (bug d'un appelant, `taskId` imposé et réutilisé par
-   * erreur) écriraient sinon dans le même répertoire de tâche, avec un
-   * `raw.log` tronqué et un `events.jsonl` entrelacé. L'exclusivité est
-   * garantie par le système de fichiers (publication par `link`, qui échoue
-   * si la cible existe déjà), pas seulement par une relecture préalable :
-   * deux `create` concurrents sur le même identifiant ne peuvent pas tous
-   * les deux réussir. `update` reste la seule façon de modifier un
-   * enregistrement existant.
+   * Creates the record of a new task. Throws if `record.id` is already
+   * taken — never a silent overwrite: two runs sharing
+   * the same identifier (caller bug, `taskId` imposed and reused by
+   * mistake) would otherwise write into the same task directory, with a
+   * truncated `raw.log` and an interleaved `events.jsonl`. Exclusivity is
+   * guaranteed by the filesystem (publication via `link`, which fails
+   * if the target already exists), not merely by a prior re-read:
+   * two concurrent `create`s on the same identifier cannot both
+   * succeed. `update` remains the only way to modify an existing
+   * record.
    */
   create(record: TaskRecord): Promise<void>;
   update(id: string, patch: Partial<TaskRecord>): Promise<TaskRecord>;
@@ -119,36 +119,37 @@ export interface TaskStore {
 const SUFFIX = ".json";
 
 /**
- * Rejette tout `id` qui pourrait s'échapper de `dir` une fois composé dans
- * un chemin de fichier — voir I9 de la revue finale, vérifié en exécutant
- * le code : `fileFor` faisait `join(dir, \`${id}.json\`)` sans normalisation
- * ni validation, et `store.get("../../../secret")` rendait le contenu d'un
- * fichier arbitraire hors du store (`{"status":"top-secret-value",...}`).
- * `task_id` est déclaré `z.string().min(1)` dans sept tools MCP pilotés par
- * le modèle (`caesar_logs`/`caesar_status`/`caesar_diff`/`caesar_apply`/
- * `caesar_cancel`/`caesar_await`/`caesar_answer`) : ce garde, unique et placé ici
- * plutôt que répété dans chacun, ferme la catégorie entière d'un geste.
+ * Rejects any `id` that could escape from `dir` once composed into
+ * a file path — see I9 of the final review, verified by running
+ * the code: `fileFor` did `join(dir, \`${id}.json\`)` with no normalization
+ * or validation, and `store.get("../../../secret")` returned the content of
+ * an arbitrary file outside the store (`{"status":"top-secret-value",...}`).
+ * `task_id` is declared `z.string().min(1)` in seven MCP tools driven by
+ * the model (`caesar_logs`/`caesar_status`/`caesar_diff`/`caesar_apply`/
+ * `caesar_cancel`/`caesar_await`/`caesar_answer`): this guard, single and placed here
+ * rather than repeated in each of them, closes the entire category in one
+ * move.
  *
- * N'impose pas le format généré par `generateTaskId` (`t_` + 32 hex) : des
- * identifiants lisibles ("t_imposed", "t_test"…) sont un usage légitime et
- * testé de `RunTaskInput.taskId`, documenté comme personnalisable par
- * l'appelant. Seuls les séparateurs de chemin, les octets nuls et les noms
- * de répertoire spéciaux (".", "..") sont interdits.
+ * Does not enforce the format generated by `generateTaskId` (`t_` + 32 hex):
+ * readable identifiers ("t_imposed", "t_test"…) are a legitimate, tested
+ * use of `RunTaskInput.taskId`, documented as customizable by the
+ * caller. Only path separators, null bytes and the special directory
+ * names (".", "..") are forbidden.
  */
 function assertSafeTaskId(id: string): void {
   if (id === "" || id === "." || id === ".." || id.includes("/") || id.includes("\\") || id.includes("\0")) {
-    throw new Error(`Identifiant de tâche invalide : "${id}".`);
+    throw new Error(`Invalid task identifier: "${id}".`);
   }
 }
 
 /**
- * Valide la forme d'un enregistrement relu depuis le disque, plutôt qu'un
- * cast `as TaskRecord` — second geste d'I9 de la revue finale : sans lui,
- * un fichier `.json` du store dont le contenu ne serait pas un vrai
- * `TaskRecord` (corruption, écriture partielle échappée à l'atomicité
- * habituelle, fichier déposé par autre chose) serait néanmoins interprété
- * comme tel — notamment son `status`/`pid`, que `caesar_cancel` utilise pour
- * envoyer un signal à un processus (`cancel.ts`, repli par pid).
+ * Validates the shape of a record re-read from disk, rather than a
+ * cast `as TaskRecord` — second move of I9 from the final review: without
+ * it, a `.json` file of the store whose content was not a real
+ * `TaskRecord` (corruption, partial write escaping the usual
+ * atomicity, file dropped there by something else) would nevertheless be
+ * interpreted as one — notably its `status`/`pid`, which `caesar_cancel` uses
+ * to send a signal to a process (`cancel.ts`, pid fallback).
  */
 const TaskRecordSchema = z.object({
   id: z.string().min(1),
@@ -195,16 +196,16 @@ export function fileTaskStore(root: string): TaskStore {
   }
 
   /**
-   * Écrit `record` dans un fichier temporaire du même répertoire (même
-   * système de fichiers, condition nécessaire pour que `rename`/`link`
-   * soient atomiques juste après) : à cet instant, `record` n'est encore
-   * visible sous aucun nom que `create`/`update` publieraient ensuite,
-   * chacun à sa façon — voir l'en-tête du fichier.
+   * Writes `record` into a temporary file in the same directory (same
+   * filesystem, a necessary condition for `rename`/`link` to be
+   * atomic right after): at this moment, `record` is not yet
+   * visible under any name that `create`/`update` would then publish,
+   * each in its own way — see the file header.
    */
   async function writeTemp(record: TaskRecord): Promise<string> {
-    // Construit son propre chemin à partir de `record.id`, sans passer par
-    // `fileFor` : validé ici séparément pour ne pas dépendre de l'ordre
-    // d'appel avec `fileFor` plus bas.
+    // Builds its own path from `record.id`, without going through
+    // `fileFor`: validated here separately so as not to depend on the order
+    // of calls with `fileFor` further down.
     assertSafeTaskId(record.id);
     await mkdir(dir, { recursive: true });
     const tmp = join(dir, `.${record.id}.${randomUUID()}.tmp`);
@@ -214,9 +215,9 @@ export function fileTaskStore(root: string): TaskStore {
 
   async function writeRecord(record: TaskRecord): Promise<void> {
     const tmp = await writeTemp(record);
-    // `rename` remplace toujours l'existant, sans condition — exactement ce
-    // qu'`update` veut : un lecteur concurrent ne voit jamais qu'une version
-    // complète (l'ancienne ou la nouvelle), jamais un fichier partiel.
+    // `rename` always replaces the existing file, unconditionally — exactly
+    // what `update` wants: a concurrent reader only ever sees a complete
+    // version (the old one or the new one), never a partial file.
     await rename(tmp, fileFor(record.id));
   }
 
@@ -224,24 +225,24 @@ export function fileTaskStore(root: string): TaskStore {
     async create(record) {
       const tmp = await writeTemp(record);
       try {
-        // `link`, pas `rename` : crée une nouvelle entrée de répertoire vers
-        // l'inode du fichier temporaire (déjà intégralement écrit — jamais
-        // de lecture partielle possible, même fenêtre de sécurité que
-        // `update`) sans jamais toucher une cible qui existerait déjà —
-        // échoue avec EEXIST dans ce cas, garanti par le système de
-        // fichiers. `rename` n'offre pas cette garantie (il écrase
-        // toujours) ; c'est précisément pour ça qu'`update`, qui doit au
-        // contraire toujours remplacer, continue de l'utiliser ci-dessus.
+        // `link`, not `rename`: creates a new directory entry pointing to
+        // the temporary file's inode (already fully written — no
+        // partial read ever possible, same safety window as
+        // `update`) without ever touching a target that would already exist —
+        // fails with EEXIST in that case, guaranteed by the
+        // filesystem. `rename` does not offer that guarantee (it always
+        // overwrites); that is precisely why `update`, which must on the
+        // contrary always replace, keeps using it above.
         await link(tmp, fileFor(record.id));
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-          throw new Error(`Tâche déjà existante : "${record.id}" (un enregistrement porte déjà cet identifiant ; utilisez update pour le modifier).`);
+          throw new Error(`Task already exists: "${record.id}" (a record already bears this identifier; use update to modify it).`);
         }
         throw error;
       } finally {
-        // `tmp` ne sert plus une fois publié (link crée un second lien
-        // indépendant vers le même contenu) ou abandonné (échec) : jamais
-        // laissé derrière, dans un cas comme dans l'autre.
+        // `tmp` is no longer needed once published (link creates a second
+        // independent link to the same content) or abandoned (failure): never
+        // left behind, in either case.
         await unlink(tmp).catch(() => {});
       }
     },
@@ -249,7 +250,7 @@ export function fileTaskStore(root: string): TaskStore {
     async update(id, patch) {
       const current = await readRecord(id);
       if (!current) {
-        throw new Error(`Tâche inconnue : "${id}"`);
+        throw new Error(`Unknown task: "${id}"`);
       }
       const updated: TaskRecord = { ...current, ...patch };
       await writeRecord(updated);

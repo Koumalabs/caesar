@@ -1,33 +1,33 @@
 /**
- * Identifiants de version du standard. Chaque document échangé les porte, afin
- * qu'un lecteur puisse refuser proprement ce qu'il ne sait pas interpréter.
+ * Version identifiers of the standard. Every exchanged document carries them,
+ * so that a reader can cleanly refuse what it does not know how to interpret.
  */
 export const TASK_PROTOCOL = "caesar.task/v1" as const;
 export const REPORT_PROTOCOL = "caesar.report/v1" as const;
 export const EVENT_PROTOCOL = "caesar.event/v1" as const;
 
-/** Version globale du standard, à des fins d'affichage et de diagnostic. */
+/** Global version of the standard, for display and diagnostic purposes. */
 export const PROTOCOL_VERSION = "1" as const;
 
 /**
- * Variables d'environnement transmises au processus fils. Un agent extérieur
- * n'a besoin que de celles-ci pour participer : lire la mission, écrire le rapport.
+ * Environment variables passed to the child process. An outside agent only
+ * needs these to participate: read the task, write the report.
  */
 export const ENV = {
-  /** Répertoire de la tâche, contenant task.json / report.json / events.jsonl. */
+  /** Task directory, containing task.json / report.json / events.jsonl. */
   taskDir: "CAESAR_TASK_DIR",
-  /** Chemin direct de la mission. */
+  /** Direct path to the task. */
   taskFile: "CAESAR_TASK_FILE",
-  /** Chemin où déposer le rapport. */
+  /** Path where the report must be dropped. */
   reportPath: "CAESAR_REPORT_PATH",
-  /** Chemin du journal d'événements, en append-only. */
+  /** Path of the event log, append-only. */
   eventsPath: "CAESAR_EVENTS_PATH",
-  /** Identifiant de la tâche. */
+  /** Task identifier. */
   taskId: "CAESAR_TASK_ID",
-  /** Identifiant de l'agent qui exécute. */
+  /** Identifier of the executing agent. */
   agent: "CAESAR_AGENT",
-  /** Profondeur de délégation, pour le garde-fou anti-récursion. */
+  /** Delegation depth, for the anti-recursion guardrail. */
   depth: "CAESAR_DEPTH",
-  /** Version du standard en vigueur. */
+  /** Version of the standard in effect. */
   protocolVersion: "CAESAR_PROTOCOL_VERSION",
 } as const;

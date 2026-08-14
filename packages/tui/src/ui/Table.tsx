@@ -1,17 +1,18 @@
 /**
- * Tableau à colonnes fluides : les largeurs se déduisent de la place réelle
- * (`layoutColumns`), une gouttière sépare toujours deux cellules, et chaque
- * valeur trop longue est tronquée dans la sienne.
+ * Fluid-column table: widths are derived from the real room
+ * (`layoutColumns`), a gutter always separates two cells, and any
+ * too-long value is truncated inside its own.
  *
- * C'est le remplaçant des tableaux écrits à la main dans chaque écran, qui
- * complétaient les cellules à des largeurs constantes et sans séparateur —
- * une valeur tronquée venait alors coller à la suivante, et les deux se
- * lisaient comme un seul mot.
+ * It is the replacement for the tables handwritten in each screen, which
+ * padded cells to constant widths and without a separator — a truncated
+ * value then came to stick to the next one, and the two read as a single
+ * word.
  *
- * La ligne sélectionnée porte un fond **et** un curseur "›" en gras : le fond
- * suppose un terminal sombre (voir `SELECTED_BG`), le curseur non. Ce fond
- * s'atténue quand le tableau n'a pas le focus, pour qu'une sélection
- * dormante ne dispute pas l'attention à celle qui reçoit les touches.
+ * The selected row carries a background **and** a bold "›" cursor: the
+ * background assumes a dark terminal (see `SELECTED_BG`), the cursor does
+ * not. That background dims when the table does not have focus, so that a
+ * dormant selection does not compete for attention with the one receiving
+ * the keys.
  */
 import { TextAttributes } from "@opentui/core";
 import { cell, layoutColumns } from "./layout";
@@ -19,14 +20,14 @@ import { DIM, SELECTED_BG, SELECTED_BG_IDLE } from "./theme";
 
 export interface TableColumn<T> {
   header: string;
-  /** Largeur minimale ; à défaut, la longueur de l'en-tête. */
+  /** Minimum width; defaults to the header's length. */
   min?: number;
-  /** Part de l'excédent de largeur. 0 (défaut) : la colonne garde son minimum. */
+  /** Share of the width surplus. 0 (default): the column keeps its minimum. */
   flex?: number;
-  /** Largeur au-delà de laquelle la colonne cesse de grandir (voir `layoutColumns`). */
+  /** Width beyond which the column stops growing (see `layoutColumns`). */
   max?: number;
   cell: (row: T) => string;
-  /** Couleur de la cellule — pour ce qui a un sens (installé, refusé…), jamais pour décorer. */
+  /** Color of the cell — for what has meaning (installed, denied…), never to decorate. */
   fg?: (row: T) => string | undefined;
 }
 
@@ -35,20 +36,20 @@ export interface TableProps<T> {
   rows: readonly T[];
   keyOf: (row: T, index: number) => string;
   selectedIndex: number;
-  /** Le tableau reçoit-il les touches — change l'intensité de la ligne sélectionnée. */
+  /** Whether the table receives the keys — changes the intensity of the selected row. */
   focused?: boolean;
-  /** Largeur disponible, gouttières comprises. */
+  /** Available width, gutters included. */
   width: number;
-  /** Affiché à la place des lignes quand il n'y en a aucune. */
+  /** Displayed in place of the rows when there are none. */
   emptyText?: string;
 }
 
 const GUTTER = 2;
 
 export function Table<T>({ columns, rows, keyOf, selectedIndex, focused = true, width, emptyText }: TableProps<T>) {
-  // Deux caractères sont réservés au curseur en tête de ligne : sans cette
-  // soustraction, la dernière colonne dépasserait du cadre exactement de sa
-  // largeur, et le terminal replierait la ligne.
+  // Two characters are reserved for the cursor at the head of the row:
+  // without this subtraction, the last column would stick out of the frame
+  // by exactly its width, and the terminal would wrap the line.
   const widths = layoutColumns(columns, Math.max(0, width - 2), GUTTER);
   const gap = " ".repeat(GUTTER);
 

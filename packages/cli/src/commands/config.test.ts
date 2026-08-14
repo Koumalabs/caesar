@@ -7,12 +7,12 @@ import { configureInProcessTui, runConfig } from "./config.js";
 import { EXIT_RUNTIME } from "../output.js";
 
 /**
- * Dépose un faux "bun" qui n'a rien d'un vrai runtime : il note dans
- * `captureFile` les arguments qu'il a reçus et son répertoire courant, puis
- * sort avec `exitCode`. Suffisant pour vérifier ce que `runConfig` construit
- * et lance, sans jamais monter le moindre rendu OpenTUI dans les tests
- * `vitest` de `packages/cli` (le vrai TUI, lui, tourne sous `bun test` —
- * voir le rapport de la tâche).
+ * Deposits a fake "bun" that is nothing like a real runtime: it notes in
+ * `captureFile` the arguments it received and its current directory, then
+ * exits with `exitCode`. Enough to check what `runConfig` builds and
+ * launches, without ever mounting any OpenTUI rendering in the `vitest`
+ * tests of `packages/cli` (the real TUI, for its part, runs under `bun
+ * test` — see the task report).
  */
 async function writeFakeBunShim(dir: string, options: { captureFile: string; exitCode: number }): Promise<void> {
   const target = join(dir, "bun");
@@ -25,7 +25,7 @@ process.exit(${options.exitCode});
   await chmod(target, 0o755);
 }
 
-describe("caesar config — bun absent", () => {
+describe("caesar config — bun missing", () => {
   let root: string;
   let shimDir: string;
   let io: CapturedIo;
@@ -41,7 +41,7 @@ describe("caesar config — bun absent", () => {
     await rm(shimDir, { recursive: true, force: true });
   });
 
-  it("explique la situation, renvoie vers les sous-commandes équivalentes, et ne lance rien", async () => {
+  it("explains the situation, points to the equivalent subcommands, and launches nothing", async () => {
     await withShimmedPath(shimDir, async () => {
       const code = await runConfig(root, io);
       expect(code).toBe(EXIT_RUNTIME);
@@ -53,7 +53,7 @@ describe("caesar config — bun absent", () => {
   });
 });
 
-describe("caesar config — bun présent", () => {
+describe("caesar config — bun present", () => {
   let root: string;
   let shimDir: string;
   let captureFile: string;
@@ -71,7 +71,7 @@ describe("caesar config — bun présent", () => {
     await rm(shimDir, { recursive: true, force: true });
   });
 
-  it("construit la bonne ligne de commande (main.tsx du TUI, racine du projet) et propage le code de sortie", async () => {
+  it("builds the right command line (the TUI's main.tsx, project root) and propagates the exit code", async () => {
     await writeFakeBunShim(shimDir, { captureFile, exitCode: 0 });
     await withShimmedPath(shimDir, async () => {
       const code = await runConfig(root, io);
@@ -84,7 +84,7 @@ describe("caesar config — bun présent", () => {
     });
   });
 
-  it("propage un code de sortie non nul", async () => {
+  it("propagates a non-zero exit code", async () => {
     await writeFakeBunShim(shimDir, { captureFile, exitCode: 7 });
     await withShimmedPath(shimDir, async () => {
       const code = await runConfig(root, io);
@@ -93,7 +93,7 @@ describe("caesar config — bun présent", () => {
   });
 });
 
-describe("caesar config — lanceur in-process configuré (tâche 12)", () => {
+describe("caesar config — in-process launcher configured (task 12)", () => {
   let root: string;
   let io: CapturedIo;
 
@@ -104,24 +104,23 @@ describe("caesar config — lanceur in-process configuré (tâche 12)", () => {
 
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });
-    // Toujours restaurer l'absence de lanceur : un test qui laisserait un
-    // lanceur configuré empoisonnerait tous les tests suivants de ce
-    // fichier, y compris ceux du chemin Node par défaut ci-dessus.
+    // Always restore the absence of a launcher: a test that left a launcher
+    // configured would poison all the following tests of this file,
+    // including those of the default Node path above.
     configureInProcessTui(undefined);
   });
 
-  it("délègue au lanceur configuré plutôt que de chercher \"bun\", et rend son code de sortie — sans jamais toucher au PATH", async () => {
+  it("delegates to the configured launcher rather than looking for \"bun\", and returns its exit code — without ever touching the PATH", async () => {
     let receivedRoot: string | undefined;
     configureInProcessTui(async (r) => {
       receivedRoot = r;
       return 3;
     });
 
-    // Aucun `withShimmedPath` ici, délibérément : si `runConfig` retombait
-    // par erreur sur le chemin spawn (bug de régression), l'absence de
-    // "bun" shimmé le ferait échouer de façon visible plutôt que de
-    // masquer le bug en fournissant un faux binaire qui répondrait quand
-    // même correctement.
+    // No `withShimmedPath` here, deliberately: if `runConfig` mistakenly
+    // fell back onto the spawn path (a regression bug), the absence of a
+    // shimmed "bun" would make it fail visibly rather than mask the bug by
+    // providing a fake binary that would still answer correctly.
     const code = await runConfig(root, io);
     expect(code).toBe(3);
     expect(receivedRoot).toBe(root);

@@ -8,7 +8,7 @@ function policy(overrides: Partial<PolicyConfig> = {}): PolicyConfig {
 }
 
 describe("isAgentAllowed", () => {
-  it("refuse un agent listé dans denied", () => {
+  it("refuses an agent listed in denied", () => {
     const decision = isAgentAllowed(policy({ denied: ["copilot"] }), "copilot");
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) {
@@ -17,11 +17,11 @@ describe("isAgentAllowed", () => {
     }
   });
 
-  it("allowed vide : tout agent non refusé passe", () => {
+  it("empty allowed: any agent not denied passes", () => {
     expect(isAgentAllowed(policy(), "codex")).toEqual({ allowed: true });
   });
 
-  it("allowed non vide : seuls les agents listés passent", () => {
+  it("non-empty allowed: only the listed agents pass", () => {
     const p = policy({ allowed: ["codex", "opencode"] });
     expect(isAgentAllowed(p, "codex")).toEqual({ allowed: true });
     const decision = isAgentAllowed(p, "antigravity");
@@ -32,23 +32,23 @@ describe("isAgentAllowed", () => {
     }
   });
 
-  it("denied l'emporte toujours sur allowed : un agent dans les deux listes est refusé", () => {
+  it("denied always wins over allowed: an agent in both lists is refused", () => {
     const p = policy({ allowed: ["codex"], denied: ["codex"] });
     const decision = isAgentAllowed(p, "codex");
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) {
       expect(decision.reason).toContain("codex");
-      expect(decision.reason).toMatch(/denied|refusé/i);
+      expect(decision.reason).toMatch(/denied|refused/i);
     }
   });
 });
 
 describe("isDepthAllowed", () => {
-  it("depth < max_depth : autorisé", () => {
+  it("depth < max_depth: allowed", () => {
     expect(isDepthAllowed(policy({ max_depth: 2 }), 1)).toEqual({ allowed: true });
   });
 
-  it("depth >= max_depth : refusé", () => {
+  it("depth >= max_depth: refused", () => {
     const decision = isDepthAllowed(policy({ max_depth: 2 }), 2);
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) {
@@ -57,13 +57,13 @@ describe("isDepthAllowed", () => {
     }
   });
 
-  it("depth strictement supérieure à max_depth : refusé", () => {
+  it("depth strictly greater than max_depth: refused", () => {
     expect(isDepthAllowed(policy({ max_depth: 2 }), 5).allowed).toBe(false);
   });
 });
 
 describe("isRecursionAllowed", () => {
-  it("allow_recursion faux : l'agent claude est refusé", () => {
+  it("allow_recursion false: the claude agent is refused", () => {
     const decision = isRecursionAllowed(policy({ allow_recursion: false }), "claude");
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) {
@@ -72,49 +72,49 @@ describe("isRecursionAllowed", () => {
     }
   });
 
-  it("allow_recursion vrai : l'agent claude est autorisé (par cette règle)", () => {
+  it("allow_recursion true: the claude agent is allowed (by this rule)", () => {
     expect(isRecursionAllowed(policy({ allow_recursion: true }), "claude")).toEqual({ allowed: true });
   });
 
-  it("un agent autre que claude n'est jamais concerné par cette règle", () => {
+  it("an agent other than claude is never concerned by this rule", () => {
     expect(isRecursionAllowed(policy({ allow_recursion: false }), "codex")).toEqual({ allowed: true });
   });
 });
 
 describe("checkDelegation", () => {
-  it("autorise un agent installé, licite, à faible profondeur", () => {
+  it("allows an installed, lawful agent at low depth", () => {
     expect(checkDelegation(policy(), { agentId: "codex", depth: 0 })).toEqual({ allowed: true });
   });
 
-  it("règle 1 : denied l'emporte sur allowed", () => {
+  it("rule 1: denied wins over allowed", () => {
     const p = policy({ allowed: ["codex"], denied: ["codex"] });
     const decision = checkDelegation(p, { agentId: "codex", depth: 0 });
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) expect(decision.reason).toContain("codex");
   });
 
-  it("règle 2 : agent hors de allowed refusé", () => {
+  it("rule 2: agent outside allowed refused", () => {
     const decision = checkDelegation(policy({ allowed: ["codex"] }), { agentId: "opencode", depth: 0 });
     expect(decision.allowed).toBe(false);
   });
 
-  it("règle 3 : profondeur refusée", () => {
+  it("rule 3: depth refused", () => {
     const decision = checkDelegation(policy({ max_depth: 1 }), { agentId: "codex", depth: 1 });
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) expect(decision.reason.length).toBeGreaterThan(0);
   });
 
-  it("règle 4 : claude refusé quand allow_recursion est faux", () => {
+  it("rule 4: claude refused when allow_recursion is false", () => {
     const decision = checkDelegation(policy({ allow_recursion: false }), { agentId: "claude", depth: 0 });
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) expect(decision.reason).toContain("claude");
   });
 
-  it("claude autorisé quand allow_recursion est vrai", () => {
+  it("claude allowed when allow_recursion is true", () => {
     expect(checkDelegation(policy({ allow_recursion: true }), { agentId: "claude", depth: 0 })).toEqual({ allowed: true });
   });
 
-  it("chaque refus porte un motif non vide", () => {
+  it("every refusal carries a non-empty reason", () => {
     const cases: Array<{ policy: PolicyConfig; agentId: string; depth: number }> = [
       { policy: policy({ denied: ["codex"] }), agentId: "codex", depth: 0 },
       { policy: policy({ allowed: ["opencode"] }), agentId: "codex", depth: 0 },
@@ -130,32 +130,32 @@ describe("checkDelegation", () => {
 });
 
 /**
- * Déplacée depuis `packages/cli/src/commands/agents.ts` (tâche 8, rapport de
- * correction) — voir sa docstring pour le raisonnement. `packages/cli`
- * (`agents.ts`, `doctor.ts`) l'appelle désormais d'ici ; ses tests
- * continuent de passer sans modification (voir `packages/cli/src/commands/
- * agents.test.ts`, exercée indirectement via `runAgentsList`).
+ * Moved from `packages/cli/src/commands/agents.ts` (task 8, correction
+ * report) — see its docstring for the reasoning. `packages/cli`
+ * (`agents.ts`, `doctor.ts`) now calls it from here; its tests
+ * keep passing without modification (see `packages/cli/src/commands/
+ * agents.test.ts`, exercised indirectly via `runAgentsList`).
  */
 describe("describeAgentPolicy", () => {
-  it("autorisé : ni denied, ni hors allowed, ni récursion refusée", () => {
+  it("allowed: neither denied, nor outside allowed, nor recursion refused", () => {
     expect(describeAgentPolicy(policy(), "codex")).toEqual({ allowed: true });
   });
 
-  it("reflète isAgentAllowed (denied l'emporte)", () => {
+  it("reflects isAgentAllowed (denied wins)", () => {
     const decision = describeAgentPolicy(policy({ denied: ["codex"] }), "codex");
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) expect(decision.reason).toContain("denied");
   });
 
-  it("reflète isRecursionAllowed, même sans figurer dans denied/allowed", () => {
+  it("reflects isRecursionAllowed, even without appearing in denied/allowed", () => {
     const decision = describeAgentPolicy(policy({ allow_recursion: false }), "claude");
     expect(decision.allowed).toBe(false);
-    if (!decision.allowed) expect(decision.reason).toContain("récursion");
+    if (!decision.allowed) expect(decision.reason).toContain("recursion");
   });
 
-  it("ne tient jamais compte de la profondeur : max_depth n'entre pas en jeu", () => {
-    // `checkDelegation` refuserait ici sur la règle de profondeur ;
-    // `describeAgentPolicy` n'a pas de profondeur à évaluer, par construction.
+  it("never takes depth into account: max_depth does not come into play", () => {
+    // `checkDelegation` would refuse here on the depth rule;
+    // `describeAgentPolicy` has no depth to evaluate, by construction.
     expect(describeAgentPolicy(policy({ max_depth: 0 }), "codex")).toEqual({ allowed: true });
   });
 });

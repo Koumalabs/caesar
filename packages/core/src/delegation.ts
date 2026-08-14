@@ -1,30 +1,30 @@
 /**
- * Résout une demande de délégation — rôle et/ou agent explicite, mode,
- * isolation, réseau, timeout, contexte — en ce qu'il faut pour appeler
- * `runTask`, ou en un refus portant un motif prêt à afficher.
+ * Resolves a delegation request — role and/or explicit agent, mode,
+ * isolation, network, timeout, context — into what is needed to call
+ * `runTask`, or into a refusal carrying a ready-to-display reason.
  *
- * Point d'assemblage partagé par `caesar run` (`packages/cli/src/commands/run.ts`)
- * et `caesar_delegate` (`packages/mcp-server/src/tools/delegate.ts`), qui
- * appliquaient jusqu'ici cette même règle en deux endroits, avec le même
- * risque qu'une seule des deux copies dérive au fil d'une future
- * modification — voir le rapport de correction de la tâche 7. Ordre de
- * résolution : rôle (s'il y en a un) → agent (l'entrée explicite l'emporte
- * sur le choix issu du rôle, mais pas sur ses valeurs par défaut de
- * mode/isolation/réseau/timeout/prompt système) → catalogue → politique →
- * réseau (qui vient en dernier parce qu'il dépend du mode et de l'agent
- * retenus).
+ * Assembly point shared by `caesar run` (`packages/cli/src/commands/run.ts`)
+ * and `caesar_delegate` (`packages/mcp-server/src/tools/delegate.ts`), which
+ * until now applied this same rule in two places, with the same risk that
+ * only one of the two copies drifts over the course of a future
+ * modification — see the correction report of task 7. Resolution order:
+ * role (if there is one) → agent (the explicit input wins over the choice
+ * derived from the role, but not over its defaults for
+ * mode/isolation/network/timeout/system prompt) → catalog → policy →
+ * network (which comes last because it depends on the mode and agent
+ * selected).
  *
- * Ne dépend d'aucun contexte propre à une façade (pas d'`Io` du CLI, pas de
- * session MCP) : uniquement des types de `@caesar/core`/`@caesar/protocol`, pour
- * rester réutilisable telle quelle par le TUI (tâche à venir).
+ * Depends on no facade-specific context (no CLI `Io`, no MCP session):
+ * only the types of `@caesar/core`/`@caesar/protocol`, in order to remain
+ * reusable as-is by the TUI (upcoming task).
  *
- * Ce que cette fonction ne fait pas, délibérément : elle ne valide pas la
- * *forme* de `mode`/`isolation` (chaîne quelconque côté CLI, énumération
- * déjà typée par le schéma zod côté MCP) — cette validation est propre au
- * transport de chaque façade, qui la fait avant d'appeler `resolveDelegation`
- * avec des valeurs déjà typées. Elle ne lit pas non plus de fichier pour
- * `context` (le `@fichier` du CLI est résolu par son appelant) : elle ne fait
- * que fusionner le contexte déjà résolu avec le prompt système du rôle.
+ * What this function deliberately does not do: it does not validate the
+ * *shape* of `mode`/`isolation` (arbitrary string on the CLI side,
+ * enumeration already typed by the zod schema on the MCP side) — that
+ * validation belongs to each facade's transport, which does it before calling
+ * `resolveDelegation` with already-typed values. Nor does it read any file
+ * for `context` (the CLI's `@file` is resolved by its caller): it only
+ * merges the already-resolved context with the role's system prompt.
  */
 import { ENV } from "@caesar/protocol";
 import type { Isolation, TaskMode } from "@caesar/protocol";
@@ -45,30 +45,31 @@ export interface DelegationParams {
   mode?: TaskMode;
   isolation?: Isolation | "auto";
   network?: NetworkRequest;
-  /** Contexte déjà résolu (un éventuel `@fichier` côté CLI est lu avant l'appel) ; fusionné ici avec le prompt système du rôle, s'il y en a un. */
+  /** Already-resolved context (any `@file` on the CLI side is read before the call); merged here with the role's system prompt, if there is one. */
   context?: string;
-  /** Durée brute ("10m", "90s"…) ; le motif de `parseDuration` est rendu tel quel en cas d'échec. */
+  /** Raw duration ("10m", "90s"…); the reason from `parseDuration` is rendered as-is on failure. */
   timeout?: string;
   /**
-   * Profondeur de délégation, transmise à `checkDelegation`. Obligatoire —
-   * voir C4 de la revue finale : un paramètre à valeur par défaut
-   * (`params.depth ?? 0`) est ce qui a laissé `max_depth` inappliqué sans
-   * qu'aucun test ni la compilation ne le remarque. 0 pour un appel de
-   * premier niveau (CLI, serveur MCP, sans `$CAESAR_DEPTH` hérité) ; voir
-   * `nextDelegationDepth` pour le calcul attendu côté façade.
+   * Delegation depth, passed on to `checkDelegation`. Required — see C4 of
+   * the final review: a parameter with a default value
+   * (`params.depth ?? 0`) is what left `max_depth` unenforced without
+   * any test or the compilation noticing. 0 for a top-level call (CLI,
+   * MCP server, without an inherited `$CAESAR_DEPTH`); see
+   * `nextDelegationDepth` for the computation expected on the facade side.
    */
   depth: number;
 }
 
 /**
- * Profondeur à assigner à la *prochaine* délégation, calculée depuis
- * `$CAESAR_DEPTH` hérité du processus courant — voir C4 de la revue finale :
- * cette variable était bien exportée vers les sous-processus (`taskEnv`,
- * `@caesar/protocol`) mais jamais relue par personne, ce qui rendait
- * `max_depth` inapplicable dès qu'un agent délégant tournait lui-même comme
- * sous-agent d'une délégation précédente. `Number(process.env[...])` invalide
- * ou absent retombe sur 0 plutôt que sur `NaN` — un `NaN >= max_depth` serait
- * toujours faux et désarmerait silencieusement le garde-fou.
+ * Depth to assign to the *next* delegation, computed from the `$CAESAR_DEPTH`
+ * inherited by the current process — see C4 of the final review: this
+ * variable was indeed exported to subprocesses (`taskEnv`,
+ * `@caesar/protocol`) but never read back by anyone, which made `max_depth`
+ * unenforceable as soon as a delegating agent was itself running as a
+ * sub-agent of a previous delegation. An invalid or absent
+ * `Number(process.env[...])` falls back to 0 rather than `NaN` — a
+ * `NaN >= max_depth` would always be false and would silently disarm the
+ * safeguard.
  */
 export function nextDelegationDepth(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env[ENV.depth];
@@ -78,31 +79,31 @@ export function nextDelegationDepth(env: NodeJS.ProcessEnv = process.env): numbe
 
 export interface ResolvedDelegation {
   agentId: string;
-  /** Nom du rôle, si `params.role` en portait un — à transmettre tel quel à `RunTaskInput.role`. */
+  /** Name of the role, if `params.role` carried one — to be passed as-is to `RunTaskInput.role`. */
   role?: string;
   mode: TaskMode;
   isolation: Isolation | "auto";
   /**
-   * L'opt-in `policy.allow_inplace_write`, à transmettre tel quel à
+   * The `policy.allow_inplace_write` opt-in, to be passed as-is to
    * `RunTaskInput.allowInplaceWrite`.
    *
-   * Rendu ici plutôt que relu de `config.policy` par chaque façade : le moteur
-   * refuse par défaut, donc c'est l'acheminement de cette permission qui doit
-   * être unique et évident. Trois lectures indépendantes de la même clé, c'est
-   * trois occasions d'en oublier une — le défaut même que `resolveDelegation`
-   * existe pour clore.
+   * Rendered here rather than re-read from `config.policy` by each facade:
+   * the engine refuses by default, so the routing of this permission must
+   * be unique and obvious. Three independent reads of the same key are
+   * three occasions to forget one — the very defect `resolveDelegation`
+   * exists to close.
    */
   allowInplaceWrite: boolean;
   /**
-   * Le réseau sera-t-il disponible ? Déjà confronté à ce que l'agent retenu
-   * permet — la demande tri-état, elle, s'arrête ici.
+   * Will the network be available? Already checked against what the selected
+   * agent allows — the tri-state request, for its part, stops here.
    */
   network: boolean;
   /**
-   * Ce qu'il faut dire quand la demande et le possible n'ont pas coïncidé
-   * sans pour autant justifier un refus : réseau coupé faute de mieux, ou
-   * fermeture demandée que nous ne savons pas obtenir. Versé au rapport par
-   * le moteur, à côté de l'avertissement d'isolation dégradée.
+   * What to say when the request and the possible did not coincide
+   * without justifying a refusal for all that: network cut off for lack of
+   * better, or a requested shutdown we do not know how to obtain. Poured
+   * into the report by the engine, next to the degraded-isolation warning.
    */
   networkWarning?: string;
   timeoutMs: number;
@@ -112,20 +113,20 @@ export interface ResolvedDelegation {
 export type DelegationResult = ResolvedDelegation | { error: string };
 
 export async function resolveDelegation(config: CaesarConfig, root: string, params: DelegationParams): Promise<DelegationResult> {
-  // Motif générique, volontairement sans nom de flag ni de champ : cette
-  // fonction ne sait pas depuis quelle façade elle est appelée. Le CLI
-  // (`caesar run`) vérifie cette même condition en amont, avant d'appeler
-  // `resolveDelegation`, pour rendre son propre message nommant les flags
-  // exacts (`--agent`/`--role`) — voir `run.ts` et le rapport de correction
-  // de la tâche 7. Pour le serveur MCP, dont les paramètres se nomment
-  // justement "agent"/"role", ce motif générique convient tel quel.
+  // Generic reason, deliberately without any flag or field name: this
+  // function does not know which facade it is called from. The CLI
+  // (`caesar run`) checks this same condition upstream, before calling
+  // `resolveDelegation`, to render its own message naming the exact flags
+  // (`--agent`/`--role`) — see `run.ts` and the correction report of
+  // task 7. For the MCP server, whose parameters are named precisely
+  // "agent"/"role", this generic reason fits as-is.
   if (!params.agent && !params.role) {
-    return { error: "Un agent ou un rôle est requis." };
+    return { error: "An agent or a role is required." };
   }
 
   const role = params.role ? await resolveRole(config, root, params.role) : null;
   if (params.role && !role) {
-    return { error: `Rôle inconnu : "${params.role}".` };
+    return { error: `Unknown role: "${params.role}".` };
   }
 
   let agentId: string;
@@ -137,13 +138,13 @@ export async function resolveDelegation(config: CaesarConfig, root: string, para
     if ("error" in pick) return { error: pick.error };
     agentId = pick.agentId;
   } else {
-    // Inatteignable : la garde en tête de fonction exige déjà l'un des deux.
-    return { error: "Un agent ou un rôle est requis." };
+    // Unreachable: the guard at the top of the function already requires one of the two.
+    return { error: "An agent or a role is required." };
   }
 
   const agentDef = findAgentDefinition(agentId, config.agents);
   if (!agentDef) {
-    return { error: `Agent inconnu : "${agentId}".` };
+    return { error: `Unknown agent: "${agentId}".` };
   }
 
   const decision = checkDelegation(config.policy, { agentId, depth: params.depth });
@@ -154,18 +155,18 @@ export async function resolveDelegation(config: CaesarConfig, root: string, para
   const mode: TaskMode = params.mode ?? role?.mode ?? config.policy.default_mode;
   const isolation: Isolation | "auto" = params.isolation ?? role?.isolation ?? config.policy.default_isolation;
 
-  // Avant tout le reste, et avant que quoi que ce soit ne soit écrit sur le
-  // disque : une tâche en écriture n'a pas le droit de s'exécuter dans l'arbre
-  // de travail de l'utilisateur sans opt-in assumé. `prepareIsolation` rend le
-  // même verdict — `decideInplaceWrite` est pure, les deux ne peuvent pas
-  // diverger — mais plus tard, une fois le répertoire de tâche créé ; ici le
-  // refus ne laisse rien derrière lui, et son motif nomme la couche à corriger.
+  // Before everything else, and before anything is written to disk: a
+  // write task has no right to run in the user's working tree without a
+  // deliberate opt-in. `prepareIsolation` renders the same verdict —
+  // `decideInplaceWrite` is pure, the two cannot diverge — but later, once
+  // the task directory has been created; here the refusal leaves nothing
+  // behind it, and its reason names the layer to fix.
   //
-  // L'état git n'est interrogé que là où il peut changer la réponse : les deux
-  // commandes de `usableRepoRoot` ne sont pas gratuites, et chaque délégation
-  // les paierait pour un verdict connu d'avance. Quand la garde est inactive,
-  // `repoUsable: false` conduit `decideInplaceWrite` au même « non refusé »
-  // que les autres gardes auraient de toute façon rendu.
+  // Git state is only queried where it can change the answer: the two
+  // commands of `usableRepoRoot` are not free, and every delegation would
+  // pay for them for a verdict known in advance. When the guard is
+  // inactive, `repoUsable: false` leads `decideInplaceWrite` to the same
+  // "not refused" that the other guards would have rendered anyway.
   const inplaceUnderReview = isolation === "inplace" && mode === "write" && !config.policy.allow_inplace_write;
   const repo = inplaceUnderReview ? await usableRepoRoot(root) : null;
   const isolationSource: IsolationSource =
@@ -183,10 +184,10 @@ export async function resolveDelegation(config: CaesarConfig, root: string, para
     return { error: `${inplaceWrite.reason} ${inplaceWrite.remedy}` };
   }
 
-  // Après le mode, dont la décision dépend : un agent qui ne sait ouvrir le
-  // réseau qu'en écriture ne peut être jugé qu'une fois le mode connu. Et
-  // avant que quoi que ce soit ne soit écrit sur le disque — un refus ne
-  // laisse aucun répertoire de tâche derrière lui.
+  // After the mode, on which the decision depends: an agent that only knows
+  // how to open the network in write mode can only be judged once the mode
+  // is known. And before anything is written to disk — a refusal leaves no
+  // task directory behind it.
   const netDecision = decideNetwork({
     agentId,
     requested: params.network ?? role?.network ?? config.policy.default_network,

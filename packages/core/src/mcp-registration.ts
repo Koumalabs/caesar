@@ -1,32 +1,32 @@
 /**
- * Enregistrement de l'orchestrateur auprès des clients MCP (`claude`,
- * `codex`, `copilot`, `opencode`, `antigravity`) : le plan d'installation
- * par client, son application (sous-commande native ou écriture de
- * fichier), et la lecture de son état actuel.
+ * Registration of the orchestrator with the MCP clients (`claude`,
+ * `codex`, `copilot`, `opencode`, `antigravity`): the per-client
+ * installation plan, its application (native subcommand or file
+ * write), and reading its current state.
  *
- * Déplacé depuis `packages/cli/src/commands/mcp.ts` (tâche 8, rapport de
- * correction) : `packages/tui` (écran Intégrations) avait besoin de cette
- * même logique, et la faire dépendre de `packages/cli` pour l'obtenir
- * créait une dépendance de workspace cyclique avec le sens `cli → tui`
- * que `caesar config` a légitimement besoin (résolution dynamique du chemin de
- * `@caesar/tui`, jamais un import statique). Ramener ce module ici, à côté de
- * `config.ts`/`policy.ts`, rétablit une seule direction de dépendance —
- * même raisonnement que `resolveDelegation` (`delegation.ts`) à la tâche
- * précédente.
+ * Moved from `packages/cli/src/commands/mcp.ts` (task 8, correction
+ * report): `packages/tui` (Integrations screen) needed this
+ * same logic, and making it depend on `packages/cli` to get it
+ * created a cyclic workspace dependency with the `cli → tui` direction
+ * that `caesar config` legitimately needs (dynamic resolution of the path of
+ * `@caesar/tui`, never a static import). Bringing this module back here, next
+ * to `config.ts`/`policy.ts`, restores a single dependency direction —
+ * same reasoning as `resolveDelegation` (`delegation.ts`) in the previous
+ * task.
  *
- * `packages/cli` (`commands/mcp.ts`) garde un habillage fin par-dessus ce
- * module : le format d'affichage propre au CLI (`describePlan`/`planToJson`,
- * spécifiques à `--json`/texte) et la forme `Io`/codes de sortie d'
- * `caesar mcp install`. Ce module-ci ne connaît ni l'un ni l'autre — il
- * construit un plan, l'applique, ou lit un statut, et rien de plus.
+ * `packages/cli` (`commands/mcp.ts`) keeps a thin dressing over this
+ * module: the CLI's own display format (`describePlan`/`planToJson`,
+ * specific to `--json`/text) and the `Io`/exit-code shape of
+ * `caesar mcp install`. This module knows neither — it
+ * builds a plan, applies it, or reads a status, and nothing more.
  *
- * Note sur `opencode` (héritée du brief de la tâche 7, reprise telle
- * quelle) : rangé parmi les clients à sous-commande native par ce brief,
- * mais `opencode mcp add --help` (vérifié sur la machine de développement)
- * ne connaît aucun moyen non interactif de fournir la commande d'un serveur
- * stdio local — seulement un prompt interactif. L'automatiser en devinant la
- * séquence de prompts serait le flag inventé que les contraintes du projet
- * interdisent ; `opencode` est donc traité ici comme les clients à fichier.
+ * Note on `opencode` (inherited from the task 7 brief, taken over as
+ * is): filed among the native-subcommand clients by that brief,
+ * but `opencode mcp add --help` (verified on the development machine)
+ * knows no non-interactive way to provide the command of a local stdio
+ * server — only an interactive prompt. Automating it by guessing the
+ * prompt sequence would be the invented flag the project's constraints
+ * forbid; `opencode` is therefore treated here like the file-based clients.
  */
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -37,7 +37,7 @@ import { writeFileAtomic } from "./fs-atomic.js";
 
 const execFileAsync = promisify(execFile);
 
-/** Nom sous lequel l'orchestrateur s'enregistre chez chaque client — cohérent avec `ChannelSchema.server_name` (`@caesar/protocol`). */
+/** Name under which the orchestrator registers with each client — consistent with `ChannelSchema.server_name` (`@caesar/protocol`). */
 export const SERVER_NAME = "caesar";
 
 export const MCP_CLIENTS = ["claude", "codex", "copilot", "opencode", "antigravity"] as const;
@@ -62,7 +62,7 @@ export interface FileInstallPlan {
   client: McpClient;
   kind: "file";
   path: string;
-  /** Clé sous laquelle fusionner `entry`, à la clé `SERVER_NAME` — "mcpServers" (Copilot, Antigravity) ou "mcp" (OpenCode). */
+  /** Key under which to merge `entry`, at the `SERVER_NAME` key — "mcpServers" (Copilot, Antigravity) or "mcp" (OpenCode). */
   mergeKey: string;
   entry: Record<string, unknown>;
 }
@@ -87,16 +87,16 @@ export function buildPlan(client: McpClient, root: string): InstallPlan {
       return {
         client,
         kind: "file",
-        // Chemin donné par le brief de la tâche 7 : ce fichier porte déjà des
-        // réglages personnels de l'utilisateur (dont `trustedWorkspaces`),
-        // préservés par la fusion ci-dessous (`applyPlan`).
+        // Path given by the task 7 brief: this file already carries personal
+        // user settings (including `trustedWorkspaces`),
+        // preserved by the merge below (`applyPlan`).
         path: join(homeDirectory(), ".gemini", "antigravity-cli", "settings.json"),
         mergeKey: "mcpServers",
         entry: { command: "caesar", args: serveArgs(root) },
       };
     case "opencode":
-      // "command" est un tableau chez OpenCode, à la différence de
-      // "command"/"args" séparés chez Copilot et Antigravity.
+      // "command" is an array for OpenCode, unlike the separate
+      // "command"/"args" for Copilot and Antigravity.
       return {
         client,
         kind: "file",
@@ -113,21 +113,21 @@ async function readJsonFile(path: string): Promise<Record<string, unknown>> {
     raw = await readFile(path, "utf8");
   } catch (error) {
     if (isEnoent(error)) return {};
-    throw new Error(`Impossible de lire ${path} : ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Cannot read ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch (error) {
-    throw new Error(`Fichier JSON invalide : ${path} (${error instanceof Error ? error.message : String(error)})`);
+    throw new Error(`Invalid JSON file: ${path} (${error instanceof Error ? error.message : String(error)})`);
   }
 }
 
-/** Sérialisation JSON lisible (indentée) par-dessus `writeFileAtomic` (`fs-atomic.ts`). */
+/** Readable (indented) JSON serialization on top of `writeFileAtomic` (`fs-atomic.ts`). */
 async function writeJsonFileAtomic(path: string, data: unknown): Promise<void> {
   await writeFileAtomic(path, JSON.stringify(data, null, 2) + "\n");
 }
 
-/** N'écrase jamais le fichier : ne modifie que la clé `mergeKey.caesar`, tout le reste (dont, pour Antigravity, `trustedWorkspaces`) est préservé tel quel. */
+/** Never overwrites the file: only modifies the `mergeKey.caesar` key, everything else (including, for Antigravity, `trustedWorkspaces`) is preserved as-is. */
 export async function applyPlan(plan: InstallPlan): Promise<void> {
   if (plan.kind === "command") {
     await execFileAsync(plan.bin, plan.args);
@@ -140,21 +140,21 @@ export async function applyPlan(plan: InstallPlan): Promise<void> {
 }
 
 /**
- * État d'enregistrement d'un client MCP, utilisé par l'écran Intégrations du
- * TUI (voir le brief de la tâche 8) — pas de bouton "installer" qui ignore
- * ce qui est déjà en place.
+ * Registration state of an MCP client, used by the TUI's Integrations
+ * screen (see the task 8 brief) — no "install" button that ignores
+ * what is already in place.
  *
- * Pour les clients à fichier (`copilot`, `antigravity`, `opencode`), l'état
- * se lit honnêtement : le fichier existe-t-il, porte-t-il déjà l'entrée
- * `SERVER_NAME` ? Pour les clients à sous-commande (`claude`, `codex`),
- * aucune lecture fiable et sans effet de bord n'est disponible : `claude mcp
- * list` fait un health-check des serveurs approuvés (effet de bord réseau) et
- * ne publie pas de `--json` ; `codex mcp list --json` existe mais reste
- * asymétrique avec `claude`. Plutôt que de deviner ou d'invoquer l'un et pas
- * l'autre (l'incohérence serait pire que l'absence d'info — voir la
- * contrainte globale n°3 sur les flags non vérifiés), `registered` vaut
- * `"unknown"` pour les deux, avec un motif qui nomme la sous-commande à
- * lancer soi-même.
+ * For the file-based clients (`copilot`, `antigravity`, `opencode`), the
+ * state reads honestly: does the file exist, does it already carry the
+ * `SERVER_NAME` entry? For the subcommand clients (`claude`, `codex`),
+ * no reliable, side-effect-free read is available: `claude mcp
+ * list` health-checks the approved servers (network side effect) and
+ * publishes no `--json`; `codex mcp list --json` exists but remains
+ * asymmetric with `claude`. Rather than guessing or invoking one and not the
+ * other (the inconsistency would be worse than the missing info — see
+ * global constraint #3 on unverified flags), `registered` is
+ * `"unknown"` for both, with a reason naming the subcommand to
+ * run oneself.
  */
 export type McpRegistrationState = "registered" | "not-registered" | "unknown";
 
@@ -170,7 +170,7 @@ export async function checkMcpStatus(client: McpClient, root: string): Promise<M
     return {
       client,
       registered: "unknown",
-      detail: `Statut non vérifiable sans effet de bord : lancez "${plan.bin} mcp list" pour le consulter vous-même.`,
+      detail: `Status not verifiable without side effects: run "${plan.bin} mcp list" to check it yourself.`,
     };
   }
 
@@ -180,6 +180,6 @@ export async function checkMcpStatus(client: McpClient, root: string): Promise<M
   return {
     client,
     registered: registered ? "registered" : "not-registered",
-    detail: registered ? `Déjà enregistré dans ${plan.path}.` : `Absent de ${plan.path}.`,
+    detail: registered ? `Already registered in ${plan.path}.` : `Absent from ${plan.path}.`,
   };
 }

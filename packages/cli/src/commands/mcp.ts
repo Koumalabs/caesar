@@ -1,21 +1,20 @@
 /**
- * `caesar mcp serve` et `caesar mcp install <client>`.
+ * `caesar mcp serve` and `caesar mcp install <client>`.
  *
- * `serve` démarre le serveur MCP construit par `@caesar/mcp-server` sur le
- * transport stdio. Rien d'autre que le protocole ne doit toucher stdout —
- * l'erreur classique de ce genre de serveur, qui le casse de façon obscure
- * (voir le brief de la tâche 7) : tout diagnostic (le message d'accueil
- * compris) va sur `io.stderr`, jamais sur `io.stdout`.
+ * `serve` starts the MCP server built by `@caesar/mcp-server` on the stdio
+ * transport. Nothing but the protocol must touch stdout — the classic
+ * mistake of this kind of server, which breaks it in obscure ways (see the
+ * task 7 brief): every diagnostic (the greeting message included) goes to
+ * `io.stderr`, never to `io.stdout`.
  *
- * `install` enregistre l'orchestrateur auprès d'un client MCP. Le plan par
- * client (sous-commande native ou fichier de configuration), son
- * application et la lecture de son état (`checkMcpStatus`, utilisé par
- * l'écran Intégrations du TUI) vivent dans `@caesar/core`
- * (`mcp-registration.ts`, déplacé depuis ce fichier au rapport de correction
- * de la tâche 8 — `packages/tui` en avait besoin sans dépendre de
- * `packages/cli`). Ce module ne garde que ce qui est propre au CLI :
- * `describePlan`/`planToJson` (le format d'affichage `--json`/texte) et la
- * forme `Io`/les codes de sortie de `caesar mcp install`.
+ * `install` registers the orchestrator with an MCP client. The per-client
+ * plan (native subcommand or configuration file), its application and the
+ * reading of its state (`checkMcpStatus`, used by the TUI's Integrations
+ * screen) live in `@caesar/core` (`mcp-registration.ts`, moved out of this
+ * file in the task 8 correction report — `packages/tui` needed it without
+ * depending on `packages/cli`). This module keeps only what is specific to
+ * the CLI: `describePlan`/`planToJson` (the `--json`/text display format)
+ * and the `Io` shape/exit codes of `caesar mcp install`.
  */
 import type { Readable, Writable } from "node:stream";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -32,14 +31,14 @@ export { checkMcpStatus, MCP_CLIENTS, type McpClient, type McpRegistrationState,
 // ---------------------------------------------------------------------------
 
 export interface McpServeOptions {
-  /** Overrides de test : jamais renseignés en usage réel (défaut : `process.stdin`/`process.stdout`, voir `StdioServerTransport`). */
+  /** Test overrides: never set in real use (default: `process.stdin`/`process.stdout`, see `StdioServerTransport`). */
   stdin?: Readable;
   stdout?: Writable;
 }
 
 export async function runMcpServe(root: string, io: Io, options: McpServeOptions = {}): Promise<number> {
   const { server } = await buildServer(root);
-  writeLine(io.stderr, `Serveur MCP "${SERVER_NAME}" démarré (racine du projet : ${root}). En écoute sur stdio…`);
+  writeLine(io.stderr, `MCP server "${SERVER_NAME}" started (project root: ${root}). Listening on stdio…`);
   const transport = new StdioServerTransport(options.stdin, options.stdout);
   await server.connect(transport);
   return EXIT_OK;
@@ -51,9 +50,9 @@ export async function runMcpServe(root: string, io: Io, options: McpServeOptions
 
 function describePlan(plan: InstallPlan): string {
   if (plan.kind === "command") {
-    return `${plan.client} : exécuterait "${[plan.bin, ...plan.args].join(" ")}".`;
+    return `${plan.client}: would run "${[plan.bin, ...plan.args].join(" ")}".`;
   }
-  return `${plan.client} : écrirait l'entrée "${SERVER_NAME}" dans ${plan.path} (clé "${plan.mergeKey}"), en préservant le reste du fichier.`;
+  return `${plan.client}: would write the "${SERVER_NAME}" entry into ${plan.path} (key "${plan.mergeKey}"), preserving the rest of the file.`;
 }
 
 function planToJson(plan: InstallPlan): Record<string, unknown> {
@@ -69,7 +68,7 @@ export interface McpInstallOptions {
 
 export async function runMcpInstall(root: string, client: string, options: McpInstallOptions, io: Io): Promise<number> {
   if (!isMcpClient(client)) {
-    printError(io, `Client MCP inconnu : "${client}" (attendu l'un de : ${MCP_CLIENTS.join(", ")}).`);
+    printError(io, `Unknown MCP client: "${client}" (expected one of: ${MCP_CLIENTS.join(", ")}).`);
     return EXIT_USAGE;
   }
 
@@ -77,14 +76,14 @@ export async function runMcpInstall(root: string, client: string, options: McpIn
 
   if (options.dryRun) {
     if (options.json) printJson(io, { dry_run: true, ...planToJson(plan) });
-    else printNote(io, `[simulation] ${describePlan(plan)}`);
+    else printNote(io, `[dry-run] ${describePlan(plan)}`);
     return EXIT_OK;
   }
 
   try {
     await applyPlan(plan);
   } catch (error) {
-    printError(io, `Échec de l'installation pour "${client}" : ${error instanceof Error ? error.message : String(error)}`);
+    printError(io, `Installation failed for "${client}": ${error instanceof Error ? error.message : String(error)}`);
     return EXIT_RUNTIME;
   }
 

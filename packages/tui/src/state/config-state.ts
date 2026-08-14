@@ -1,36 +1,35 @@
 /**
- * Chargement, portée d'édition, modifications en attente et enregistrement
- * de la configuration — le cœur du TUI, volontairement sans aucun rendu :
- * chaque écran ne fait qu'appeler ces fonctions et afficher le résultat.
+ * Loading, editing scope, pending changes and saving of the configuration
+ * — the heart of the TUI, deliberately free of any rendering: each screen
+ * merely calls these functions and displays the result.
  *
- * `@caesar/core` reste la seule source de vérité (`loadConfig`, `loadLayer`,
- * `saveLayer`, `materializeListEdit`) : ce module ne relit ni ne réécrit le
- * TOML lui-même, et ne réimplémente aucune règle de fusion ou de
- * matérialisation — voir le brief de la tâche 15, qui remplace le correctif
- * provisoire de la tâche 13 (celui-ci aplatissait toujours la fusion entière
- * dans la couche projet, exactement le défaut I11 déjà corrigé côté CLI).
+ * `@caesar/core` remains the single source of truth (`loadConfig`,
+ * `loadLayer`, `saveLayer`, `materializeListEdit`): this module neither
+ * rereads nor rewrites the TOML itself, and reimplements no merge or
+ * materialization rule — see the brief of task 15, which replaces the
+ * provisional fix of task 13 (that one always flattened the whole merge
+ * into the project layer, exactly the I11 defect already fixed on the CLI
+ * side).
  *
- * Trois choses à distinguer, désormais :
- *  - `layers` : les trois couches telles que chargées depuis le disque
- *    (`loadConfig(...).layers`) — jamais modifiées ailleurs qu'au chargement
- *    ou après un enregistrement réussi (qui ne touche que l'entrée de la
- *    couche active).
- *  - `activeScope` : la couche qu'on édite, celle que "s" enregistrera.
- *  - `draft` : la copie de travail de la couche active — exactement ce que
- *    cette couche déclarera si on enregistre maintenant, jamais un
- *    `CaesarConfig` complet.
+ * Three things to keep apart, from now on:
+ *  - `layers`: the three layers as loaded from disk
+ *    (`loadConfig(...).layers`) — never modified anywhere except at load
+ *    time or after a successful save (which only touches the active
+ *    layer's entry).
+ *  - `activeScope`: the layer being edited, the one "s" will save.
+ *  - `draft`: the working copy of the active layer — exactly what this
+ *    layer will declare if saved now, never a complete `CaesarConfig`.
  *
- * L'affichage ne lit jamais `draft` directement : `effectiveConfig` recalcule
- * la fusion (`mergeConfig`, `@caesar/core`) en substituant `draft` à la couche
- * active dans `layers`, exactement la fusion qu'un enregistrement produirait.
- * C'est ce qui permet à un champ non encore surchargé par la couche active de
- * continuer à afficher sa valeur héritée tant qu'on ne l'a pas modifié.
+ * The display never reads `draft` directly: `effectiveConfig` recomputes
+ * the merge (`mergeConfig`, `@caesar/core`) substituting `draft` for the
+ * active layer in `layers`, exactly the merge a save would produce. That
+ * is what lets a field not yet overridden by the active layer keep
+ * showing its inherited value until it is modified.
  *
- * Toutes les mutations sont pures : elles reçoivent un `ConfigState` et en
- * renvoient un nouveau, sans jamais toucher au disque. Seul `saveConfigState`
- * écrit, et seul `loadConfigState` lit — et aucune des deux n'est jamais
- * appelée sans une action explicite de l'utilisateur (`s` pour enregistrer,
- * jamais une frappe de modification).
+ * All mutations are pure: they take a `ConfigState` and return a new one,
+ * without ever touching the disk. Only `saveConfigState` writes, and only
+ * `loadConfigState` reads — and neither is ever called without an
+ * explicit user action (`s` to save, never a modification keystroke).
  */
 import type {
   ConfigLayer,
@@ -56,47 +55,47 @@ import {
 } from "@caesar/core";
 import type { AgentPick } from "@caesar/core";
 
-/** Les trois couches, du plus général au plus spécifique — même ordre que `@caesar/core` (`loadConfig`). */
+/** The three layers, from most general to most specific — same order as `@caesar/core` (`loadConfig`). */
 export const CONFIG_SCOPES: readonly ConfigScope[] = ["global", "project", "local"];
 
 export interface ConfigState {
-  /** Les trois couches telles que chargées depuis le disque (voir l'en-tête de ce fichier). */
+  /** The three layers as loaded from disk (see this file's header). */
   layers: ConfigLayer[];
-  /** La couche éditée : celle que `draft` porte, et que `saveConfigState` enregistrera. */
+  /** The edited layer: the one `draft` carries, and that `saveConfigState` will save. */
   activeScope: ConfigScope;
-  /** Copie de travail de la couche active — jamais un `CaesarConfig` complet, voir l'en-tête de ce fichier. */
+  /** Working copy of the active layer — never a complete `CaesarConfig`, see this file's header. */
   draft: ConfigOverride;
 }
 
-/** Comparaison structurelle par valeur — même motif que `packages/cli/src/commands/policy.ts` (`sameValue`). */
+/** Structural comparison by value — same pattern as `packages/cli/src/commands/policy.ts` (`sameValue`). */
 function sameValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function findLayer(layers: readonly ConfigLayer[], scope: ConfigScope): ConfigLayer {
   const layer = layers.find((l) => l.scope === scope);
-  if (!layer) throw new Error(`Couche "${scope}" absente de l'état chargé (bug interne : loadConfig doit toujours rendre les trois couches).`);
+  if (!layer) throw new Error(`Layer "${scope}" missing from the loaded state (internal bug: loadConfig must always return all three layers).`);
   return layer;
 }
 
-/** `layers`, avec la couche active remplacée par `draft` — exactement ce qu'un enregistrement produirait. */
+/** `layers`, with the active layer replaced by `draft` — exactly what a save would produce. */
 function layersWithDraft(state: ConfigState): ConfigLayer[] {
   return state.layers.map((layer) => (layer.scope === state.activeScope ? { ...layer, override: state.draft } : layer));
 }
 
 /**
- * La fusion effective à afficher : `defaultConfig()` fusionnée couche par
- * couche (`mergeConfig`, `@caesar/core`), la couche active portant `draft`
- * plutôt que sa dernière version enregistrée. Seule source de vérité pour
- * l'affichage — aucun écran ne doit lire `state.draft` pour afficher une
- * valeur, seulement pour savoir si un champ est en propre à la couche active
- * (marques d'héritage, permission de suppression).
+ * The effective merge to display: `defaultConfig()` merged layer by layer
+ * (`mergeConfig`, `@caesar/core`), with the active layer carrying `draft`
+ * rather than its last saved version. Sole source of truth for the
+ * display — no screen must read `state.draft` to display a value, only to
+ * know whether a field belongs to the active layer itself (inheritance
+ * marks, permission to delete).
  */
 export function effectiveConfig(state: ConfigState): CaesarConfig {
   return layersWithDraft(state).reduce((config, layer) => mergeConfig(config, layer.override), coreDefaultConfig());
 }
 
-/** Vrai s'il existe des modifications non enregistrées sur la couche active — l'indicateur permanent que le brief demande. */
+/** True if there are unsaved changes on the active layer — the permanent indicator the brief demands. */
 export function isDirty(state: ConfigState): boolean {
   return !sameValue(findLayer(state.layers, state.activeScope).override, state.draft);
 }
@@ -107,10 +106,10 @@ export async function loadConfigState(root: string, activeScope: ConfigScope = "
 }
 
 /**
- * Enregistre `draft` sur la couche active (`saveLayer`, `@caesar/core`) — la
- * seule couche que ce module écrit jamais dans le même geste — puis fait de
- * `draft` la nouvelle version connue de cette couche : `isDirty` redevient
- * faux, `layers` reste la source pour les deux autres couches (inchangées).
+ * Saves `draft` onto the active layer (`saveLayer`, `@caesar/core`) — the
+ * only layer this module ever writes in the same gesture — then makes
+ * `draft` the new known version of that layer: `isDirty` becomes false
+ * again, `layers` remains the source for the two other layers (unchanged).
  */
 export async function saveConfigState(root: string, state: ConfigState): Promise<ConfigState> {
   await saveLayer(state.activeScope, root, state.draft);
@@ -121,18 +120,18 @@ export async function saveConfigState(root: string, state: ConfigState): Promise
 }
 
 /**
- * Change la couche active. Toujours pure : ne décide jamais elle-même si des
- * modifications en attente doivent être confirmées avant de les abandonner —
- * c'est `App` qui pose la question (même principe que la confirmation de
- * sortie), et n'appelle cette fonction qu'une fois la réponse obtenue. La
- * nouvelle couche active repart de sa dernière version enregistrée
- * (`layers`), jamais de `draft` de l'ancienne couche.
+ * Changes the active layer. Always pure: it never decides on its own
+ * whether pending changes must be confirmed before being discarded — it
+ * is `App` that asks the question (same principle as the quit
+ * confirmation), and only calls this function once the answer is in. The
+ * new active layer restarts from its last saved version (`layers`), never
+ * from the old layer's `draft`.
  */
 export function setScope(state: ConfigState, scope: ConfigScope): ConfigState {
   return { ...state, activeScope: scope, draft: findLayer(state.layers, scope).override };
 }
 
-/** La couche suivante dans l'ordre global → projet → local → global, pour la touche qui fait cycler la portée. */
+/** The next layer in the order global → project → local → global, for the key that cycles the scope. */
 export function nextScope(scope: ConfigScope): ConfigScope {
   const index = CONFIG_SCOPES.indexOf(scope);
   return CONFIG_SCOPES[(index + 1) % CONFIG_SCOPES.length]!;
@@ -143,7 +142,7 @@ function withDraft(state: ConfigState, draft: ConfigOverride): ConfigState {
 }
 
 // ---------------------------------------------------------------------------
-// Provenance et marques d'héritage
+// Provenance and inheritance marks
 // ---------------------------------------------------------------------------
 
 const SCOPE_RANK: Record<ConfigScope, number> = { global: 0, project: 1, local: 2 };
@@ -153,54 +152,54 @@ function rankOf(source: ProvenanceSource): number {
 }
 
 /**
- * `source` (une provenance rendue par `@caesar/core`) si elle vient d'une
- * couche moins spécifique que la couche active de `state` — donc d'une
- * valeur qu'éditer ce champ maintenant surchargerait —, sinon `null`. C'est
- * la marque d'héritage (`← global`) que le brief demande : elle disparaît
- * dès que la couche active déclare elle-même le champ, puisqu'il n'y a plus
- * rien à surcharger.
+ * `source` (a provenance returned by `@caesar/core`) if it comes from a
+ * layer less specific than `state`'s active layer — hence from a value
+ * that editing this field now would override —, otherwise `null`. This is
+ * the inheritance mark (`← global`) the brief demands: it disappears as
+ * soon as the active layer declares the field itself, since there is
+ * nothing left to override.
  */
 export function inheritedMark(state: ConfigState, source: ProvenanceSource): ProvenanceSource | null {
   return rankOf(source) < SCOPE_RANK[state.activeScope] ? source : null;
 }
 
-/** Provenance d'un champ de `policy`, calculée sur `layers` avec `draft` substitué (voir `layersWithDraft`). */
+/** Provenance of a `policy` field, computed on `layers` with `draft` substituted (see `layersWithDraft`). */
 export function policyProvenance(state: ConfigState, field: keyof PolicyConfig): ProvenanceSource {
   return policyFieldProvenance(layersWithDraft(state), field);
 }
 
-/** Marque d'héritage d'un champ de `policy`, `null` si la couche active le déclare déjà (ou plus spécifique). */
+/** Inheritance mark of a `policy` field, `null` if the active layer already declares it (or more specific). */
 export function policyFieldMark(state: ConfigState, field: keyof PolicyConfig): ProvenanceSource | null {
   return inheritedMark(state, policyProvenance(state, field));
 }
 
-/** Provenance d'un rôle par nom, calculée sur `layers` avec `draft` substitué. */
+/** Provenance of a role by name, computed on `layers` with `draft` substituted. */
 export function roleProvenanceOf(state: ConfigState, name: string): ProvenanceSource {
   return roleProvenance(layersWithDraft(state), name);
 }
 
-/** Marque d'héritage d'un rôle, `null` si la couche active le déclare déjà (ou plus spécifique). */
+/** Inheritance mark of a role, `null` if the active layer already declares it (or more specific). */
 export function roleMark(state: ConfigState, name: string): ProvenanceSource | null {
   return inheritedMark(state, roleProvenanceOf(state, name));
 }
 
-/** Vrai si la couche active déclare ce rôle en propre — condition pour pouvoir le supprimer (voir `removeRole`, et `caesar role remove`). */
+/** True if the active layer declares this role itself — the condition for deleting it (see `removeRole`, and `caesar role remove`). */
 export function roleDeclaredByActiveLayer(state: ConfigState, name: string): boolean {
   return (state.draft.roles ?? []).some((role) => role.name === name);
 }
 
 // ---------------------------------------------------------------------------
-// Agents : autorisation (liste "denied" de la politique)
+// Agents: permission (the policy's "denied" list)
 // ---------------------------------------------------------------------------
 
 export type PolicyListField = "allowed" | "denied";
 
 /**
- * Ajoute ou retire `agentId` de `allowed`/`denied`, sur la couche active. Le
- * calcul (base = liste **effective**, pas seulement ce que `draft` porte
- * déjà) est celui de `materializeListEdit` (`@caesar/core`) — la même règle
- * que `caesar policy allow|deny`/`caesar agents enable|disable`, jamais
- * réimplémentée ici (voir l'en-tête de ce fichier).
+ * Adds or removes `agentId` from `allowed`/`denied`, on the active layer.
+ * The computation (base = the **effective** list, not only what `draft`
+ * already carries) is that of `materializeListEdit` (`@caesar/core`) — the
+ * same rule as `caesar policy allow|deny`/`caesar agents enable|disable`,
+ * never reimplemented here (see this file's header).
  */
 export function setPolicyListEntry(state: ConfigState, field: PolicyListField, agentId: string, present: boolean): ConfigState {
   const effective = effectiveConfig(state).policy[field];
@@ -209,55 +208,55 @@ export function setPolicyListEntry(state: ConfigState, field: PolicyListField, a
   return withDraft(state, { ...state.draft, policy: { ...state.draft.policy, [field]: next } });
 }
 
-/** Bascule l'autorisation d'un agent — présent dans "denied" ⇔ refusé, exactement la règle d'`isAgentAllowed` (`@caesar/core`). */
+/** Toggles an agent's permission — present in "denied" ⇔ denied, exactly the rule of `isAgentAllowed` (`@caesar/core`). */
 export function toggleAgentDenied(state: ConfigState, agentId: string): ConfigState {
   const currentlyDenied = effectiveConfig(state).policy.denied.includes(agentId);
   return setPolicyListEntry(state, "denied", agentId, !currentlyDenied);
 }
 
 // ---------------------------------------------------------------------------
-// Agents : déclaration (`[[agent]]`)
+// Agents: declaration (`[[agent]]`)
 //
-// Autoriser un agent et *déclarer* un agent sont deux choses différentes, et
-// c'est la distinction que cette section porte : la première n'écrit qu'une
-// liste de la politique (juste au-dessus), la seconde ajoute une entrée
-// `[[agent]]` qui étend le catalogue. Tout ici décalque la section Rôles plus
-// bas — même fusion par clé, même limite sur la suppression d'une entrée
-// héritée, mêmes noms — parce que c'est exactement la même mécanique de
-// configuration, appliquée à `agents` au lieu de `roles`.
+// Allowing an agent and *declaring* an agent are two different things, and
+// that is the distinction this section carries: the first only writes a
+// policy list (just above), the second adds an `[[agent]]` entry that
+// extends the catalog. Everything here mirrors the Roles section below —
+// same merge by key, same limit on deleting an inherited entry, same
+// names — because it is exactly the same configuration mechanics, applied
+// to `agents` instead of `roles`.
 // ---------------------------------------------------------------------------
 
-/** L'agent déclaré tel qu'il s'afficherait après enregistrement (fusion effective). `undefined` pour un agent du catalogue natif, qu'aucune couche ne déclare. */
+/** The declared agent as it would display after saving (effective merge). `undefined` for a native catalog agent, which no layer declares. */
 export function findAgentSpec(state: ConfigState, id: string): GenericAgentSpec | undefined {
   return effectiveConfig(state).agents.find((agent) => agent.id === id);
 }
 
-/** Provenance d'une déclaration d'agent, calculée sur `layers` avec `draft` substitué. "default" pour les agents natifs. */
+/** Provenance of an agent declaration, computed on `layers` with `draft` substituted. "default" for native agents. */
 export function agentProvenanceOf(state: ConfigState, id: string): ProvenanceSource {
   return agentProvenance(layersWithDraft(state), id);
 }
 
-/** Marque d'héritage d'une déclaration d'agent, `null` si la couche active la déclare déjà (ou plus spécifique). */
+/** Inheritance mark of an agent declaration, `null` if the active layer already declares it (or more specific). */
 export function agentMark(state: ConfigState, id: string): ProvenanceSource | null {
   return inheritedMark(state, agentProvenanceOf(state, id));
 }
 
-/** Vrai si la couche active déclare cet agent en propre — condition pour pouvoir le retirer (voir `removeAgentSpec`, et `caesar agents remove`). */
+/** True if the active layer declares this agent itself — the condition for removing it (see `removeAgentSpec`, and `caesar agents remove`). */
 export function agentDeclaredByActiveLayer(state: ConfigState, id: string): boolean {
   return (state.draft.agents ?? []).some((agent) => agent.id === id);
 }
 
-/** Écrit `spec` en entier dans la couche active, en remplaçant l'entrée de même `id` s'il y en a une — la fusion par clé de `mergeConfig`, comme pour les rôles. */
+/** Writes `spec` in full into the active layer, replacing the entry with the same `id` if there is one — `mergeConfig`'s merge by key, like for roles. */
 export function upsertAgentSpec(state: ConfigState, spec: GenericAgentSpec): ConfigState {
   const agents = [...(state.draft.agents ?? []).filter((agent) => agent.id !== spec.id), spec];
   return withDraft(state, { ...state.draft, agents });
 }
 
 /**
- * Modifie une déclaration existante. Sans effet sur un agent du catalogue
- * natif : il n'y a pas de `GenericAgentSpec` à modifier — le remplacer se
- * fait en le déclarant (`upsertAgentSpec`), un geste bien plus lourd de
- * conséquences, que l'appelant doit demander explicitement.
+ * Modifies an existing declaration. No effect on a native catalog agent:
+ * there is no `GenericAgentSpec` to modify — replacing it is done by
+ * declaring it (`upsertAgentSpec`), a gesture far heavier in
+ * consequences, which the caller must request explicitly.
  */
 export function updateAgentSpec(state: ConfigState, id: string, patch: Partial<GenericAgentSpec>): ConfigState {
   const current = findAgentSpec(state, id);
@@ -266,11 +265,11 @@ export function updateAgentSpec(state: ConfigState, id: string, patch: Partial<G
 }
 
 /**
- * Retire une déclaration — seulement si la couche active la porte
- * elle-même. Même limite que `removeRole` et `caesar agents remove` : la fusion
- * par clé ne sait pas exprimer la suppression d'une entrée héritée. Sans
- * effet sinon : à l'appelant de vérifier `agentDeclaredByActiveLayer` au
- * préalable pour l'expliquer plutôt que de laisser la touche ne rien faire.
+ * Removes a declaration — only if the active layer carries it itself.
+ * Same limit as `removeRole` and `caesar agents remove`: the merge by key
+ * cannot express the deletion of an inherited entry. No effect otherwise:
+ * it is up to the caller to check `agentDeclaredByActiveLayer` beforehand
+ * to explain it rather than letting the key do nothing.
  */
 export function removeAgentSpec(state: ConfigState, id: string): ConfigState {
   if (!agentDeclaredByActiveLayer(state, id)) return state;
@@ -278,55 +277,57 @@ export function removeAgentSpec(state: ConfigState, id: string): ConfigState {
 }
 
 // ---------------------------------------------------------------------------
-// Politique
+// Policy
 // ---------------------------------------------------------------------------
 
 /**
- * `policy` se fusionne champ par champ (voir `mergeConfig`, `@caesar/core`) :
- * contrairement aux listes, un champ scalaire s'écrit directement dans
- * `draft.policy`, sans base "effective" à recalculer — l'écrire suffit à le
- * faire prendre la main sur ce champ précis, sans toucher aux autres.
+ * `policy` merges field by field (see `mergeConfig`, `@caesar/core`):
+ * unlike the lists, a scalar field is written directly into
+ * `draft.policy`, with no "effective" base to recompute — writing it is
+ * enough for it to take over that precise field, without touching the
+ * others.
  */
 export function updatePolicy(state: ConfigState, patch: Partial<PolicyConfig>): ConfigState {
   return withDraft(state, { ...state.draft, policy: { ...state.draft.policy, ...patch } });
 }
 
 // ---------------------------------------------------------------------------
-// Rôles
+// Roles
 // ---------------------------------------------------------------------------
 
-/** Le rôle tel qu'il s'afficherait après enregistrement (fusion effective) — jamais `state.draft.roles` seul, qui ne porte que ce que la couche active déclare. */
+/** The role as it would display after saving (effective merge) — never `state.draft.roles` alone, which only carries what the active layer declares. */
 export function findRole(state: ConfigState, name: string): RoleConfig | undefined {
   return effectiveConfig(state).roles.find((role) => role.name === name);
 }
 
 /**
- * Écrit `role` en entier dans la couche active, en remplaçant l'entrée
- * existante de même `name` s'il y en a une — exactement la fusion par clé de
- * `mergeConfig` (un rôle n'a pas de "champs" qui se matérialisent séparément
- * comme `policy` : toute l'entrée bascule sur la couche active dès qu'on en
- * change un champ, la même règle que `caesar role add` applique déjà). Une
- * couche qui ne déclarait pas encore ce rôle (hérité) le prend désormais en
- * charge en entier.
+ * Writes `role` in full into the active layer, replacing the existing
+ * entry with the same `name` if there is one — exactly `mergeConfig`'s
+ * merge by key (a role has no "fields" that materialize separately the
+ * way `policy` does: the whole entry moves to the active layer as soon as
+ * one field changes, the same rule `caesar role add` already applies). A
+ * layer that did not yet declare this role (inherited) now takes it over
+ * in full.
  */
 function putRoleInDraft(state: ConfigState, role: RoleConfig): ConfigState {
   const roles = [...(state.draft.roles ?? []).filter((r) => r.name !== role.name), role];
   return withDraft(state, { ...state.draft, roles });
 }
 
-/** Crée un rôle (si `role.name` est nouveau) ou le remplace entièrement sur la couche active (s'il existe déjà, y compris hérité) — même sémantique que `caesar role add`. */
+/** Creates a role (if `role.name` is new) or replaces it entirely on the active layer (if it already exists, inherited included) — same semantics as `caesar role add`. */
 export function upsertRole(state: ConfigState, role: RoleConfig): ConfigState {
   return putRoleInDraft(state, role);
 }
 
 /**
- * Retire un rôle — seulement s'il est déclaré par la couche active elle-même
- * (`roleDeclaredByActiveLayer`) : la fusion par clé ne sait pas exprimer une
- * suppression d'un rôle hérité d'une couche moins spécifique, exactement la
- * limite déjà posée par `caesar role remove` (`packages/cli/src/commands/role.ts`).
- * Sans effet si le rôle n'est pas déclaré ici — à l'appelant de vérifier
- * `roleDeclaredByActiveLayer` au préalable pour prévenir l'utilisateur
- * plutôt que de laisser la touche "x" ne rien faire sans explication.
+ * Removes a role — only if it is declared by the active layer itself
+ * (`roleDeclaredByActiveLayer`): the merge by key cannot express the
+ * deletion of a role inherited from a less specific layer, exactly the
+ * limit already set by `caesar role remove`
+ * (`packages/cli/src/commands/role.ts`). No effect if the role is not
+ * declared here — it is up to the caller to check
+ * `roleDeclaredByActiveLayer` beforehand to warn the user rather than
+ * letting the "x" key do nothing without explanation.
  */
 export function removeRole(state: ConfigState, name: string): ConfigState {
   if (!roleDeclaredByActiveLayer(state, name)) return state;
@@ -340,12 +341,13 @@ export function updateRole(state: ConfigState, name: string, patch: Partial<Role
 }
 
 /**
- * Renomme un rôle sur la couche active — la seule mutation qui *retire* une
- * clé en plus d'en écrire une, d'où la même réserve que `removeRole` : sans
- * déclaration par la couche active, l'ancien nom continuerait d'exister,
- * hérité de la couche du dessous, et on se retrouverait avec deux rôles là
- * où on croyait en renommer un. Sans effet dans ce cas — à l'appelant de
- * vérifier `roleDeclaredByActiveLayer` pour l'expliquer.
+ * Renames a role on the active layer — the only mutation that *removes* a
+ * key in addition to writing one, hence the same reservation as
+ * `removeRole`: without a declaration by the active layer, the old name
+ * would keep existing, inherited from the layer below, and one would end
+ * up with two roles where one believed one was being renamed. No effect
+ * in that case — it is up to the caller to check
+ * `roleDeclaredByActiveLayer` to explain it.
  */
 export function renameRole(state: ConfigState, from: string, to: string): ConfigState {
   if (!roleDeclaredByActiveLayer(state, from)) return state;
@@ -355,7 +357,7 @@ export function renameRole(state: ConfigState, from: string, to: string): Config
   return withDraft(state, { ...state.draft, roles: [...roles, { ...current, name: to }] });
 }
 
-/** Déplace l'agent à `index` d'un cran dans l'ordre de repli du rôle. Sans effet si le mouvement sortirait de la liste. */
+/** Moves the agent at `index` one notch in the role's fallback order. No effect if the move would leave the list. */
 export function moveRoleAgent(state: ConfigState, roleName: string, index: number, direction: "up" | "down"): ConfigState {
   const role = findRole(state, roleName);
   if (!role) return state;
@@ -369,14 +371,14 @@ export function moveRoleAgent(state: ConfigState, roleName: string, index: numbe
   return updateRole(state, roleName, { agents });
 }
 
-/** Ajoute `agentId` en fin d'ordre de repli, s'il n'y est pas déjà. */
+/** Adds `agentId` at the end of the fallback order, if it is not already there. */
 export function addRoleAgent(state: ConfigState, roleName: string, agentId: string): ConfigState {
   const role = findRole(state, roleName);
   if (!role || role.agents.includes(agentId)) return state;
   return updateRole(state, roleName, { agents: [...role.agents, agentId] });
 }
 
-/** Retire l'agent à `index` de l'ordre de repli du rôle. */
+/** Removes the agent at `index` from the role's fallback order. */
 export function removeRoleAgentAt(state: ConfigState, roleName: string, index: number): ConfigState {
   const role = findRole(state, roleName);
   if (!role || index < 0 || index >= role.agents.length) return state;
@@ -384,13 +386,13 @@ export function removeRoleAgentAt(state: ConfigState, roleName: string, index: n
 }
 
 /**
- * Quel agent serait retenu aujourd'hui pour ce rôle, `installed` déjà
- * détecté par l'appelant (`App`, une seule fois au démarrage — voir le
- * brief : "n'appelle pas la détection à chaque frappe"). S'appuie sur
- * `pickAgentForRole` (`@caesar/core`) — c'est la seule règle de repli, elle ne
- * se réécrit pas ici (voir le brief : "il doit... s'appuyer sur
- * pickAgentForRole"). `null` si le rôle n'existe pas (plus dans la fusion
- * effective, p. ex. après suppression).
+ * Which agent would be picked today for this role, `installed` already
+ * detected by the caller (`App`, once at startup — see the brief: "does
+ * not call detection on every keystroke"). Relies on `pickAgentForRole`
+ * (`@caesar/core`) — it is the only fallback rule, it is not rewritten
+ * here (see the brief: "it must... rely on pickAgentForRole"). `null` if
+ * the role does not exist (no longer in the effective merge, e.g. after
+ * deletion).
  */
 export function pickAgentForRoleName(
   state: ConfigState,
@@ -403,24 +405,24 @@ export function pickAgentForRoleName(
 }
 
 // ---------------------------------------------------------------------------
-// Étiquettes de portée — purement présentationnelles (voir le brief : le
-// sélecteur de portée est l'information la plus importante de l'écran).
+// Scope labels — purely presentational (see the brief: the scope selector
+// is the most important piece of information on the screen).
 // ---------------------------------------------------------------------------
 
-const SCOPE_LABELS: Record<ConfigScope, string> = { global: "globale", project: "projet", local: "locale" };
-const SCOPE_MARK_LABELS: Record<ProvenanceSource, string> = { default: "défaut", global: "global", project: "projet", local: "local" };
+const SCOPE_LABELS: Record<ConfigScope, string> = { global: "global", project: "project", local: "local" };
+const SCOPE_MARK_LABELS: Record<ProvenanceSource, string> = { default: "default", global: "global", project: "project", local: "local" };
 
-/** Libellé humain d'une couche, pour la barre d'état (jamais réimporté de `packages/cli/src/scope.ts`, dont le TUI ne dépend pas — voir la note de tête de `IntegrationsScreen.tsx`). */
+/** Human label of a layer, for the status bar (never reimported from `packages/cli/src/scope.ts`, which the TUI does not depend on — see the header note of `IntegrationsScreen.tsx`). */
 export function scopeLabel(scope: ConfigScope): string {
   return SCOPE_LABELS[scope];
 }
 
-/** Chemin du fichier de la couche active — pour les messages de confirmation d'enregistrement. */
+/** Path of the active layer's file — for the save confirmation messages. */
 export function activeScopePath(root: string, state: ConfigState): string {
   return configPathFor(state.activeScope, root);
 }
 
-/** Texte de la marque d'héritage (`← global`), vide si `source` est `null` (rien à signaler). */
+/** Text of the inheritance mark (`← global`), empty if `source` is `null` (nothing to report). */
 export function formatInheritedMark(source: ProvenanceSource | null): string {
   return source ? ` ← ${SCOPE_MARK_LABELS[source]}` : "";
 }

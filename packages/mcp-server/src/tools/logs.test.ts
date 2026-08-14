@@ -18,11 +18,11 @@ describe("caesar_logs", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("tâche connue : événements normalisés, puis sortie brute avec raw: true", async () => {
+  it("known task: normalized events, then raw output with raw: true", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await caesarDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
+        const delegated = await caesarDelegate(session, { objective: "task", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
         const entry = session.tasks.get(taskId);
         await entry?.promise;
@@ -37,17 +37,17 @@ describe("caesar_logs", () => {
         const rawData = raw.structuredContent as { raw: boolean; text: string; truncated: boolean };
         expect(rawData.raw).toBe(true);
         expect(rawData.truncated).toBe(false);
-        // L'agent factice journalise "démarrage" puis "traitement" puis "terminé" (voir sa doc).
-        expect(rawData.text).toMatch(/démarrage/);
+        // The fake agent logs "starting" then "processing" then "done" (see its doc).
+        expect(rawData.text).toMatch(/starting/);
       }),
     );
   }, 20_000);
 
-  it("limit borne le nombre d'événements normalisés rendus, en gardant les plus récents", async () => {
+  it("limit caps the number of normalized events returned, keeping the most recent", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
-        const delegated = await caesarDelegate(session, { objective: "tâche", agent: "codex", mode: "write", isolation: "inplace" });
+        const delegated = await caesarDelegate(session, { objective: "task", agent: "codex", mode: "write", isolation: "inplace" });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
         const entry = session.tasks.get(taskId);
         await entry?.promise;
@@ -63,12 +63,12 @@ describe("caesar_logs", () => {
     );
   }, 20_000);
 
-  it("tâche inconnue : erreur claire", async () => {
+  it("unknown task: clear error", async () => {
     await withFakeHome(async () => {
       const session = await createSession(root);
-      const result = await caesarLogs(session, { task_id: "t_inexistant" });
+      const result = await caesarLogs(session, { task_id: "t_nonexistent" });
       expect(result.isError).toBe(true);
-      expect((result.content?.[0] as { text: string }).text).toMatch(/inconnue/);
+      expect((result.content?.[0] as { text: string }).text).toMatch(/unknown task/i);
     });
   });
 });

@@ -1,7 +1,7 @@
 {
   "name": "@caesar/core",
   "version": "0.1.0",
-  "description": "Runtime de l'orchestrateur : registre d'agents, adaptateurs, moteur d'exécution, politique et rôles",
+  "description": "Orchestrator runtime: agent registry, adapters, execution engine, policy and roles",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

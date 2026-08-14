@@ -1,16 +1,16 @@
 /**
- * `@caesar/theme` — l'apparence de l'outil, en un seul endroit.
+ * `@caesar/theme` — the tool's appearance, in one single place.
  *
- * Ce paquet existe pour qu'il y ait **une** palette et non deux. Elle vivait
- * dans le TUI ; la ligne de commande, elle, choisissait ses couleurs au cas
- * par cas parmi sept codes ANSI de base. Les deux moitiés du même outil ne se
- * ressemblaient donc pas, et rien n'empêchait l'écart de se creuser.
+ * This package exists so that there is **one** palette and not two. It
+ * lived in the TUI; the command line, for its part, picked its colors case
+ * by case from seven base ANSI codes. The two halves of the same tool thus
+ * did not look alike, and nothing kept the gap from widening.
  *
- * Il ne dépend de rien, pas même de Node : l'environnement lui est toujours
- * passé en paramètre (voir `ansi.ts`). Il ne décide pas non plus *si* la
- * couleur s'applique — c'est au flux de sortie de le dire, puisque `stdout`
- * peut être un terminal quand `stderr` est un fichier. Cette décision reste
- * chez l'appelant (`packages/cli/src/output.ts`).
+ * It depends on nothing, not even Node: the environment is always passed
+ * to it as a parameter (see `ansi.ts`). Nor does it decide *whether* color
+ * applies — that is for the output stream to say, since `stdout` can be a
+ * terminal while `stderr` is a file. That decision stays with the caller
+ * (`packages/cli/src/output.ts`).
  */
 export {
   BOLD,

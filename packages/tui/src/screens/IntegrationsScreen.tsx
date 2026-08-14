@@ -1,23 +1,22 @@
 /**
- * Écran Intégrations : pour chacun des cinq clients MCP, l'état
- * d'enregistrement du serveur "caesar" et l'action qui l'installe.
+ * Integrations screen: for each of the five MCP clients, the registration
+ * status of the "caesar" server and the action that installs it.
  *
- * Réutilise `checkMcpStatus`/`buildPlan`/`applyPlan`/`MCP_CLIENTS` de
- * `@caesar/core` — la même logique que `caesar mcp install`, jamais réécrite ici.
- * Appelés directement depuis `@caesar/core` et non via `packages/cli` : ce
- * module n'a besoin ni de sa forme `Io` ni de ses codes de sortie, et en
- * dépendre créerait un cycle avec le sens `cli → tui` dont `caesar config` a
- * besoin.
+ * Reuses `checkMcpStatus`/`buildPlan`/`applyPlan`/`MCP_CLIENTS` from
+ * `@caesar/core` — the same logic as `caesar mcp install`, never rewritten
+ * here. Called directly from `@caesar/core` and not via `packages/cli`:
+ * this module needs neither its `Io` shape nor its exit codes, and
+ * depending on it would create a cycle with the `cli → tui` direction that
+ * `caesar config` needs.
  *
- * `claude` et `codex` n'ont pas de lecture de statut fiable et sans effet de
- * bord (`claude mcp list` fait un health-check réseau et n'a pas de
- * `--json`) : leur statut reste honnêtement « non vérifiable » plutôt que
- * deviné.
+ * `claude` and `codex` have no reliable, side-effect-free status read
+ * (`claude mcp list` does a network health-check and has no `--json`):
+ * their status honestly stays "not verifiable" rather than guessed.
  *
- * Nouveauté de la réécriture : le panneau du bas montre **ce que l'action
- * fera** — la commande exécutée ou le fichier fusionné — avant qu'on appuie
- * sur Entrée. C'est la seule action du TUI qui écrit hors du projet, chez le
- * client ; elle ne doit pas être une surprise.
+ * New in the rewrite: the bottom panel shows **what the action will do** —
+ * the command executed or the file merged — before Enter is pressed. It is
+ * the only TUI action that writes outside the project, at the client's;
+ * it must not be a surprise.
  */
 import { useEffect, useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
@@ -37,9 +36,9 @@ const LABEL_WIDTH = 12;
 
 function statusLabel(status: McpStatus | undefined): string {
   if (status === undefined) return "…";
-  if (status.registered === "registered") return "enregistré";
-  if (status.registered === "not-registered") return "non enregistré";
-  return "non vérifiable";
+  if (status.registered === "registered") return "registered";
+  if (status.registered === "not-registered") return "not registered";
+  return "not verifiable";
 }
 
 function statusColor(status: McpStatus | undefined): string {
@@ -64,7 +63,7 @@ export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
 
   useEffect(() => {
     void refresh();
-    // Un seul chargement au montage de l'écran, pas à chaque frappe.
+    // A single load when the screen mounts, not on every keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root]);
 
@@ -77,11 +76,11 @@ export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
       setInstalling(client);
       void applyPlan(buildPlan(client, root))
         .then(async () => {
-          notify(`"${client}" : installation effectuée.`);
+          notify(`"${client}": installation done.`);
           await refresh();
         })
         .catch((error: unknown) => {
-          notify(`"${client}" : échec de l'installation — ${error instanceof Error ? error.message : String(error)}.`, true);
+          notify(`"${client}": installation failed — ${error instanceof Error ? error.message : String(error)}.`, true);
         })
         .finally(() => setInstalling(null));
     }
@@ -94,13 +93,13 @@ export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
 
   const columns: Array<TableColumn<McpClient>> = [
     { header: "client", min: 14, cell: (c) => c },
-    { header: "statut", min: 16, cell: (c) => (installing === c ? "installation…" : statusLabel(statuses?.get(c))), fg: (c) => statusColor(statuses?.get(c)) },
-    { header: "détail", flex: 1, max: 90, cell: (c) => statuses?.get(c)?.detail ?? "", fg: () => DIM },
+    { header: "status", min: 16, cell: (c) => (installing === c ? "installing…" : statusLabel(statuses?.get(c))), fg: (c) => statusColor(statuses?.get(c)) },
+    { header: "detail", flex: 1, max: 90, cell: (c) => statuses?.get(c)?.detail ?? "", fg: () => DIM },
   ];
 
   return (
     <box flexDirection="column" flexGrow={1}>
-      <Panel title="Clients MCP" focused note={`Enregistrement du serveur "caesar" pour le projet ${root}.`}>
+      <Panel title="MCP clients" focused note={`Registration of the "caesar" server for the project ${root}.`}>
         <Table
           columns={columns}
           rows={MCP_CLIENTS}
@@ -111,19 +110,19 @@ export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
       </Panel>
 
       <Panel title={client}>
-        <Field label="Statut" width={panelWidth} labelWidth={LABEL_WIDTH} value={statusLabel(status)} valueFg={statusColor(status)} />
-        {status?.detail ? <Field label="Détail" width={panelWidth} labelWidth={LABEL_WIDTH} value={status.detail} valueFg={DIM} /> : null}
+        <Field label="Status" width={panelWidth} labelWidth={LABEL_WIDTH} value={statusLabel(status)} valueFg={statusColor(status)} />
+        {status?.detail ? <Field label="Detail" width={panelWidth} labelWidth={LABEL_WIDTH} value={status.detail} valueFg={DIM} /> : null}
         {plan.kind === "command" ? (
-          <Field label="Exécutera" width={panelWidth} labelWidth={LABEL_WIDTH} value={`${plan.bin} ${plan.args.join(" ")}`} />
+          <Field label="Will run" width={panelWidth} labelWidth={LABEL_WIDTH} value={`${plan.bin} ${plan.args.join(" ")}`} />
         ) : (
           <>
-            <Field label="Fusionnera" width={panelWidth} labelWidth={LABEL_WIDTH} value={plan.path} />
-            <Field label="Sous la clé" width={panelWidth} labelWidth={LABEL_WIDTH} value={plan.mergeKey} />
+            <Field label="Will merge" width={panelWidth} labelWidth={LABEL_WIDTH} value={plan.path} />
+            <Field label="Under key" width={panelWidth} labelWidth={LABEL_WIDTH} value={plan.mergeKey} />
             <Field
-              label="Préserve"
+              label="Preserves"
               width={panelWidth}
               labelWidth={LABEL_WIDTH}
-              value="le reste du fichier — seule l'entrée « caesar » est ajoutée ou remplacée."
+              value='the rest of the file — only the "caesar" entry is added or replaced.'
               valueFg={DIM}
             />
           </>
@@ -134,7 +133,7 @@ export function IntegrationsScreen({ root, notify }: IntegrationsScreenProps) {
         <KeyHints
           hints={[
             { key: "↑↓", label: "client" },
-            { key: "Entrée", label: "installer / mettre à jour" },
+            { key: "Enter", label: "install / update" },
           ]}
         />
       </box>

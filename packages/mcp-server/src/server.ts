@@ -1,7 +1,7 @@
 /**
- * Construction du serveur MCP : un `McpServer` du SDK, avec les dix tools de
- * délégation enregistrés — neuf pour la délégation elle-même (brief de la
- * tâche 7), plus `caesar_answer` (canal retour, brief de la tâche 9).
+ * MCP server construction: an SDK `McpServer`, with the ten delegation tools
+ * registered — nine for the delegation itself (task 7 brief), plus
+ * `caesar_answer` (return channel, task 9 brief).
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createSession } from "./session.js";
@@ -25,7 +25,7 @@ export interface BuiltServer {
   session: McpSession;
 }
 
-/** Construit le serveur MCP pour le projet enraciné à `root`, avec sa propre session (tâches en cours, store). */
+/** Builds the MCP server for the project rooted at `root`, with its own session (running tasks, store). */
 export async function buildServer(root: string): Promise<BuiltServer> {
   const session = await createSession(root);
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });

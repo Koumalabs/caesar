@@ -1,24 +1,24 @@
 /**
- * Écran Politique : les champs de `PolicyConfig` et les listes
- * `allowed`/`denied`.
+ * Policy screen: the fields of `PolicyConfig` and the `allowed`/`denied`
+ * lists.
  *
- * La réécriture porte sur une seule chose, mais qui décide de tout ici : les
- * champs s'appelaient `max_parallel`, `allow_recursion`, `max_depth` — les
- * clés du TOML, posées à l'écran sans un mot d'explication. Un réglage qu'on
- * ne comprend pas ne se règle pas. Chaque champ porte désormais un intitulé
- * en français, et son effet s'affiche dès qu'on s'arrête dessus ; la clé
- * TOML reste visible en fin de ligne, pour qui édite aussi le fichier à la
- * main.
+ * The rewrite is about a single thing, but one that decides everything
+ * here: the fields were called `max_parallel`, `allow_recursion`,
+ * `max_depth` — the TOML keys, put on screen without a word of
+ * explanation. A setting one does not understand does not get adjusted.
+ * Each field now carries a plain-language label, and its effect is shown
+ * as soon as one pauses on it; the TOML key stays visible at the end of
+ * the line, for whoever also edits the file by hand.
  *
- * La règle qui surprend — "denied" l'emporte toujours sur "allowed" — est
- * rappelée en permanence à l'écran ; elle n'est pas réimplémentée ici, c'est
- * `isAgentAllowed` (`@caesar/core`) qui la fait vivre partout ailleurs.
+ * The rule that surprises — "denied" always wins over "allowed" — is
+ * recalled on screen at all times; it is not reimplemented here, it is
+ * `isAgentAllowed` (`@caesar/core`) that enforces it everywhere else.
  *
- * Chaque champ affiche sa valeur **effective** (`effectiveConfig`) — jamais
- * `state.draft` directement, qui ne porte que ce que la couche active
- * déclare en propre. Une valeur héritée d'une couche moins spécifique se
- * marque (« ← global ») : c'est ici qu'elle compte le plus, une seule liste
- * de champs individuellement surchargeables.
+ * Each field shows its **effective** value (`effectiveConfig`) — never
+ * `state.draft` directly, which only carries what the active layer
+ * declares on its own. A value inherited from a less specific layer is
+ * marked ("← global"): this is where it matters most, a single list of
+ * individually overridable fields.
  */
 import { useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
@@ -49,7 +49,7 @@ export interface PolicyScreenProps {
 
 type Field_ = keyof PolicyConfig;
 
-/** Du plus quotidien au plus structurel : ce qu'on vient régler d'abord passe en premier. */
+/** From the most everyday to the most structural: what one comes to adjust first goes first. */
 const FIELDS: Field_[] = [
   "default_mode",
   "default_isolation",
@@ -64,19 +64,19 @@ const FIELDS: Field_[] = [
 ];
 
 const FIELD_LABELS: Record<Field_, string> = {
-  default_mode: "Mode par défaut",
-  default_isolation: "Isolation par défaut",
-  default_network: "Réseau par défaut",
-  default_timeout_ms: "Délai par défaut",
-  max_parallel: "Tâches en parallèle",
-  max_depth: "Profondeur maximale",
-  allow_recursion: "Délégation récursive",
-  allow_inplace_write: "Écriture en place",
-  allowed: "Agents autorisés",
-  denied: "Agents refusés",
+  default_mode: "Default mode",
+  default_isolation: "Default isolation",
+  default_network: "Default network",
+  default_timeout_ms: "Default timeout",
+  max_parallel: "Parallel tasks",
+  max_depth: "Maximum depth",
+  allow_recursion: "Recursive delegation",
+  allow_inplace_write: "In-place write",
+  allowed: "Allowed agents",
+  denied: "Denied agents",
 };
 
-/** La clé du TOML, pour qui édite aussi le fichier — `default_timeout_ms` s'y écrit sans son suffixe. */
+/** The TOML key, for whoever also edits the file — `default_timeout_ms` is written there without its suffix. */
 const TOML_KEYS: Record<Field_, string> = {
   default_mode: "default_mode",
   default_isolation: "default_isolation",
@@ -91,19 +91,19 @@ const TOML_KEYS: Record<Field_, string> = {
 };
 
 const FIELD_HINTS: Record<Field_, string> = {
-  default_mode: "Ce qu'une tâche fait à défaut de précision. read-only : l'agent ne doit rien modifier.",
+  default_mode: "What a task does when unspecified. read-only: the agent must not modify anything.",
   default_isolation:
-    "auto : worktree en écriture, et pour toute lecture seule confiée à un agent sans mode natif. inplace : le dépôt lui-même.",
+    "auto: worktree for writes, and for any read-only task given to an agent without a native mode. inplace: the repository itself.",
   default_network:
-    "auto : le réseau s'ouvre partout où l'agent le permet, et le rapport le dit ailleurs. on : refuse la délégation si l'agent ne sait pas l'ouvrir. off : ferme là où c'est possible.",
-  default_timeout_ms: 'Au-delà, la tâche est interrompue. Formes acceptées : "10m", "90s", "1h".',
-  max_parallel: "Nombre de tâches menées de front.",
-  max_depth: "Un agent délégataire ne peut plus déléguer une fois cette profondeur atteinte.",
-  allow_recursion: 'Désactivé, l\'agent "claude" est refusé : déléguer à Claude depuis Claude Code serait une récursion.',
+    "auto: the network opens wherever the agent allows it, and the report says so elsewhere. on: refuses the delegation if the agent cannot open it. off: closes it where possible.",
+  default_timeout_ms: 'Beyond this, the task is interrupted. Accepted forms: "10m", "90s", "1h".',
+  max_parallel: "Number of tasks run at the same time.",
+  max_depth: "A delegated agent can no longer delegate once this depth is reached.",
+  allow_recursion: 'Disabled, the "claude" agent is refused: delegating to Claude from Claude Code would be recursion.',
   allow_inplace_write:
-    'Désactivé, une tâche en écriture ne peut pas demander "inplace" dans un dépôt git : elle travaille sur une branche jetable, dont "caesar diff" montre le résultat. Activé, le sous-agent écrit dans votre arbre de travail, sur votre branche courante, mêlé à vos propres modifications.',
-  allowed: "Liste blanche. Vide : tout agent non refusé passe. Non vide : seuls les agents listés passent.",
-  denied: "Liste noire — elle l'emporte toujours sur la liste blanche.",
+    'Disabled, a write task cannot request "inplace" in a git repository: it works on a disposable branch, whose result "caesar diff" shows. Enabled, the sub-agent writes into your working tree, on your current branch, mixed in with your own changes.',
+  allowed: "Allowlist. Empty: any agent not denied passes. Non-empty: only the listed agents pass.",
+  denied: "Denylist — it always wins over the allowlist.",
 };
 
 const LIST_FIELDS = new Set<Field_>(["allowed", "denied"]);
@@ -133,7 +133,7 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
         onChange(updatePolicy(state, { default_timeout_ms: parseDuration(raw) }));
       } else {
         const value = Number(raw);
-        if (!Number.isInteger(value) || value < 0) throw new Error(`"${raw}" n'est pas un entier positif valide.`);
+        if (!Number.isInteger(value) || value < 0) throw new Error(`"${raw}" is not a valid positive integer.`);
         onChange(updatePolicy(state, { [editing.field]: value } as Partial<PolicyConfig>));
       }
     } catch (error) {
@@ -167,7 +167,7 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
       return;
     }
 
-    // focus === "list" : "allowed" ou "denied"
+    // focus === "list": "allowed" or "denied"
     const listField = field as PolicyListField;
     const entries = policy[listField];
     if (key.name === "escape") setFocus("fields");
@@ -176,7 +176,7 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
     else if (key.name === "a") {
       const next = catalogIds(effectiveConfig(state).agents).find((id) => !entries.includes(id));
       if (next) onChange(setPolicyListEntry(state, listField, next, true));
-      else notify("Tous les agents du catalogue sont déjà dans cette liste.", true);
+      else notify("Every catalog agent is already in this list.", true);
     } else if (key.name === "r" || key.name === "delete") {
       const current = entries[entryIndex];
       if (current) {
@@ -189,14 +189,14 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
   const hints: Hint[] =
     focus === "fields"
       ? [
-          { key: "↑↓", label: "réglage" },
-          { key: "Entrée", label: LIST_FIELDS.has(field) ? "ouvrir la liste" : "modifier" },
+          { key: "↑↓", label: "setting" },
+          { key: "Enter", label: LIST_FIELDS.has(field) ? "open the list" : "edit" },
         ]
       : [
-          { key: "↑↓", label: "entrée" },
-          { key: "a", label: "ajouter un agent" },
-          { key: "r", label: "retirer" },
-          { key: "Échap", label: "revenir aux réglages" },
+          { key: "↑↓", label: "entry" },
+          { key: "a", label: "add an agent" },
+          { key: "r", label: "remove" },
+          { key: "Esc", label: "back to settings" },
         ];
 
   function valueOf(name: Field_): { text: string; fg?: string } {
@@ -214,24 +214,24 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
       case "max_depth":
         return { text: String(policy.max_depth) };
       case "allow_recursion":
-        return policy.allow_recursion ? { text: "activée", fg: WARN } : { text: "désactivée", fg: OK };
+        return policy.allow_recursion ? { text: "enabled", fg: WARN } : { text: "disabled", fg: OK };
       case "allow_inplace_write":
-        return policy.allow_inplace_write ? { text: "autorisée", fg: WARN } : { text: "refusée", fg: OK };
+        return policy.allow_inplace_write ? { text: "allowed", fg: WARN } : { text: "denied", fg: OK };
       case "allowed":
         return policy.allowed.length > 0
           ? { text: policy.allowed.join(", ") }
-          : { text: "(vide — tout agent non refusé passe)", fg: DIM };
+          : { text: "(empty — any agent not denied passes)", fg: DIM };
       case "denied":
-        return policy.denied.length > 0 ? { text: policy.denied.join(", "), fg: BAD } : { text: "(vide)", fg: DIM };
+        return policy.denied.length > 0 ? { text: policy.denied.join(", "), fg: BAD } : { text: "(empty)", fg: DIM };
     }
   }
 
   return (
     <box flexDirection="column" flexGrow={1}>
       <Panel
-        title="Politique"
+        title="Policy"
         focused
-        note={'Rappel : "denied" l\'emporte toujours sur "allowed" — un agent présent dans les deux est refusé.'}
+        note={'Reminder: "denied" always wins over "allowed" — an agent present in both is denied.'}
       >
         {FIELDS.map((name, index) => {
           const selected = index === fieldIndex;
@@ -252,7 +252,7 @@ export function PolicyScreen({ state, onChange, onEditingChange, notify }: Polic
               below={
                 LIST_FIELDS.has(name) && focus === "list" && selected ? (
                   <box flexDirection="column" marginLeft={LABEL_WIDTH + 2}>
-                    {policy[name as PolicyListField].length === 0 ? <text fg={DIM}>(vide — "a" pour ajouter un agent)</text> : null}
+                    {policy[name as PolicyListField].length === 0 ? <text fg={DIM}>(empty — "a" to add an agent)</text> : null}
                     {policy[name as PolicyListField].map((id, i) => (
                       <text key={id} fg={i === entryIndex ? ACCENT : undefined}>
                         {(i === entryIndex ? "› " : "  ") + id}

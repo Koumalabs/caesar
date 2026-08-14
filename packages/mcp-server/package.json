@@ -1,7 +1,7 @@
 {
   "name": "@caesar/mcp-server",
   "version": "0.1.0",
-  "description": "Serveur MCP exposant les tools de délégation à l'agent principal",
+  "description": "MCP server exposing the delegation tools to the main agent",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

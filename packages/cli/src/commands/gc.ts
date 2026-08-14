@@ -1,4 +1,4 @@
-/** Façade CLI de la décision de nettoyage portée par `@caesar/core`. */
+/** CLI facade over the cleanup decision carried by `@caesar/core`. */
 import { garbageCollectWorktrees } from "@caesar/core";
 import type { WorktreeGcEntry, WorktreeGcResult } from "@caesar/core";
 import type { Cell, Io } from "../output.js";
@@ -31,63 +31,63 @@ function jsonEntry(entry: WorktreeGcEntry): WorktreeGcEntry & { diff_command?: s
 }
 
 function actionLabel(entry: WorktreeGcEntry): string {
-  if (entry.action === "removed") return "supprimé";
-  if (entry.action === "would_remove") return "serait supprimé";
-  return "conservé";
+  if (entry.action === "removed") return "removed";
+  if (entry.action === "would_remove") return "would be removed";
+  return "kept";
 }
 
 function reasonLabel(entry: WorktreeGcEntry): string {
   switch (entry.reason) {
     case "clean":
-      return entry.orphan ? "orphelin, aucune modification" : "tâche terminée, aucune modification";
+      return entry.orphan ? "orphan, no modifications" : "task finished, no modifications";
     case "applied":
-      return "appliqué au workspace, rien de nouveau depuis";
+      return "applied to the workspace, nothing new since";
     case "modified":
-      if (entry.action !== "kept") return "modifications non intégrées, suppression forcée";
-      return entry.applied_at ? "modifié depuis son application" : "modifications non intégrées";
+      if (entry.action !== "kept") return "non-integrated modifications, removal forced";
+      return entry.applied_at ? "modified since it was applied" : "non-integrated modifications";
     case "active":
-      return entry.status === "pending" ? "tâche en attente" : "tâche en cours";
+      return entry.status === "pending" ? "task pending" : "task in progress";
     case "inspection_failed":
-      return `inspection impossible${entry.error ? ` : ${entry.error}` : ""}`;
+      return `inspection impossible${entry.error ? `: ${entry.error}` : ""}`;
   }
 }
 
 /**
- * Ce qu'il faut faire d'un worktree conservé — une commande à recopier, ou le
- * chemin d'un orphelin à inspecter à la main.
+ * What to do with a kept worktree — a command to copy back, or the path of
+ * an orphan to inspect by hand.
  *
- * Sous le tableau, et non dans une cellule : ces deux textes sont longs par
- * nature, et une colonne les rognerait précisément là où ils doivent être
- * recopiables (`renderTable` plafonne à la largeur du terminal).
+ * Below the table, not in a cell: these two texts are long by nature, and a
+ * column would trim them precisely where they must be copyable
+ * (`renderTable` caps at the terminal width).
  */
 function keptAdvice(entry: WorktreeGcEntry): string | null {
   if (entry.reason !== "modified" || entry.action !== "kept") return null;
   if (entry.orphan) {
-    return `"${entry.id}" : orphelin porteur de modifications, inconnu du store — à inspecter à la main : ${entry.path}`;
+    return `"${entry.id}": orphan carrying modifications, unknown to the store — inspect it by hand: ${entry.path}`;
   }
   if (entry.applied_at) {
-    return `"${entry.id}" : appliqué puis modifié — "caesar diff ${entry.id}" pour voir ce qui a bougé depuis l'application, "caesar apply ${entry.id}" pour ré-appliquer.`;
+    return `"${entry.id}": applied then modified — "caesar diff ${entry.id}" to see what changed since the apply, "caesar apply ${entry.id}" to re-apply.`;
   }
-  return `"${entry.id}" : "caesar diff ${entry.id}" pour voir ce qui n'a pas été intégré, "caesar apply ${entry.id}" pour l'intégrer.`;
+  return `"${entry.id}": "caesar diff ${entry.id}" to see what has not been integrated, "caesar apply ${entry.id}" to integrate it.`;
 }
 
 /**
- * Les tâches conclues d'office, dites avant les worktrees : c'est la cause,
- * eux n'en sont que la conséquence. Une tâche restée « en cours » retenait son
- * worktree, et l'utilisateur voyait un `gc` sans effet sans jamais savoir
- * pourquoi.
+ * The tasks concluded by decree, told before the worktrees: they are the
+ * cause, the worktrees only the consequence. A task stuck "in progress"
+ * held on to its worktree, and the user watched a `gc` with no effect
+ * without ever knowing why.
  */
 function printAbandoned(io: Io, result: WorktreeGcResult): void {
   if (result.abandoned.length === 0) return;
-  printHeading(io, result.dryRun ? "tâches à conclure" : "tâches conclues");
+  printHeading(io, result.dryRun ? "tasks to conclude" : "tasks concluded");
   printNote(
     io,
     result.dryRun
-      ? "Le processus qui les conduisait a disparu ; sans --dry-run, elles passeraient en échec."
-      : "Le processus qui les conduisait avait disparu sans les conclure : passées en échec.",
+      ? "The process driving them has disappeared; without --dry-run, they would be marked failed."
+      : "The process driving them had disappeared without concluding them: marked failed.",
   );
   for (const task of result.abandoned) {
-    writeLine(io.stdout, `  - ${task.id} (${task.status}, orchestrateur pid ${task.pid} disparu)`);
+    writeLine(io.stdout, `  - ${task.id} (${task.status}, orchestrator pid ${task.pid} gone)`);
   }
   writeLine(io.stdout);
 }
@@ -108,27 +108,27 @@ export async function runGc(root: string, options: GcOptions, io: Io): Promise<n
   } else if (result.entries.length === 0) {
     sectionHeader(io, "gc");
     printAbandoned(io, result);
-    writeLine(io.stdout, "Aucun worktree à nettoyer.");
+    writeLine(io.stdout, "No worktree to clean up.");
   } else {
     sectionHeader(io, "gc");
     printAbandoned(io, result);
     const rows: Cell[][] = result.entries.map((entry) => [
       entry.id,
-      { text: entry.orphan ? "orphelin" : entry.status ?? "-", token: "dim" },
-      // La décision est ce qu'on vient lire : supprimer se distingue de
-      // conserver à la couleur, avant même que le mot ne soit lu.
+      { text: entry.orphan ? "orphan" : entry.status ?? "-", token: "dim" },
+      // The decision is what one comes to read: removing stands apart from
+      // keeping by color, before the word is even read.
       { text: actionLabel(entry), token: entry.action === "kept" ? "ok" : "warn" },
       { text: reasonLabel(entry), token: "dim" },
     ]);
-    printTable(io, ["id", "origine/statut", "décision", "raison"], rows);
-    const removedLabel = result.dryRun ? `${result.wouldRemove} suppression(s) prévue(s)` : `${result.removed} suppression(s)`;
-    writeLine(io.stdout, `${removedLabel}, ${result.kept} conservation(s).`);
+    printTable(io, ["id", "origin/status", "decision", "reason"], rows);
+    const removedLabel = result.dryRun ? `${result.wouldRemove} planned removal(s)` : `${result.removed} removal(s)`;
+    writeLine(io.stdout, `${removedLabel}, ${result.kept} kept.`);
 
     const advices = result.entries.map(keptAdvice).filter((advice): advice is string => advice !== null);
     if (advices.length > 0) {
       writeLine(io.stdout);
-      printHeading(io, "conservés");
-      printNote(io, "Ceux-ci portent du travail non intégré.");
+      printHeading(io, "kept");
+      printNote(io, "These carry non-integrated work.");
       for (const advice of advices) {
         for (const line of wrapText(advice, terminalWidth(io.stdout), "  - ", "    ")) writeLine(io.stdout, line);
       }

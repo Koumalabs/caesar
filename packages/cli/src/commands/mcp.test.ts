@@ -20,7 +20,7 @@ describe("caesar mcp install --dry-run", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("claude : le plan exécuterait \"claude mcp add\", sans rien lancer", async () => {
+  it("claude: the plan would run \"claude mcp add\", without launching anything", async () => {
     await withFakeHome(async () => {
       const code = await runMcpInstall(root, "claude", { dryRun: true, json: true }, io);
       expect(code).toBe(EXIT_OK);
@@ -33,7 +33,7 @@ describe("caesar mcp install --dry-run", () => {
     });
   });
 
-  it("codex : le plan exécuterait \"codex mcp add\", sans rien lancer", async () => {
+  it("codex: the plan would run \"codex mcp add\", without launching anything", async () => {
     await withFakeHome(async () => {
       const code = await runMcpInstall(root, "codex", { dryRun: true, json: true }, io);
       expect(code).toBe(EXIT_OK);
@@ -43,7 +43,7 @@ describe("caesar mcp install --dry-run", () => {
     });
   });
 
-  it("copilot : le plan écrirait ~/.copilot/mcp-config.json, sans rien écrire", async () => {
+  it("copilot: the plan would write ~/.copilot/mcp-config.json, without writing anything", async () => {
     await withFakeHome(async (home) => {
       const code = await runMcpInstall(root, "copilot", { dryRun: true, json: true }, io);
       expect(code).toBe(EXIT_OK);
@@ -57,7 +57,7 @@ describe("caesar mcp install --dry-run", () => {
     });
   });
 
-  it("antigravity : le plan écrirait ~/.gemini/antigravity-cli/settings.json, sans rien écrire", async () => {
+  it("antigravity: the plan would write ~/.gemini/antigravity-cli/settings.json, without writing anything", async () => {
     await withFakeHome(async (home) => {
       const code = await runMcpInstall(root, "antigravity", { dryRun: true, json: true }, io);
       expect(code).toBe(EXIT_OK);
@@ -69,7 +69,7 @@ describe("caesar mcp install --dry-run", () => {
     });
   });
 
-  it("opencode : le plan écrirait ~/.config/opencode/opencode.json (repli fichier — voir le rapport de la tâche 7)", async () => {
+  it("opencode: the plan would write ~/.config/opencode/opencode.json (file fallback — see the task 7 report)", async () => {
     await withFakeHome(async (home) => {
       const code = await runMcpInstall(root, "opencode", { dryRun: true, json: true }, io);
       expect(code).toBe(EXIT_OK);
@@ -81,15 +81,15 @@ describe("caesar mcp install --dry-run", () => {
     });
   });
 
-  it("client inconnu : code d'usage, rien exécuté", async () => {
+  it("unknown client: usage code, nothing executed", async () => {
     await withFakeHome(async () => {
       const code = await runMcpInstall(root, "bogus", { dryRun: true }, io);
       expect(code).toBe(EXIT_USAGE);
-      expect(io.stderrText()).toMatch(/inconnu/);
+      expect(io.stderrText()).toMatch(/[Uu]nknown/);
     });
   });
 
-  it("--dry-run n'écrit rien sur stdout hors le plan (pas de couleur, JSON pur)", async () => {
+  it("--dry-run writes nothing to stdout beyond the plan (no color, pure JSON)", async () => {
     await withFakeHome(async () => {
       const code = await runMcpInstall(root, "copilot", { dryRun: true, json: true }, io);
       expect(code).toBe(EXIT_OK);
@@ -100,7 +100,7 @@ describe("caesar mcp install --dry-run", () => {
   });
 });
 
-describe("caesar mcp install (écriture réelle, sous HOME factice)", () => {
+describe("caesar mcp install (real write, under a fake HOME)", () => {
   let root: string;
   let io: CapturedIo;
 
@@ -113,28 +113,28 @@ describe("caesar mcp install (écriture réelle, sous HOME factice)", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("copilot : fusionne dans mcp-config.json existant, sans perdre les autres serveurs", async () => {
+  it("copilot: merges into an existing mcp-config.json, without losing the other servers", async () => {
     await withFakeHome(async (home) => {
       const path = join(home, ".copilot", "mcp-config.json");
       await mkdir(join(home, ".copilot"), { recursive: true });
-      await writeFile(path, JSON.stringify({ mcpServers: { autre: { type: "stdio", command: "autre-cli" } } }), "utf8");
+      await writeFile(path, JSON.stringify({ mcpServers: { other: { type: "stdio", command: "other-cli" } } }), "utf8");
 
       const code = await runMcpInstall(root, "copilot", {}, io);
       expect(code).toBe(EXIT_OK);
 
       const written = JSON.parse(await readFile(path, "utf8"));
-      expect(written.mcpServers.autre).toEqual({ type: "stdio", command: "autre-cli" });
+      expect(written.mcpServers.other).toEqual({ type: "stdio", command: "other-cli" });
       expect(written.mcpServers.caesar).toEqual({ type: "stdio", command: "caesar", args: ["mcp", "serve", "--root", root] });
     });
   });
 
-  it("antigravity : préserve trustedWorkspaces et le reste du fichier existant", async () => {
+  it("antigravity: preserves trustedWorkspaces and the rest of the existing file", async () => {
     await withFakeHome(async (home) => {
       const dir = join(home, ".gemini", "antigravity-cli");
       const path = join(dir, "settings.json");
       await mkdir(dir, { recursive: true });
       const existing = {
-        trustedWorkspaces: ["/Users/quelquun/projet-a", "/Users/quelquun/projet-b"],
+        trustedWorkspaces: ["/Users/someone/project-a", "/Users/someone/project-b"],
         theme: "dark",
       };
       await writeFile(path, JSON.stringify(existing), "utf8");
@@ -149,7 +149,7 @@ describe("caesar mcp install (écriture réelle, sous HOME factice)", () => {
     });
   });
 
-  it("copilot : crée le fichier s'il n'existe pas encore", async () => {
+  it("copilot: creates the file when it does not exist yet", async () => {
     await withFakeHome(async (home) => {
       const code = await runMcpInstall(root, "copilot", {}, io);
       expect(code).toBe(EXIT_OK);
@@ -171,14 +171,14 @@ describe("checkMcpStatus", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("copilot : \"not-registered\" quand le fichier n'existe pas encore", async () => {
+  it("copilot: \"not-registered\" when the file does not exist yet", async () => {
     await withFakeHome(async () => {
       const status = await checkMcpStatus("copilot", root);
       expect(status.registered).toBe("not-registered");
     });
   });
 
-  it("copilot : \"registered\" une fois l'entrée écrite, sans relancer l'installation", async () => {
+  it("copilot: \"registered\" once the entry is written, without rerunning the installation", async () => {
     await withFakeHome(async () => {
       await runMcpInstall(root, "copilot", {}, makeIo());
       const status = await checkMcpStatus("copilot", root);
@@ -187,17 +187,17 @@ describe("checkMcpStatus", () => {
     });
   });
 
-  it("copilot : un fichier existant avec un autre serveur reste \"not-registered\" pour \"caesar\"", async () => {
+  it("copilot: an existing file with another server stays \"not-registered\" for \"caesar\"", async () => {
     await withFakeHome(async (home) => {
       const path = join(home, ".copilot", "mcp-config.json");
       await mkdir(join(home, ".copilot"), { recursive: true });
-      await writeFile(path, JSON.stringify({ mcpServers: { autre: { command: "autre-cli" } } }), "utf8");
+      await writeFile(path, JSON.stringify({ mcpServers: { other: { command: "other-cli" } } }), "utf8");
       const status = await checkMcpStatus("copilot", root);
       expect(status.registered).toBe("not-registered");
     });
   });
 
-  it("claude et codex : \"unknown\", sans lancer le moindre sous-processus", async () => {
+  it("claude and codex: \"unknown\", without launching any subprocess", async () => {
     await withFakeHome(async () => {
       const claude = await checkMcpStatus("claude", root);
       expect(claude.registered).toBe("unknown");
@@ -223,7 +223,7 @@ describe("caesar mcp serve", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("le diagnostic va sur stderr, rien sur stdout, et le protocole transite sur le flux dédié", async () => {
+  it("the diagnostic goes to stderr, nothing to stdout, and the protocol flows on the dedicated stream", async () => {
     const stdin = new PassThrough();
     const stdout = new PassThrough();
     let stdoutBytes = "";
@@ -234,8 +234,8 @@ describe("caesar mcp serve", () => {
     const code = await runMcpServe(root, io, { stdin, stdout });
     expect(code).toBe(EXIT_OK);
 
-    // Le message d'accueil est un diagnostic : stderr, jamais l'`io.stdout` de la commande.
-    expect(io.stderrText()).toMatch(/Serveur MCP/);
+    // The greeting message is a diagnostic: stderr, never the command's `io.stdout`.
+    expect(io.stderrText()).toMatch(/MCP server/);
     expect(io.stdoutText()).toBe("");
 
     const initRequest = {
@@ -247,8 +247,9 @@ describe("caesar mcp serve", () => {
     stdin.write(JSON.stringify(initRequest) + "\n");
     await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 100));
 
-    // Le flux stdio dédié au protocole, lui, ne porte que du JSON-RPC — pas
-    // de mélange avec `io.stdout` (qui reste vide) ni avec un quelconque log.
+    // The stdio stream dedicated to the protocol, for its part, carries
+    // only JSON-RPC — no mixing with `io.stdout` (which stays empty) nor
+    // with any log.
     expect(stdoutBytes.length).toBeGreaterThan(0);
     for (const line of stdoutBytes.split("\n").filter((l) => l.trim() !== "")) {
       expect(() => JSON.parse(line)).not.toThrow();

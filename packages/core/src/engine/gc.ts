@@ -1,21 +1,20 @@
 /**
- * Inventaire et nettoyage de ce que les tâches laissent derrière elles :
- * leurs worktrees jetables, et leurs enregistrements restés « en cours »
- * alors que plus personne ne les conduit.
+ * Inventory and cleanup of what tasks leave behind: their disposable
+ * worktrees, and their records left "running" when no one is driving
+ * them anymore.
  *
- * Toute la décision vit ici, et non dans le CLI : les autres façades peuvent
- * ainsi présenter exactement les mêmes suppressions et conservations. Une
- * tâche active est protégée avant même l'inspection Git ; une tâche terminée
- * n'est supprimée que si son worktree est propre ou si son patch a été
- * appliqué et n'a pas bougé depuis (`applied_at` + empreinte, posés par
- * `applyRecordedWorktree`), sauf demande explicite avec `force`. Les
- * répertoires sous `.caesar/wt` qui ne correspondent à aucun enregistrement
- * worktree encore présent sont traités comme orphelins.
+ * The whole decision lives here, not in the CLI: the other frontends can
+ * thus present exactly the same removals and keeps. An active task is
+ * protected before the Git inspection even happens; a finished task is only
+ * removed if its worktree is clean or if its patch has been applied and has
+ * not moved since (`applied_at` + digest, set by `applyRecordedWorktree`),
+ * unless explicitly requested with `force`. Directories under `.caesar/wt`
+ * that match no worktree record still present are treated as orphans.
  *
- * Les deux nettoyages sont dans le même fichier parce que le premier
- * conditionne le second : un enregistrement bloqué « running » protège son
- * worktree indéfiniment (`kept: active`), et le processus qui aurait dû le
- * conclure n'existe plus pour lever cette protection.
+ * Both cleanups live in the same file because the first conditions the
+ * second: a record stuck on "running" protects its worktree indefinitely
+ * (`kept: active`), and the process that should have concluded it no longer
+ * exists to lift that protection.
  */
 import { execFile } from "node:child_process";
 import type { Dirent } from "node:fs";
@@ -43,9 +42,9 @@ export interface WorktreeGcEntry {
   orphan: boolean;
   status?: TaskStatus;
   /**
-   * L'instant de la dernière application (`caesar apply`) porté par
-   * l'enregistrement, restitué tel quel : c'est lui qui distingue, parmi les
-   * conservés `modified`, ceux qui ont été appliqués puis retouchés.
+   * The instant of the last apply (`caesar apply`) carried by the record,
+   * passed through as-is: it is what distinguishes, among the entries kept
+   * as `modified`, those that were applied and then touched up afterwards.
    */
   applied_at?: string;
   action: WorktreeGcAction;
@@ -66,11 +65,11 @@ export interface WorktreeGcResult {
   wouldRemove: number;
   kept: number;
   /**
-   * Les tâches conclues d'office parce que le processus qui les conduisait
-   * avait disparu — voir `sweepAbandonedTasks`. En `dryRun`, celles qui
-   * l'auraient été : rien n'est écrit, mais leurs worktrees sont décomptés
-   * comme collectables, sans quoi l'aperçu annoncerait une conservation que
-   * le passage réel ne ferait pas.
+   * The tasks concluded outright because the process driving them had
+   * disappeared — see `sweepAbandonedTasks`. Under `dryRun`, those that
+   * would have been: nothing is written, but their worktrees are counted as
+   * collectable, without which the preview would announce a keep that the
+   * real pass would not perform.
    */
   abandoned: AbandonedTask[];
 }
@@ -80,38 +79,38 @@ interface Candidate {
   handle: WorktreeHandle;
   orphan: boolean;
   status?: TaskStatus;
-  /** Absent pour un orphelin : aucun enregistrement du store ne le réclame. */
+  /** Absent for an orphan: no record in the store claims it. */
   record?: TaskRecord;
 }
 
 /**
- * Le bail que le runner pose sur l'identifiant d'une tâche, avant même que son
- * worktree existe sur le disque.
+ * The lease the runner puts on a task's identifier, before its worktree
+ * even exists on disk.
  *
- * Reste un type propre à ce module plutôt qu'un alias de `Lease` : les
- * appelants raisonnent en identifiants de tâche, pas en clés de verrou.
+ * Kept as a type of this module rather than an alias of `Lease`: callers
+ * reason in task identifiers, not lock keys.
  */
 export interface WorktreeInUseLease extends Lease {
   id: string;
 }
 
 /**
- * Marque un identifiant avant que son worktree soit exposé sur le disque.
- * Le runner conserve ce marqueur jusqu'à sa terminaison afin qu'un GC
- * concurrent ne confonde jamais la fenêtre pré-store avec un orphelin.
+ * Marks an identifier before its worktree is exposed on disk. The runner
+ * keeps this marker until its termination so that a concurrent GC never
+ * mistakes the pre-store window for an orphan.
  *
- * Le mécanisme lui-même vit désormais dans `lock.ts`, d'où un second usage l'a
- * tiré (l'exclusivité d'écriture sur un workspace). Le contrat de cette
- * fonction est inchangé, motif de refus compris.
+ * The mechanism itself now lives in `lock.ts`, where a second use pulled it
+ * (write exclusivity on a workspace). This function's contract is unchanged,
+ * refusal reason included.
  */
 export async function markWorktreeInUse(root: string, id: string): Promise<WorktreeInUseLease> {
   const lease = await acquireLease(join(root, WORKTREES_IN_USE_DIR), id, {
-    describeHolder: () => `Tâche "${id}" déjà en cours de préparation ou d'exécution.`,
+    describeHolder: () => `Task "${id}" is already being prepared or executed.`,
   });
   return { ...lease, id };
 }
 
-/** Retire au mieux le marqueur, seulement si le jeton du propriétaire correspond encore. */
+/** Best-effort marker removal, only if the owner's token still matches. */
 export async function clearWorktreeInUse(lease: WorktreeInUseLease): Promise<void> {
   await releaseLease(lease);
 }
@@ -121,65 +120,65 @@ function inspectWorktreeMarker(root: string, id: string): Promise<LeaseInspectio
 }
 
 // ---------------------------------------------------------------------------
-// Tâches abandonnées
+// Abandoned tasks
 // ---------------------------------------------------------------------------
 
-/** Une tâche que le store dit encore active, alors que le processus qui la conduisait n'existe plus. */
+/** A task the store still says is active, while the process driving it no longer exists. */
 export interface AbandonedTask {
   id: string;
-  /** Le statut que le store portait encore : "running", ou "pending" si la tâche est morte avant son lancement. */
+  /** The status the store still carried: "running", or "pending" if the task died before its launch. */
   status: TaskStatus;
-  /** Le processus orchestrateur disparu, tel que son marqueur le nommait. */
+  /** The vanished orchestrator process, as its marker named it. */
   pid: number;
 }
 
 /**
- * Les tâches dont l'orchestrateur est mort sans les conclure.
+ * The tasks whose orchestrator died without concluding them.
  *
- * Le statut d'une tâche est écrit par le processus qui la conduit, dans son
- * `finally` : tué (`kill -9`, fermeture de la session MCP qui l'hébergeait,
- * arrêt de la machine), il ne l'écrit jamais. L'enregistrement reste
- * « running » pour toujours — `caesar ps` l'affiche indéfiniment en tête,
- * `caesar watch` la suit sans fin, et son worktree, protégé comme celui d'une
- * tâche active, n'est plus jamais collecté. Rien, jusqu'ici, ne réconciliait
- * cet état ; les autres verrous du dépôt, eux, se réparent tous à la lecture
- * (`reclaimDead` dans `slots.ts`, `purgeLease` dans `lock.ts`).
+ * A task's status is written by the process driving it, in its `finally`:
+ * killed (`kill -9`, closing of the MCP session hosting it, machine
+ * shutdown), it never writes it. The record stays "running" forever —
+ * `caesar ps` displays it at the top indefinitely, `caesar watch` follows it
+ * endlessly, and its worktree, protected like that of an active task, is
+ * never collected again. Nothing, until now, reconciled this state; the
+ * repository's other locks all repair themselves on read (`reclaimDead` in
+ * `slots.ts`, `purgeLease` in `lock.ts`).
  *
- * La preuve de la mort est le marqueur que `markWorktreeInUse` pose **avant**
- * l'enregistrement et ne retire qu'**après** le statut final : tant qu'une
- * tâche est réellement conduite, son marqueur nomme un processus vivant.
- * Un marqueur périmé (`stale` : le pid n'existe plus) est donc un fait daté
- * et positif, jamais une déduction.
+ * The proof of death is the marker that `markWorktreeInUse` sets **before**
+ * the record and only removes **after** the final status: as long as a task
+ * is genuinely being driven, its marker names a living process.
+ * A stale marker (`stale`: the pid no longer exists) is therefore a dated,
+ * positive fact, never a deduction.
  *
- * Un marqueur **absent** ne conclut rien, volontairement : l'absence n'est pas
- * une preuve de mort. Un enregistrement écrit par autre chose que le moteur —
- * une réparation à la main, un jeu d'essai — ne doit pas être déclaré mort
- * parce qu'il n'a jamais pris de marqueur. `caesar cancel <id>` reste la sortie
- * manuelle : il marque déjà « annulée » une tâche dont le pid a disparu.
+ * An **absent** marker concludes nothing, deliberately: absence is not proof
+ * of death. A record written by something other than the engine — a manual
+ * repair, a test fixture — must not be declared dead because it never took a
+ * marker. `caesar cancel <id>` remains the manual exit: it already marks as
+ * "cancelled" a task whose pid has disappeared.
  */
 export function detectAbandonedTasks(root: string, store: TaskStore = fileTaskStore(root)): Promise<AbandonedTask[]> {
   return collectAbandoned(root, store, false);
 }
 
 /**
- * Conclut les tâches abandonnées : marqueur repris, statut "failed",
- * `ended_at` posé, `pid` effacé.
+ * Concludes abandoned tasks: marker reclaimed, status "failed",
+ * `ended_at` set, `pid` cleared.
  *
- * "failed" plutôt qu'un nouveau statut : l'issue est celle que le `finally` du
- * moteur écrit déjà lorsqu'il perd une tâche en route, et un septième statut
- * traverserait le protocole, le CLI, le TUI et les codes de sortie pour dire
- * la même chose. Le rapport, lui, dit ce qui s'est réellement passé — c'est
- * là que la nuance a un lecteur.
+ * "failed" rather than a new status: the outcome is the one the engine's
+ * `finally` already writes when it loses a task en route, and a seventh
+ * status would have to traverse the protocol, the CLI, the TUI and the exit
+ * codes to say the same thing. The report, for its part, says what actually
+ * happened — that is where the nuance has a reader.
  *
- * Le marqueur est repris **avant** l'écriture du statut : sa reprise est
- * exclusive (`purgeLease`), elle sert donc de mutex entre deux balayages
- * simultanés. Celui qui perd la course ne conclut rien.
+ * The marker is reclaimed **before** the status is written: its reclaim is
+ * exclusive (`purgeLease`), so it serves as a mutex between two simultaneous
+ * sweeps. The one that loses the race concludes nothing.
  */
 export function sweepAbandonedTasks(root: string, store: TaskStore = fileTaskStore(root)): Promise<AbandonedTask[]> {
   return collectAbandoned(root, store, true);
 }
 
-/** Le constat, commun aux deux ; `commit` seul décide s'il est aussi inscrit. */
+/** The finding, common to both; `commit` alone decides whether it is also recorded. */
 async function collectAbandoned(root: string, store: TaskStore, commit: boolean): Promise<AbandonedTask[]> {
   const records = await store.list({ status: ["pending", "running"] });
   const abandoned: AbandonedTask[] = [];
@@ -196,14 +195,14 @@ async function collectAbandoned(root: string, store: TaskStore, commit: boolean)
 }
 
 /**
- * Écrit le rapport d'une tâche abandonnée, puis son statut final.
+ * Writes an abandoned task's report, then its final status.
  *
- * Le rapport déjà présent n'est **jamais** écrasé : un agent peut très bien
- * avoir déposé le sien juste avant que l'orchestrateur ne disparaisse, et
- * c'est alors le seul témoignage de ce qu'il a fait. Le statut du processus
- * reste "failed" pour autant : personne n'a vu son code de sortie, et le
- * recoupement avec git n'a jamais eu lieu — `report_status` porte l'autre
- * niveau, comme partout ailleurs.
+ * A report already present is **never** overwritten: an agent may well have
+ * deposited its own just before the orchestrator disappeared, and it is then
+ * the only testimony of what it did. The process status remains "failed"
+ * regardless: no one saw its exit code, and the reconciliation with git
+ * never took place — `report_status` carries the other level, as everywhere
+ * else.
  */
 async function finalizeAbandoned(store: TaskStore, record: TaskRecord, pid: number): Promise<void> {
   const patch: Partial<TaskRecord> = { status: "failed", ended_at: new Date().toISOString(), pid: undefined };
@@ -219,8 +218,8 @@ async function finalizeAbandoned(store: TaskStore, record: TaskRecord, pid: numb
         task_id: record.id,
         status: "failed",
         summary:
-          `Tâche interrompue avant son terme : le processus orchestrateur (pid ${pid}) a disparu sans la conclure. ` +
-          `Ce que l'agent avait fait avant cette disparition n'a jamais été recoupé avec git.`,
+          `Task interrupted before completion: the orchestrator process (pid ${pid}) disappeared without concluding it. ` +
+          `What the agent had done before that disappearance was never reconciled with git.`,
       });
       await writeReport(paths, report);
       patch.report_status = report.status;
@@ -244,10 +243,10 @@ function isActive(status: TaskStatus | undefined): boolean {
 }
 
 /**
- * Inspecte l'index, les fichiers suivis et les fichiers non suivis sans
- * modifier l'index du worktree. `GIT_OPTIONAL_LOCKS=0` empêche notamment la
- * mise à jour opportuniste de son cache pendant cette lecture, ce qui garde
- * `--dry-run` sans écriture.
+ * Inspects the index, tracked files and untracked files without modifying
+ * the worktree's index. `GIT_OPTIONAL_LOCKS=0` notably prevents the
+ * opportunistic update of its cache during this read, which keeps
+ * `--dry-run` write-free.
  */
 async function worktreeHasChanges(path: string): Promise<boolean> {
   const { stdout } = await execFileAsync("git", ["-C", path, "status", "--porcelain", "--untracked-files=normal"], {
@@ -268,8 +267,8 @@ async function recordedCandidates(root: string): Promise<Candidate[]> {
           handle: {
             path: record.workspace,
             branch: record.branch ?? `caesar/${record.id}`,
-            // Le nettoyage ne compare jamais à la base ; seule la forme du
-            // handle partagé exige cette valeur.
+            // The cleanup never compares against the base; only the shape of
+            // the shared handle requires this value.
             baseRef: "HEAD",
           },
           orphan: false,
@@ -282,29 +281,29 @@ async function recordedCandidates(root: string): Promise<Candidate[]> {
 }
 
 /**
- * Les worktrees de caesar qu'aucun enregistrement du store ne réclame.
+ * Caesar's worktrees that no record in the store claims.
  *
- * Deux sources, réunies, chacune couvrant l'angle mort de l'autre :
+ * Two sources, combined, each covering the other's blind spot:
  *
- * - **`git worktree list --porcelain`**, la vérité sur ce que git tient pour
- *   un worktree, et la seule à donner la branche réellement associée. Le GC la
- *   déduisait du nom de répertoire (`caesar/<dirname>`) : une coïncidence de
- *   construction, qui laisserait des branches derrière elle dès que les deux
- *   cesseraient d'être fabriqués ensemble. Elle rapporte aussi les worktrees
- *   dont l'arborescence a été effacée à la main, que le balayage de répertoire
- *   ne peut par construction pas voir.
- * - **le balayage de `.caesar/wt/`**, pour les résidus que git ne connaît pas :
- *   un répertoire laissé par une création interrompue avant que git ne
- *   l'enregistre. `removeWorktree` échouera dessus, et l'entrée dira
- *   `inspection_failed` plutôt que de laisser le répertoire invisible.
+ * - **`git worktree list --porcelain`**, the truth about what git considers
+ *   a worktree, and the only one to give the actually associated branch. The
+ *   GC used to deduce it from the directory name (`caesar/<dirname>`): a
+ *   coincidence of construction, which would leave branches behind as soon
+ *   as the two stopped being fabricated together. It also reports worktrees
+ *   whose tree was erased by hand, which the directory sweep by construction
+ *   cannot see.
+ * - **the sweep of `.caesar/wt/`**, for residues git does not know about: a
+ *   directory left by a creation interrupted before git registered it.
+ *   `removeWorktree` will fail on it, and the entry will say
+ *   `inspection_failed` rather than leaving the directory invisible.
  *
- * Le dépôt est cherché **depuis `root`**, et les worktrees sont reconnus à
- * leur emplacement sous `<dépôt>/.caesar/wt/`, jamais sous `<root>/.caesar/wt/` :
- * `createWorktree` les crée sous la racine *git*, alors que `root` est la
- * racine *caesar* — `resolveRoot` (CLI) s'arrête au premier `.caesar/` **ou**
- * `.git/`. Quand `.caesar/` vit dans un sous-répertoire d'un dépôt, les deux
- * divergent, et le GC cherchait jusqu'ici là où rien n'est jamais créé : les
- * orphelins y étaient purement invisibles.
+ * The repository is looked up **from `root`**, and worktrees are recognized
+ * by their location under `<repo>/.caesar/wt/`, never under `<root>/.caesar/wt/`:
+ * `createWorktree` creates them under the *git* root, whereas `root` is the
+ * *caesar* root — `resolveRoot` (CLI) stops at the first `.caesar/` **or**
+ * `.git/`. When `.caesar/` lives in a subdirectory of a repository, the two
+ * diverge, and the GC used to look where nothing is ever created: orphans
+ * there were purely invisible.
  */
 async function orphanCandidates(root: string, recorded: Candidate[]): Promise<Candidate[]> {
   const repo = (await repoRoot(root)) ?? root;
@@ -320,8 +319,8 @@ async function orphanCandidates(root: string, recorded: Candidate[]): Promise<Ca
       handle: {
         path: entry.path,
         branch: entry.branch ?? `caesar/${id}`,
-        // Le nettoyage ne compare jamais à la base ; seule la forme du handle
-        // partagé exige cette valeur.
+        // The cleanup never compares against the base; only the shape of the
+        // shared handle requires this value.
         baseRef: "HEAD",
       },
       orphan: true,
@@ -332,7 +331,7 @@ async function orphanCandidates(root: string, recorded: Candidate[]): Promise<Ca
   try {
     dirEntries = await readdir(worktreesDir, { withFileTypes: true });
   } catch {
-    // Aucun worktree n'a jamais été créé sous ce dépôt.
+    // No worktree was ever created under this repository.
   }
   for (const entry of dirEntries) {
     if (!entry.isDirectory()) continue;
@@ -354,25 +353,25 @@ async function orphanCandidates(root: string, recorded: Candidate[]): Promise<Ca
   return candidates;
 }
 
-/** `path` est-il `dir` lui-même ou l'un de ses descendants ? Comparaison par chemins résolus, jamais par préfixe de chaîne. */
+/** Is `path` `dir` itself or one of its descendants? Compared via resolved paths, never by string prefix. */
 function isUnderDir(path: string, dir: string): boolean {
   const relative = relative_(resolve(dir), resolve(path));
   return relative !== "" && !relative.startsWith("..") && !isAbsolute(relative);
 }
 
 /**
- * Forme canonique d'un chemin, liens symboliques résolus — la seule sur
- * laquelle deux chemins de provenances différentes peuvent être comparés.
+ * Canonical form of a path, symlinks resolved — the only one on which two
+ * paths of different provenance can be compared.
  *
- * `git worktree list` rend des chemins réels, quand le store a enregistré
- * celui que l'appelant lui avait donné : sur macOS, `/var/folders/…` d'un côté
- * et `/private/var/folders/…` de l'autre désignent le même répertoire, et
- * `resolve` seul ne le voit pas. Sans cette normalisation, chaque worktree
- * enregistré réapparaissait aussi comme orphelin.
+ * `git worktree list` yields real paths, whereas the store recorded the one
+ * the caller gave it: on macOS, `/var/folders/…` on one side and
+ * `/private/var/folders/…` on the other name the same directory, and
+ * `resolve` alone does not see it. Without this normalization, every
+ * recorded worktree also reappeared as an orphan.
  *
- * Retombe sur `resolve` quand le chemin n'existe plus : c'est justement le cas
- * d'un worktree dont l'arborescence a été effacée à la main, que `git worktree
- * list` rapporte encore.
+ * Falls back to `resolve` when the path no longer exists: that is precisely
+ * the case of a worktree whose tree was erased by hand, which `git worktree
+ * list` still reports.
  */
 async function canonical(path: string): Promise<string> {
   try {
@@ -383,20 +382,19 @@ async function canonical(path: string): Promise<string> {
 }
 
 /**
- * Le worktree d'une tâche appliquée porte-t-il exactement ce qui a été
- * appliqué ? Vrai seulement quand l'enregistrement témoigne d'une
- * application (`applied_at` + empreinte) et que le patch recalculé — par le
- * même `diffWorktree` que l'application, seule façon de rendre les
- * empreintes comparables — porte encore la même empreinte. Tout échec de la
- * vérification (task.json disparu, git en échec) répond non : on ne
- * supprime jamais sur un doute.
+ * Does the worktree of an applied task carry exactly what was applied?
+ * True only when the record testifies to an application (`applied_at` +
+ * digest) and the recomputed patch — via the same `diffWorktree` as the
+ * apply, the only way to make the digests comparable — still carries the
+ * same digest. Any failure of the verification (task.json gone, git
+ * failing) answers no: we never delete on a doubt.
  *
- * `diffWorktree` pose un `add --intent-to-add` dans l'index du worktree
- * candidat, y compris en `--dry-run` : c'est l'index d'un worktree jetable,
- * déjà traversé par l'application elle-même, et le geste est nécessaire —
- * sans lui, les fichiers non suivis manqueraient au patch et l'empreinte ne
- * correspondrait jamais. Le workspace réel et le store, eux, restent
- * intouchés en `--dry-run`.
+ * `diffWorktree` puts an `add --intent-to-add` in the candidate worktree's
+ * index, including under `--dry-run`: it is the index of a disposable
+ * worktree, already traversed by the apply itself, and the gesture is
+ * necessary — without it, untracked files would be missing from the patch
+ * and the digest would never match. The real workspace and the store, for
+ * their part, remain untouched under `--dry-run`.
  */
 async function appliedAndUnchanged(record: TaskRecord | undefined): Promise<boolean> {
   if (!record?.applied_at || !record.applied_patch_digest) return false;
@@ -411,28 +409,28 @@ async function appliedAndUnchanged(record: TaskRecord | undefined): Promise<bool
 }
 
 /**
- * Nettoie les worktrees admissibles et rend une entrée pour chaque worktree
- * encore présent au début de l'opération. Avec `dryRun`, la même décision est
- * calculée mais aucune suppression n'est effectuée.
+ * Cleans up eligible worktrees and yields an entry for each worktree still
+ * present at the start of the operation. With `dryRun`, the same decision is
+ * computed but no removal is performed.
  */
 export async function garbageCollectWorktrees(root: string, options: WorktreeGcOptions = {}): Promise<WorktreeGcResult> {
-  // Les commandes git s'exécutent depuis la racine du dépôt, pas depuis la
-  // racine caesar : les deux divergent dès que `.caesar/` vit dans un
-  // sous-répertoire d'un dépôt (voir `orphanCandidates`), et `git worktree
-  // remove` lancé hors du dépôt échouerait sur chaque candidat.
+  // Git commands run from the repository root, not from the caesar root:
+  // the two diverge as soon as `.caesar/` lives in a subdirectory of a
+  // repository (see `orphanCandidates`), and `git worktree remove` launched
+  // outside the repository would fail on every candidate.
   const repo = (await repoRoot(root)) ?? root;
 
-  // D'abord les tâches abandonnées, et avant toute lecture du store : leur
-  // statut « running » protège leur worktree (`kept: active`) alors que plus
-  // personne ne le tient. Sans ce passage, un orchestrateur tué condamnait son
-  // worktree — et sa branche, et le `node_modules` qu'on venait d'y cloner —
-  // à ne plus jamais être collectés. C'est aussi ici, et nulle part ailleurs,
-  // que le marqueur périmé d'une tâche sans worktree finit par être repris :
-  // le balayage des orphelins ne visite que ce que git ou `.caesar/wt` connaît.
+  // Abandoned tasks first, and before any read of the store: their
+  // "running" status protects their worktree (`kept: active`) while no one
+  // is holding it anymore. Without this pass, a killed orchestrator doomed
+  // its worktree — and its branch, and the `node_modules` just cloned into
+  // it — to never be collected again. It is also here, and nowhere else,
+  // that the stale marker of a task without a worktree finally gets
+  // reclaimed: the orphan sweep only visits what git or `.caesar/wt` knows.
   const abandoned = await collectAbandoned(root, fileTaskStore(root), !(options.dryRun ?? false));
-  // En `dryRun`, le store n'a pas bougé : leurs enregistrements disent encore
-  // "running" et les feraient conserver. L'aperçu doit montrer ce que le
-  // passage réel ferait, pas ce que l'inaction produit.
+  // Under `dryRun`, the store has not moved: their records still say
+  // "running" and would cause them to be kept. The preview must show what
+  // the real pass would do, not what inaction produces.
   const abandonedIds = new Set(abandoned.map((task) => task.id));
 
   const recorded = await recordedCandidates(root);
@@ -450,10 +448,10 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
       ...(candidate.record?.applied_at ? { applied_at: candidate.record.applied_at } : {}),
     };
 
-    // Relecture au dernier moment : le worktree peut être apparu après le
-    // premier instantané du store. Le runner pose le marqueur avant sa
-    // création et le garde jusqu'à la fin, fermant cette course sans délai
-    // arbitraire ni supposition sur l'âge du répertoire.
+    // Re-read at the last moment: the worktree may have appeared after the
+    // store's first snapshot. The runner sets the marker before its creation
+    // and keeps it until the end, closing this race without an arbitrary
+    // delay or an assumption about the directory's age.
     if (candidate.orphan) {
       const marker = await inspectWorktreeMarker(root, candidate.id);
       if (marker.state === "active") {
@@ -469,7 +467,7 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
           ...common,
           action: "kept",
           reason: "inspection_failed",
-          error: "une autre opération nettoie le marqueur périmé",
+          error: "another operation is cleaning up the stale marker",
         });
         continue;
       }
@@ -496,8 +494,8 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
     let reason: WorktreeGcReason = "clean";
     if (modified) {
       if (await appliedAndUnchanged(candidate.record)) {
-        // Le patch courant est celui qui a été appliqué : le worktree ne
-        // porte plus rien d'unique, il est collectable comme un propre.
+        // The current patch is the one that was applied: the worktree no
+        // longer carries anything unique, it is collectable like a clean one.
         reason = "applied";
       } else if (!options.force) {
         entries.push({ ...common, action: "kept", reason: "modified" });
@@ -512,9 +510,9 @@ export async function garbageCollectWorktrees(root: string, options: WorktreeGcO
       try {
         await removeWorktree(repo, candidate.handle);
       } catch (error) {
-        // Un résidu que git ne connaît pas (création interrompue avant son
-        // enregistrement) : le dire, plutôt que de faire échouer tout le
-        // nettoyage sur un répertoire que git refuse de reprendre en main.
+        // A residue git does not know about (creation interrupted before it
+        // was registered): say it, rather than failing the whole cleanup on
+        // a directory git refuses to take back.
         entries.push({
           ...common,
           action: "kept",

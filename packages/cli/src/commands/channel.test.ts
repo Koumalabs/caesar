@@ -1,10 +1,10 @@
 /**
- * `caesar channel serve --task-dir <dir>` — la sous-commande interne du canal
- * retour (tâche 12). Même style de test que `mcp.test.ts` pour `caesar mcp
- * serve` : un vrai échange JSON-RPC sur un flux stdio simulé, pas un appel
- * direct à `buildChannelServer` (déjà couvert par
- * `packages/mcp-channel/src/server.test.ts`) — ce test vérifie la façade
- * `runChannelServe` elle-même, celle que `bin.ts`/`bun-entry.ts` invoquent.
+ * `caesar channel serve --task-dir <dir>` — the return channel's internal
+ * subcommand (task 12). Same test style as `mcp.test.ts` for `caesar mcp
+ * serve`: a real JSON-RPC exchange over a simulated stdio stream, not a
+ * direct call to `buildChannelServer` (already covered by
+ * `packages/mcp-channel/src/server.test.ts`) — this test checks the
+ * `runChannelServe` facade itself, the one `bin.ts`/`bun-entry.ts` invoke.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,7 +25,7 @@ describe("caesar channel serve", () => {
       id: "t_channel_cli",
       created_at: new Date().toISOString(),
       agent: "codex",
-      objective: "Vérifier le canal depuis la sous-commande CLI",
+      objective: "Verify the channel from the CLI subcommand",
       mode: "write",
       isolation: "inplace",
       workspace: taskDir,
@@ -40,7 +40,7 @@ describe("caesar channel serve", () => {
     await rm(taskDir, { recursive: true, force: true });
   });
 
-  it("répond à un échange JSON-RPC réel : initialize puis l'appel de get_task", async () => {
+  it("answers a real JSON-RPC exchange: initialize then the get_task call", async () => {
     const stdin = new PassThrough();
     const stdout = new PassThrough();
     let stdoutBytes = "";
@@ -65,7 +65,7 @@ describe("caesar channel serve", () => {
     const lines = stdoutBytes.split("\n").filter((l) => l.trim() !== "");
     const parsed = lines.map((line) => JSON.parse(line) as { id?: number; result?: { structuredContent?: { objective?: string } } });
     const getTaskResponse = parsed.find((message) => message.id === 2);
-    expect(getTaskResponse?.result?.structuredContent?.objective).toBe("Vérifier le canal depuis la sous-commande CLI");
+    expect(getTaskResponse?.result?.structuredContent?.objective).toBe("Verify the channel from the CLI subcommand");
 
     stdin.end();
   });

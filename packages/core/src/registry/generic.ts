@@ -6,15 +6,15 @@ export interface GenericAgentSpec {
   id: string;
   displayName?: string;
   bin: string;
-  /** Gabarit d'arguments. Les jetons {{prompt}}, {{workspace}}, {{taskDir}}, {{reportPath}}, {{model}} sont substitués. */
+  /** Argument template. The tokens {{prompt}}, {{workspace}}, {{taskDir}}, {{reportPath}}, {{model}} are substituted. */
   args: string[];
-  /** "process" : le cwd porte le workspace. "flag" : il est déjà dans args. */
+  /** "process": the cwd carries the workspace. "flag": it is already in args. */
   cwdMode?: "process" | "flag";
   /**
-   * Arguments ajoutés à la ligne de commande quand la tâche a droit au
-   * réseau — p. ex. `--allow-all-urls`. Les déclarer, c'est promettre que
-   * *sans* eux le CLI est confiné : c'est ce qui fait passer la capacité
-   * réseau de `"unknown"` à `"toggle"`. Mêmes jetons que `args`.
+   * Arguments added to the command line when the task is entitled to the
+   * network — e.g. `--allow-all-urls`. Declaring them is promising that
+   * *without* them the CLI is confined: that is what moves the network
+   * capability from `"unknown"` to `"toggle"`. Same tokens as `args`.
    */
   networkArgs?: string[];
   capabilities?: Partial<AgentCapabilities>;
@@ -29,25 +29,25 @@ const NEUTRAL_CAPABILITIES: AgentCapabilities = {
   addDir: false,
   mcpInjection: "none",
   model: false,
-  // Par défaut, on ne sait rien du réseau d'un CLI arbitraire — et « ne rien
-  // savoir » n'est ni « ouvert » ni « fermé ». `createGenericAgent` remonte à
-  // "toggle" dès que la déclaration porte des `networkArgs`.
+  // By default, we know nothing about the network of an arbitrary CLI — and
+  // "knowing nothing" is neither "open" nor "closed". `createGenericAgent`
+  // raises this to "toggle" as soon as the declaration carries `networkArgs`.
   network: "unknown",
 };
 
 /**
- * Les jetons que `substitute` sait remplacer — donc les seuls qu'un gabarit
- * d'arguments puisse porter. Exportés parce que ce sont eux que valide
- * `validateGenericAgentSpec` et qu'affichent l'aide de `caesar agents add` et
- * l'écran Agents du TUI : une liste unique, plutôt que trois recopies qui
- * divergeraient au premier jeton ajouté.
+ * The tokens that `substitute` knows how to replace — hence the only ones an
+ * argument template may carry. Exported because they are what
+ * `validateGenericAgentSpec` validates and what the help of `caesar agents add`
+ * and the TUI's Agents screen display: one single list, rather than three
+ * copies that would diverge at the first token added.
  */
 export const GENERIC_ARG_TOKENS = ["prompt", "workspace", "taskDir", "reportPath", "model"] as const;
 export type GenericArgToken = (typeof GENERIC_ARG_TOKENS)[number];
 
 const TOKEN_PATTERN = /\{\{(\w+)\}\}/g;
 
-/** Écrit `{{nom}}` — les messages d'erreur parlent des jetons sous la forme où on les tape. */
+/** Writes `{{name}}` — error messages speak of tokens in the form one types them. */
 function tokenLiteral(name: string): string {
   return `{{${name}}}`;
 }
@@ -56,17 +56,17 @@ function isGenericArgToken(name: string): name is GenericArgToken {
   return (GENERIC_ARG_TOKENS as readonly string[]).includes(name);
 }
 
-/** Les noms de jetons portés par `template`, dans l'ordre d'apparition, doublons compris. */
+/** The token names carried by `template`, in order of appearance, duplicates included. */
 function tokensIn(template: string): string[] {
   return [...template.matchAll(TOKEN_PATTERN)].map((match) => match[1] as string);
 }
 
 /**
- * Rend un gabarit d'argument en substituant ses jetons. Si l'un des jetons
- * qu'il contient n'a pas de valeur — inconnu, ou connu mais sans valeur pour
- * cette tâche (`{{model}}` quand aucun modèle n'est demandé) —, l'argument
- * entier disparaît plutôt que de laisser un `undefined` ou une chaîne vide
- * dans la ligne de commande.
+ * Renders an argument template by substituting its tokens. If one of the
+ * tokens it contains has no value — unknown, or known but without a value
+ * for this task (`{{model}}` when no model is requested) — the whole
+ * argument disappears rather than leaving an `undefined` or an empty
+ * string in the command line.
  */
 function substitute(template: string, tokens: Readonly<Record<GenericArgToken, string | undefined>>): string | undefined {
   let missing = false;
@@ -82,12 +82,12 @@ function substitute(template: string, tokens: Readonly<Record<GenericArgToken, s
 }
 
 function buildGeneric(spec: GenericAgentSpec, cwdMode: "process" | "flag", ctx: BuildContext): SpawnPlan {
-  // Typé sur `GenericArgToken` — et non `Record<string, …>` — pour que
-  // `GENERIC_ARG_TOKENS` et les jetons réellement substitués ici ne puissent
-  // pas diverger sans que `tsc` le dise : ajouter un jeton à la liste sans
-  // lui donner de valeur ici devient une erreur de compilation, plutôt qu'un
-  // jeton accepté à la validation puis silencieusement absent au lancement
-  // (un argument dont un jeton n'a pas de valeur disparaît entièrement).
+  // Typed on `GenericArgToken` — and not `Record<string, …>` — so that
+  // `GENERIC_ARG_TOKENS` and the tokens actually substituted here cannot
+  // diverge without `tsc` saying so: adding a token to the list without
+  // giving it a value here becomes a compilation error, rather than a
+  // token accepted at validation then silently absent at launch
+  // (an argument whose token has no value disappears entirely).
   const tokens: Record<GenericArgToken, string | undefined> = {
     prompt: ctx.prompt,
     workspace: ctx.task.workspace,
@@ -107,9 +107,9 @@ function buildGeneric(spec: GenericAgentSpec, cwdMode: "process" | "flag", ctx: 
   return {
     command: spec.bin,
     args,
-    // "flag" : le workspace est déjà porté par un jeton dans args (p. ex.
-    // --dir {{workspace}}) ; le process tourne depuis le répertoire de tâche
-    // plutôt que de dupliquer inutilement le cwd sur le workspace.
+    // "flag": the workspace is already carried by a token in args (e.g.
+    // --dir {{workspace}}); the process runs from the task directory
+    // rather than needlessly duplicating the cwd onto the workspace.
     cwd: cwdMode === "process" ? ctx.task.workspace : ctx.paths.dir,
     env: {},
     files: [],
@@ -117,18 +117,18 @@ function buildGeneric(spec: GenericAgentSpec, cwdMode: "process" | "flag", ctx: 
 }
 
 /**
- * Découpe une ligne de gabarit d'arguments en arguments, en respectant les
- * guillemets simples et doubles : `--system "tu es {{prompt}}"` fait deux
- * arguments, pas trois. Les interfaces qui déclarent un agent (`caesar agents
- * add --args`, le champ « arguments » du TUI) saisissent une ligne unique —
- * c'est la forme sous laquelle on lit une ligne de commande — alors que
- * `GenericAgentSpec.args` est une liste : cette fonction et
- * `formatArgTemplate` font l'aller-retour, et sont ici plutôt que dans
- * chacune des deux interfaces pour qu'elles ne puissent pas diverger.
+ * Splits an argument template line into arguments, honoring single and
+ * double quotes: `--system "you are {{prompt}}"` makes two arguments, not
+ * three. The interfaces that declare an agent (`caesar agents
+ * add --args`, the TUI's "arguments" field) enter a single line —
+ * that is the form in which one reads a command line — whereas
+ * `GenericAgentSpec.args` is a list: this function and
+ * `formatArgTemplate` make the round trip, and live here rather than in
+ * each of the two interfaces so that they cannot diverge.
  *
- * Lève sur guillemet non refermé : le silence produirait un dernier argument
- * amputé de son délimiteur, donc une ligne de commande différente de celle
- * qu'on croit avoir écrite.
+ * Throws on an unclosed quote: silence would produce a last argument
+ * amputated of its delimiter, hence a command line different from the one
+ * we think we wrote.
  */
 export function splitArgTemplate(input: string): string[] {
   const args: string[] = [];
@@ -144,8 +144,8 @@ export function splitArgTemplate(input: string): string[] {
     }
     if (char === '"' || char === "'") {
       quote = char;
-      // Un argument entièrement vide entre guillemets ("") reste un argument :
-      // `started` le distingue de l'absence d'argument.
+      // An entirely empty argument between quotes ("") is still an argument:
+      // `started` distinguishes it from the absence of an argument.
       started = true;
       continue;
     }
@@ -162,21 +162,21 @@ export function splitArgTemplate(input: string): string[] {
   }
 
   if (quote !== null) {
-    throw new Error(`Guillemet ${quote === '"' ? "double" : "simple"} non refermé dans les arguments : ${input}`);
+    throw new Error(`Unclosed ${quote === '"' ? "double" : "single"} quote in the arguments: ${input}`);
   }
   if (started) args.push(current);
   return args;
 }
 
-/** Inverse de `splitArgTemplate` : recompose une ligne lisible, en ne mettant entre guillemets que ce qui en a besoin. */
+/** Inverse of `splitArgTemplate`: recomposes a readable line, quoting only what needs it. */
 export function formatArgTemplate(args: readonly string[]): string {
   return args
     .map((arg) => {
       if (arg === "") return '""';
       if (!/[\s"']/.test(arg)) return arg;
-      // Guillemets doubles par défaut ; simples si l'argument contient déjà
-      // un guillemet double — `splitArgTemplate` ne connaît pas
-      // l'échappement, donc on choisit le délimiteur plutôt que d'échapper.
+      // Double quotes by default; single if the argument already contains
+      // a double quote — `splitArgTemplate` knows no escaping, so we
+      // choose the delimiter rather than escape.
       return arg.includes('"') ? `'${arg}'` : `"${arg}"`;
     })
     .join(" ");
@@ -185,49 +185,49 @@ export function formatArgTemplate(args: readonly string[]): string {
 const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
 /**
- * Vérifie qu'une déclaration d'agent est utilisable, et rend le message
- * d'erreur à afficher plutôt qu'un booléen : les trois façons de se tromper
- * échouent toutes en silence à l'exécution, ce qui est précisément ce qu'il
- * faut éviter.
+ * Checks that an agent declaration is usable, and returns the error
+ * message to display rather than a boolean: the three ways of getting it
+ * wrong all fail silently at runtime, which is precisely what must be
+ * avoided.
  *
- *  - un jeton mal orthographié (`{{promt}}`) fait *disparaître l'argument
- *    entier* de la ligne de commande (voir `substitute`) ;
- *  - un gabarit sans `{{prompt}}` lance l'agent sans jamais lui transmettre
- *    l'objectif de la tâche — il répond, mais à côté ;
- *  - un identifiant exotique casse la résolution par nom (`caesar run --agent`)
- *    et les listes de rôles.
+ *  - a misspelled token (`{{promt}}`) makes *the entire argument
+ *    disappear* from the command line (see `substitute`);
+ *  - a template without `{{prompt}}` launches the agent without ever
+ *    passing it the task's objective — it answers, but beside the point;
+ *  - an exotic identifier breaks resolution by name (`caesar run --agent`)
+ *    and the role lists.
  *
- * Rend `null` quand tout va bien. Ne vérifie pas la présence du binaire :
- * c'est le travail de `findBinaryInPath`, et déclarer un agent pas encore
- * installé est légitime.
+ * Returns `null` when all is well. Does not check for the binary's
+ * presence: that is the job of `findBinaryInPath`, and declaring an agent
+ * not yet installed is legitimate.
  */
 export function validateGenericAgentSpec(spec: GenericAgentSpec): string | null {
-  if (spec.id.trim().length === 0) return "L'identifiant de l'agent ne peut pas être vide.";
+  if (spec.id.trim().length === 0) return "The agent identifier cannot be empty.";
   if (!ID_PATTERN.test(spec.id)) {
-    return `Identifiant d'agent invalide : "${spec.id}". Attendu des lettres, chiffres, ".", "_" ou "-", commençant par une lettre ou un chiffre.`;
+    return `Invalid agent identifier: "${spec.id}". Expected letters, digits, ".", "_" or "-", starting with a letter or a digit.`;
   }
   if (spec.bin.trim().length === 0) {
-    return `L'agent "${spec.id}" n'a pas de binaire : précisez la commande à lancer.`;
+    return `Agent "${spec.id}" has no binary: specify the command to launch.`;
   }
 
-  // Les arguments réseau passent par la même substitution que les autres :
-  // ils méritent donc le même contrôle, sans quoi une coquille les ferait
-  // disparaître en silence — et l'agent partirait sans réseau tout en
-  // annonçant « réseau pilotable ».
+  // The network arguments go through the same substitution as the others:
+  // they therefore deserve the same check, without which a typo would make
+  // them disappear silently — and the agent would depart without network
+  // while announcing "network toggleable".
   const allArgs = [...spec.args, ...(spec.networkArgs ?? [])];
   const unknown = [...new Set(allArgs.flatMap(tokensIn).filter((name) => !isGenericArgToken(name)))];
   if (unknown.length > 0) {
     return (
-      `Jeton inconnu dans les arguments de "${spec.id}" : ${unknown.map(tokenLiteral).join(", ")}. ` +
-      `Connus : ${GENERIC_ARG_TOKENS.map(tokenLiteral).join(", ")}. ` +
-      `Un argument portant un jeton sans valeur disparaît entièrement de la ligne de commande.`
+      `Unknown token in the arguments of "${spec.id}": ${unknown.map(tokenLiteral).join(", ")}. ` +
+      `Known: ${GENERIC_ARG_TOKENS.map(tokenLiteral).join(", ")}. ` +
+      `An argument carrying a token without a value disappears entirely from the command line.`
     );
   }
 
   if (!spec.args.some((arg) => arg.includes(tokenLiteral("prompt")))) {
     return (
-      `Les arguments de "${spec.id}" ne contiennent pas ${tokenLiteral("prompt")} : ` +
-      `l'agent serait lancé sans jamais recevoir l'objectif de la tâche.`
+      `The arguments of "${spec.id}" do not contain ${tokenLiteral("prompt")}: ` +
+      `the agent would be launched without ever receiving the task's objective.`
     );
   }
 
@@ -235,26 +235,26 @@ export function validateGenericAgentSpec(spec: GenericAgentSpec): string | null 
 }
 
 /**
- * Construit un `AgentDefinition` pour un CLI arbitraire, décrit
- * déclarativement plutôt que par du code. Le format de sortie d'un tel CLI
- * est par construction inconnu : `translate` ne produit donc jamais
- * d'événement, et l'agent se contente du palier de rapport fichier (les
- * capacités non précisées valent `false`, `mcpInjection` vaut `"none"`).
+ * Builds an `AgentDefinition` for an arbitrary CLI, described
+ * declaratively rather than by code. The output format of such a CLI is by
+ * construction unknown: `translate` therefore never produces any event,
+ * and the agent settles for the file report tier (unspecified
+ * capabilities default to `false`, `mcpInjection` defaults to `"none"`).
  */
 export function createGenericAgent(spec: GenericAgentSpec): AgentDefinition {
   const capabilities: AgentCapabilities = {
     ...NEUTRAL_CAPABILITIES,
-    // `{{model}}` dans les arguments *est* tout le support du choix de modèle
-    // pour un agent générique : rien d'autre ne le porte. La capacité s'en
-    // déduit donc, au lieu de se déclarer séparément — où elle finirait par
-    // contredire les arguments et annoncer, dans `caesar agents list`, un choix
-    // de modèle que la ligne de commande ne transmet nulle part.
+    // `{{model}}` in the arguments *is* the entire support for model choice
+    // for a generic agent: nothing else carries it. The capability is thus
+    // deduced from it, instead of being declared separately — where it
+    // would end up contradicting the arguments and announcing, in `caesar
+    // agents list`, a model choice the command line passes nowhere.
     model: spec.args.some((arg) => arg.includes(tokenLiteral("model"))),
-    // Même raisonnement que pour `model` : ce sont les `networkArgs` qui
-    // *constituent* la capacité d'ouvrir le réseau, rien d'autre ne la porte.
-    // La déduire ici plutôt que de la laisser déclarer séparément évite qu'un
-    // agent annonce « réseau pilotable » dans `caesar doctor` alors qu'aucun
-    // argument ne l'ouvrirait.
+    // Same reasoning as for `model`: it is the `networkArgs` that
+    // *constitute* the capability to open the network, nothing else carries it.
+    // Deducing it here rather than letting it be declared separately avoids
+    // an agent announcing "network toggleable" in `caesar doctor` while no
+    // argument would open it.
     network: (spec.networkArgs?.length ?? 0) > 0 ? "toggle" : "unknown",
     ...spec.capabilities,
   };

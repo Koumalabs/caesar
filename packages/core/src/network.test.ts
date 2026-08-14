@@ -11,43 +11,43 @@ function decide(requested: NetworkRequest, control: NetworkControl, mode: TaskMo
   return decideNetwork({ agentId: "codex", requested, mode, control });
 }
 
-describe("decideNetwork — demande explicite « on »", () => {
-  it("accorde le réseau quand l'agent l'a déjà ouvert", () => {
+describe('decideNetwork — explicit "on" request', () => {
+  it("grants the network when the agent already has it open", () => {
     expect(decide("on", "open")).toEqual({ refused: false, available: true });
   });
 
-  it("accorde le réseau quand l'orchestrateur sait l'ouvrir", () => {
+  it("grants the network when the orchestrator knows how to open it", () => {
     expect(decide("on", "toggle", "read-only")).toEqual({ refused: false, available: true });
   });
 
-  it("accorde le réseau à un agent « écriture seule » en mode écriture", () => {
+  it('grants the network to a "write-only" agent in write mode', () => {
     expect(decide("on", "write-only", "write")).toEqual({ refused: false, available: true });
   });
 
-  it("refuse — avec motif et remède — un agent « écriture seule » en lecture seule", () => {
-    // Le cas qui a motivé tout le module : codex en `-s read-only` coupe le
-    // réseau sans recours, et rien ne le disait.
+  it('refuses — with reason and remedy — a "write-only" agent in read-only mode', () => {
+    // The case that motivated the whole module: codex under `-s read-only`
+    // cuts the network off with no recourse, and nothing said so.
     const decision = decide("on", "write-only", "read-only");
     expect(decision.refused).toBe(true);
-    if (!decision.refused) throw new Error("attendu refusé");
+    if (!decision.refused) throw new Error("expected refused");
     expect(decision.reason).toContain("codex");
-    expect(decision.reason).toContain("écriture");
+    expect(decision.reason).toContain("write");
     expect(decision.remedy).toContain("--mode write");
   });
 
-  it("laisse passer un agent au réseau inconnu, mais dit que ce n'est pas une garantie", () => {
+  it("lets an agent with an unknown network through, but says it is not a guarantee", () => {
     const decision = decide("on", "unknown");
     expect(decision).toMatchObject({ refused: false, available: true });
-    if (decision.refused) throw new Error("attendu accordé");
+    if (decision.refused) throw new Error("expected granted");
     expect(decision.warning).toContain("network_args");
   });
 });
 
-describe("decideNetwork — défaut « auto »", () => {
-  it("ne refuse jamais, quelle que soit la combinaison", () => {
-    // La propriété qui protège les rôles livrés : `reviewer` et
-    // `investigator` sont en lecture seule sur codex ; un `auto` qui refuserait
-    // les mettrait tous les deux hors service.
+describe('decideNetwork — "auto" default', () => {
+  it("never refuses, whatever the combination", () => {
+    // The property that protects the shipped roles: `reviewer` and
+    // `investigator` are read-only on codex; an `auto` that refused
+    // would put them both out of service.
     for (const control of CONTROLS) {
       for (const mode of MODES) {
         expect(decide("auto", control, mode).refused).toBe(false);
@@ -55,45 +55,45 @@ describe("decideNetwork — défaut « auto »", () => {
     }
   });
 
-  it("avertit — au lieu de refuser — quand codex ne peut pas ouvrir en lecture seule", () => {
+  it("warns — instead of refusing — when codex cannot open in read-only mode", () => {
     const decision = decide("auto", "write-only", "read-only");
     expect(decision).toMatchObject({ refused: false, available: false });
-    if (decision.refused) throw new Error("attendu accordé");
-    expect(decision.warning).toContain("Réseau indisponible");
+    if (decision.refused) throw new Error("expected granted");
+    expect(decision.warning).toContain("Network unavailable");
   });
 
-  it("reste silencieux sur un agent au réseau inconnu — rien n'a été demandé, rien n'est à corriger", () => {
+  it("stays silent on an agent with an unknown network — nothing was requested, nothing is to fix", () => {
     const decision = decide("auto", "unknown");
     expect(decision).toEqual({ refused: false, available: true });
   });
 
-  it("ouvre le réseau partout où c'est possible", () => {
+  it("opens the network wherever possible", () => {
     expect(decide("auto", "open")).toEqual({ refused: false, available: true });
     expect(decide("auto", "toggle", "read-only")).toEqual({ refused: false, available: true });
     expect(decide("auto", "write-only", "write")).toEqual({ refused: false, available: true });
   });
 });
 
-describe("decideNetwork — fermeture demandée « off »", () => {
-  it("ferme sans un mot quand l'orchestrateur sait le faire", () => {
+describe('decideNetwork — requested closure "off"', () => {
+  it("closes without a word when the orchestrator knows how", () => {
     expect(decide("off", "toggle")).toEqual({ refused: false, available: false });
     expect(decide("off", "write-only")).toEqual({ refused: false, available: false });
   });
 
-  it("avoue son impuissance plutôt que d'annoncer une fermeture qui n'a pas eu lieu", () => {
-    // Le point d'honnêteté du module : `available` reste vrai, sans quoi le
-    // brief interdirait à l'agent un réseau dont il dispose en réalité.
+  it("admits its powerlessness rather than announcing a closure that did not happen", () => {
+    // The module's honesty point: `available` stays true, otherwise the
+    // brief would deny the agent a network it actually has.
     for (const control of ["open", "unknown"] as const) {
       const decision = decide("off", control);
       expect(decision).toMatchObject({ refused: false, available: true });
-      if (decision.refused) throw new Error("attendu accordé");
-      expect(decision.warning).toContain("ne sait pas le refermer");
+      if (decision.refused) throw new Error("expected granted");
+      expect(decision.warning).toContain("does not know how to close it");
     }
   });
 });
 
 describe("decideNetwork — invariants", () => {
-  it("n'omet aucune combinaison : chaque cas rend une décision exploitable", () => {
+  it("omits no combination: every case returns a usable decision", () => {
     for (const requested of REQUESTS) {
       for (const control of CONTROLS) {
         for (const mode of MODES) {
@@ -109,7 +109,7 @@ describe("decideNetwork — invariants", () => {
     }
   });
 
-  it("ne refuse que sur une demande explicite", () => {
+  it("only refuses on an explicit request", () => {
     for (const control of CONTROLS) {
       for (const mode of MODES) {
         expect(decide("auto", control, mode).refused).toBe(false);
@@ -120,9 +120,9 @@ describe("decideNetwork — invariants", () => {
 });
 
 describe("describeNetworkControl", () => {
-  it("nomme chaque capacité en un fragment court", () => {
+  it("names each capability in a short fragment", () => {
     for (const control of CONTROLS) {
-      expect(describeNetworkControl(control)).toMatch(/^réseau /);
+      expect(describeNetworkControl(control)).toMatch(/^network /);
     }
   });
 });

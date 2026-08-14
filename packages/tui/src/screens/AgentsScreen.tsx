@@ -1,41 +1,41 @@
 /**
- * Écran Agents : le catalogue en tableau, et le détail de l'agent
- * sélectionné en dessous — présence, version, capacités, autorisation, rôles
- * qui l'emploient, et pour un agent **déclaré** (`[[agent]]`) ses champs
- * éditables.
+ * Agents screen: the catalog as a table, and the selected agent's detail
+ * below — presence, version, capabilities, permission, roles that employ
+ * it, and for a **declared** agent (`[[agent]]`) its editable fields.
  *
- * Deux gestes bien distincts, et l'écran doit le rester : `Espace` autorise
- * ou refuse (une liste de la politique), `n` déclare un CLI que le catalogue
- * natif ne connaît pas (une entrée `[[agent]]` qui étend le catalogue).
- * Confondre les deux serait le contresens le plus facile à commettre ici.
+ * Two very distinct gestures, and the screen must keep them so: `Space`
+ * allows or denies (a policy list), `n` declares a CLI the native catalog
+ * does not know (an `[[agent]]` entry that extends the catalog).
+ * Conflating the two would be the easiest misreading to commit here.
  *
- * Ce que la réécriture corrige, tout venu de l'usage :
- *  - les colonnes se touchaient (largeurs constantes, aucune gouttière) :
- *    un chemin tronqué et la version voisine se lisaient comme un seul mot.
- *    `Table` calcule désormais les largeurs sur la place réelle ;
- *  - « 7 notable(s) » remplaçait les capacités par leur décompte. Le tableau
- *    les nomme (`describeAgentCapabilitiesShort`), le détail les développe ;
- *  - le motif d'un refus partait hors de l'écran sur une ligne unique : il
- *    est replié dans le panneau de détail ;
- *  - le chemin du binaire occupait une colonne alors qu'il ne sert qu'une
- *    fois qu'on s'intéresse à un agent précis — même leçon que `caesar doctor`,
- *    qui l'a sorti de sa vue par défaut. Il vit maintenant dans le détail.
+ * What the rewrite fixes, all of it drawn from usage:
+ *  - columns touched each other (constant widths, no gutter): a truncated
+ *    path and the neighboring version read as a single word. `Table` now
+ *    computes widths from the actual available room;
+ *  - "7 notable(s)" replaced the capabilities with their count. The table
+ *    names them (`describeAgentCapabilitiesShort`), the detail expands
+ *    them;
+ *  - the reason for a denial ran off screen on a single line: it is
+ *    wrapped in the detail panel;
+ *  - the binary path occupied a column even though it only matters once
+ *    one cares about a specific agent — same lesson as `caesar doctor`,
+ *    which removed it from its default view. It now lives in the detail.
  *
- * Capacités et statut vis-à-vis de la politique viennent de
- * `describeAgentCapabilities`/`describeAgentPolicy` (`@caesar/core`) — la même
- * logique que `caesar doctor`/`caesar agents list`, réutilisée telle quelle. La
- * détection d'installation est calculée une seule fois par `App` : cet écran
- * ne fait qu'afficher `installed`, jamais la relancer.
+ * Capabilities and policy status come from
+ * `describeAgentCapabilities`/`describeAgentPolicy` (`@caesar/core`) — the
+ * same logic that `caesar doctor`/`caesar agents list` use, reused as-is.
+ * Installation detection is computed once by `App`: this screen only
+ * displays `installed`, never reruns it.
  *
- * Deux niveaux de navigation :
- *  - "list"   : Haut/Bas choisit l'agent, Espace bascule l'autorisation,
- *               `n` déclare (identifiant saisi en ligne), `x` retire une
- *               déclaration, Entrée entre dans les champs d'un agent déclaré.
- *  - "fields" : Haut/Bas choisit un champ, Entrée l'édite ou le fait
- *               basculer, Échap revient à la liste.
+ * Two navigation levels:
+ *  - "list"   : Up/Down picks the agent, Space toggles the permission,
+ *               `n` declares (identifier typed inline), `x` removes a
+ *               declaration, Enter enters a declared agent's fields.
+ *  - "fields" : Up/Down picks a field, Enter edits or toggles it, Esc goes
+ *               back to the list.
  *
- * Chaque modification est une modification en attente sur la couche active,
- * comme partout ailleurs dans ce TUI : rien n'est écrit avant "s".
+ * Every modification is a pending change on the active layer, like
+ * everywhere else in this TUI: nothing is written before "s".
  */
 import { useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
@@ -71,7 +71,7 @@ import { ACCENT, BAD, DIM, FAINT, OK, WARN } from "../ui/theme";
 
 export interface AgentsScreenProps {
   state: ConfigState;
-  /** `null` tant que la détection n'a pas encore répondu — voir `App`. */
+  /** `null` until the detection has answered — see `App`. */
   installed: Map<string, AgentInstallStatus> | null;
   onToggleDenied: (agentId: string) => void;
   onChange: (next: ConfigState) => void;
@@ -82,27 +82,27 @@ export interface AgentsScreenProps {
 type Field_ = "displayName" | "bin" | "args" | "networkArgs" | "cwdMode" | "nativeReadOnly";
 const FIELDS: Field_[] = ["displayName", "bin", "args", "networkArgs", "cwdMode", "nativeReadOnly"];
 const FIELD_LABELS: Record<Field_, string> = {
-  displayName: "Nom affiché",
-  bin: "Binaire",
+  displayName: "Display name",
+  bin: "Binary",
   args: "Arguments",
-  networkArgs: "Arguments réseau",
-  cwdMode: "Répertoire",
-  nativeReadOnly: "Lecture seule",
+  networkArgs: "Network args",
+  cwdMode: "Directory",
+  nativeReadOnly: "Read-only",
 };
 const FIELD_HINTS: Record<Field_, string> = {
-  displayName: "Comment cet agent s'annonce dans les listes. À défaut, son identifiant.",
-  bin: "La commande à lancer. Un chemin (avec un « / ») désigne un fichier ; un nom seul est cherché dans le PATH.",
-  args: `Gabarit de ligne de commande. Jetons : ${GENERIC_ARG_TOKENS.map((name) => `{{${name}}}`).join(" ")}. Un argument dont un jeton n'a pas de valeur disparaît entièrement.`,
+  displayName: "How this agent announces itself in lists. Defaults to its identifier.",
+  bin: 'The command to launch. A path (with a "/") names a file; a bare name is looked up in the PATH.',
+  args: `Command-line template. Tokens: ${GENERIC_ARG_TOKENS.map((name) => `{{${name}}}`).join(" ")}. An argument whose token has no value disappears entirely.`,
   networkArgs:
-    "Ce qu'il faut ajouter pour ouvrir le réseau, p. ex. --allow-all-urls. Les déclarer, c'est affirmer que sans eux ce CLI est confiné — sinon caesar annonce « réseau inconnu » et ne promet rien.",
-  cwdMode: "process : le répertoire courant porte le workspace. flag : il est déjà passé en argument.",
-  nativeReadOnly: "Le CLI garantit-il lui-même de ne rien écrire ? Sinon, une tâche en lecture seule est isolée dans un worktree.",
+    'What must be added to open the network, e.g. --allow-all-urls. Declaring them asserts that without them this CLI is confined — otherwise caesar reports "network unknown" and promises nothing.',
+  cwdMode: "process: the current directory carries the workspace. flag: it is already passed as an argument.",
+  nativeReadOnly: "Does the CLI itself guarantee it writes nothing? Otherwise, a read-only task is isolated in a worktree.",
 };
 
 const CWD_MODES = ["process", "flag"] as const;
 const LABEL_WIDTH = 14;
 
-/** Le gabarit d'arguments tel qu'on l'édite : une ligne de commande, pas une liste. */
+/** The argument template as it is edited: a command line, not a list. */
 function argsLine(spec: GenericAgentSpec): string {
   return formatArgTemplate(spec.args);
 }
@@ -114,11 +114,11 @@ function networkArgsLine(spec: GenericAgentSpec): string {
 export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEditingChange, notify }: AgentsScreenProps) {
   const { width } = useTerminalDimensions();
   const config = effectiveConfig(state);
-  // Catalogue natif étendu des agents de configuration (`config.agents`,
-  // `[[agent]]` du TOML, fusion effective) : recalculé à chaque rendu, sinon
-  // un agent nouvellement déclaré n'apparaîtrait jamais (C1 de la revue
-  // finale). Un agent déclaré pour lequel la détection n'a pas tourné
-  // affiche honnêtement "…" plutôt qu'un faux "absent".
+  // Native catalog extended with the configuration's agents
+  // (`config.agents`, `[[agent]]` in the TOML, effective merge): recomputed
+  // on every render, otherwise a newly declared agent would never appear
+  // (C1 of the final review). A declared agent for which detection has not
+  // run honestly shows "…" rather than a false "missing".
   const CATALOG = listAgentDefinitions(config.agents);
   const [selected, setSelected] = useState(0);
   const [focus, setFocus] = useState<"list" | "fields">("list");
@@ -131,7 +131,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
   const clamped = Math.min(selected, Math.max(0, CATALOG.length - 1));
   const def = CATALOG[clamped];
   const spec = def ? findAgentSpec(state, def.id) : undefined;
-  // Bordures et remplissage du panneau, plus la marge d'`App`.
+  // Panel borders and padding, plus `App`'s margin.
   const panelWidth = Math.max(30, width - 6);
 
   function setEditingAndNotifyApp(next: typeof editing): void {
@@ -140,11 +140,11 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
   }
 
   /**
-   * Applique un changement de déclaration après validation. La validation ne
-   * porte pas seulement sur la saisie du moment : un gabarit d'arguments et
-   * un binaire se valident ensemble (`validateGenericAgentSpec`), donc c'est
-   * la déclaration entière qu'on soumet, telle qu'elle serait après ce
-   * changement. Rien n'est modifié si elle ne tient pas.
+   * Applies a declaration change after validation. Validation does not
+   * cover only the current input: an argument template and a binary are
+   * validated together (`validateGenericAgentSpec`), so it is the whole
+   * declaration that is submitted, as it would be after this change.
+   * Nothing is modified if it does not hold.
    */
   function applySpec(next: GenericAgentSpec): boolean {
     const invalid = validateGenericAgentSpec(next);
@@ -161,10 +161,10 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
 
     if (editing.kind === "new-agent") {
       const id = editing.buffer.trim();
-      // Déclaration minimale mais immédiatement valide : le binaire vaut
-      // l'identifiant (le cas le plus fréquent — `aider` se lance par
-      // `aider`), et le gabarit se réduit au seul jeton obligatoire. Les
-      // champs s'affinent ensuite dans le panneau, comme pour un rôle.
+      // Minimal but immediately valid declaration: the binary equals the
+      // identifier (the most frequent case — `aider` is launched by
+      // `aider`), and the template reduces to the single mandatory token.
+      // The fields are then refined in the panel, like for a role.
       const draft: GenericAgentSpec = { id, bin: id, args: ["{{prompt}}"], cwdMode: "process" };
       const invalid = validateGenericAgentSpec(draft);
       if (invalid) {
@@ -176,8 +176,8 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
       setSelected(existing >= 0 ? existing : CATALOG.length);
       notify(
         existing >= 0
-          ? `Agent "${id}" redéclaré — cette déclaration remplace l'agent du même identifiant.`
-          : `Agent "${id}" déclaré. Ajustez son binaire et ses arguments, puis "s" pour enregistrer.`,
+          ? `Agent "${id}" redeclared — this declaration replaces the agent with the same identifier.`
+          : `Agent "${id}" declared. Adjust its binary and arguments, then "s" to save.`,
       );
       setEditingAndNotifyApp(null);
       return;
@@ -210,9 +210,9 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
         return;
       }
       const next: GenericAgentSpec = { ...spec };
-      // Une liste vide n'est pas « aucun argument réseau déclaré » : elle
-      // ferait passer la capacité à "toggle" sans rien ouvrir. Absente, elle
-      // laisse honnêtement « réseau inconnu ».
+      // An empty list is not "no network arguments declared": it would
+      // switch the capability to "toggle" without opening anything. Absent,
+      // it honestly leaves "network unknown".
       if (networkArgs.length === 0) delete next.networkArgs;
       else next.networkArgs = networkArgs;
       if (!applySpec(next)) return;
@@ -221,7 +221,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
   }
 
   useKeyboard((key) => {
-    if (editing) return; // Le champ texte affiché plus bas possède le focus et gère lui-même ses touches.
+    if (editing) return; // The text field shown below owns the focus and handles its own keys.
 
     if (focus === "fields") {
       if (!def || !spec) {
@@ -238,9 +238,9 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
         } else if (field === "nativeReadOnly") {
           const nativeReadOnly = !(spec.capabilities?.nativeReadOnly ?? false);
           const next: GenericAgentSpec = { ...spec };
-          // Ne jamais laisser `capabilities: { nativeReadOnly: false }` dans
-          // le TOML : une capacité fausse explicitement écrite se lit comme
-          // une décision, alors qu'elle est le défaut.
+          // Never leave `capabilities: { nativeReadOnly: false }` in the
+          // TOML: an explicitly written false capability reads as a
+          // decision, when it is the default.
           if (nativeReadOnly) next.capabilities = { nativeReadOnly: true };
           else delete next.capabilities;
           applySpec(next);
@@ -268,20 +268,20 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
       if (!def) return;
       if (!spec) {
         notify(
-          `"${def.id}" appartient au catalogue natif : il n'y a pas de déclaration à retirer. Pour l'écarter des délégations, utilisez Espace (autorisation).`,
+          `"${def.id}" belongs to the native catalog: there is no declaration to remove. To keep it out of delegations, use Space (permission).`,
           true,
         );
         return;
       }
       if (!agentDeclaredByActiveLayer(state, def.id)) {
         notify(
-          `"${def.id}" n'est pas déclaré par la couche active${formatInheritedMark(agentMark(state, def.id))} : rien à retirer ici. Changez de portée (p) pour éditer la couche dont il vient.`,
+          `"${def.id}" is not declared by the active layer${formatInheritedMark(agentMark(state, def.id))}: nothing to remove here. Switch scope (p) to edit the layer it comes from.`,
           true,
         );
         return;
       }
       onChange(removeAgentSpec(state, def.id));
-      notify(`Déclaration de "${def.id}" retirée.`);
+      notify(`Declaration of "${def.id}" removed.`);
       setSelected((i) => Math.max(0, Math.min(i, CATALOG.length - 2)));
     } else if (key.name === "return") {
       if (!def) return;
@@ -289,7 +289,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
         setFieldIndex(0);
         setFocus("fields");
       } else {
-        notify(`"${def.id}" est un agent du catalogue natif : ses champs ne se modifient pas. "n" déclare un CLI hors catalogue.`);
+        notify(`"${def.id}" is a native catalog agent: its fields cannot be edited. "n" declares a CLI outside the catalog.`);
       }
     }
   });
@@ -297,12 +297,12 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
   const presenceOf = (agent: AgentDefinition): string => {
     const status = installed?.get(agent.id);
     if (status === undefined) return "…";
-    if (!status.installed) return "absent";
-    return status.version ?? "installé";
+    if (!status.installed) return "missing";
+    return status.version ?? "installed";
   };
 
-  // La colonne variable passe en dernier : le bord irrégulier tombe alors à
-  // droite de l'écran, et non entre deux colonnes qu'on voudrait aligner.
+  // The variable column goes last: the ragged edge then falls at the right
+  // of the screen, not between two columns one would want aligned.
   const columns: Array<TableColumn<AgentDefinition>> = [
     {
       header: "agent",
@@ -310,10 +310,10 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
       cell: (agent) => agent.id + (config.agents.some((a) => a.id === agent.id) ? " *" : ""),
     },
     {
-      // Une version de CLI est verbeuse ("2.1.227 (Claude Code)") : cette
-      // colonne prend sa part de la place libre plutôt que de la tronquer
-      // pendant qu'un terminal large reste à moitié vide.
-      header: "état",
+      // A CLI version is verbose ("2.1.227 (Claude Code)"): this column
+      // takes its share of the free room rather than truncating it while a
+      // wide terminal sits half empty.
+      header: "status",
       min: 16,
       flex: 1,
       max: 26,
@@ -325,12 +325,12 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
       },
     },
     {
-      header: "autorisation",
+      header: "permission",
       min: 14,
-      cell: (agent) => (describeAgentPolicy(config.policy, agent.id).allowed ? "autorisé" : "refusé"),
+      cell: (agent) => (describeAgentPolicy(config.policy, agent.id).allowed ? "allowed" : "denied"),
       fg: (agent) => (describeAgentPolicy(config.policy, agent.id).allowed ? OK : BAD),
     },
-    { header: "capacités", min: 24, flex: 2, max: 46, cell: (agent) => describeAgentCapabilitiesShort(agent).join(" ") || "—" },
+    { header: "capabilities", min: 24, flex: 2, max: 46, cell: (agent) => describeAgentCapabilitiesShort(agent).join(" ") || "—" },
   ];
 
   const policy = def ? describeAgentPolicy(config.policy, def.id) : null;
@@ -339,26 +339,26 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
     ? config.roles
         .map((role) => ({ role, rank: role.agents.indexOf(def.id) }))
         .filter((entry) => entry.rank >= 0)
-        .map((entry) => `${entry.role.name} (${entry.rank + 1}${entry.rank === 0 ? "er" : "e"})`)
+        .map((entry) => `${entry.role.name} (${entry.rank + 1}${entry.rank === 0 ? "st" : entry.rank === 1 ? "nd" : entry.rank === 2 ? "rd" : "th"})`)
     : [];
 
   const hints: Hint[] =
     focus === "list"
       ? [
           { key: "↑↓", label: "agent" },
-          { key: "Espace", label: "autoriser / refuser" },
-          { key: "n", label: "déclarer un CLI" },
-          ...(spec ? [{ key: "Entrée", label: "éditer" }, { key: "x", label: "retirer la déclaration" }] : []),
+          { key: "Space", label: "allow / deny" },
+          { key: "n", label: "declare a CLI" },
+          ...(spec ? [{ key: "Enter", label: "edit" }, { key: "x", label: "remove the declaration" }] : []),
         ]
       : [
-          { key: "↑↓", label: "champ" },
-          { key: "Entrée", label: "modifier" },
-          { key: "Échap", label: "revenir à la liste" },
+          { key: "↑↓", label: "field" },
+          { key: "Enter", label: "edit" },
+          { key: "Esc", label: "back to the list" },
         ];
 
   return (
     <box flexDirection="column" flexGrow={1}>
-      <Panel title="Catalogue" focused={focus === "list"}>
+      <Panel title="Catalog" focused={focus === "list"}>
         <Table
           columns={columns}
           rows={CATALOG}
@@ -367,16 +367,16 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
           focused={focus === "list"}
           width={panelWidth}
         />
-        {installed === null ? <text fg={WARN}>Détection de l'installation en cours…</text> : null}
-        {config.agents.length > 0 ? <text fg={FAINT}>* déclaré en configuration</text> : null}
-        {deniedMark ? <text fg={FAINT}>{`"denied" hérité${deniedMark} — Espace le prend en charge sur la couche active.`}</text> : null}
-        {allowedMark ? <text fg={FAINT}>{`"allowed" hérité${allowedMark} — le modifier le prendra en charge sur la couche active.`}</text> : null}
+        {installed === null ? <text fg={WARN}>Detecting installation…</text> : null}
+        {config.agents.length > 0 ? <text fg={FAINT}>* declared in configuration</text> : null}
+        {deniedMark ? <text fg={FAINT}>{`"denied" inherited${deniedMark} — Space takes it over on the active layer.`}</text> : null}
+        {allowedMark ? <text fg={FAINT}>{`"allowed" inherited${allowedMark} — editing it will take it over on the active layer.`}</text> : null}
       </Panel>
 
       {editing?.kind === "new-agent" ? (
-        <Panel title="Déclarer un agent" focused note="Identifiant — celui qu'on écrira dans « caesar run --agent » et dans les rôles.">
+        <Panel title="Declare an agent" focused note='Identifier — the one written in "caesar run --agent" and in roles.'>
           <box flexDirection="row">
-            <text>{"Identifiant   "}</text>
+            <text>{"Identifier    "}</text>
             <input
               focused
               value={editing.buffer}
@@ -395,15 +395,15 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
           note={
             spec
               ? agentDeclaredByActiveLayer(state, def.id)
-                ? "Déclaré par la couche active — Entrée pour éditer ses champs."
-                : `Déclaré${formatInheritedMark(agentMark(state, def.id))} — le modifier le redéfinira sur la couche active.`
-              : "Agent du catalogue natif : câblé dans l'orchestrateur, ses champs ne se modifient pas."
+                ? "Declared by the active layer — Enter to edit its fields."
+                : `Declared${formatInheritedMark(agentMark(state, def.id))} — editing it will redefine it on the active layer.`
+              : "Agent from the native catalog: wired into the orchestrator, its fields cannot be edited."
           }
         >
           {spec ? (
             <>
               <Field
-                label="Commande"
+                label="Command"
                 width={panelWidth}
                 labelWidth={LABEL_WIDTH}
                 value={`${spec.bin} ${argsLine(spec)}`}
@@ -419,7 +419,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
                       <input
                         focused
                         value={editing.buffer}
-                        placeholder="(l'identifiant)"
+                        placeholder="(the identifier)"
                         onInput={(value) => setEditing({ kind: "displayName", buffer: value })}
                         onSubmit={commitEdit}
                         onKeyDown={(key) => {
@@ -428,7 +428,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
                       />
                     </Field>
                   ) : (
-                    <Field key={field} {...common} value={spec.displayName ?? `(l'identifiant : ${def.id})`} valueFg={spec.displayName ? undefined : DIM} />
+                    <Field key={field} {...common} value={spec.displayName ?? `(the identifier: ${def.id})`} valueFg={spec.displayName ? undefined : DIM} />
                   );
                 }
 
@@ -482,7 +482,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
                       />
                     </Field>
                   ) : (
-                    <Field key={field} {...common} value={networkArgsLine(spec) || "(aucun — réseau inconnu)"} />
+                    <Field key={field} {...common} value={networkArgsLine(spec) || "(none — network unknown)"} />
                   );
                 }
 
@@ -494,7 +494,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
                   <Field
                     key={field}
                     {...common}
-                    value={spec.capabilities?.nativeReadOnly ? "oui" : "non"}
+                    value={spec.capabilities?.nativeReadOnly ? "yes" : "no"}
                     valueFg={spec.capabilities?.nativeReadOnly ? OK : undefined}
                   />
                 );
@@ -502,53 +502,54 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
             </>
           ) : (
             <>
-              <Field label="Binaire" width={panelWidth} labelWidth={LABEL_WIDTH} value={def.bin} />
+              <Field label="Binary" width={panelWidth} labelWidth={LABEL_WIDTH} value={def.bin} />
               <Field
-                label="Trouvé"
+                label="Found"
                 width={panelWidth}
                 labelWidth={LABEL_WIDTH}
-                value={status === undefined ? "détection en cours…" : (status.path ?? "absent du PATH")}
+                value={status === undefined ? "detecting…" : (status.path ?? "not in PATH")}
                 valueFg={status === undefined ? DIM : status.installed ? OK : WARN}
               />
               <Field
                 label="Version"
                 width={panelWidth}
                 labelWidth={LABEL_WIDTH}
-                value={status?.version ?? (status?.installed ? "inconnue" : "—")}
+                value={status?.version ?? (status?.installed ? "unknown" : "—")}
               />
               <Field
-                label="Capacités"
+                label="Capabilities"
                 width={panelWidth}
                 labelWidth={LABEL_WIDTH}
-                value={describeAgentCapabilities(def).join(", ") || "(aucune capacité notable)"}
+                value={describeAgentCapabilities(def).join(", ") || "(no notable capabilities)"}
               />
             </>
           )}
 
           {policy ? (
             <Field
-              label="Autorisation"
+              label="Permission"
               width={panelWidth}
               labelWidth={LABEL_WIDTH}
-              value={policy.allowed ? "autorisé" : policy.reason}
+              value={policy.allowed ? "allowed" : policy.reason}
               valueFg={policy.allowed ? OK : BAD}
             />
           ) : null}
           <Field
-            label="Employé par"
+            label="Used by"
             width={panelWidth}
             labelWidth={LABEL_WIDTH}
-            value={usedBy.length > 0 ? usedBy.join(", ") : "aucun rôle"}
+            value={usedBy.length > 0 ? usedBy.join(", ") : "no roles"}
             valueFg={usedBy.length > 0 ? undefined : DIM}
           />
           {focus === "fields" ? <Explain text={FIELD_HINTS[FIELDS[fieldIndex]!]} width={panelWidth} /> : null}
         </Panel>
       ) : (
-        <text fg={ACCENT}>Aucun agent — "n" pour en déclarer un.</text>
+        <text fg={ACCENT}>No agents — "n" to declare one.</text>
       )}
 
-      {/* `marginTop: "auto"` colle la barre au bas du corps : les panneaux
-          gardent la hauteur de leur contenu, sans cadre à moitié vide. */}
+      {/* `marginTop: "auto"` pins the bar to the bottom of the body: the
+          panels keep the height of their content, without a half-empty
+          frame. */}
       <box marginTop="auto" paddingTop={1}>
         <KeyHints hints={hints} />
       </box>

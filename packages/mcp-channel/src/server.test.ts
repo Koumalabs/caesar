@@ -15,7 +15,7 @@ async function writeSampleTask(taskDir: string, overrides: Partial<Task> = {}): 
     id: "t_channel",
     created_at: new Date().toISOString(),
     agent: "codex",
-    objective: "Corriger la régression",
+    objective: "Fix the regression",
     mode: "write",
     isolation: "inplace",
     workspace: taskDir,
@@ -28,7 +28,7 @@ async function writeSampleTask(taskDir: string, overrides: Partial<Task> = {}): 
   return task;
 }
 
-describe("tools du canal — appel direct", () => {
+describe("channel tools — direct call", () => {
   let taskDir: string;
 
   beforeEach(async () => {
@@ -39,29 +39,29 @@ describe("tools du canal — appel direct", () => {
     await rm(taskDir, { recursive: true, force: true });
   });
 
-  it("get_task relit task.json et le rend", async () => {
+  it("get_task re-reads task.json and returns it", async () => {
     await writeSampleTask(taskDir);
     const result = await getTask(taskDir);
     expect(result.isError).toBeFalsy();
-    expect((result.structuredContent as { objective: string }).objective).toBe("Corriger la régression");
+    expect((result.structuredContent as { objective: string }).objective).toBe("Fix the regression");
   });
 
-  it("report_progress écrit un événement `progress` dans events.jsonl", async () => {
+  it("report_progress writes a `progress` event to events.jsonl", async () => {
     await writeSampleTask(taskDir);
-    const result = await reportProgress(taskDir, { message: "à mi-chemin", pct: 50 });
+    const result = await reportProgress(taskDir, { message: "halfway there", pct: 50 });
     expect(result.isError).toBeFalsy();
 
     const events = await readEvents(taskPaths(taskDir));
-    expect(events).toEqual([expect.objectContaining({ type: "progress", message: "à mi-chemin", pct: 50 })]);
+    expect(events).toEqual([expect.objectContaining({ type: "progress", message: "halfway there", pct: 50 })]);
   });
 
-  it("submit_report valide et écrit report.json", async () => {
+  it("submit_report validates and writes report.json", async () => {
     await writeSampleTask(taskDir);
     const result = await submitReport(taskDir, {
       protocol: REPORT_PROTOCOL,
       task_id: "t_channel",
       status: "success",
-      summary: "Fait.",
+      summary: "Done.",
       details: "",
       changes: [],
       commands_run: [],
@@ -74,19 +74,19 @@ describe("tools du canal — appel direct", () => {
 
     const report = await readReport(taskPaths(taskDir));
     expect(report?.status).toBe("success");
-    expect(report?.summary).toBe("Fait.");
+    expect(report?.summary).toBe("Done.");
   });
 
-  it("ask_orchestrator : cas nominal, la réponse écrite pendant l'attente est rendue", async () => {
+  it("ask_orchestrator: nominal case, the answer written during the wait is returned", async () => {
     await writeSampleTask(taskDir);
     const askPromise = askOrchestrator(
       taskDir,
-      { question: "Quelle branche ?", options: ["main", "dev"] },
+      { question: "Which branch?", options: ["main", "dev"] },
       { askTimeoutMs: 5_000, pollIntervalMs: 20 },
     );
 
-    // Simule `caesar_answer`, qui tournerait dans un autre processus en pratique :
-    // attend que la question soit déposée, puis y répond.
+    // Simulates `caesar_answer`, which would run in another process in
+    // practice: waits for the question to be dropped off, then answers it.
     let questionId: string | undefined;
     for (let i = 0; i < 100 && !questionId; i++) {
       const entries = await readdir(join(taskDir, "questions")).catch(() => []);
@@ -104,10 +104,10 @@ describe("tools du canal — appel direct", () => {
     expect(events.some((event) => event.type === "question")).toBe(true);
   });
 
-  it("ask_orchestrator : expiration du délai, rend une instruction de poursuivre plutôt qu'une erreur", async () => {
+  it("ask_orchestrator: timeout expiry, returns an instruction to proceed rather than an error", async () => {
     await writeSampleTask(taskDir);
     const startedAt = Date.now();
-    const result = await askOrchestrator(taskDir, { question: "Quelle branche ?" }, { askTimeoutMs: 100, pollIntervalMs: 20 });
+    const result = await askOrchestrator(taskDir, { question: "Which branch?" }, { askTimeoutMs: 100, pollIntervalMs: 20 });
     expect(Date.now() - startedAt).toBeLessThan(1_000);
     expect(result.isError).toBeFalsy();
     const data = result.structuredContent as { answered: boolean; message: string };
@@ -115,9 +115,9 @@ describe("tools du canal — appel direct", () => {
     expect(data.message).toMatch(/best judgment/i);
   });
 
-  it("ask_orchestrator : le délai n'excède jamais ce qu'il reste du budget de la tâche", async () => {
-    // deadline_ms très court : le budget restant expire quasi immédiatement,
-    // bien avant le délai (long) explicitement demandé.
+  it("ask_orchestrator: the timeout never exceeds what remains of the task budget", async () => {
+    // Very short deadline_ms: the remaining budget expires almost
+    // immediately, well before the (long) explicitly requested timeout.
     await writeSampleTask(taskDir, { deadline_ms: 50 });
     const startedAt = Date.now();
     const result = await askOrchestrator(taskDir, { question: "?" }, { askTimeoutMs: 5_000, pollIntervalMs: 20 });
@@ -126,7 +126,7 @@ describe("tools du canal — appel direct", () => {
   });
 });
 
-describe("buildChannelServer sur le transport stdio", () => {
+describe("buildChannelServer over the stdio transport", () => {
   let taskDir: string;
 
   beforeEach(async () => {
@@ -138,7 +138,7 @@ describe("buildChannelServer sur le transport stdio", () => {
     await rm(taskDir, { recursive: true, force: true });
   });
 
-  it("expose exactement les quatre tools promis à l'agent", async () => {
+  it("exposes exactly the four tools promised to the agent", async () => {
     const server = buildChannelServer(taskDir);
     const stdin = new PassThrough();
     const stdout = new PassThrough();
@@ -152,7 +152,7 @@ describe("buildChannelServer sur le transport stdio", () => {
     stdin.end();
   });
 
-  it("submit_report : rapport invalide rejeté avec un message nommant le champ fautif, resoumission après correction", async () => {
+  it("submit_report: invalid report rejected with a message naming the offending field, resubmission after fixing", async () => {
     const server = buildChannelServer(taskDir);
     const stdin = new PassThrough();
     const stdout = new PassThrough();
@@ -173,12 +173,12 @@ describe("buildChannelServer sur le transport stdio", () => {
       jsonrpc: "2.0",
       id: 2,
       method: "tools/call",
-      params: { name: "submit_report", arguments: { protocol: REPORT_PROTOCOL, task_id: "t_channel", status: "success", summary: "Corrigé." } },
+      params: { name: "submit_report", arguments: { protocol: REPORT_PROTOCOL, task_id: "t_channel", status: "success", summary: "Fixed." } },
     };
     const secondResponse = await callAndRead(stdin, stdout, validCall);
     expect(secondResponse.result.isError).toBeFalsy();
     const report = await readReport(taskPaths(taskDir));
-    expect(report?.summary).toBe("Corrigé.");
+    expect(report?.summary).toBe("Fixed.");
 
     await server.close();
     stdin.end();

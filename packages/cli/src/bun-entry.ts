@@ -1,44 +1,43 @@
 #!/usr/bin/env bun
 /**
- * Point d'entrée du binaire autonome `caesar` (tâche 12, `bun build
- * --compile`) : le seul fichier de ce package que Bun bundle — voir
- * `scripts/build-binary.sh` à la racine du dépôt.
+ * Entry point of the standalone `caesar` binary (task 12, `bun build
+ * --compile`): the only file of this package that Bun bundles — see
+ * `scripts/build-binary.sh` at the repository root.
  *
- * Deux rôles :
+ * Two roles:
  *
- * 1. Importer `@caesar/tui` **statiquement** (`runTui`, ci-dessous) : c'est cet
- *    import qui le fait embarquer par le bundler dans le binaire final, avec
- *    OpenTUI et son cœur natif — plus besoin de Bun installé séparément sur
- *    la machine cible, il est dedans.
- * 2. Reconfigurer, avant de lancer le CLI, les deux points d'extension que
- *    `@caesar/core` et `caesar config` exposent pour cesser de résoudre des
- *    chemins de `node_modules` — absent dans un binaire compilé
- *    (`createRequire(...).resolve()` n'a plus rien à résoudre) :
- *      - `configureChannelLauncher` (`@caesar/core`) : le canal retour
- *        s'auto-invoque (`caesar channel serve --task-dir <dir>`) plutôt que
- *        de chercher `@caesar/mcp-channel/dist/bin.js`.
- *      - `configureInProcessTui` (`./commands/config.js`) : `caesar config`
- *        monte le TUI directement dans ce processus plutôt que de spawn un
- *        `bun` externe.
+ * 1. Import `@caesar/tui` **statically** (`runTui`, below): this import is
+ *    what makes the bundler embed it into the final binary, along with
+ *    OpenTUI and its native core — no more need for Bun installed separately
+ *    on the target machine, it is inside.
+ * 2. Reconfigure, before launching the CLI, the two extension points that
+ *    `@caesar/core` and `caesar config` expose to stop resolving
+ *    `node_modules` paths — absent in a compiled binary
+ *    (`createRequire(...).resolve()` has nothing left to resolve):
+ *      - `configureChannelLauncher` (`@caesar/core`): the return channel
+ *        self-invokes (`caesar channel serve --task-dir <dir>`) rather than
+ *        looking for `@caesar/mcp-channel/dist/bin.js`.
+ *      - `configureInProcessTui` (`./commands/config.js`): `caesar config`
+ *        mounts the TUI directly in this process rather than spawning an
+ *        external `bun`.
  *
- * Le chemin Node (`bin.ts`) n'appelle jamais ces deux fonctions : son
- * comportement par défaut (résolution de module pour le canal, sous-processus
- * Bun externe pour `caesar config`) reste inchangé — c'est le chemin du
- * développement quotidien dans le monorepo, et il continue de fonctionner à
- * l'identique.
+ * The Node path (`bin.ts`) never calls these two functions: its default
+ * behavior (module resolution for the channel, external Bun subprocess for
+ * `caesar config`) stays unchanged — that is the day-to-day development path
+ * in the monorepo, and it keeps working identically.
  *
- * `runCli` est importé depuis `./program.js`, **jamais** depuis `./bin.js` :
- * `bin.ts` porte son propre garde d'auto-invocation (`isMain`), pensé pour
- * Node, où chaque module garde un `import.meta.url` distinct. Dans un
- * exécutable compilé par Bun, `import.meta.url` vaut la même URL virtuelle
- * pour tous les modules du bundle — importer `bin.ts` ici ferait donc
- * tourner son garde une seconde fois (constaté en vérifiant le binaire réel :
- * `caesar --version` répondait deux fois de suite). Voir l'en-tête de
- * `program.ts` pour le détail de cette découverte et de la séparation
- * qu'elle a motivée.
+ * `runCli` is imported from `./program.js`, **never** from `./bin.js`:
+ * `bin.ts` carries its own self-invocation guard (`isMain`), designed for
+ * Node, where each module keeps a distinct `import.meta.url`. In an
+ * executable compiled by Bun, `import.meta.url` is the same virtual URL for
+ * every module of the bundle — importing `bin.ts` here would therefore run
+ * its guard a second time (observed by checking the real binary:
+ * `caesar --version` answered twice in a row). See the header of
+ * `program.ts` for the details of that discovery and of the separation it
+ * motivated.
  *
- * Exclu de `packages/cli/tsconfig.json` (voir son `exclude`) : `tsc` ne
- * traite jamais ce fichier, seul `bun build --compile` le lit.
+ * Excluded from `packages/cli/tsconfig.json` (see its `exclude`): `tsc`
+ * never processes this file, only `bun build --compile` reads it.
  */
 import { CHANNEL_SERVER_NAME, configureChannelLauncher } from "@caesar/core";
 import { runTui } from "@caesar/tui";

@@ -1,67 +1,68 @@
 /**
- * Assets agentiques (skill Agent Skills + commandes) : la table des cibles
- * (où chaque runtime les lit), le plan d'installation et son application.
+ * Agent-facing assets (Agent Skills skill + commands): the target table
+ * (where each runtime reads them), the installation plan and its application.
  *
- * Ce module ne connaît AUCUN contenu réel : le catalogue (la skill et les
- * commandes, au format Claude Code) lui est donné en paramètre
- * (`AgentAssetsOptions.catalog`) — c'est ce qui le rend testable sur des
- * fixtures fabriquées avant même que le générateur
- * (`scripts/generate-agent-assets.mjs`, tâche suivante, voir
- * `agent-assets.generated.ts`) n'existe. Dans `@caesar/core` et non
- * `packages/cli`, même raison que `mcp-registration.ts` (voir son en-tête, et
- * `packages/cli/src/commands/mcp.ts:10-18`) : l'écran Intégrations du TUI en
- * aura besoin sans dépendre du CLI. Le câblage dans `caesar init` est une tâche
- * ultérieure — aucune dépendance vers le CLI ici.
+ * This module knows NO real content: the catalog (the skill and the
+ * commands, in Claude Code format) is given to it as a parameter
+ * (`AgentAssetsOptions.catalog`) — which is what makes it testable on
+ * fabricated fixtures before the generator
+ * (`scripts/generate-agent-assets.mjs`, next task, see
+ * `agent-assets.generated.ts`) even exists. In `@caesar/core` and not
+ * `packages/cli`, same reason as `mcp-registration.ts` (see its header, and
+ * `packages/cli/src/commands/mcp.ts:10-18`): the TUI's Integrations screen
+ * will need it without depending on the CLI. The wiring into `caesar init` is
+ * a later task — no dependency toward the CLI here.
  *
- * ## La table des cibles — valeurs vérifiées empiriquement le 2026-08-12
+ * ## The target table — values verified empirically on 2026-08-12
  *
- * Confirmées sur les binaires réellement installés (listing effectif, pas la
- * documentation) : `codex debug prompt-input` (codex 0.147.0), `opencode
- * debug skill` (opencode 1.18.16), `copilot skill list`, une invocation
- * `claude` bornée (claude 2.1.228), `strings` sur le binaire `agy`
- * (antigravity). Ne PAS « corriger » ces chemins sans réévaluer contre le
- * binaire réel — plusieurs divergent de ce qu'on devinerait naïvement :
+ * Confirmed on the actually installed binaries (effective listing, not the
+ * documentation): `codex debug prompt-input` (codex 0.147.0), `opencode
+ * debug skill` (opencode 1.18.16), `copilot skill list`, a bounded `claude`
+ * invocation (claude 2.1.228), `strings` on the `agy` binary
+ * (antigravity). Do NOT "fix" these paths without re-evaluating against the
+ * real binary — several diverge from what one would naively guess:
  *
- * | Cible                       | Skill (relatif à la racine)    | Commandes (relatif à la racine)             |
+ * | Target                       | Skill (relative to the root)     | Commands (relative to the root)               |
  * |------------------------------|----------------------------------|-----------------------------------------------|
- * | partagé (tout sauf claude)   | `.agents/skills/caesar/`           | —                                              |
- * | `claude`                     | `.claude/skills/caesar/` (dédié)   | `.claude/commands/` (fichiers `caesar-*.md`)    |
- * | `codex`                      | partagé (`.agents/skills/caesar/`) | —                                              |
- * | `copilot`                    | partagé                          | —                                              |
- * | `opencode`                   | partagé                          | `.opencode/commands/` (`caesar-*.md`, pluriel)  |
- * | `antigravity`                | partagé                          | —                                              |
+ * | shared (everything but claude)| `.agents/skills/caesar/`          | —                                              |
+ * | `claude`                     | `.claude/skills/caesar/` (dedicated)| `.claude/commands/` (`caesar-*.md` files)      |
+ * | `codex`                      | shared (`.agents/skills/caesar/`) | —                                              |
+ * | `copilot`                    | shared                           | —                                              |
+ * | `opencode`                   | shared                           | `.opencode/commands/` (`caesar-*.md`, plural)  |
+ * | `antigravity`                | shared                           | —                                              |
  *
- * Pourquoi `claude` reçoit une copie DÉDIÉE plutôt que le partagé : claude
- * 2.1.228 ne lit PAS `.agents/skills/` — une skill posée uniquement là lui
- * resterait invisible. Pourquoi `codex` ne doit PAS recevoir, en plus, une
- * copie sous `.codex/skills/caesar/` : codex 0.147.0 lit déjà `.agents/skills/`
- * au niveau projet, et ne dédoublonne PAS par nom — la même skill présente
- * aux deux chemins apparaîtrait deux fois dans son listing. `copilot` de
- * même : `.github/skills/caesar/` ne doit pas être livré, `copilot skill list`
- * confirme que le partagé suffit. Portée globale : mêmes chemins, composés
- * depuis `homeDirectory()` plutôt que depuis la racine du projet.
+ * Why `claude` receives a DEDICATED copy rather than the shared one: claude
+ * 2.1.228 does NOT read `.agents/skills/` — a skill placed only there would
+ * remain invisible to it. Why `codex` must NOT receive, in addition, a
+ * copy under `.codex/skills/caesar/`: codex 0.147.0 already reads `.agents/skills/`
+ * at project level, and does NOT deduplicate by name — the same skill present
+ * at both paths would appear twice in its listing. Same for `copilot`:
+ * `.github/skills/caesar/` must not be shipped, `copilot skill list`
+ * confirms the shared one suffices. Global scope: same paths, composed
+ * from `homeDirectory()` rather than from the project root.
  *
- * Règle structurelle qui en découle, appliquée par construction dans
- * `ASSET_TARGETS` (un seul champ `skillDir` par cible, jamais deux) : par
- * cible, copie dédiée OU partagé, jamais les deux ; le partagé n'est produit
- * qu'une seule fois même quand plusieurs cibles le désignent — déduplication
- * par chemin résolu identique, voir `computePlan`.
+ * Structural rule that follows, enforced by construction in
+ * `ASSET_TARGETS` (a single `skillDir` field per target, never two): per
+ * target, dedicated copy OR shared, never both; the shared one is produced
+ * only once even when several targets designate it — deduplication
+ * by identical resolved path, see `computePlan`.
  *
- * ## Fichiers gérés par caesar
+ * ## Files managed by caesar
  *
- * Namespace : la skill vit dans un dossier `caesar/` (déjà inclus dans les
- * chemins ci-dessus), les commandes sont des fichiers préfixés `caesar-`. Tout
- * ce qui vit sous ce namespace, aux emplacements de la table, est réputé
- * généré par caesar — donc réécrit sans ménagement quand il diffère du
- * catalogue (`update`, y compris un `caesar/` ou un `caesar-*.md` préexistant
- * qu'un utilisateur aurait créé lui-même : le contrat « géré par caesar »
- * s'applique dès l'emplacement). Un fichier déjà identique au catalogue n'est
- * PAS réécrit (`unchanged`, comparaison après normalisation CRLF→LF,
- * écriture toujours en LF) : les runtimes surveillent ces répertoires, une
- * réécriture à l'identique déclencherait un rechargement pour rien. Un
- * artefact présent sur disque à un emplacement géré mais absent du catalogue
- * est nommé dans `stale` — jamais supprimé, la suppression restant un geste
- * explicite de l'utilisateur ou d'une commande dédiée future.
+ * Namespace: the skill lives in a `caesar/` folder (already included in the
+ * paths above), the commands are files prefixed `caesar-`. Everything
+ * living under this namespace, at the table's locations, is deemed
+ * generated by caesar — hence rewritten without ceremony when it differs
+ * from the catalog (`update`, including a pre-existing `caesar/` or
+ * `caesar-*.md` a user would have created themselves: the "managed by
+ * caesar" contract applies from the location alone). A file already
+ * identical to the catalog is NOT rewritten (`unchanged`, comparison
+ * after CRLF→LF normalization, writing always in LF): the runtimes watch
+ * these directories, an identical rewrite would trigger a reload for
+ * nothing. An artifact present on disk at a managed location but absent
+ * from the catalog is named in `stale` — never deleted, deletion
+ * remaining an explicit gesture of the user or of a future dedicated
+ * command.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, isAbsolute, join, relative } from "node:path";
@@ -71,7 +72,7 @@ import type { McpClient } from "./mcp-registration.js";
 
 export type AgentAssetKind = "skill" | "command";
 
-/** Un fichier source du catalogue. `path` est relatif à l'artefact (ex. "SKILL.md", "references/cli.md"), toujours en séparateurs POSIX. */
+/** A source file of the catalog. `path` is relative to the artifact (e.g. "SKILL.md", "references/cli.md"), always in POSIX separators. */
 export interface AgentAsset {
   kind: AgentAssetKind;
   id: string;
@@ -82,38 +83,38 @@ export interface AgentAsset {
 export type AssetScope = "project" | "global";
 
 // ---------------------------------------------------------------------------
-// Rendu des commandes — une fonction par format cible
+// Command rendering — one function per target format
 // ---------------------------------------------------------------------------
 
 function toLf(content: string): string {
   return content.replace(/\r\n/g, "\n");
 }
 
-/** Claude Code est le format source des commandes : rendu identité (normalisé en LF, cf. l'en-tête). */
+/** Claude Code is the source format of the commands: identity rendering (normalized to LF, cf. the header). */
 export function renderClaudeCommand(asset: AgentAsset): string {
   return toLf(asset.content);
 }
 
 const FRONTMATTER_PATTERN = /^---\n([\s\S]*?)\n---\n?/;
 
-/** Champs que la doc de commandes d'OpenCode reconnaît (confirmé sur 1.18.16) — tout le reste du frontmatter Claude Code (`allowed-tools`, `argument-hint`, …) lui est étranger et doit être retiré. */
+/** Fields that OpenCode's commands documentation recognizes (confirmed on 1.18.16) — everything else in the Claude Code frontmatter (`allowed-tools`, `argument-hint`, …) is foreign to it and must be removed. */
 const OPENCODE_FRONTMATTER_KEYS = new Set(["description", "agent", "model"]);
 
 /**
- * Adapte une commande source (frontmatter Claude Code) au format OpenCode :
- * conserve `description` (et `agent`/`model` si présents), retire le reste du
- * frontmatter, laisse le corps intact.
+ * Adapts a source command (Claude Code frontmatter) to the OpenCode format:
+ * keeps `description` (and `agent`/`model` if present), removes the rest of
+ * the frontmatter, leaves the body intact.
  *
- * Filtrage ligne à ligne plutôt qu'un vrai parseur YAML : les trois champs du
- * format source (`description`, `allowed-tools`, `argument-hint`, voir
- * `agent-assets.generated.ts`) sont chacun un scalaire sur une seule ligne,
- * et ce filtrage suffit sans faire dépendre `@caesar/core` d'une librairie YAML
- * pour ça seul.
+ * Line-by-line filtering rather than a real YAML parser: the three fields of
+ * the source format (`description`, `allowed-tools`, `argument-hint`, see
+ * `agent-assets.generated.ts`) are each a scalar on a single line,
+ * and this filtering suffices without making `@caesar/core` depend on a YAML
+ * library for that alone.
  */
 export function renderOpencodeCommand(asset: AgentAsset): string {
   const content = toLf(asset.content);
   const match = FRONTMATTER_PATTERN.exec(content);
-  if (!match) return content; // pas de frontmatter : rien à adapter
+  if (!match) return content; // no frontmatter: nothing to adapt
 
   const full = match[0]!;
   const block = match[1] ?? "";
@@ -126,36 +127,36 @@ export function renderOpencodeCommand(asset: AgentAsset): string {
 }
 
 // ---------------------------------------------------------------------------
-// La table des cibles
+// The target table
 // ---------------------------------------------------------------------------
 
-/** Un client de `MCP_CLIENTS`, tel qu'il lit la skill et les commandes de caesar. Voir la table de faits en en-tête. */
+/** A client of `MCP_CLIENTS`, as it reads caesar's skill and commands. See the fact table in the header. */
 export interface AssetTarget {
   client: McpClient;
-  /** Répertoire (relatif à la racine, ou à HOME en portée globale) où ce client lit la skill "caesar" — dédié ou partagé selon la cible, jamais les deux. */
+  /** Directory (relative to the root, or to HOME in global scope) where this client reads the "caesar" skill — dedicated or shared depending on the target, never both. */
   skillDir: string;
-  /** Répertoire des commandes de ce client (fichiers `caesar-*.md`) ; absent si cette cible ne lit aucune commande. */
+  /** Directory of this client's commands (`caesar-*.md` files); absent if this target reads no commands. */
   commandsDir?: string;
-  /** Rendu appliqué au contenu source (format Claude Code) pour produire chaque commande de cette cible. Ignoré si `commandsDir` est absent. */
+  /** Rendering applied to the source content (Claude Code format) to produce each command of this target. Ignored if `commandsDir` is absent. */
   renderCommand?: (asset: AgentAsset) => string;
 }
 
-/** Emplacement partagé : identique en valeur pour toute cible qui n'a pas de copie dédiée, ce qui suffit à en faire une seule production (déduplication par chemin résolu, `computePlan`). */
+/** Shared location: identical in value for every target without a dedicated copy, which is enough to make it a single production (deduplication by resolved path, `computePlan`). */
 const SHARED_SKILL_DIR = ".agents/skills/caesar";
 
-/** Le seul endroit où vit la connaissance des chemins par runtime. */
+/** The only place where per-runtime path knowledge lives. */
 export const ASSET_TARGETS: readonly AssetTarget[] = [
   {
     client: "claude",
-    // Dédié — requis : claude 2.1.228 ne lit pas .agents/skills/ (voir l'en-tête).
+    // Dedicated — required: claude 2.1.228 does not read .agents/skills/ (see the header).
     skillDir: ".claude/skills/caesar",
     commandsDir: ".claude/commands",
     renderCommand: renderClaudeCommand,
   },
-  // codex lit .agents/skills/ au niveau projet et ne dédoublonne pas par nom :
-  // pas de copie sous .codex/skills/caesar/ en plus (voir l'en-tête).
+  // codex reads .agents/skills/ at project level and does not deduplicate by name:
+  // no additional copy under .codex/skills/caesar/ (see the header).
   { client: "codex", skillDir: SHARED_SKILL_DIR },
-  // copilot skill list confirme que le partagé suffit : pas de .github/skills/caesar/.
+  // copilot skill list confirms the shared one suffices: no .github/skills/caesar/.
   { client: "copilot", skillDir: SHARED_SKILL_DIR },
   { client: "opencode", skillDir: SHARED_SKILL_DIR, commandsDir: ".opencode/commands", renderCommand: renderOpencodeCommand },
   { client: "antigravity", skillDir: SHARED_SKILL_DIR },
@@ -163,12 +164,12 @@ export const ASSET_TARGETS: readonly AssetTarget[] = [
 
 function targetFor(client: McpClient): AssetTarget {
   const target = ASSET_TARGETS.find((t) => t.client === client);
-  if (!target) throw new Error(`Cible inconnue dans la table des assets agentiques : "${client}".`);
+  if (!target) throw new Error(`Unknown target in the agent-assets table: "${client}".`);
   return target;
 }
 
 // ---------------------------------------------------------------------------
-// Résultat
+// Result
 // ---------------------------------------------------------------------------
 
 export type AgentAssetAction = "create" | "update" | "unchanged";
@@ -176,12 +177,12 @@ export type AgentAssetAction = "create" | "update" | "unchanged";
 export interface AgentAssetFile {
   kind: AgentAssetKind;
   id: string;
-  /** Chemin absolu sur disque. */
+  /** Absolute path on disk. */
   path: string;
   action: AgentAssetAction;
 }
 
-/** Un artefact `caesar`/`caesar-*` présent sur disque à un emplacement géré mais absent du catalogue — nommé, jamais supprimé. */
+/** A `caesar`/`caesar-*` artifact present on disk at a managed location but absent from the catalog — named, never deleted. */
 export interface AgentAssetStale {
   kind: AgentAssetKind;
   id: string;
@@ -191,79 +192,79 @@ export interface AgentAssetStale {
 export type SettingsMergeAction = "create" | "update" | "unchanged" | "skip";
 
 export interface AgentAssetSettingsMerge {
-  /** Toujours `<root>/.claude/settings.json` — jamais posé en portée globale. */
+  /** Always `<root>/.claude/settings.json` — never placed in global scope. */
   path: string;
   action: SettingsMergeAction;
-  /** Tools ajoutés à `permissions.allow` lors de cette passe ; vide si "unchanged" ou "skip". */
+  /** Tools added to `permissions.allow` during this pass; empty if "unchanged" or "skip". */
   added: string[];
 }
 
 export interface AgentAssetInstall {
   files: AgentAssetFile[];
   stale: AgentAssetStale[];
-  /** Présent seulement en portée projet quand `claude` fait partie des cibles retenues — voir `computeSettingsMerge`. */
+  /** Present only in project scope when `claude` is among the selected targets — see `computeSettingsMerge`. */
   settings?: AgentAssetSettingsMerge;
-  /** Avertissements non bloquants (aujourd'hui : JSON invalide dans settings.json). */
+  /** Non-blocking warnings (today: invalid JSON in settings.json). */
   warnings: string[];
 }
 
 export interface AgentAssetsOptions {
   root: string;
   scope: AssetScope;
-  /** Les cibles retenues, par id de `MCP_CLIENTS`. */
+  /** The selected targets, by id from `MCP_CLIENTS`. */
   clients: readonly McpClient[];
-  /** Le catalogue d'assets — généré (`AGENT_ASSETS`, `agent-assets.generated.ts`) ou fabriqué pour un test. */
+  /** The asset catalog — generated (`AGENT_ASSETS`, `agent-assets.generated.ts`) or fabricated for a test. */
   catalog: readonly AgentAsset[];
 }
 
 // ---------------------------------------------------------------------------
-// Validation des chemins — avant tout `join`
+// Path validation — before any `join`
 // ---------------------------------------------------------------------------
 
 /**
- * Rejette un chemin d'asset qui sortirait de son artefact : absolu,
- * antislash, segment `..`, ou segment vide.
+ * Rejects an asset path that would escape its artifact: absolute,
+ * backslash, `..` segment, or empty segment.
  *
- * Le contrat d'`AgentAsset.path` promet des séparateurs POSIX uniquement
- * (voir sa doc) — un antislash n'y est donc jamais un caractère de nom de
- * fichier légitime. Rejeté explicitement plutôt que découpé comme un
- * séparateur ou ignoré comme un caractère opaque : un découpage sur `/`
- * seul laissait passer `"..\\..\\..\\..\\evil.md"` (aucun `/`, donc traité
- * comme un unique segment sans `..`), qui échappe pourtant bel et bien à la
- * racine une fois recombiné par `path.join` sous Windows — défaut trouvé en
- * revue de cette tâche, voir `agent-assets.test.ts`.
+ * The `AgentAsset.path` contract promises POSIX separators only
+ * (see its doc) — a backslash is therefore never a legitimate filename
+ * character there. Rejected explicitly rather than split as a
+ * separator or ignored as an opaque character: a split on `/`
+ * alone let `"..\\..\\..\\..\\evil.md"` through (no `/`, hence treated
+ * as a single segment without `..`), which does indeed escape the
+ * root once recombined by `path.join` on Windows — defect found in
+ * review of this task, see `agent-assets.test.ts`.
  */
 function assertSafeAssetPath(path: string): void {
   if (path.startsWith("/")) {
-    throw new Error(`Chemin d'asset invalide : "${path}" est absolu (attendu relatif à l'artefact).`);
+    throw new Error(`Invalid asset path: "${path}" is absolute (expected relative to the artifact).`);
   }
   if (path.includes("\\")) {
-    throw new Error(`Chemin d'asset invalide : "${path}" contient un antislash — seuls les séparateurs POSIX ("/") sont acceptés.`);
+    throw new Error(`Invalid asset path: "${path}" contains a backslash — only POSIX separators ("/") are accepted.`);
   }
   for (const segment of path.split("/")) {
-    if (segment === "") throw new Error(`Chemin d'asset invalide : "${path}" contient un segment vide.`);
-    if (segment === "..") throw new Error(`Chemin d'asset invalide : "${path}" contient ".." — un asset ne peut pas sortir de son artefact.`);
+    if (segment === "") throw new Error(`Invalid asset path: "${path}" contains an empty segment.`);
+    if (segment === "..") throw new Error(`Invalid asset path: "${path}" contains ".." — an asset cannot escape its artifact.`);
   }
 }
 
 /**
- * Défense en profondeur : `skillDir`/`commandsDir` sont des constantes de la
- * table, et `asset.path` est déjà validé (`assertSafeAssetPath`) — cette
- * destination ne peut mathématiquement pas sortir de `base`, mais une erreur
- * claire vaut mieux qu'un write silencieux ailleurs si l'invariant se
- * rompait un jour.
+ * Defense in depth: `skillDir`/`commandsDir` are constants of the
+ * table, and `asset.path` is already validated (`assertSafeAssetPath`) —
+ * this destination mathematically cannot escape `base`, but a clear
+ * error beats a silent write elsewhere should the invariant break
+ * one day.
  *
- * Agnostique au séparateur (découpage sur `/[\\/]/`, jamais sur `"../"` en
- * dur) : sous Windows, `path.relative` rend ses résultats avec des
- * antislashes, et un test codé sur le seul séparateur POSIX laissait passer
- * cette même défense inopérante — trouvé dans la même revue que le défaut
- * ci-dessus.
+ * Separator-agnostic (split on `/[\\/]/`, never on a hardcoded `"../"`):
+ * on Windows, `path.relative` renders its results with
+ * backslashes, and a check coded on the POSIX separator alone let
+ * this very defense pass inoperative — found in the same review as the
+ * defect above.
  */
 function assertWithinBase(path: string, base: string): void {
   const rel = relative(base, path);
   const segments = rel.split(/[\\/]/);
   if (isAbsolute(rel) || segments.includes("..")) {
-    throw new Error(`Chemin résolu hors de la racine visée : "${path}" (racine : "${base}").`);
+    throw new Error(`Resolved path outside the targeted root: "${path}" (root: "${base}").`);
   }
 }
 
@@ -272,14 +273,14 @@ function resolveBase(opts: AgentAssetsOptions): string {
 }
 
 // ---------------------------------------------------------------------------
-// Diff fichier par fichier
+// File-by-file diff
 // ---------------------------------------------------------------------------
 
 interface PlannedFile extends AgentAssetFile {
   content: string;
 }
 
-/** "create" si absent, "unchanged" si le disque (normalisé CRLF→LF) porte déjà exactement `content`, "update" sinon. Une lecture, jamais une écriture — c'est ce qui rend `planAgentAssets` pur au sens de ce module (n'écrit rien). */
+/** "create" if absent, "unchanged" if the disk (normalized CRLF→LF) already carries exactly `content`, "update" otherwise. One read, never a write — which is what makes `planAgentAssets` pure in this module's sense (writes nothing). */
 function actionFor(path: string, content: string): AgentAssetAction {
   if (!existsSync(path)) return "create";
   const onDisk = toLf(readFileSync(path, "utf8"));
@@ -290,7 +291,7 @@ function buildFileRecord(kind: AgentAssetKind, id: string, path: string, content
   return { kind, id, path, action: actionFor(path, content), content };
 }
 
-/** Orphelins sous un répertoire de skill géré : tout fichier présent qui n'est pas dans le catalogue actuel. */
+/** Orphans under a managed skill directory: any file present that is not in the current catalog. */
 function scanStaleSkill(skillDir: string, plannedRelPaths: ReadonlySet<string>): AgentAssetStale[] {
   if (!existsSync(skillDir)) return [];
   const id = basename(skillDir);
@@ -309,7 +310,7 @@ function scanStaleSkill(skillDir: string, plannedRelPaths: ReadonlySet<string>):
 
 const COMMAND_PREFIX = "caesar-";
 
-/** Orphelins sous un répertoire de commandes géré : tout fichier `caesar-*.md` qui n'est plus dans le catalogue. Les commandes d'autres origines (sans le préfixe) ne sont ni scannées ni rapportées. */
+/** Orphans under a managed commands directory: any `caesar-*.md` file no longer in the catalog. Commands of other origins (without the prefix) are neither scanned nor reported. */
 function scanStaleCommands(commandsDir: string, plannedNames: ReadonlySet<string>): AgentAssetStale[] {
   if (!existsSync(commandsDir)) return [];
   const stale: AgentAssetStale[] = [];
@@ -322,10 +323,10 @@ function scanStaleCommands(commandsDir: string, plannedNames: ReadonlySet<string
 }
 
 // ---------------------------------------------------------------------------
-// Fusion de <root>/.claude/settings.json
+// Merge of <root>/.claude/settings.json
 // ---------------------------------------------------------------------------
 
-/** Les six tools MCP qui ne modifient aucun fichier de l'utilisateur — seuls candidats à un ajout automatique dans `permissions.allow` (lecture seule : lister agents/rôles, statut, attendre, logs, diff). */
+/** The six MCP tools that modify none of the user's files — the only candidates for an automatic addition to `permissions.allow` (read-only: list agents/roles, status, await, logs, diff). */
 const SETTINGS_MANAGED_TOOLS: readonly string[] = [
   "mcp__caesar__caesar_list_agents",
   "mcp__caesar__caesar_list_roles",
@@ -340,32 +341,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 interface PlannedSettings extends AgentAssetSettingsMerge {
-  /** Présent seulement quand `action` est "create" ou "update" — c'est ce que `installAgentAssets` écrit. */
+  /** Present only when `action` is "create" or "update" — it is what `installAgentAssets` writes. */
   content?: string;
 }
 
 /**
- * `permissions.allow` reçoit `SETTINGS_MANAGED_TOOLS`, append-si-absent :
- * dédoublonnage par appartenance (jamais un doublon d'un tool déjà accordé),
- * tout le reste du fichier préservé (clés inconnues comprises, y compris les
- * autres entrées de `permissions`), jamais de retrait d'une entrée
- * existante. `applyPlan` (`mcp-registration.ts`) n'est pas réutilisable ici :
- * il remplace un objet dont il est seul propriétaire (`mcpServers.caesar`),
- * quand `permissions.allow` appartient à l'utilisateur et ne doit être
- * qu'augmenté.
+ * `permissions.allow` receives `SETTINGS_MANAGED_TOOLS`, append-if-absent:
+ * deduplication by membership (never a duplicate of an already-granted
+ * tool), everything else in the file preserved (unknown keys included,
+ * including the other entries of `permissions`), never a removal of an
+ * existing entry. `applyPlan` (`mcp-registration.ts`) is not reusable here:
+ * it replaces an object it solely owns (`mcpServers.caesar`),
+ * whereas `permissions.allow` belongs to the user and must only be
+ * augmented.
  *
- * JSON invalide, racine non-objet, ou forme anormale de `permissions`/
- * `permissions.allow` (présent mais pas un objet / pas une liste — `null`
- * compris) ⇒ `action: "skip"` et un avertissement, jamais d'écriture. Ce
- * dernier cas est délibérément traité comme le JSON invalide plutôt que
- * silencieusement retombé sur `{}`/`[]` : un `"permissions": null` ou
- * `"allow": "tout"` posé à la main par l'utilisateur est une valeur qu'il a
- * choisie, pas une absence — l'écraser sans le dire aurait perdu cette
- * intention sans qu'aucun signal n'apparaisse dans `warnings` (défaut trouvé
- * en revue de cette tâche, voir `agent-assets.test.ts`). N'agit qu'en portée
- * projet, et seulement si `claude` fait partie des cibles retenues ;
- * `~/.claude/settings.json` n'est jamais touché (portée globale hors de
- * propos pour ce fichier).
+ * Invalid JSON, non-object root, or abnormal shape of `permissions`/
+ * `permissions.allow` (present but not an object / not a list — `null`
+ * included) ⇒ `action: "skip"` and a warning, never a write. This
+ * last case is deliberately treated like invalid JSON rather than
+ * silently falling back to `{}`/`[]`: a `"permissions": null` or
+ * `"allow": "everything"` placed by hand by the user is a value they
+ * chose, not an absence — overwriting it without saying so would have lost
+ * that intention without any signal appearing in `warnings` (defect found
+ * in review of this task, see `agent-assets.test.ts`). Acts only in
+ * project scope, and only if `claude` is among the selected targets;
+ * `~/.claude/settings.json` is never touched (global scope out of
+ * scope for this file).
  */
 function computeSettingsMerge(
   opts: AgentAssetsOptions,
@@ -386,13 +387,13 @@ function computeSettingsMerge(
   } catch (error) {
     return {
       settings: { path, action: "skip", added: [] },
-      warning: `JSON invalide dans ${path} (${error instanceof Error ? error.message : String(error)}) — permissions.allow non modifié.`,
+      warning: `Invalid JSON in ${path} (${error instanceof Error ? error.message : String(error)}) — permissions.allow not modified.`,
     };
   }
   if (!isRecord(parsed)) {
     return {
       settings: { path, action: "skip", added: [] },
-      warning: `${path} ne contient pas un objet JSON — permissions.allow non modifié.`,
+      warning: `${path} does not contain a JSON object — permissions.allow not modified.`,
     };
   }
 
@@ -400,7 +401,7 @@ function computeSettingsMerge(
   if (permissionsValue !== undefined && !isRecord(permissionsValue)) {
     return {
       settings: { path, action: "skip", added: [] },
-      warning: `${path} : "permissions" n'est pas un objet (${JSON.stringify(permissionsValue)}) — permissions.allow non modifié.`,
+      warning: `${path}: "permissions" is not an object (${JSON.stringify(permissionsValue)}) — permissions.allow not modified.`,
     };
   }
   const permissions = permissionsValue ?? {};
@@ -409,7 +410,7 @@ function computeSettingsMerge(
   if (allowValue !== undefined && !Array.isArray(allowValue)) {
     return {
       settings: { path, action: "skip", added: [] },
-      warning: `${path} : "permissions.allow" n'est pas une liste (${JSON.stringify(allowValue)}) — permissions.allow non modifié.`,
+      warning: `${path}: "permissions.allow" is not a list (${JSON.stringify(allowValue)}) — permissions.allow not modified.`,
     };
   }
   const allow: unknown[] = allowValue ?? [];
@@ -426,7 +427,7 @@ function computeSettingsMerge(
 }
 
 // ---------------------------------------------------------------------------
-// Plan et installation
+// Plan and installation
 // ---------------------------------------------------------------------------
 
 interface Plan {
@@ -437,11 +438,11 @@ interface Plan {
 }
 
 /**
- * Calcule le plan complet — lectures seules (fichiers destination, répertoires
- * gérés, `settings.json`), jamais une écriture. Partagé par `planAgentAssets`
- * (qui rend `computePlan` tel quel, `content` en moins) et
- * `installAgentAssets` (qui l'utilise pour savoir quoi écrire) : une seule
- * logique de diff, jamais deux à tenir synchronisées.
+ * Computes the full plan — reads only (destination files, managed
+ * directories, `settings.json`), never a write. Shared by `planAgentAssets`
+ * (which returns `computePlan` as-is, minus `content`) and
+ * `installAgentAssets` (which uses it to know what to write): a single
+ * diff logic, never two to keep synchronized.
  */
 function computePlan(opts: AgentAssetsOptions): Plan {
   for (const asset of opts.catalog) assertSafeAssetPath(asset.path);
@@ -456,8 +457,8 @@ function computePlan(opts: AgentAssetsOptions): Plan {
   const files: PlannedFile[] = [];
   const stale: AgentAssetStale[] = [];
 
-  // Le partagé n'est produit qu'une fois : plusieurs cibles résolvent au même
-  // chemin (SHARED_SKILL_DIR), et un Set les fusionne naturellement.
+  // The shared one is produced only once: several targets resolve to the
+  // same path (SHARED_SKILL_DIR), and a Set merges them naturally.
   const skillDirs = new Set(targets.map((target) => join(base, target.skillDir)));
   const plannedSkillRelPaths = new Set(skillAssets.map((asset) => asset.path));
   for (const dir of skillDirs) {
@@ -469,8 +470,8 @@ function computePlan(opts: AgentAssetsOptions): Plan {
     stale.push(...scanStaleSkill(dir, plannedSkillRelPaths));
   }
 
-  // Les commandes, à l'inverse, ne sont jamais partagées : chaque cible qui
-  // en lit a son propre répertoire et son propre rendu.
+  // The commands, conversely, are never shared: each target that reads
+  // some has its own directory and its own rendering.
   const plannedCommandNames = new Set(commandAssets.map((asset) => `${COMMAND_PREFIX}${asset.path}`));
   for (const target of targets) {
     if (!target.commandsDir || !target.renderCommand) continue;
@@ -501,17 +502,17 @@ function toPublicResult(plan: Plan): AgentAssetInstall {
   return result;
 }
 
-/** Pur : construit le plan sans jamais écrire sur disque (voir `computePlan`, `actionFor`). */
+/** Pure: builds the plan without ever writing to disk (see `computePlan`, `actionFor`). */
 export function planAgentAssets(opts: AgentAssetsOptions): AgentAssetInstall {
   return toPublicResult(computePlan(opts));
 }
 
 /**
- * Applique le plan : `writeFileAtomic` (`fs-atomic.ts`) pour chaque fichier
- * dont l'action n'est pas "unchanged", puis `settings.json` si `action` vaut
- * "create" ou "update". Le résultat rendu est celui du plan qui a servi à
- * écrire — les actions qu'il décrit sont déjà exactement ce qui vient d'être
- * fait, pas besoin de relire le disque après coup.
+ * Applies the plan: `writeFileAtomic` (`fs-atomic.ts`) for each file
+ * whose action is not "unchanged", then `settings.json` if `action` is
+ * "create" or "update". The result returned is that of the plan which
+ * served to write — the actions it describes are already exactly what has
+ * just been done, no need to reread the disk afterwards.
  */
 export async function installAgentAssets(opts: AgentAssetsOptions): Promise<AgentAssetInstall> {
   const plan = computePlan(opts);

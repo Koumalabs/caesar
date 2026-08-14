@@ -1,7 +1,7 @@
 {
   "name": "@caesar/tui",
   "version": "0.1.0",
-  "description": "TUI de configuration de l'orchestrateur (OpenTUI, exécuté sous Bun)",
+  "description": "Configuration TUI for the orchestrator (OpenTUI, run under Bun)",
   "type": "module",
   "private": true,
   "main": "./src/main.tsx",

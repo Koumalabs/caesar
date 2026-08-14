@@ -1,14 +1,14 @@
 /**
- * Construction des réponses de tool : compactes et structurées (voir le
- * brief — le contenu entre dans le contexte de l'agent appelant, il ne doit
- * jamais être un déversement brut).
+ * Tool response construction: compact and structured (see the brief — the
+ * content enters the calling agent's context, it must never be a raw
+ * dump).
  *
- * `content` (texte) porte le même JSON que `structuredContent`, pour les
- * clients qui ne lisent pas encore ce dernier champ.
+ * `content` (text) carries the same JSON as `structuredContent`, for
+ * clients that do not read the latter field yet.
  */
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-/** Résultat réussi : `data` doit rester compact (voir le brief : statut, résumé, fichiers modifiés, constats, questions — le détail brut relève de `caesar_logs`). */
+/** Successful result: `data` must stay compact (see the brief: status, summary, changed files, findings, questions — the raw detail belongs to `caesar_logs`). */
 export function jsonResult(data: Record<string, unknown>): CallToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
@@ -17,9 +17,9 @@ export function jsonResult(data: Record<string, unknown>): CallToolResult {
 }
 
 /**
- * Refus ou erreur métier (politique, rôle ou tâche inconnus…). `message` est
- * rendu tel quel : un refus de politique porte le motif exact rendu par
- * `@caesar/core`, jamais reformulé (voir le brief).
+ * Refusal or domain error (policy, unknown role or task…). `message` is
+ * returned verbatim: a policy refusal carries the exact reason produced by
+ * `@caesar/core`, never rephrased (see the brief).
  */
 export function errorResult(message: string): CallToolResult {
   return { content: [{ type: "text", text: message }], isError: true };

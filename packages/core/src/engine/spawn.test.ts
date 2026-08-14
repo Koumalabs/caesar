@@ -15,9 +15,9 @@ const execFileAsync = promisify(execFile);
 const FAKE_AGENT = fileURLToPath(new URL("../../test/fixtures/fake-agent.mjs", import.meta.url));
 
 /**
- * Traduction minimale reconnaissant les lignes `{"kind":"progress","message":"…"}`
- * imprimées par l'agent factice — le format de sortie propre à ce test, sans
- * rapport avec le format d'un vrai CLI.
+ * Minimal translation recognizing the `{"kind":"progress","message":"…"}`
+ * lines printed by the fake agent — the output format specific to this test,
+ * unrelated to the format of a real CLI.
  */
 const stubAgent: AgentDefinition = {
   id: "fake",
@@ -35,7 +35,7 @@ const stubAgent: AgentDefinition = {
   },
   preferredReportChannel: () => "file",
   build: () => {
-    throw new Error("non utilisé : le plan est construit directement par les tests");
+    throw new Error("unused: the plan is built directly by the tests");
   },
   translate(line: string): Translation {
     const data = parseJsonLine(line);
@@ -54,7 +54,7 @@ async function setupTask(dir: string, context: Record<string, unknown> = {}): Pr
     id: "t_spawn_test",
     created_at: new Date().toISOString(),
     agent: "fake",
-    objective: "test du moteur d'exécution",
+    objective: "test of the execution engine",
     context: JSON.stringify(context),
     mode: "write",
     isolation: "inplace",
@@ -78,10 +78,10 @@ function planFor(task: Task, paths: TaskPaths): SpawnPlan {
 }
 
 /**
- * Interroge `pgrep` pour savoir si un processus fake-agent subsiste.
- * `pgrep` sort en erreur (code 1) quand rien ne correspond : c'est le
- * résultat attendu, traduit ici en chaîne vide. Toute autre erreur remonte
- * telle quelle plutôt que d'être avalée par l'appelant.
+ * Queries `pgrep` to know whether a fake-agent process lingers.
+ * `pgrep` exits with an error (code 1) when nothing matches: that is the
+ * expected result, translated here into an empty string. Any other error
+ * propagates as-is rather than being swallowed by the caller.
  */
 async function pgrepFakeAgent(): Promise<string> {
   try {
@@ -94,17 +94,17 @@ async function pgrepFakeAgent(): Promise<string> {
 }
 
 /**
- * Confirme qu'aucun processus fake-agent ne subsiste après la résolution de
- * `runAgentProcess`.
+ * Confirms that no fake-agent process lingers after `runAgentProcess`
+ * resolves.
  *
- * Diagnostiqué comme instable sous charge (tâche 10, A1) : `close` sur le
- * fils indique bien que Node l'a réputé terminé, mais sous forte contention
- * (plusieurs dizaines de processus réels lancés en parallèle par la suite),
- * `pgrep`, exécuté juste après, peut encore un instant voir l'entrée du
- * processus dans la table du système avant qu'elle ne soit purgée — un délai
- * de propagation côté OS, pas une fuite du moteur. Une poignée de nouvelles
- * tentatives rapprochées absorbe ce délai sans jamais masquer une vraie
- * fuite, qui survivrait, elle, à toutes les tentatives.
+ * Diagnosed as flaky under load (task 10, A1): `close` on the
+ * child does mean Node deemed it terminated, but under heavy contention
+ * (several dozen real processes launched in parallel by the suite),
+ * `pgrep`, run right after, can for a moment still see the process
+ * entry in the system table before it is purged — an OS-side
+ * propagation delay, not an engine leak. A handful of quick
+ * retries absorbs that delay without ever masking a real
+ * leak, which would, for its part, survive every retry.
  */
 async function expectNoOrphan(): Promise<void> {
   const deadline = Date.now() + 1000;
@@ -130,7 +130,7 @@ describe("runAgentProcess", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("capture les événements d'un flux connu, avec started/finished et compteur croissant", async () => {
+  it("captures the events of a known stream, with started/finished and an increasing counter", async () => {
     const { task, paths } = await setupTask(dir, {});
     const seen: CaesarEvent[] = [];
     const result = await runAgentProcess({
@@ -153,25 +153,25 @@ describe("runAgentProcess", () => {
     expect(seen.map((e) => e.seq)).toEqual([0, 1, 2, 3, 4]);
     expect(result.eventCount).toBe(seen.length);
 
-    // Le dernier finalText non vide l'emporte : "terminé" est le dernier message émis.
-    expect(result.finalText).toBe("terminé");
+    // The last non-empty finalText wins: "done" is the last message emitted.
+    expect(result.finalText).toBe("done");
 
     const persisted = await readEvents(paths);
     expect(persisted).toHaveLength(seen.length);
     await expectNoOrphan();
   });
 
-  it("écrit stdout et stderr dans raw.log", async () => {
+  it("writes stdout and stderr into raw.log", async () => {
     const { task, paths } = await setupTask(dir, {});
     await runAgentProcess({ agent: stubAgent, plan: planFor(task, paths), paths, taskId: task.id, timeoutMs: 10_000 });
 
     const raw = await readFile(paths.rawLog, "utf8");
-    expect(raw).toContain("démarrage");
-    expect(raw).toContain("traitement");
-    expect(raw).toContain("terminé");
+    expect(raw).toContain("starting");
+    expect(raw).toContain("processing");
+    expect(raw).toContain("done");
   });
 
-  it("relaie un code de sortie non nul", async () => {
+  it("relays a non-zero exit code", async () => {
     const { task, paths } = await setupTask(dir, { mode: "fail", exitCode: 7 });
     const events: CaesarEvent[] = [];
     const result = await runAgentProcess({
@@ -189,7 +189,7 @@ describe("runAgentProcess", () => {
     await expectNoOrphan();
   });
 
-  it("le timeout déclenche SIGTERM et la terminaison du processus", async () => {
+  it("the timeout triggers SIGTERM and process termination", async () => {
     const { task, paths } = await setupTask(dir, { mode: "hang" });
     const events: CaesarEvent[] = [];
     const result = await runAgentProcess({
@@ -207,7 +207,7 @@ describe("runAgentProcess", () => {
     await expectNoOrphan();
   });
 
-  it("escalade vers SIGKILL quand le processus ignore SIGTERM", async () => {
+  it("escalates to SIGKILL when the process ignores SIGTERM", async () => {
     const { task, paths } = await setupTask(dir, { mode: "hang", ignoreSigterm: true });
     const result = await runAgentProcess({
       agent: stubAgent,
@@ -222,7 +222,7 @@ describe("runAgentProcess", () => {
     await expectNoOrphan();
   }, 8000);
 
-  it("écrit plan.stdin puis ferme l'entrée", async () => {
+  it("writes plan.stdin then closes the input", async () => {
     const { task, paths } = await setupTask(dir, {});
     const plan: SpawnPlan = {
       command: process.execPath,
@@ -230,17 +230,17 @@ describe("runAgentProcess", () => {
       cwd: task.workspace,
       env: {},
       files: [],
-      stdin: "bonjour depuis stdin\n",
+      stdin: "hello from stdin\n",
     };
 
     const result = await runAgentProcess({ agent: stubAgent, plan, paths, taskId: task.id, timeoutMs: 5000 });
     expect(result.exitCode).toBe(0);
 
     const raw = await readFile(paths.rawLog, "utf8");
-    expect(raw).toContain("bonjour depuis stdin");
+    expect(raw).toContain("hello from stdin");
   });
 
-  it("onSpawn reçoit le pid du sous-processus avant tout traitement de sa sortie", async () => {
+  it("onSpawn receives the sub-process pid before any processing of its output", async () => {
     const { task, paths } = await setupTask(dir, {});
     let spawnedPid: number | undefined;
     const result = await runAgentProcess({
@@ -258,7 +258,7 @@ describe("runAgentProcess", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("un onSpawn qui lève (ou rejette) n'interrompt pas la tâche : elle va jusqu'au bout, sans orphelin", async () => {
+  it("an onSpawn that throws (or rejects) does not interrupt the task: it runs to completion, without an orphan", async () => {
     const { task, paths } = await setupTask(dir, {});
     const result = await runAgentProcess({
       agent: stubAgent,
@@ -267,9 +267,9 @@ describe("runAgentProcess", () => {
       taskId: task.id,
       timeoutMs: 10_000,
       onSpawn: () => {
-        // Simule un callback d'enregistrement du pid cassé — même profil de
-        // risque que l'onEvent du test suivant, appliqué à onSpawn (tâche 10, A2).
-        throw new Error("callback d'enregistrement du pid cassé");
+        // Simulates a broken pid-recording callback — same risk profile as
+        // the onEvent of the following test, applied to onSpawn (task 10, A2).
+        throw new Error("broken pid-recording callback");
       },
     });
 
@@ -277,7 +277,7 @@ describe("runAgentProcess", () => {
     await expectNoOrphan();
   });
 
-  it("un onSpawn dont la promesse rejette n'interrompt pas la tâche : elle va jusqu'au bout, sans orphelin", async () => {
+  it("an onSpawn whose promise rejects does not interrupt the task: it runs to completion, without an orphan", async () => {
     const { task, paths } = await setupTask(dir, {});
     const result = await runAgentProcess({
       agent: stubAgent,
@@ -286,7 +286,7 @@ describe("runAgentProcess", () => {
       taskId: task.id,
       timeoutMs: 10_000,
       onSpawn: async () => {
-        throw new Error("promesse d'enregistrement du pid rejetée");
+        throw new Error("pid-recording promise rejected");
       },
     });
 
@@ -294,7 +294,7 @@ describe("runAgentProcess", () => {
     await expectNoOrphan();
   });
 
-  it("un onEvent qui lève n'interrompt pas la tâche : elle va jusqu'au bout, sans orphelin", async () => {
+  it("an onEvent that throws does not interrupt the task: it runs to completion, without an orphan", async () => {
     const { task, paths } = await setupTask(dir, {});
     const result = await runAgentProcess({
       agent: stubAgent,
@@ -303,10 +303,10 @@ describe("runAgentProcess", () => {
       taskId: task.id,
       timeoutMs: 10_000,
       onEvent: () => {
-        // Simule un callback d'affichage cassé — dès le tout premier événement
-        // ("started"), avant même que le minuteur de timeout et l'écouteur
-        // d'abandon ne soient posés.
-        throw new Error("callback d'affichage cassé");
+        // Simulates a broken display callback — from the very first event
+        // ("started"), before the timeout timer and the abort listener
+        // are even in place.
+        throw new Error("broken display callback");
       },
     });
 
@@ -315,7 +315,7 @@ describe("runAgentProcess", () => {
     await expectNoOrphan();
   });
 
-  it("un AbortSignal déjà déclenché avant l'appel ne lance aucun processus", async () => {
+  it("an AbortSignal already triggered before the call launches no process", async () => {
     const { task, paths } = await setupTask(dir, { mode: "hang" });
     const controller = new AbortController();
     controller.abort();
@@ -332,12 +332,12 @@ describe("runAgentProcess", () => {
     expect(result.aborted).toBe(true);
     expect(result.exitCode).toBeNull();
     expect(result.eventCount).toBe(0);
-    // Rien n'a été lancé : aucun fichier de journal n'a même été créé.
+    // Nothing was launched: no log file was even created.
     await expect(readFile(paths.rawLog, "utf8")).rejects.toThrow();
     await expectNoOrphan();
   });
 
-  it("un AbortSignal annule l'exécution avant le timeout", async () => {
+  it("an AbortSignal cancels the execution before the timeout", async () => {
     const { task, paths } = await setupTask(dir, { mode: "hang" });
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 150);

@@ -1,12 +1,12 @@
 /**
- * Sur fixtures fabriquées, jamais sur le catalogue réel (encore vide, voir
- * `agent-assets.generated.ts`) : ce module n'a besoin de rien de plus qu'un
- * `AgentAsset[]` de test pour être exercé en entier — c'est tout l'intérêt du
- * catalogue en paramètre plutôt qu'importé.
+ * On fabricated fixtures, never on the real catalog (still empty, see
+ * `agent-assets.generated.ts`): this module needs nothing more than a test
+ * `AgentAsset[]` to be exercised in full — that is the whole point of the
+ * catalog as a parameter rather than imported.
  *
- * `withFakeHome` recréé localement (motif de `packages/cli/test/support.ts`,
- * ce test-ci vivant dans `core`) : aucun test ne doit toucher au
- * `~/.claude/`, `~/.agents/`, `~/.config/opencode/` réels de la machine.
+ * `withFakeHome` recreated locally (pattern from `packages/cli/test/support.ts`,
+ * this test living in `core`): no test must touch the machine's real
+ * `~/.claude/`, `~/.agents/`, `~/.config/opencode/`.
  */
 import { existsSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -36,13 +36,13 @@ async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
   }
 }
 
-const SKILL_ONLY_CATALOG: AgentAsset[] = [{ kind: "skill", id: "caesar", path: "SKILL.md", content: "# Caesar\nContenu de la skill.\n" }];
+const SKILL_ONLY_CATALOG: AgentAsset[] = [{ kind: "skill", id: "caesar", path: "SKILL.md", content: "# Caesar\nSkill content.\n" }];
 
-const COMMAND_SOURCE = "---\ndescription: Liste les agents.\nallowed-tools: Bash(caesar:*)\nargument-hint: [filtre]\n---\nContenu de la commande.\n";
+const COMMAND_SOURCE = "---\ndescription: Lists the agents.\nallowed-tools: Bash(caesar:*)\nargument-hint: [filter]\n---\nCommand content.\n";
 
 const FULL_CATALOG: AgentAsset[] = [
-  { kind: "skill", id: "caesar", path: "SKILL.md", content: "# Caesar\nContenu de la skill.\n" },
-  { kind: "skill", id: "caesar", path: "references/cli.md", content: "# CLI\nRéférence.\n" },
+  { kind: "skill", id: "caesar", path: "SKILL.md", content: "# Caesar\nSkill content.\n" },
+  { kind: "skill", id: "caesar", path: "references/cli.md", content: "# CLI\nReference.\n" },
   { kind: "command", id: "list-agents", path: "list-agents.md", content: COMMAND_SOURCE },
 ];
 
@@ -56,25 +56,25 @@ const SIX_TOOLS = [
 ];
 
 describe("ASSET_TARGETS", () => {
-  it("une ligne par client de MCP_CLIENTS, sans doublon ni omission", () => {
+  it("one row per MCP_CLIENTS client, without duplicate or omission", () => {
     const clients = ASSET_TARGETS.map((t) => t.client);
     expect(new Set(clients).size).toBe(clients.length);
     expect([...clients].sort()).toEqual([...MCP_CLIENTS].sort());
   });
 
-  it("claude a un skillDir dédié, distinct du partagé ; les quatre autres cibles partagent le même skillDir", () => {
+  it("claude has a dedicated skillDir, distinct from the shared one; the four other targets share the same skillDir", () => {
     const claude = ASSET_TARGETS.find((t) => t.client === "claude")!;
     const others = ASSET_TARGETS.filter((t) => t.client !== "claude");
     expect(others.every((t) => t.skillDir === others[0]!.skillDir)).toBe(true);
     expect(claude.skillDir).not.toBe(others[0]!.skillDir);
   });
 
-  it("seuls claude et opencode déclarent un commandsDir", () => {
+  it("only claude and opencode declare a commandsDir", () => {
     const withCommands = ASSET_TARGETS.filter((t) => t.commandsDir !== undefined).map((t) => t.client);
     expect(withCommands.sort()).toEqual(["claude", "opencode"]);
   });
 
-  it("les chemins littéraux correspondent exactement à la table vérifiée du brief", () => {
+  it("the literal paths match exactly the verified table of the brief", () => {
     expect(ASSET_TARGETS.find((t) => t.client === "claude")).toMatchObject({ skillDir: ".claude/skills/caesar", commandsDir: ".claude/commands" });
     expect(ASSET_TARGETS.find((t) => t.client === "codex")).toMatchObject({ skillDir: ".agents/skills/caesar" });
     expect(ASSET_TARGETS.find((t) => t.client === "copilot")).toMatchObject({ skillDir: ".agents/skills/caesar" });
@@ -94,65 +94,65 @@ describe("planAgentAssets", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("le partagé est produit une seule fois même quand plusieurs cibles le désignent", () => {
+  it("the shared one is produced only once even when several targets designate it", () => {
     const plan = planAgentAssets({ root, scope: "project", clients: ["codex", "antigravity", "copilot"], catalog: SKILL_ONLY_CATALOG });
     expect(plan.files.map((f) => f.path)).toEqual([join(root, ".agents/skills/caesar/SKILL.md")]);
   });
 
-  it("claude reçoit sa copie dédiée, jamais mêlée au partagé", () => {
+  it("claude receives its dedicated copy, never mixed with the shared one", () => {
     const plan = planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: SKILL_ONLY_CATALOG });
     expect(plan.files.map((f) => f.path)).toEqual([join(root, ".claude/skills/caesar/SKILL.md")]);
   });
 
-  it("aucune destination ne sort de la racine visée", () => {
+  it("no destination escapes the targeted root", () => {
     const plan = planAgentAssets({ root, scope: "project", clients: [...MCP_CLIENTS], catalog: FULL_CATALOG });
     expect(plan.files.length).toBeGreaterThan(0);
     for (const file of plan.files) expect(file.path.startsWith(root + sep)).toBe(true);
   });
 
-  it('chemin d\'asset invalide (".." absolu, segment vide) : erreur claire, pas d\'écriture ailleurs', () => {
+  it('invalid asset path ("..", absolute, empty segment): clear error, no write elsewhere', () => {
     const withPath = (path: string): AgentAsset[] => [{ kind: "skill", id: "caesar", path, content: "x" }];
     expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("../evil.md") })).toThrow(/\.\./);
-    expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("/etc/passwd") })).toThrow(/absolu/);
-    expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("a//b.md") })).toThrow(/vide/);
+    expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("/etc/passwd") })).toThrow(/absolute/);
+    expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("a//b.md") })).toThrow(/empty/);
   });
 
-  it("chemin d'asset invalide : contournement par antislash rejeté (segment antislash pur, et mélangé à des '/')", () => {
-    // Le contrat d'AgentAsset.path promet des séparateurs POSIX uniquement :
-    // un antislash n'est jamais une donnée légitime. Un découpage naïf sur
-    // "/" seul laisserait passer cette valeur (aucun "/", donc un unique
-    // segment opaque, ni ".." ni vide) alors qu'elle sort bel et bien de la
-    // racine une fois recombinée par path.join sous Windows — défaut
-    // signalé en revue.
+  it("invalid asset path: backslash workaround rejected (pure backslash segment, and mixed with '/')", () => {
+    // The AgentAsset.path contract promises POSIX separators only:
+    // a backslash is never legitimate data. A naive split on
+    // "/" alone would let this value through (no "/", hence a single
+    // opaque segment, neither ".." nor empty) even though it does escape the
+    // root once recombined by path.join on Windows — defect
+    // flagged in review.
     const withPath = (path: string): AgentAsset[] => [{ kind: "skill", id: "caesar", path, content: "x" }];
-    expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("..\\..\\..\\..\\evil.md") })).toThrow(/antislash/);
-    // Mélange "/" et "\" : la moitié POSIX du chemin ne doit pas suffire à le faire passer.
+    expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("..\\..\\..\\..\\evil.md") })).toThrow(/backslash/);
+    // Mixed "/" and "\": the POSIX half of the path must not be enough to let it through.
     expect(() => planAgentAssets({ root, scope: "project", clients: ["claude"], catalog: withPath("references/..\\..\\evil.md") })).toThrow(
-      /antislash/,
+      /backslash/,
     );
-    // N'écrit rien sous root/ : l'échec est levé avant tout accès disque.
+    // Writes nothing under root/: the failure is thrown before any disk access.
     expect(readdirSync(root)).toEqual([]);
   });
 
-  it("strictement pur : l'arbre reste intact après l'appel", () => {
+  it("strictly pure: the tree remains intact after the call", () => {
     planAgentAssets({ root, scope: "project", clients: [...MCP_CLIENTS], catalog: FULL_CATALOG });
     expect(readdirSync(root)).toEqual([]);
   });
 
-  it("contenu CRLF sur disque vs LF au catalogue → unchanged", async () => {
+  it("CRLF content on disk vs LF in the catalog → unchanged", async () => {
     const dest = join(root, ".agents", "skills", "caesar", "SKILL.md");
     await mkdir(dirname(dest), { recursive: true });
-    await writeFile(dest, "# Caesar\r\nContenu de la skill.\r\n", "utf8");
+    await writeFile(dest, "# Caesar\r\nSkill content.\r\n", "utf8");
 
     const plan = planAgentAssets({ root, scope: "project", clients: ["codex"], catalog: SKILL_ONLY_CATALOG });
     expect(plan.files).toHaveLength(1);
     expect(plan.files[0]!.action).toBe("unchanged");
   });
 
-  it("stale : nomme un orphelin caesar sans le supprimer", async () => {
+  it("stale: names a caesar orphan without deleting it", async () => {
     const orphan = join(root, ".agents", "skills", "caesar", "references", "old.md");
     await mkdir(dirname(orphan), { recursive: true });
-    await writeFile(orphan, "obsolète\n", "utf8");
+    await writeFile(orphan, "obsolete\n", "utf8");
 
     const plan = planAgentAssets({ root, scope: "project", clients: ["codex"], catalog: SKILL_ONLY_CATALOG });
     expect(plan.stale).toContainEqual({ kind: "skill", id: "caesar", path: orphan });
@@ -171,7 +171,7 @@ describe("installAgentAssets", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("crée l'arborescence par cible (dédié, partagé, commandes)", async () => {
+  it("creates the per-target tree (dedicated, shared, commands)", async () => {
     await installAgentAssets({ root, scope: "project", clients: ["claude", "opencode"], catalog: FULL_CATALOG });
 
     expect(await readFile(join(root, ".claude/skills/caesar/SKILL.md"), "utf8")).toContain("# Caesar");
@@ -183,7 +183,7 @@ describe("installAgentAssets", () => {
     expect(opencodeCommand).not.toContain("allowed-tools");
   });
 
-  it("idempotence : un second install identique ne touche pas mtimeMs, et rend \"unchanged\"", async () => {
+  it("idempotence: a second identical install does not touch mtimeMs, and returns \"unchanged\"", async () => {
     await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
     const target = join(root, ".claude", "skills", "caesar", "SKILL.md");
     const before = (await stat(target)).mtimeMs;
@@ -195,18 +195,18 @@ describe("installAgentAssets", () => {
     expect(second.files.find((f) => f.path === target)?.action).toBe("unchanged");
   });
 
-  it("fichier divergent effectivement remplacé (update)", async () => {
+  it("divergent file actually replaced (update)", async () => {
     await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
     const target = join(root, ".claude", "skills", "caesar", "SKILL.md");
-    await writeFile(target, "modifié à la main\n", "utf8");
+    await writeFile(target, "modified by hand\n", "utf8");
 
     const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
 
     expect(result.files.find((f) => f.path === target)?.action).toBe("update");
-    expect(await readFile(target, "utf8")).toBe("# Caesar\nContenu de la skill.\n");
+    expect(await readFile(target, "utf8")).toBe("# Caesar\nSkill content.\n");
   });
 
-  it("fichier supprimé recréé", async () => {
+  it("deleted file recreated", async () => {
     await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
     const target = join(root, ".claude", "skills", "caesar", "SKILL.md");
     await rm(target);
@@ -217,7 +217,7 @@ describe("installAgentAssets", () => {
     expect(result.files.find((f) => f.path === target)?.action).toBe("create");
   });
 
-  it("portée globale sous HOME factice : rien n'est écrit sous root/, tout va sous HOME", async () => {
+  it("global scope under a fake HOME: nothing is written under root/, everything goes under HOME", async () => {
     await withFakeHome(async (home) => {
       await installAgentAssets({ root, scope: "global", clients: ["claude"], catalog: FULL_CATALOG });
 
@@ -227,11 +227,11 @@ describe("installAgentAssets", () => {
     });
   });
 
-  it("stale : orphelin caesar-* nommé, jamais supprimé", async () => {
+  it("stale: caesar-* orphan named, never deleted", async () => {
     const commandsDir = join(root, ".claude", "commands");
     await mkdir(commandsDir, { recursive: true });
     const orphan = join(commandsDir, "caesar-obsolete.md");
-    await writeFile(orphan, "# obsolète\n", "utf8");
+    await writeFile(orphan, "# obsolete\n", "utf8");
 
     const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: FULL_CATALOG });
 
@@ -243,20 +243,20 @@ describe("installAgentAssets", () => {
 describe("renderClaudeCommand / renderOpencodeCommand", () => {
   const source: AgentAsset = { kind: "command", id: "list-agents", path: "list-agents.md", content: COMMAND_SOURCE };
 
-  it("claude : la source, telle quelle", () => {
+  it("claude: the source, as-is", () => {
     expect(renderClaudeCommand(source)).toBe(COMMAND_SOURCE);
   });
 
-  it("opencode : retire allowed-tools et argument-hint, conserve description et le corps", () => {
+  it("opencode: removes allowed-tools and argument-hint, keeps description and the body", () => {
     const rendered = renderOpencodeCommand(source);
-    expect(rendered).toContain("description: Liste les agents.");
+    expect(rendered).toContain("description: Lists the agents.");
     expect(rendered).not.toContain("allowed-tools");
     expect(rendered).not.toContain("argument-hint");
-    expect(rendered).toContain("Contenu de la commande.");
+    expect(rendered).toContain("Command content.");
   });
 });
 
-describe("fusion de <root>/.claude/settings.json", () => {
+describe("merge of <root>/.claude/settings.json", () => {
   let root: string;
 
   beforeEach(async () => {
@@ -267,14 +267,14 @@ describe("fusion de <root>/.claude/settings.json", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("absent : créé avec les six tools", async () => {
+  it("absent: created with the six tools", async () => {
     const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: [] });
     expect(result.settings?.action).toBe("create");
     const written = JSON.parse(await readFile(join(root, ".claude", "settings.json"), "utf8"));
     expect(written.permissions.allow).toEqual(SIX_TOOLS);
   });
 
-  it("append-si-absent, dédoublonnage, tout le reste du fichier préservé (clés inconnues comprises)", async () => {
+  it("append-if-absent, deduplication, everything else in the file preserved (unknown keys included)", async () => {
     const path = join(root, ".claude", "settings.json");
     await mkdir(dirname(path), { recursive: true });
     await writeFile(
@@ -295,7 +295,7 @@ describe("fusion de <root>/.claude/settings.json", () => {
     for (const tool of SIX_TOOLS) expect(written.permissions.allow).toContain(tool);
   });
 
-  it("deuxième passage : idempotence stricte, aucune écriture (mtimeMs)", async () => {
+  it("second pass: strict idempotence, no write (mtimeMs)", async () => {
     await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: [] });
     const path = join(root, ".claude", "settings.json");
     const before = (await stat(path)).mtimeMs;
@@ -308,10 +308,10 @@ describe("fusion de <root>/.claude/settings.json", () => {
     expect(second.settings?.added).toEqual([]);
   });
 
-  it("JSON invalide : avertissement rendu à l'appelant, fichier intact", async () => {
+  it("invalid JSON: warning returned to the caller, file intact", async () => {
     const path = join(root, ".claude", "settings.json");
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, "{ ceci n'est pas du JSON", "utf8");
+    await writeFile(path, "{ this is not JSON", "utf8");
     const before = await readFile(path, "utf8");
 
     const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: [] });
@@ -321,7 +321,7 @@ describe("fusion de <root>/.claude/settings.json", () => {
     expect(await readFile(path, "utf8")).toBe(before);
   });
 
-  it('"permissions" présent mais non-objet (chaîne) : avertissement, fichier intact, pas de fusion silencieuse', async () => {
+  it('"permissions" present but non-object (string): warning, file intact, no silent merge', async () => {
     const path = join(root, ".claude", "settings.json");
     await mkdir(dirname(path), { recursive: true });
     const before = JSON.stringify({ permissions: "foo" });
@@ -334,7 +334,7 @@ describe("fusion de <root>/.claude/settings.json", () => {
     expect(await readFile(path, "utf8")).toBe(before);
   });
 
-  it('"permissions": null (posé à la main par l\'utilisateur) : avertissement, jamais écrasé silencieusement', async () => {
+  it('"permissions": null (placed by hand by the user): warning, never silently overwritten', async () => {
     const path = join(root, ".claude", "settings.json");
     await mkdir(dirname(path), { recursive: true });
     const before = JSON.stringify({ permissions: null });
@@ -347,10 +347,10 @@ describe("fusion de <root>/.claude/settings.json", () => {
     expect(await readFile(path, "utf8")).toBe(before);
   });
 
-  it('"permissions.allow" présent mais non-liste : avertissement, fichier intact', async () => {
+  it('"permissions.allow" present but non-list: warning, file intact', async () => {
     const path = join(root, ".claude", "settings.json");
     await mkdir(dirname(path), { recursive: true });
-    const before = JSON.stringify({ permissions: { allow: "tout" } });
+    const before = JSON.stringify({ permissions: { allow: "everything" } });
     await writeFile(path, before, "utf8");
 
     const result = await installAgentAssets({ root, scope: "project", clients: ["claude"], catalog: [] });
@@ -360,7 +360,7 @@ describe("fusion de <root>/.claude/settings.json", () => {
     expect(await readFile(path, "utf8")).toBe(before);
   });
 
-  it("portée globale : ~/.claude/settings.json n'est jamais touché", async () => {
+  it("global scope: ~/.claude/settings.json is never touched", async () => {
     await withFakeHome(async (home) => {
       const result = await installAgentAssets({ root, scope: "global", clients: ["claude"], catalog: [] });
       expect(result.settings).toBeUndefined();
@@ -369,7 +369,7 @@ describe("fusion de <root>/.claude/settings.json", () => {
     });
   });
 
-  it("scope projet mais claude absent des cibles : pas de fusion", async () => {
+  it("project scope but claude absent from the targets: no merge", async () => {
     const result = await installAgentAssets({ root, scope: "project", clients: ["codex"], catalog: [] });
     expect(result.settings).toBeUndefined();
     expect(existsSync(join(root, ".claude", "settings.json"))).toBe(false);

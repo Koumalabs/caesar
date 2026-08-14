@@ -1,31 +1,30 @@
 /**
- * Chrome général du TUI de configuration : onglets, portée d'édition,
- * enregistrement, aide.
+ * General chrome of the configuration TUI: tabs, editing scope, saving,
+ * help.
  *
- * Trois zones, toujours aux mêmes places — c'est ce qui rend l'écran
- * lisible : un bandeau (où je suis), le corps (ce que je règle), un pied
- * (ce que "s" écrira, et ce que je peux taper maintenant).
+ * Three zones, always in the same places — that is what makes the screen
+ * readable: a banner (where I am), the body (what I am adjusting), a
+ * footer (what "s" will write, and what I can type right now).
  *
- * `Tab`/`Maj-Tab` change d'écran, `1`-`4` y va directement, `s` enregistre
- * les modifications en attente sur la couche active (jamais implicitement),
- * `p` fait cycler la **portée d'édition** (global → projet → local), `q`
- * quitte (avec confirmation si des modifications sont en attente), `?`
- * affiche l'aide.
+ * `Tab`/`Shift-Tab` switches screens, `1`-`4` jumps straight to one, `s`
+ * saves the pending changes on the active layer (never implicitly), `p`
+ * cycles the **editing scope** (global → project → local), `q` quits
+ * (with confirmation if changes are pending), `?` shows the help.
  *
- * La portée est l'information la plus importante de cet écran dès lors qu'on
- * peut écrire à trois endroits : elle reste visible en permanence, avec le
- * **chemin du fichier** que "s" écrira — savoir « couche projet » ne dit pas
- * où c'est, et c'est justement ce qu'on veut vérifier avant d'enregistrer.
- * Sa couleur est propre à chaque couche, « global » en rouge : c'est
- * l'erreur la plus difficile à défaire (modifier par mégarde un réglage qui
- * vaut pour tous les projets en croyant régler celui-ci). Changer de portée
- * avec des modifications en attente demande confirmation avant de les
- * abandonner — même principe que la confirmation de sortie.
+ * The scope is the most important piece of information on this screen once
+ * writing can happen in three places: it stays visible at all times, along
+ * with the **file path** that "s" will write — knowing "project layer"
+ * does not say where that is, and that is precisely what one wants to
+ * check before saving. Its color is specific to each layer, "global" in
+ * red: it is the hardest mistake to undo (accidentally editing a setting
+ * that applies to every project while believing you are adjusting this
+ * one). Switching scope with pending changes asks for confirmation before
+ * discarding them — same principle as the quit confirmation.
  *
- * Cet écran doit être utile immédiatement : `state` charge vite (trois
- * fichiers TOML locaux) et s'affiche dès qu'il est prêt, sans attendre la
- * détection d'installation des agents, réellement lente (elle sonde chaque
- * binaire). Celle-ci se charge une seule fois ici, jamais à chaque frappe.
+ * This screen must be useful immediately: `state` loads fast (three local
+ * TOML files) and is displayed as soon as it is ready, without waiting for
+ * the agent installation detection, which is genuinely slow (it probes
+ * every binary). That detection loads once here, never on each keystroke.
  */
 import { useEffect, useState } from "react";
 import { TextAttributes } from "@opentui/core";
@@ -52,7 +51,7 @@ import {
   type ConfigState,
 } from "./state/config-state";
 
-/** Couleur de la marque de portée — « global » en rouge : c'est l'erreur la plus difficile à défaire. */
+/** Color of the scope mark — "global" in red: it is the hardest mistake to undo. */
 const SCOPE_COLOR: Record<ConfigScope, string> = { global: BAD, project: ACCENT, local: "#C792EA" };
 
 export interface AppProps {
@@ -60,7 +59,7 @@ export interface AppProps {
   renderer: CliRenderer;
 }
 
-const TABS = ["Agents", "Rôles", "Politique", "Intégrations"] as const;
+const TABS = ["Agents", "Roles", "Policy", "Integrations"] as const;
 
 export function App({ root, renderer }: AppProps) {
   const { width } = useTerminalDimensions();
@@ -82,18 +81,18 @@ export function App({ root, renderer }: AppProps) {
   }, [root]);
 
   useEffect(() => {
-    // Une seule détection, au montage — jamais relancée à chaque frappe.
-    // `detectAgentInstallation` (`@caesar/core`) est la même détection
-    // que `caesar doctor`/`caesar agents list` font, pas une réécriture.
+    // A single detection, on mount — never rerun on each keystroke.
+    // `detectAgentInstallation` (`@caesar/core`) is the same detection
+    // that `caesar doctor`/`caesar agents list` perform, not a rewrite.
     void Promise.all(listAgentDefinitions().map(async (def) => [def.id, await detectAgentInstallation(def)] as const))
       .then((entries) => setInstalledStatus(new Map(entries)))
       .catch(() => {
-        // Dormant aujourd'hui : `detectAgentInstallation` avale déjà ses
-        // propres erreurs. Ce filet reste nécessaire pour que ce comportement
-        // ne devienne pas un détail d'implémentation dont dépendrait
-        // silencieusement l'écran — sans lui, tous les écrans resteraient
-        // bloqués sur « détection en cours » si un appel se mettait un jour à
-        // lever. Un statut vide dégrade proprement.
+        // Dormant today: `detectAgentInstallation` already swallows its
+        // own errors. This net remains necessary so that this behavior
+        // does not become an implementation detail the screen silently
+        // depends on — without it, every screen would stay stuck on
+        // "detection in progress" if a call ever started throwing. An
+        // empty status degrades cleanly.
         setInstalledStatus(new Map());
       });
   }, []);
@@ -108,9 +107,9 @@ export function App({ root, renderer }: AppProps) {
     try {
       const saved = await saveConfigState(root, state);
       setState(saved);
-      // Chemin raccourci par la gauche : le message tient alors sur une
-      // ligne, et la barre d'état juste dessous en porte la version entière.
-      notify(`Enregistré dans ${elideLeft(activeScopePath(root, saved), 52)} (couche ${scopeLabel(saved.activeScope)}).`);
+      // Path elided from the left: the message then fits on one line, and
+      // the status bar just below carries the full version.
+      notify(`Saved to ${elideLeft(activeScopePath(root, saved), 52)} (${scopeLabel(saved.activeScope)} layer).`);
     } catch (error) {
       notify(error instanceof Error ? error.message : String(error), true);
     } finally {
@@ -123,7 +122,7 @@ export function App({ root, renderer }: AppProps) {
     process.exit(0);
   }
 
-  /** Bascule vers la portée suivante — jamais sans confirmation si des modifications sont en attente. */
+  /** Switches to the next scope — never without confirmation if changes are pending. */
   function switchScope(): void {
     if (!state) return;
     if (isDirty(state)) {
@@ -139,10 +138,9 @@ export function App({ root, renderer }: AppProps) {
   }
 
   useKeyboard((key) => {
-    // Un champ texte, l'éditeur de prompt ou une fenêtre modale possède le
-    // clavier : ce gestionnaire global ne doit rien intercepter (sinon taper
-    // "s" dans un nom de rôle déclencherait un enregistrement, entre autres
-    // surprises).
+    // A text field, the prompt editor or a modal window owns the keyboard:
+    // this global handler must intercept nothing (otherwise typing "s" in
+    // a role name would trigger a save, among other surprises).
     if (editingText || showHelp || showQuitConfirm || showScopeConfirm) return;
 
     if (key.name === "tab" && key.shift) setTab((t) => (t - 1 + TABS.length) % TABS.length);
@@ -151,11 +149,11 @@ export function App({ root, renderer }: AppProps) {
     else if (key.name === "s") void handleSave();
     else if (key.name === "p") switchScope();
     else if (key.name === "q" || (key.name === "c" && key.ctrl)) {
-      // "q" et Ctrl+C empruntent exactement le même chemin : `main.tsx`
-      // désactive la sortie automatique d'OpenTUI sur Ctrl+C
-      // (`exitOnCtrlC: false`) précisément pour que ce garde-fou s'applique
-      // aussi à lui — sinon les modifications en attente seraient perdues
-      // sans confirmation, le pire défaut possible pour cet outil.
+      // "q" and Ctrl+C take exactly the same path: `main.tsx` disables
+      // OpenTUI's automatic exit on Ctrl+C (`exitOnCtrlC: false`)
+      // precisely so that this safeguard also applies to it — otherwise
+      // pending changes would be lost without confirmation, the worst
+      // possible flaw for this tool.
       if (state && isDirty(state)) setShowQuitConfirm(true);
       else quit();
     } else if (key.name === "?") setShowHelp(true);
@@ -165,25 +163,25 @@ export function App({ root, renderer }: AppProps) {
   const dirty = state ? isDirty(state) : false;
   const scope = state?.activeScope ?? "project";
 
-  // Barre d'état : trois informations sur une seule ligne, dont un chemin de
-  // longueur imprévisible. Les largeurs se calculent ici plutôt que d'être
-  // laissées au repli du terminal, qui coupait le sélecteur de portée en deux.
-  // -4 : le remplissage gauche et droit de la boîte racine, plus une
-  // colonne de garde — une ligne exactement à la largeur du terminal perdait
-  // son dernier caractère à la capture.
+  // Status bar: three pieces of information on a single line, including a
+  // path of unpredictable length. Widths are computed here rather than left
+  // to the terminal's wrapping, which used to cut the scope selector in two.
+  // -4: the root box's left and right padding, plus one guard column — a
+  // line exactly as wide as the terminal lost its last character in the
+  // capture.
   const contentWidth = Math.max(20, width - 4);
-  const scopeChip = ` PORTÉE : ${scopeLabel(scope).toUpperCase()} `;
-  const statusText = saving ? "enregistrement…" : dirty ? "● modifications non enregistrées" : "✓ tout est enregistré";
+  const scopeChip = ` SCOPE: ${scopeLabel(scope).toUpperCase()} `;
+  const statusText = saving ? "saving…" : dirty ? "● unsaved changes" : "✓ all changes saved";
   const scopePath = state ? activeScopePath(root, state) : "";
-  const pathRoom = contentWidth - scopeChip.length - 2 - statusText.length - 3 - '"s" écrit dans '.length;
+  const pathRoom = contentWidth - scopeChip.length - 2 - statusText.length - 3 - '"s" writes to '.length;
 
   return (
     <box flexDirection="column" width="100%" height="100%" paddingLeft={1} paddingRight={1}>
       <box flexDirection="row" flexShrink={0}>
         <text attributes={TextAttributes.BOLD}>caesar config</text>
-        {/* La racine est raccourcie par la gauche : sa fin — le nom du projet —
-            est ce qui renseigne, et un chemin long repliait sinon le bandeau
-            sur deux lignes. */}
+        {/* The root is elided from the left: its end — the project name —
+            is what informs, and a long path otherwise wrapped the banner
+            onto two lines. */}
         <text fg={DIM}>{`  ${elideLeft(root, Math.max(12, contentWidth - "caesar config  ".length))}`}</text>
       </box>
 
@@ -203,9 +201,9 @@ export function App({ root, renderer }: AppProps) {
 
       <box flexDirection="column" flexGrow={1} overflow="hidden">
         {loadError ? (
-          <text fg={BAD}>Impossible de charger la configuration : {loadError}</text>
+          <text fg={BAD}>Cannot load the configuration: {loadError}</text>
         ) : !state ? (
-          <text fg={WARN}>Chargement de la configuration…</text>
+          <text fg={WARN}>Loading the configuration…</text>
         ) : showHelp ? (
           <HelpOverlay onClose={() => setShowHelp(false)} />
         ) : showQuitConfirm ? (
@@ -244,9 +242,9 @@ export function App({ root, renderer }: AppProps) {
 
       {message ? (
         <box flexDirection="column" marginTop={1} flexShrink={0}>
-          {/* Replié à la main plutôt que laissé au terminal : un message long
-              (un motif de refus, un chemin) recouvrait sinon la barre d'état
-              en se repliant par-dessus. */}
+          {/* Wrapped by hand rather than left to the terminal: a long
+              message (a refusal reason, a path) otherwise wrapped over the
+              status bar and covered it. */}
           {wrap(`${message.isError ? "✗" : "✓"} ${message.text}`, contentWidth)
             .slice(0, 2)
             .map((line, index) => (
@@ -262,23 +260,23 @@ export function App({ root, renderer }: AppProps) {
           {scopeChip}
         </text>
         <text fg={saving || dirty ? WARN : OK}>{`  ${statusText}`}</text>
-        {/* Le chemin, et pas seulement le nom de la couche : « couche projet »
-            ne dit pas *où*, et c'est justement ce qu'on veut vérifier avant
-            d'appuyer sur "s". Raccourci par la gauche pour tenir sur la ligne :
-            trois `<text>` d'une largeur cumulée supérieure à celle du terminal
-            se repliaient, et coupaient « PORTÉE : PROJET » en deux. */}
+        {/* The path, and not just the layer name: "project layer" does not
+            say *where*, and that is precisely what one wants to check
+            before pressing "s". Elided from the left to fit on the line:
+            three `<text>` whose cumulative width exceeded the terminal's
+            wrapped, and cut "SCOPE: PROJECT" in two. */}
         {pathRoom >= 24 ? (
-          <text fg={DIM}>{`   "s" écrit dans ${elideLeft(scopePath, pathRoom)}`}</text>
+          <text fg={DIM}>{`   "s" writes to ${elideLeft(scopePath, pathRoom)}`}</text>
         ) : null}
       </box>
 
       <KeyHints
         hints={[
-          { key: "Tab", label: "écran" },
-          { key: "s", label: "enregistrer" },
-          { key: "p", label: "changer de portée" },
-          { key: "?", label: "aide" },
-          { key: "q", label: "quitter" },
+          { key: "Tab", label: "screen" },
+          { key: "s", label: "save" },
+          { key: "p", label: "switch scope" },
+          { key: "?", label: "help" },
+          { key: "q", label: "quit" },
         ]}
       />
     </box>
@@ -288,35 +286,35 @@ export function App({ root, renderer }: AppProps) {
 function HelpOverlay({ onClose }: { onClose: () => void }) {
   useKeyboard(() => onClose());
   return (
-    <box flexDirection="column" border borderStyle="double" borderColor={ACCENT} title=" Aide — une touche pour fermer " paddingLeft={1} paddingRight={1}>
-      <text attributes={TextAttributes.BOLD}>Partout</text>
-      <text>{"  Tab / Maj-Tab, ou 1-4 : changer d'écran"}</text>
-      <text>{"  s : enregistrer les modifications en attente sur la couche active"}</text>
-      <text>{"  p : changer de portée d'édition (global → projet → local)"}</text>
-      <text fg={DIM}>{"      Ce que \"s\" enregistre. Confirmation si des modifications sont en attente."}</text>
-      <text>{"  q ou Ctrl+C : quitter (confirmation si des modifications sont en attente)"}</text>
-      <text fg={FAINT}>{"  Rien n'est écrit sur disque avant \"s\" — sauf le prompt système, voir Rôles."}</text>
+    <box flexDirection="column" border borderStyle="double" borderColor={ACCENT} title=" Help — any key to close " paddingLeft={1} paddingRight={1}>
+      <text attributes={TextAttributes.BOLD}>Everywhere</text>
+      <text>{"  Tab / Shift-Tab, or 1-4: switch screens"}</text>
+      <text>{"  s: save the pending changes on the active layer"}</text>
+      <text>{"  p: switch the editing scope (global → project → local)"}</text>
+      <text fg={DIM}>{"      What \"s\" saves. Confirmation if changes are pending."}</text>
+      <text>{"  q or Ctrl+C: quit (confirmation if changes are pending)"}</text>
+      <text fg={FAINT}>{"  Nothing is written to disk before \"s\" — except the system prompt, see Roles."}</text>
       <text> </text>
 
       <text attributes={TextAttributes.BOLD}>Agents</text>
-      <text>{"  ↑↓ : agent · Espace : autoriser / refuser · Entrée : éditer un agent déclaré"}</text>
-      <text>{"  n : déclarer un CLI hors catalogue · x : retirer une déclaration"}</text>
-      <text fg={DIM}>{"      Autoriser et déclarer sont deux gestes différents : le premier écrit une"}</text>
-      <text fg={DIM}>{"      liste de la politique, le second ajoute un agent au catalogue."}</text>
+      <text>{"  ↑↓: agent · Space: allow / deny · Enter: edit a declared agent"}</text>
+      <text>{"  n: declare a CLI outside the catalog · x: remove a declaration"}</text>
+      <text fg={DIM}>{"      Allowing and declaring are two different gestures: the first writes a"}</text>
+      <text fg={DIM}>{"      policy list, the second adds an agent to the catalog."}</text>
       <text> </text>
 
-      <text attributes={TextAttributes.BOLD}>Rôles</text>
-      <text>{"  ↑↓ : rôle · Entrée : entrer dans les champs · n : nouveau · x : supprimer"}</text>
-      <text>{"  Dans les champs : Entrée modifie, Échap revient. Sur « Agents », Entrée ouvre"}</text>
-      <text>{"  l'ordre de repli — Maj+J/Maj+K déplace, a ajoute, r retire."}</text>
-      <text>{"  Sur « Prompt système » : Entrée ouvre l'éditeur (Ctrl+S écrit le fichier),"}</text>
-      <text>{"  f change le chemin du fichier."}</text>
+      <text attributes={TextAttributes.BOLD}>Roles</text>
+      <text>{"  ↑↓: role · Enter: enter the fields · n: new · x: delete"}</text>
+      <text>{"  In the fields: Enter edits, Esc goes back. On \"Agents\", Enter opens the"}</text>
+      <text>{"  fallback order — Shift+J/Shift+K moves, a adds, r removes."}</text>
+      <text>{"  On \"System prompt\": Enter opens the editor (Ctrl+S writes the file),"}</text>
+      <text>{"  f changes the file path."}</text>
       <text> </text>
 
-      <text attributes={TextAttributes.BOLD}>Politique</text>
-      <text>{"  ↑↓ : réglage · Entrée : modifier ou ouvrir la liste · a ajoute, r retire"}</text>
-      <text attributes={TextAttributes.BOLD}>Intégrations</text>
-      <text>{"  ↑↓ : client · Entrée : installer / mettre à jour l'enregistrement MCP"}</text>
+      <text attributes={TextAttributes.BOLD}>Policy</text>
+      <text>{"  ↑↓: setting · Enter: edit or open the list · a adds, r removes"}</text>
+      <text attributes={TextAttributes.BOLD}>Integrations</text>
+      <text>{"  ↑↓: client · Enter: install / update the MCP registration"}</text>
     </box>
   );
 }
@@ -327,17 +325,17 @@ function QuitConfirmOverlay({ onConfirm, onCancel }: { onConfirm: () => void; on
     else if (key.name === "n" || key.name === "escape") onCancel();
   });
   return (
-    <box flexDirection="column" border borderStyle="double" borderColor={BAD} title=" Modifications non enregistrées " paddingLeft={1} paddingRight={1}>
-      <text>Des modifications ne sont pas enregistrées. Quitter quand même ?</text>
-      <text fg={DIM}>o : quitter sans enregistrer · n / Échap : annuler</text>
+    <box flexDirection="column" border borderStyle="double" borderColor={BAD} title=" Unsaved changes " paddingLeft={1} paddingRight={1}>
+      <text>Some changes are not saved. Quit anyway?</text>
+      <text fg={DIM}>y: quit without saving · n / Esc: cancel</text>
     </box>
   );
 }
 
 /**
- * Changer de portée avec des modifications en attente les abandonnerait
- * silencieusement (elles ne portent que sur la couche active) : ce garde-fou
- * demande confirmation avant, même principe que `QuitConfirmOverlay`.
+ * Switching scope with pending changes would silently discard them (they
+ * only concern the active layer): this safeguard asks for confirmation
+ * first, same principle as `QuitConfirmOverlay`.
  */
 function ScopeConfirmOverlay({
   from,
@@ -355,12 +353,12 @@ function ScopeConfirmOverlay({
     else if (key.name === "n" || key.name === "escape") onCancel();
   });
   return (
-    <box flexDirection="column" border borderStyle="double" borderColor={BAD} title=" Modifications non enregistrées " paddingLeft={1} paddingRight={1}>
+    <box flexDirection="column" border borderStyle="double" borderColor={BAD} title=" Unsaved changes " paddingLeft={1} paddingRight={1}>
       <text>
-        Les modifications en attente sur la couche {scopeLabel(from)} ne sont pas enregistrées. Basculer vers la couche{" "}
-        {scopeLabel(to)} les abandonnera. Continuer ?
+        The pending changes on the {scopeLabel(from)} layer are not saved. Switching to the {scopeLabel(to)} layer will
+        discard them. Continue?
       </text>
-      <text fg={DIM}>o : changer de portée sans enregistrer · n / Échap : annuler</text>
+      <text fg={DIM}>y: switch scope without saving · n / Esc: cancel</text>
     </box>
   );
 }

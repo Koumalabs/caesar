@@ -3,13 +3,13 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["packages/*/src/**/*.test.ts", "packages/*/test/**/*.test.ts"],
-    // `packages/tui` est le seul package du monorepo qui tourne sous Bun
-    // (voir son brief) : ses tests importent "bun:test", que vitest/Node ne
-    // sait pas résoudre, et certains montent un renderer OpenTUI natif. Ils
-    // tournent sous `bun test`, jamais ici.
+    // `packages/tui` is the only package in the monorepo that runs under Bun
+    // (see its brief): its tests import "bun:test", which vitest/Node cannot
+    // resolve, and some of them mount a native OpenTUI renderer. They run
+    // under `bun test`, never here.
     exclude: ["**/node_modules/**", "packages/tui/**"],
     environment: "node",
-    // Les tests d'intégration lancent de vrais CLIs d'agents : ils sont lents.
+    // Integration tests launch real agent CLIs: they are slow.
     testTimeout: 30_000,
   },
 });

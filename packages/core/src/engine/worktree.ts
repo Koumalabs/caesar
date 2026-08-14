@@ -1,9 +1,9 @@
 /**
- * Isolation git : chaque tâche isolée s'exécute dans un worktree jetable, sur
- * une branche dédiée, jamais commitée par le moteur. C'est ce qui rend la
- * règle d'isolation `"auto"` du runner constatable plutôt que déclarative :
- * un agent qui écrit malgré une consigne de lecture seule laisse une trace
- * que `git diff` révèle, contenue hors du dépôt principal.
+ * Git isolation: each isolated task runs in a disposable worktree, on
+ * a dedicated branch, never committed by the engine. This is what makes the
+ * runner's `"auto"` isolation rule observable rather than declarative:
+ * an agent that writes despite a read-only instruction leaves a trace
+ * that `git diff` reveals, contained outside the main repository.
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -18,7 +18,7 @@ import { isUnderPath } from "./materialize.js";
 
 const execFileAsync = promisify(execFile);
 
-/** Racine du dépôt git contenant `dir`, ou `null` si `dir` n'est pas dans un dépôt git. */
+/** Root of the git repository containing `dir`, or `null` if `dir` is not inside a git repository. */
 export async function repoRoot(dir: string): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync("git", ["-C", dir, "rev-parse", "--show-toplevel"]);
@@ -29,13 +29,13 @@ export async function repoRoot(dir: string): Promise<string | null> {
 }
 
 /**
- * Vrai si le dépôt porte au moins un commit.
+ * True if the repository carries at least one commit.
  *
- * Un dépôt fraîchement initialisé n'en porte aucun : sa branche n'est pas née et
- * `HEAD` ne désigne rien. `git worktree add … HEAD` y échoue alors sur un
- * `fatal: invalid reference: HEAD` que rien ne rattache à sa cause. Le cas se
- * distingue de « ce n'est pas un dépôt git » — `repoRoot` réussit — et appelle
- * un autre remède : un premier commit.
+ * A freshly initialized repository carries none: its branch is unborn and
+ * `HEAD` points to nothing. `git worktree add … HEAD` then fails there with a
+ * `fatal: invalid reference: HEAD` that nothing ties to its cause. The case
+ * is distinct from "this is not a git repository" — `repoRoot` succeeds — and
+ * calls for a different remedy: a first commit.
  */
 export async function hasCommits(repo: string): Promise<boolean> {
   try {
@@ -47,17 +47,17 @@ export async function hasCommits(repo: string): Promise<boolean> {
 }
 
 /**
- * Racine du dépôt contenant `dir`, mais **seulement s'il peut réellement
- * accueillir un worktree** — donc `null` aussi bien hors dépôt que dans un
- * dépôt sans le moindre commit.
+ * Root of the repository containing `dir`, but **only if it can actually
+ * host a worktree** — hence `null` both outside a repository and in a
+ * repository without a single commit.
  *
- * C'est la question que se posent les deux points qui décident de l'isolation
- * (`resolveDelegation` et `prepareIsolation`), et ils se la posaient chacun à
- * leur façon. La composer ici une fois évite qu'ils divergent : un `inplace`
- * refusé tôt puis accepté tard — ou l'inverse — ne serait pas un durcissement
- * mais une incohérence. `prepareIsolation` garde son propre découpage, parce
- * qu'il doit distinguer les deux causes pour en nommer le remède ; ici, seule
- * compte la conclusion.
+ * This is the question the two points that decide isolation ask themselves
+ * (`resolveDelegation` and `prepareIsolation`), and they each used to ask it
+ * their own way. Composing it here once keeps them from diverging: an
+ * `inplace` refused early then accepted late — or the reverse — would not be
+ * a hardening but an inconsistency. `prepareIsolation` keeps its own
+ * breakdown, because it must distinguish the two causes to name their
+ * remedy; here, only the conclusion matters.
  */
 export async function usableRepoRoot(dir: string): Promise<string | null> {
   const root = await repoRoot(dir);
@@ -66,24 +66,24 @@ export async function usableRepoRoot(dir: string): Promise<string | null> {
 }
 
 /**
- * Vrai si git ignore le worktree que la tâche `taskId` va occuper.
+ * True if git ignores the worktree that task `taskId` is about to occupy.
  *
- * L'étape 0 du skill `superpowers:using-git-worktrees` — « MUST verify
- * directory is ignored before creating worktree ». `caesar init` inscrit
- * `.caesar/wt/` dans le `.gitignore` et plus personne ne revérifie ; un
- * `.gitignore` réécrit à la main, ou un projet initialisé par une version
- * antérieure, laisse le worktree visible du dépôt principal.
+ * Step 0 of the `superpowers:using-git-worktrees` skill — "MUST verify
+ * directory is ignored before creating worktree". `caesar init` writes
+ * `.caesar/wt/` into the `.gitignore` and nobody rechecks; a
+ * hand-rewritten `.gitignore`, or a project initialized by an earlier
+ * version, leaves the worktree visible to the main repository.
  *
- * La question est posée sur le **chemin exact à créer**, et non sur le
- * répertoire qui le contient : vérifié, un motif terminé par un slash
- * (`.caesar/wt/`, celui que `caesar init` écrit) ne s'applique à `.caesar/wt` qu'à la
- * condition que ce répertoire existe déjà sur le disque — un motif de
- * répertoire ne peut pas s'appliquer à ce que git ne sait pas être un
- * répertoire. Interroger le chemin qu'on s'apprête à occuper évite entièrement
- * la question, et répond à celle qui compte vraiment.
+ * The question is asked about the **exact path to be created**, not about the
+ * directory containing it: verified, a pattern ending with a slash
+ * (`.caesar/wt/`, the one `caesar init` writes) only applies to `.caesar/wt` on
+ * the condition that this directory already exists on disk — a directory
+ * pattern cannot apply to what git does not know to be a
+ * directory. Querying the path we are about to occupy sidesteps the question
+ * entirely, and answers the one that actually matters.
  *
- * `--no-index` pour que la réponse porte sur les règles, indépendamment de ce
- * que l'index contient déjà.
+ * `--no-index` so that the answer is about the rules, independently of what
+ * the index already contains.
  */
 export async function worktreesDirIgnored(repo: string, taskId: string): Promise<boolean> {
   try {
@@ -95,57 +95,57 @@ export async function worktreesDirIgnored(repo: string, taskId: string): Promise
 }
 
 /**
- * Décrit le décalage entre la racine sur laquelle l'orchestrateur délègue et
- * celle où l'appelant travaille réellement — `null` quand les deux coïncident,
- * ce qui est le cas ordinaire.
+ * Describes the gap between the root the orchestrator delegates on and
+ * the one where the caller actually works — `null` when the two coincide,
+ * which is the ordinary case.
  *
- * `caesar mcp install` enregistre `--root <chemin>` une fois pour toutes
- * (`mcp-registration.ts`), et `caesar_delegate` impose ce chemin comme workspace
- * de chaque tâche. Tant que l'agent principal travaille là où l'installation a
- * été faite, tout concorde. Mais qu'il passe lui-même dans un worktree — ce
- * que le skill `superpowers:using-git-worktrees` lui recommande justement de
- * faire — et l'orchestrateur continue de déléguer sur le dépôt d'origine :
- * les sous-agents travaillent dans un arbre que plus personne ne regarde, et
- * leurs diffs s'appliquent à côté de la branche en cours.
+ * `caesar mcp install` registers `--root <path>` once and for all
+ * (`mcp-registration.ts`), and `caesar_delegate` imposes that path as the
+ * workspace of every task. As long as the main agent works where the install
+ * was done, everything lines up. But let it move into a worktree itself —
+ * which the `superpowers:using-git-worktrees` skill precisely recommends it
+ * do — and the orchestrator keeps delegating on the original repository:
+ * the sub-agents work in a tree nobody is looking at anymore, and
+ * their diffs apply beside the current branch.
  *
- * Comparaison sur la racine du worktree (`repoRoot`), non sur le dépôt commun :
- * deux worktrees d'un même dépôt sont précisément le cas à signaler.
- * Silencieux quand le répertoire courant n'est pas dans un dépôt — il n'y a
- * alors aucune raison de croire qu'il désigne un lieu de travail.
+ * Comparison on the worktree root (`repoRoot`), not on the common repository:
+ * two worktrees of the same repository are precisely the case to flag.
+ * Silent when the current directory is not inside a repository — there is
+ * then no reason to believe it designates a place of work.
  */
 export async function describeWorkspaceMismatch(sessionRoot: string, cwd: string): Promise<string | null> {
   const [here, there] = await Promise.all([repoRoot(cwd), repoRoot(sessionRoot)]);
   if (here === null || there === null || here === there) return null;
 
   return (
-    `L'orchestrateur délègue sur "${sessionRoot}", mais le répertoire de travail courant relève du dépôt "${here}". ` +
-    `Les sous-agents travailleront donc dans un arbre différent du vôtre, et leurs modifications n'apparaîtront pas ` +
-    `là où vous les attendez. Relancez "caesar mcp install" depuis "${here}", ou lancez "caesar mcp serve --root ${here}".`
+    `The orchestrator delegates on "${sessionRoot}", but the current working directory belongs to repository "${here}". ` +
+    `The sub-agents will therefore work in a different tree from yours, and their modifications will not appear ` +
+    `where you expect them. Rerun "caesar mcp install" from "${here}", or run "caesar mcp serve --root ${here}".`
   );
 }
 
 export interface GitWorktreeEntry {
   path: string;
-  /** Nom court de la branche (`caesar/t_…`), absent pour un worktree en HEAD détaché. */
+  /** Short branch name (`caesar/t_…`), absent for a worktree on a detached HEAD. */
   branch?: string;
 }
 
 /**
- * Les worktrees que git connaît réellement pour ce dépôt, chemin **et**
- * branche — `git worktree list --porcelain`, la seule source de vérité sur le
- * sujet.
+ * The worktrees git actually knows for this repository, path **and**
+ * branch — `git worktree list --porcelain`, the only source of truth on the
+ * matter.
  *
- * `caesar gc` déduisait la branche d'un worktree orphelin de son nom de
- * répertoire (`caesar/<dirname>`). C'était vrai tant que les deux étaient
- * construits ensemble par `createWorktree` ; ça cesse de l'être dès que le nom
- * de branche gagne la moindre indépendance — et une supposition qui ne tient
- * que par coïncidence finit par laisser des branches derrière elle. Le
- * répertoire, lui, reste listé par git même quand son arborescence a été
- * effacée à la main : `git worktree list` le rapporte avec `prunable`, et
- * c'est aussi ce qui permet de le nettoyer.
+ * `caesar gc` used to infer an orphan worktree's branch from its directory
+ * name (`caesar/<dirname>`). That was true as long as both were
+ * built together by `createWorktree`; it stops being true as soon as the
+ * branch name gains the slightest independence — and an assumption that only
+ * holds by coincidence ends up leaving branches behind. The
+ * directory, for its part, remains listed by git even when its tree has been
+ * erased by hand: `git worktree list` reports it with `prunable`, and
+ * that is also what allows cleaning it up.
  *
- * Le premier worktree rendu par git est toujours le dépôt principal lui-même :
- * l'appelant doit le filtrer, ici par l'emplacement (`.caesar/wt/`).
+ * The first worktree returned by git is always the main repository itself:
+ * the caller must filter it out, here by location (`.caesar/wt/`).
  */
 export async function listGitWorktrees(repo: string): Promise<GitWorktreeEntry[]> {
   let stdout: string;
@@ -162,8 +162,8 @@ export async function listGitWorktrees(repo: string): Promise<GitWorktreeEntry[]
       if (current) entries.push(current);
       current = { path: line.slice("worktree ".length).trim() };
     } else if (line.startsWith("branch ") && current) {
-      // `branch refs/heads/caesar/t_x` → `caesar/t_x`. Un worktree détaché n'a pas
-      // cette ligne du tout, d'où le champ optionnel.
+      // `branch refs/heads/caesar/t_x` → `caesar/t_x`. A detached worktree does
+      // not have this line at all, hence the optional field.
       current.branch = line.slice("branch ".length).trim().replace(/^refs\/heads\//, "");
     } else if (line.trim() === "" && current) {
       entries.push(current);
@@ -178,58 +178,58 @@ export interface WorktreeHandle {
   path: string;
   branch: string;
   /**
-   * Le point de départ du worktree, **résolu en SHA** au moment de sa création
-   * — jamais la chaîne symbolique `"HEAD"`.
+   * The worktree's starting point, **resolved to a SHA** at the moment of its
+   * creation — never the symbolic string `"HEAD"`.
    *
-   * La distinction porte toute la fiabilité du diff : `HEAD` désigne le dernier
-   * commit *du worktree*, qui bouge dès que l'agent commite. Un diff contre
-   * `HEAD` deviendrait alors vide, `caesar` conclurait « aucun changement » et
-   * `caesar apply` n'appliquerait rien — l'effacement silencieux de tout le
-   * travail. Un SHA, lui, ne bouge pas.
+   * The distinction carries the entire reliability of the diff: `HEAD`
+   * designates the last commit *of the worktree*, which moves as soon as the
+   * agent commits. A diff against `HEAD` would then become empty, `caesar`
+   * would conclude "no changes" and `caesar apply` would apply nothing — the
+   * silent erasure of all the work. A SHA, for its part, does not move.
    *
-   * Reste une chaîne libre pour la rétrocompatibilité : `loadWorktreeHandle`
-   * relit `task.base_ref` des tâches créées avant ce changement, où `"HEAD"`
-   * avait été persisté tel quel.
+   * Remains a free-form string for backward compatibility: `loadWorktreeHandle`
+   * re-reads the `task.base_ref` of tasks created before this change, where
+   * `"HEAD"` had been persisted as-is.
    */
   baseRef: string;
   /**
-   * Chemins que l'orchestrateur a lui-même posés dans le worktree
-   * (`[worktree] copy`/`link` — voir `materializeUntracked`), à retirer du
-   * diff : ce n'est pas le travail de l'agent, et un `.env` recopié n'a rien
-   * à faire dans un `caesar apply`.
+   * Paths the orchestrator itself placed in the worktree
+   * (`[worktree] copy`/`link` — see `materializeUntracked`), to be removed
+   * from the diff: it is not the agent's work, and a copied `.env` has no
+   * business in a `caesar apply`.
    *
-   * Porté par le handle plutôt qu'appliqué par le runner, pour que *tout*
-   * consommateur du diff en hérite — `caesar diff` et `caesar apply` le
-   * recalculent chacun de leur côté, longtemps après la fin de la tâche.
-   * Sémantique de préfixe : un répertoire exclu exclut ce qu'il contient.
+   * Carried by the handle rather than applied by the runner, so that *every*
+   * consumer of the diff inherits it — `caesar diff` and `caesar apply` each
+   * recompute it on their own, long after the task ends.
+   * Prefix semantics: an excluded directory excludes what it contains.
    */
   excluded?: string[];
 }
 
 /**
- * Crée un worktree jetable sous `<root>/.caesar/wt/<taskId>`, sur une nouvelle
- * branche `caesar/<taskId>` partant de `baseRef` (par défaut `HEAD`).
+ * Creates a disposable worktree under `<root>/.caesar/wt/<taskId>`, on a new
+ * branch `caesar/<taskId>` starting from `baseRef` (default `HEAD`).
  *
- * `root` doit être la racine du dépôt (typiquement le résultat de
- * `repoRoot(workspace)`) : les commandes git s'y exécutent, et c'est là que
- * vit le répertoire administratif `.caesar/wt`.
+ * `root` must be the repository root (typically the result of
+ * `repoRoot(workspace)`): the git commands run there, and that is where
+ * the administrative directory `.caesar/wt` lives.
  */
 /**
- * Nom de branche d'un atelier : `caesar/<rôle ou agent>/<objectif>-<8 car.>`.
+ * Branch name of a workshop: `caesar/<role or agent>/<objective>-<8 chars>`.
  *
- * `caesar/t_3f2a91c0…` est illisible dans un `git branch`, et le devient
- * d'autant plus que la branche cesse d'être un détail d'implémentation : dans
- * un atelier, le sous-agent y commite, et l'utilisateur la relit. Le suffixe
- * porte l'unicité, le reste porte le sens.
+ * `caesar/t_3f2a91c0…` is unreadable in a `git branch`, and becomes all the
+ * more so as the branch ceases to be an implementation detail: in
+ * a workshop, the sub-agent commits to it, and the user re-reads it. The
+ * suffix carries the uniqueness, the rest carries the meaning.
  *
- * Le **répertoire**, lui, reste `.caesar/wt/<taskId>` : c'est la clé du store,
- * du bail anti-GC et des chemins de tâche. Les deux ont désormais des noms
- * indépendants — d'où le passage du GC à `git worktree list` pour connaître la
- * branche, plutôt que de la déduire du répertoire.
+ * The **directory**, for its part, remains `.caesar/wt/<taskId>`: it is the key
+ * of the store, of the anti-GC lease and of the task paths. The two now have
+ * independent names — hence the GC's switch to `git worktree list` to learn
+ * the branch, rather than inferring it from the directory.
  *
- * `git check-ref-format` interdit les espaces, `..`, `~^:?*[`, les segments
- * commençant par un point ou finissant par `.lock`, et les slashs consécutifs.
- * Plutôt que d'énumérer les interdits, on n'autorise qu'un alphabet sûr.
+ * `git check-ref-format` forbids spaces, `..`, `~^:?*[`, segments
+ * starting with a dot or ending with `.lock`, and consecutive slashes.
+ * Rather than enumerating the forbidden, we only allow a safe alphabet.
  */
 export function worktreeBranchName(taskId: string, objective: string, label?: string): string {
   const parts = ["caesar"];
@@ -237,12 +237,12 @@ export function worktreeBranchName(taskId: string, objective: string, label?: st
   if (scope) parts.push(scope);
 
   const summary = slugForBranch(objective).slice(0, 40).replace(/-+$/, "");
-  const suffix = taskId.replace(/^t_/, "").slice(0, 8) || "tache";
+  const suffix = taskId.replace(/^t_/, "").slice(0, 8) || "task";
   parts.push(summary ? `${summary}-${suffix}` : suffix);
   return parts.join("/");
 }
 
-/** Réduit un texte libre à `[a-z0-9-]`, sans tiret en tête ni en queue — toujours acceptable pour `git check-ref-format`. */
+/** Reduces free-form text to `[a-z0-9-]`, without a leading or trailing hyphen — always acceptable to `git check-ref-format`. */
 function slugForBranch(text: string): string {
   return text
     .normalize("NFD")
@@ -262,28 +262,28 @@ export async function createWorktree(
   const path = join(root, ".caesar", "wt", taskId);
   await mkdir(join(root, ".caesar", "wt"), { recursive: true });
   await execFileAsync("git", ["worktree", "add", "-b", branch, path, baseRef], { cwd: root });
-  // Résolu en SHA plutôt que conservé tel quel : voir `WorktreeHandle.baseRef`.
-  // Après `worktree add`, et non avant : c'est bien le commit que le worktree
-  // porte réellement qui est enregistré, pas celui que `baseRef` désignait à un
-  // instant qui pourrait déjà être dépassé.
+  // Resolved to a SHA rather than kept as-is: see `WorktreeHandle.baseRef`.
+  // After `worktree add`, not before: what gets recorded is indeed the commit
+  // the worktree actually carries, not the one `baseRef` designated at an
+  // instant that may already be outdated.
   const { stdout } = await execFileAsync("git", ["-C", path, "rev-parse", "HEAD"]);
   return { path, branch, baseRef: stdout.trim() };
 }
 
 /**
- * Supprime le worktree et sa branche. N'affecte ni l'historique ni les autres
- * branches.
+ * Removes the worktree and its branch. Affects neither the history nor the
+ * other branches.
  *
- * Ne détruit pas non plus ce qu'un lien symbolique du worktree désigne dans le
- * dépôt principal — un `node_modules` posé par `[worktree] link`, notamment.
- * Cela ne demande aucune précaution particulière, et c'est vérifié plutôt que
- * supposé (voir les tests de ce module et de `gc.ts`) : supprimer récursivement
- * une arborescence détache les liens qu'elle contient au lieu de les suivre,
- * aussi bien pour `git worktree remove --force` que pour `fs.rm`. Un balayage
- * préventif des liens avant suppression a été envisagé puis écarté : il aurait
- * fait payer à chaque nettoyage le parcours complet du worktree — précisément
- * là où un `node_modules` vient d'être cloné — pour se prémunir d'un risque
- * qui n'existe pas.
+ * Nor does it destroy what a symlink in the worktree designates inside the
+ * main repository — a `node_modules` placed by `[worktree] link`, notably.
+ * This requires no particular precaution, and it is verified rather than
+ * assumed (see the tests of this module and of `gc.ts`): recursively deleting
+ * a tree detaches the links it contains instead of following them,
+ * for `git worktree remove --force` as well as for `fs.rm`. A preventive
+ * sweep of the links before deletion was considered then discarded: it would
+ * have made every cleanup pay for the full traversal of the worktree —
+ * precisely where a `node_modules` has just been cloned — to guard against a
+ * risk that does not exist.
  */
 export async function removeWorktree(root: string, handle: WorktreeHandle): Promise<void> {
   await execFileAsync("git", ["worktree", "remove", handle.path, "--force"], { cwd: root });
@@ -297,24 +297,24 @@ export interface WorktreeDiff {
 }
 
 /**
- * Diffe le worktree contre son point de départ — `handle.baseRef`, le SHA figé
- * à la création, **jamais `HEAD`**.
+ * Diffs the worktree against its starting point — `handle.baseRef`, the SHA
+ * frozen at creation, **never `HEAD`**.
  *
- * Cette fonction diffait contre `HEAD` sous une hypothèse alors vraie : « les
- * agents ne committent pas ». Elle ne l'est plus depuis que le worktree est un
- * atelier où le sous-agent installe, exécute et vérifie — un agent qui y
- * commite déplacerait `HEAD` sur son propre travail, et le diff rendrait vide.
- * `caesar` conclurait « aucun changement », `caesar apply` n'appliquerait rien, et
- * le recoupement qui fonde tout le système disparaîtrait sans un mot. Differ
- * contre le SHA de départ rend le résultat identique que l'agent commite ou
- * non.
+ * This function used to diff against `HEAD` under a then-true hypothesis:
+ * "agents do not commit". It no longer holds since the worktree became a
+ * workshop where the sub-agent installs, runs and verifies — an agent that
+ * commits there would move `HEAD` onto its own work, and the diff would come
+ * out empty. `caesar` would conclude "no changes", `caesar apply` would apply
+ * nothing, and the reconciliation the whole system rests on would vanish
+ * without a word. Diffing against the starting SHA makes the result identical
+ * whether the agent commits or not.
  *
- * `add -A --intent-to-add` reste nécessaire pour le cas inverse, celui de
- * l'agent qui ne commite pas : un fichier créé est invisible pour git tant
- * qu'il n'est ni indexé ni commité. Cette commande enregistre son existence
- * sans indexer son contenu, ce qui suffit à le faire apparaître dans le diff.
- * C'est acceptable ici précisément parce que le worktree est jetable : on ne
- * pollue l'index d'aucun dépôt qui compte.
+ * `add -A --intent-to-add` remains necessary for the opposite case, that of
+ * the agent that does not commit: a created file is invisible to git as long
+ * as it is neither staged nor committed. This command records its existence
+ * without staging its content, which is enough to make it appear in the diff.
+ * It is acceptable here precisely because the worktree is disposable: we
+ * pollute the index of no repository that matters.
  */
 export async function diffWorktree(handle: WorktreeHandle): Promise<WorktreeDiff> {
   await execFileAsync("git", ["-C", handle.path, "add", "-A", "--intent-to-add"]);
@@ -327,15 +327,15 @@ export async function diffWorktree(handle: WorktreeHandle): Promise<WorktreeDiff
 }
 
 /**
- * Retire du diff ce que la matérialisation a posé — voir `WorktreeHandle.excluded`.
+ * Removes from the diff what materialization placed — see `WorktreeHandle.excluded`.
  *
- * Seule la liste des fichiers est filtrée, pas `patch` : le patch est le texte
- * que produit git, et le refabriquer par découpage serait fragile là où il
- * doit rester exact. En pratique, un chemin matérialisé est ignoré par git
- * (`materializeUntracked` refuse d'en poser un qui ne le serait pas), donc il
- * n'apparaît dans aucun des deux — ce filtrage est le garde-fou du cas où
- * cette invariance viendrait à être prise en défaut, pas le mécanisme
- * ordinaire.
+ * Only the file list is filtered, not `patch`: the patch is the text
+ * git produces, and refabricating it by slicing would be fragile exactly
+ * where it must remain exact. In practice, a materialized path is ignored by
+ * git (`materializeUntracked` refuses to place one that would not be), so it
+ * appears in neither of the two — this filtering is the safety net for the
+ * case where that invariant were ever broken, not the ordinary
+ * mechanism.
  */
 function excludeMaterialized(files: Change[], excluded: readonly string[] | undefined): Change[] {
   if (!excluded || excluded.length === 0) return files;
@@ -343,10 +343,10 @@ function excludeMaterialized(files: Change[], excluded: readonly string[] | unde
 }
 
 /**
- * Empreinte sha256 (hex) du texte d'un patch — calculée au même endroit des
- * deux côtés qui doivent la comparer : à l'application (ci-dessous) et au
- * ramasse-miettes (`gc.ts`), qui recalcule le patch par le même
- * `diffWorktree` pour décider si le worktree a bougé depuis.
+ * sha256 digest (hex) of a patch's text — computed at the same place on both
+ * sides that must compare it: at application time (below) and in the
+ * garbage collector (`gc.ts`), which recomputes the patch via the same
+ * `diffWorktree` to decide whether the worktree has moved since.
  */
 export function patchDigest(patch: string): string {
   return createHash("sha256").update(patch).digest("hex");
@@ -357,20 +357,20 @@ export type RecordedApplyOutcome = "applied" | "conflicts" | "no_worktree";
 export interface RecordedApplyResult {
   outcome: RecordedApplyOutcome;
   conflicts: string[];
-  /** Vrai quand il n'y avait rien à appliquer (pas de worktree, ou diff vide) : rien n'est enregistré. */
+  /** True when there was nothing to apply (no worktree, or empty diff): nothing is recorded. */
   isEmpty: boolean;
 }
 
 /**
- * Le seul chemin d'application : diffe le worktree, applique le patch au
- * dépôt principal, puis inscrit le fait dans l'enregistrement de la tâche —
- * `applied_at` et l'empreinte du patch appliqué. Rien n'est inscrit sur un
- * diff vide ni sur un conflit : l'enregistrement ne témoigne que d'une
- * application réellement advenue, et un nouvel apply réussi l'écrase (la
- * dernière application fait foi). Sans cette trace, `caesar gc` ne pouvait
- * pas distinguer un worktree intégré d'un worktree porteur de travail
- * unique : il refusait les deux, même après un cycle parfaitement
- * discipliné (constaté sur deux tâches du projet `support`, 2026-08-12).
+ * The only application path: diffs the worktree, applies the patch to the
+ * main repository, then writes the fact into the task's record —
+ * `applied_at` and the digest of the applied patch. Nothing is recorded on
+ * an empty diff or on a conflict: the record only bears witness to an
+ * application that actually happened, and a new successful apply overwrites
+ * it (the last application is authoritative). Without this trace, `caesar gc`
+ * could not tell an integrated worktree from a worktree carrying unique
+ * work: it refused both, even after a perfectly disciplined
+ * cycle (observed on two tasks of the `support` project, 2026-08-12).
  */
 export async function applyRecordedWorktree(root: string, store: TaskStore, record: TaskRecord): Promise<RecordedApplyResult> {
   const handle = await loadWorktreeHandle(record);
@@ -390,14 +390,14 @@ export async function applyRecordedWorktree(root: string, store: TaskStore, reco
 }
 
 /**
- * Applique un patch au dépôt principal par `git apply --3way`,
- * sans toucher aux branches ni à l'historique : réversible, sans effet de
- * bord sur l'historique de l'utilisateur. N'appelle jamais `git commit`.
+ * Applies a patch to the main repository via `git apply --3way`,
+ * without touching branches or history: reversible, with no side
+ * effect on the user's history. Never calls `git commit`.
  *
- * En cas d'échec (conflit), renvoie la liste des fichiers en conflit plutôt
- * que de lever — cette liste vient de `git diff --diff-filter=U`, donc de
- * l'état réel de l'index après la tentative, pas d'un décodage fragile des
- * messages humains de `git apply`.
+ * On failure (conflict), returns the list of conflicting files rather
+ * than throwing — that list comes from `git diff --diff-filter=U`, hence from
+ * the real state of the index after the attempt, not from a fragile decoding
+ * of `git apply`'s human-oriented messages.
  */
 async function applyPatch(root: string, patch: string): Promise<{ applied: boolean; conflicts: string[] }> {
   const scratchDir = await mkdtemp(join(tmpdir(), "caesar-patch-"));
@@ -418,33 +418,33 @@ async function applyPatch(root: string, patch: string): Promise<{ applied: boole
 }
 
 /**
- * Capture l'état git du workspace réel (`git status --porcelain`), pour le
- * comparer avant/après une exécution en isolation `"inplace"` — voir C2/C3
- * de la revue finale : `git diff` ne faisait foi qu'en isolation `worktree`,
- * jamais `inplace`, où aucun recoupement n'avait lieu et où une écriture par
- * un agent en lecture seule n'était ni contenue, ni détectée.
+ * Captures the git state of the real workspace (`git status --porcelain`), to
+ * compare it before/after an execution in `"inplace"` isolation — see C2/C3
+ * of the final review: `git diff` was only the source of truth in `worktree`
+ * isolation, never `inplace`, where no reconciliation took place and where a
+ * write by a read-only agent was neither contained, nor detected.
  *
- * Le répertoire administratif `.caesar/` (tâches, état, worktrees) est exclu
- * du pathspec : contrairement au worktree jetable — dont l'arborescence ne
- * contient structurellement jamais `.caesar/tasks/<id>` (racine distincte,
- * `deps.root` plutôt que `workspace`) — le workspace réel EST `deps.root`
- * pour une tâche `inplace`, et `.caesar/tasks/<id>` y est donc physiquement
- * créé par l'orchestrateur lui-même pendant l'exécution. Sans cette
- * exclusion, la simple existence du répertoire de tâche ferait croire à une
- * écriture de l'agent sur toute tâche `inplace`, quel que soit son
- * comportement réel — un faux positif systématique bien pire que le faux
- * négatif, rare, d'un agent qui modifierait `.caesar/config.toml` lui-même
- * (alors masqué par cette même exclusion, tout `.caesar/` étant écarté en bloc
- * : `git status` réduit un répertoire entièrement non suivi à une seule
- * ligne `?? .caesar/`, qui rend inopérant tout pathspec d'exclusion plus fin
- * que `.caesar` entier — vérifié empiriquement).
+ * The administrative directory `.caesar/` (tasks, state, worktrees) is
+ * excluded from the pathspec: unlike the disposable worktree — whose tree
+ * structurally never contains `.caesar/tasks/<id>` (distinct root,
+ * `deps.root` rather than `workspace`) — the real workspace IS `deps.root`
+ * for an `inplace` task, and `.caesar/tasks/<id>` is therefore physically
+ * created there by the orchestrator itself during execution. Without this
+ * exclusion, the mere existence of the task directory would suggest a
+ * write by the agent on every `inplace` task, whatever its actual
+ * behavior — a systematic false positive far worse than the rare false
+ * negative of an agent modifying `.caesar/config.toml` itself
+ * (then masked by that same exclusion, all of `.caesar/` being set aside in
+ * bulk: `git status` reduces an entirely untracked directory to a single
+ * `?? .caesar/` line, which defeats any exclusion pathspec finer
+ * than the whole of `.caesar` — verified empirically).
  *
- * Jamais de `git add` ici, à la différence de `diffWorktree` : le workspace
- * n'est pas jetable, et modifier l'index réel de l'utilisateur pour une
- * simple observation serait un effet de bord que l'isolation `"inplace"` ne
- * promet pas. `null` si `workspace` n'est pas un dépôt git (ou toute autre
- * erreur) : jamais une exception, cette capture est un filet, pas une
- * exigence.
+ * Never any `git add` here, unlike `diffWorktree`: the workspace
+ * is not disposable, and modifying the user's real index for a
+ * mere observation would be a side effect that `"inplace"` isolation does
+ * not promise. `null` if `workspace` is not a git repository (or any other
+ * error): never an exception, this capture is a safety net, not a
+ * requirement.
  */
 export async function captureWorkspaceStatus(workspace: string): Promise<string | null> {
   try {
@@ -455,14 +455,14 @@ export async function captureWorkspaceStatus(workspace: string): Promise<string 
   }
 }
 
-/** `git status --porcelain` d'un chemin vers son code à deux lettres (`XY`, voir `git help status`). */
+/** `git status --porcelain` from a path to its two-letter code (`XY`, see `git help status`). */
 function parsePorcelainStatus(status: string): Map<string, string> {
   const map = new Map<string, string>();
   for (const line of status.split("\n")) {
     if (line.length < 4) continue;
     const code = line.slice(0, 2);
     const rest = line.slice(3);
-    // "R  ancien -> nouveau" pour un renommage : seul le chemin final nous intéresse ici.
+    // "R  old -> new" for a rename: only the final path matters here.
     const path = rest.includes(" -> ") ? rest.split(" -> ").pop()! : rest;
     map.set(path.trim(), code);
   }
@@ -480,10 +480,10 @@ function porcelainCodeToAction(code: string): Change["action"] | undefined {
 }
 
 /**
- * Diffe deux instantanés `git status --porcelain` du même workspace, avant
- * et après une exécution. Contrairement à `diffWorktree`, ne rend jamais de
- * patch (`patch: ""`) : sans `git add`, seule la liste des chemins touchés
- * est fiable à reconstituer depuis `git status`, pas le contenu du diff.
+ * Diffs two `git status --porcelain` snapshots of the same workspace, before
+ * and after an execution. Unlike `diffWorktree`, never yields a
+ * patch (`patch: ""`): without `git add`, only the list of touched paths
+ * can be reliably reconstructed from `git status`, not the diff's content.
  */
 export async function diffWorkspaceStatus(workspace: string, before: string): Promise<WorktreeDiff> {
   const after = await captureWorkspaceStatus(workspace);
@@ -501,11 +501,11 @@ export async function diffWorkspaceStatus(workspace: string, before: string): Pr
 }
 
 /**
- * Reconstruit le `WorktreeHandle` d'une tâche à partir de son enregistrement
- * (`TaskRecord`) — `null` si la tâche n'a pas tourné en isolation worktree.
- * Partagé par `caesar diff`/`caesar apply` (CLI) et `caesar_diff`/`caesar_apply`
- * (serveur MCP), qui en avaient chacun leur propre copie avant la revue de
- * la tâche 7 : voir son rapport de correction.
+ * Rebuilds a task's `WorktreeHandle` from its record
+ * (`TaskRecord`) — `null` if the task did not run in worktree isolation.
+ * Shared by `caesar diff`/`caesar apply` (CLI) and `caesar_diff`/`caesar_apply`
+ * (MCP server), which each had their own copy before the task 7
+ * review: see its correction report.
  */
 export async function loadWorktreeHandle(record: TaskRecord): Promise<WorktreeHandle | null> {
   if (record.isolation !== "worktree" || !record.branch) return null;
@@ -514,14 +514,15 @@ export async function loadWorktreeHandle(record: TaskRecord): Promise<WorktreeHa
     path: record.workspace,
     branch: record.branch,
     baseRef: task.base_ref ?? "HEAD",
-    // Restitué au handle pour que `caesar diff` et `caesar apply`, qui recalculent
-    // le diff bien après la fin de la tâche, excluent ce que l'orchestrateur
-    // avait posé — sans quoi un `.env` recopié redeviendrait applicable.
+    // Restored onto the handle so that `caesar diff` and `caesar apply`, which
+    // recompute the diff well after the task ends, exclude what the
+    // orchestrator had placed — without which a copied `.env` would become
+    // applicable again.
     ...(record.excluded_paths ? { excluded: record.excluded_paths } : {}),
   };
 }
 
-/** Traduit `git diff --name-status` vers le vocabulaire commun `Change`. */
+/** Translates `git diff --name-status` into the common `Change` vocabulary. */
 function parseNameStatus(raw: string): Change[] {
   const changes: Change[] = [];
   for (const line of raw.split("\n")) {
@@ -532,7 +533,7 @@ function parseNameStatus(raw: string): Change[] {
     if (code.startsWith("R")) {
       const [oldPath, newPath] = rest;
       if (newPath) {
-        changes.push({ path: newPath, action: "renamed", summary: oldPath ? `renommé depuis ${oldPath}` : "" });
+        changes.push({ path: newPath, action: "renamed", summary: oldPath ? `renamed from ${oldPath}` : "" });
       }
       continue;
     }

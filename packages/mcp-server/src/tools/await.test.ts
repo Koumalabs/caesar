@@ -20,16 +20,16 @@ describe("caesar_await", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("cycle complet caesar_delegate puis caesar_await, jusqu'au rapport", async () => {
+  it("full caesar_delegate then caesar_await cycle, through to the report", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
         const delegated = await caesarDelegate(session, {
-          objective: "écrire un fichier",
+          objective: "write a file",
           agent: "codex",
           mode: "write",
           isolation: "inplace",
-          context: JSON.stringify({ summary: "fait." }),
+          context: JSON.stringify({ summary: "done." }),
         });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
@@ -39,54 +39,52 @@ describe("caesar_await", () => {
         expect(tasks[taskId]?.status).toBe("succeeded");
         expect(tasks[taskId]?.pending).toBe(false);
         expect(tasks[taskId]?.report?.status).toBe("success");
-        expect(tasks[taskId]?.report?.summary).toBe("fait.");
+        expect(tasks[taskId]?.report?.summary).toBe("done.");
       }),
     );
   }, 20_000);
 
-  it("deux délégations en parallèle sont réellement exécutées en même temps, pas l'une après l'autre", async () => {
+  it("two parallel delegations really run at the same time, not one after the other", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
 
-        // `sleepMs`, depuis la correction du constat 1 de la revue de la
-        // tâche 7, retarde aussi le mode "success" de l'agent factice (pas
-        // seulement "hang") — voir `fake-agent.mjs`. Sans ça, les deux
-        // tâches se termineraient quasi instantanément quel que soit l'ordre
-        // d'exécution, et aucune mesure ci-dessous ne distinguerait un
-        // déroulement parallèle d'un déroulement séquentiel.
+        // `sleepMs`, since the fix for finding 1 of the task 7 review, also
+        // delays the fake agent's "success" mode (not only "hang") — see
+        // `fake-agent.mjs`. Without it, both tasks would finish almost
+        // instantly regardless of execution order, and no measurement below
+        // would tell a parallel run apart from a sequential one.
         const delayMs = 1_000;
         const startedAt = Date.now();
         const [first, second] = await Promise.all([
           caesarDelegate(session, {
-            objective: "première",
+            objective: "first",
             agent: "codex",
             mode: "write",
             isolation: "inplace",
-            context: JSON.stringify({ summary: "première faite.", sleepMs: delayMs }),
+            context: JSON.stringify({ summary: "first done.", sleepMs: delayMs }),
           }),
           caesarDelegate(session, {
-            objective: "seconde",
+            objective: "second",
             agent: "codex",
             mode: "write",
             isolation: "inplace",
-            context: JSON.stringify({ summary: "seconde faite.", sleepMs: delayMs }),
+            context: JSON.stringify({ summary: "second done.", sleepMs: delayMs }),
           }),
         ]);
         const firstId = (first.structuredContent as { task_id: string }).task_id;
         const secondId = (second.structuredContent as { task_id: string }).task_id;
         expect(firstId).not.toBe(secondId);
 
-        // Preuve n°1, par constat d'état plutôt que par chronométrage — donc
-        // insensible à la charge de la machine (voir la revue de la
-        // tâche 7) : pendant que les deux tâches dorment, il doit exister un
-        // instant où le store les montre **simultanément** "running". Un
-        // déroulement séquentiel (la seconde ne démarrant qu'une fois la
-        // première terminée) ne produit jamais cet instant : on y verrait la
-        // première passer à "succeeded" avant même que la seconde n'existe
-        // dans le store à l'état "running" — la boucle ci-dessous
-        // épuiserait alors ses itérations sans jamais voir les deux
-        // "running" au même instant, et l'assertion qui suit échouerait.
+        // Proof #1, by observed state rather than by timing — hence
+        // insensitive to machine load (see the task 7 review): while both
+        // tasks sleep, there must exist a moment where the store shows them
+        // **simultaneously** "running". A sequential run (the second only
+        // starting once the first has finished) never produces that moment:
+        // there, the first would move to "succeeded" before the second even
+        // exists in the store in the "running" state — the loop below would
+        // then exhaust its iterations without ever seeing both "running" at
+        // the same instant, and the assertion that follows would fail.
         let observedBothRunning = false;
         for (let i = 0; i < 400 && !observedBothRunning; i++) {
           const [r1, r2] = await Promise.all([session.store.get(firstId), session.store.get(secondId)]);
@@ -98,34 +96,33 @@ describe("caesar_await", () => {
         }
         expect(observedBothRunning).toBe(true);
 
-        // Preuve n°2, chronométrée, en complément de la preuve n°1 (qui
-        // reste la seule dont la marge ne dépend pas de la charge de la
-        // machine) : l'attente conjointe des deux tâches ne coûte que le
-        // plus long des deux délais, pas leur somme. Avec delayMs = 1000 ms
-        // chacune, un déroulement séquentiel prendrait au moins ~2000 ms
-        // (plus le coût de démarrage des deux processus) ; le seuil
-        // ci-dessous l'exclut franchement tout en laissant une marge large
-        // au cas parallèle réel (mesuré entre ~1000 et ~1500 ms selon la
-        // charge de la machine lors du calibrage de ce test).
+        // Proof #2, timed, complementing proof #1 (which remains the only
+        // one whose margin does not depend on machine load): awaiting both
+        // tasks together costs only the longer of the two delays, not their
+        // sum. With delayMs = 1000 ms each, a sequential run would take at
+        // least ~2000 ms (plus the startup cost of both processes); the
+        // threshold below rules that out squarely while leaving a wide
+        // margin for the real parallel case (measured between ~1000 and
+        // ~1500 ms depending on machine load when calibrating this test).
         const awaited = await caesarAwait(session, { task_ids: [firstId, secondId], timeout_ms: 10_000 });
         const elapsedMs = Date.now() - startedAt;
 
         const tasks = (awaited.structuredContent as { tasks: Record<string, { status: string; report?: { summary: string } }> }).tasks;
         expect(tasks[firstId]?.status).toBe("succeeded");
         expect(tasks[secondId]?.status).toBe("succeeded");
-        expect(tasks[firstId]?.report?.summary).toBe("première faite.");
-        expect(tasks[secondId]?.report?.summary).toBe("seconde faite.");
+        expect(tasks[firstId]?.report?.summary).toBe("first done.");
+        expect(tasks[secondId]?.report?.summary).toBe("second done.");
         expect(elapsedMs).toBeLessThan(1_800);
       }),
     );
   }, 20_000);
 
-  it("un délai dépassé rend l'état partiel plutôt que d'attendre indéfiniment", async () => {
+  it("an exceeded timeout returns the partial state rather than waiting indefinitely", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
         const delegated = await caesarDelegate(session, {
-          objective: "tâche longue",
+          objective: "long task",
           agent: "codex",
           mode: "write",
           isolation: "inplace",
@@ -143,7 +140,7 @@ describe("caesar_await", () => {
         expect(tasks[taskId]?.report).toBeUndefined();
         expect(["pending", "running"]).toContain(tasks[taskId]?.status);
 
-        // Nettoyage.
+        // Cleanup.
         const entry = session.tasks.get(taskId);
         entry?.controller.abort();
         await entry?.promise;
@@ -151,27 +148,27 @@ describe("caesar_await", () => {
     );
   }, 20_000);
 
-  it("un task_id totalement inconnu est signalé comme tel, sans faire échouer le reste du lot", async () => {
+  it("a completely unknown task_id is reported as such, without failing the rest of the batch", async () => {
     await withFakeHome(() =>
       withFakeAgentAsBin("codex", async () => {
         const session = await createSession(root);
         const delegated = await caesarDelegate(session, {
-          objective: "tâche",
+          objective: "task",
           agent: "codex",
           mode: "write",
           isolation: "inplace",
         });
         const taskId = (delegated.structuredContent as { task_id: string }).task_id;
 
-        const awaited = await caesarAwait(session, { task_ids: [taskId, "t_inexistant"] });
+        const awaited = await caesarAwait(session, { task_ids: [taskId, "t_nonexistent"] });
         const tasks = (awaited.structuredContent as { tasks: Record<string, { status: string }> }).tasks;
-        expect(tasks["t_inexistant"]?.status).toBe("unknown");
+        expect(tasks["t_nonexistent"]?.status).toBe("unknown");
         expect(tasks[taskId]?.status).toBe("succeeded");
       }),
     );
   }, 20_000);
 
-  it("une tâche bloquée sur une question dit qu'elle attend, et quoi — pas juste \"en cours\"", async () => {
+  it("a task blocked on a question says it is waiting, and on what — not just \"running\"", async () => {
     const taskDir = join(root, ".caesar", "tasks", "t_q");
     await mkdir(taskDir, { recursive: true });
     const session = await createSession(root);
@@ -189,12 +186,12 @@ describe("caesar_await", () => {
       report_via: "channel",
       depth: 0,
     });
-    await writeQuestion(taskDir, { id: "q1", question: "Quelle branche ?", options: [], asked_at: new Date().toISOString() });
+    await writeQuestion(taskDir, { id: "q1", question: "Which branch?", options: [], asked_at: new Date().toISOString() });
 
-    // `t_q` n'a jamais été lancée par cette session (pas d'entrée dans
-    // `session.tasks`) : `caesarAwait` retombe sur le store/le système de
-    // fichiers, exactement comme pour une tâche lancée par un autre
-    // processus (`caesar run`, un précédent serveur MCP…) — voir `describeFromStore`.
+    // `t_q` was never started by this session (no entry in
+    // `session.tasks`): `caesarAwait` falls back on the store/filesystem,
+    // exactly as for a task started by another process (`caesar run`, a
+    // previous MCP server…) — see `describeFromStore`.
     const awaited = await caesarAwait(session, { task_ids: ["t_q"] });
     const tasks = (
       awaited.structuredContent as {
@@ -202,21 +199,21 @@ describe("caesar_await", () => {
       }
     ).tasks;
     expect(tasks["t_q"]?.pending).toBe(true);
-    expect(tasks["t_q"]?.pending_questions).toEqual([expect.objectContaining({ id: "q1", question: "Quelle branche ?" })]);
+    expect(tasks["t_q"]?.pending_questions).toEqual([expect.objectContaining({ id: "q1", question: "Which branch?" })]);
   });
 
   /**
-   * Une tâche laissée par un serveur MCP qu'on a depuis fermé : son
-   * enregistrement dit "running" pour toujours, faute d'un processus vivant
-   * pour le conclure. La rendre `pending: true` reviendrait à conseiller
-   * d'attendre indéfiniment quelque chose que plus personne ne fait.
+   * A task left behind by an MCP server that has since been closed: its
+   * record says "running" forever, for lack of a live process to conclude
+   * it. Returning it as `pending: true` would amount to advising to wait
+   * indefinitely for something nobody is doing anymore.
    */
-  it("une tâche dont l'orchestrateur a disparu est conclue, pas rendue en attente", async () => {
-    const taskDir = join(root, ".caesar", "tasks", "t_abandonnee");
+  it("a task whose orchestrator disappeared is concluded, not returned as pending", async () => {
+    const taskDir = join(root, ".caesar", "tasks", "t_abandoned");
     await mkdir(taskDir, { recursive: true });
     const session = await createSession(root);
     await session.store.create({
-      id: "t_abandonnee",
+      id: "t_abandoned",
       agent: "codex",
       objective: "obj",
       status: "running",
@@ -229,17 +226,17 @@ describe("caesar_await", () => {
       report_via: "channel",
       depth: 0,
     });
-    // Le marqueur qu'un orchestrateur tué laisse derrière lui.
-    const lease = await markWorktreeInUse(root, "t_abandonnee");
+    // The marker a killed orchestrator leaves behind.
+    const lease = await markWorktreeInUse(root, "t_abandoned");
     await writeFile(lease.path, JSON.stringify({ pid: 2_147_483_647, token: lease.token }) + "\n", "utf8");
 
-    const awaited = await caesarAwait(session, { task_ids: ["t_abandonnee"] });
+    const awaited = await caesarAwait(session, { task_ids: ["t_abandoned"] });
 
     const tasks = (
       awaited.structuredContent as { tasks: Record<string, { status: string; pending: boolean; report?: { status: string; summary: string } }> }
     ).tasks;
-    expect(tasks["t_abandonnee"]?.pending).toBe(false);
-    expect(tasks["t_abandonnee"]?.status).toBe("failed");
-    expect(tasks["t_abandonnee"]?.report?.summary).toContain("disparu");
+    expect(tasks["t_abandoned"]?.pending).toBe(false);
+    expect(tasks["t_abandoned"]?.status).toBe("failed");
+    expect(tasks["t_abandoned"]?.report?.summary).toContain("disappeared");
   });
 });

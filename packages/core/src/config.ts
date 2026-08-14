@@ -1,32 +1,32 @@
 /**
- * Configuration de l'orchestrateur : schéma, chargement, fusion et écriture.
+ * Orchestrator configuration: schema, loading, merging and writing.
  *
- * Trois emplacements sur disque, fusionnés au chargement dans cet ordre — le
- * plus spécifique l'emportant, champ par champ :
- *   - global  : `~/.config/caesar/config.toml`               (non versionné, propre au poste)
- *   - projet  : `<root>/.caesar/config.toml`                 (versionné, partagé avec l'équipe)
- *   - local   : `<root>/.caesar/config.local.toml`            (non versionné, propre au poste — à ajouter au `.gitignore`)
+ * Three locations on disk, merged at load time in this order — the most
+ * specific one winning, field by field:
+ *   - global  : `~/.config/caesar/config.toml`               (not versioned, machine-specific)
+ *   - project : `<root>/.caesar/config.toml`                 (versioned, shared with the team)
+ *   - local   : `<root>/.caesar/config.local.toml`            (not versioned, machine-specific — to be added to `.gitignore`)
  *
- * `@caesar/core` est la seule source de vérité de cette configuration (voir
- * les contraintes globales du projet) : aucune façade (CLI, TUI, serveur
- * MCP) ne doit relire ni réécrire le TOML pour son propre compte, elles
- * passent toutes par ce module.
+ * `@caesar/core` is the single source of truth for this configuration (see
+ * the project's global constraints): no facade (CLI, TUI, MCP server)
+ * may re-read or rewrite the TOML on its own behalf, they all go
+ * through this module.
  *
- * La fusion (`mergeConfig`, appelée par `loadConfig`) reste la seule source
- * de vérité de ce qu'un consommateur (moteur, serveur MCP, rôles, politique)
- * doit lire — `loadConfig(...).config`. L'**écriture**, elle, ne doit jamais
- * réécrire le résultat de cette fusion dans une seule couche : ce serait y
- * figer les valeurs de toutes les couches moins spécifiques, qui perdraient
- * alors tout effet (c'était le défaut I11 de la revue finale de branche).
- * `loadLayer`/`saveLayer` donnent donc accès à une couche précise, isolée de
- * la fusion : un fichier absent rend un `ConfigOverride` vide, jamais une
- * erreur ni des valeurs par défaut, et `saveLayer` ne sérialise que ce que
- * l'appelant lui donne explicitement — jamais plus que ce que la couche doit
- * déclarer.
+ * The merge (`mergeConfig`, called by `loadConfig`) remains the single source
+ * of truth for what a consumer (engine, MCP server, roles, policy)
+ * must read — `loadConfig(...).config`. **Writing**, however, must never
+ * rewrite the result of this merge into a single layer: that would freeze
+ * into it the values of all the less specific layers, which would then
+ * lose all effect (this was defect I11 of the final branch review).
+ * `loadLayer`/`saveLayer` therefore give access to one precise layer, isolated
+ * from the merge: an absent file yields an empty `ConfigOverride`, never an
+ * error nor default values, and `saveLayer` serializes only what the
+ * caller gives it explicitly — never more than what the layer must
+ * declare.
  *
- * La configuration est un fichier édité à la main : les erreurs de
- * validation nomment systématiquement le fichier et le champ en cause, et
- * un fichier absent n'est jamais une erreur (voir `loadConfig`).
+ * The configuration is a hand-edited file: validation errors
+ * systematically name the file and the field at fault, and
+ * an absent file is never an error (see `loadConfig`).
  */
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -51,61 +51,61 @@ export interface PolicyConfig {
   default_timeout_ms: number;
   allow_recursion: boolean;
   /**
-   * Autorise une tâche en écriture à s'exécuter directement dans l'arbre de
-   * travail (`isolation = "inplace"`) alors qu'un worktree serait possible.
+   * Allows a write task to run directly in the working tree
+   * (`isolation = "inplace"`) even though a worktree would be possible.
    *
-   * Faux par défaut, et c'est tout l'objet du réglage : `decideInplaceWrite`
-   * (`isolation.ts`) refuse cette combinaison, parce qu'elle mêle les
-   * modifications du sous-agent à celles de l'utilisateur et à celles des
-   * autres tâches, hors de portée de `caesar diff`. L'opt-in existe pour les
-   * dépôts où l'utilisateur assume ce mélange en connaissance de cause —
-   * jamais comme réponse à un worktree incomplet, dont le remède est la
-   * section `[worktree]`.
+   * False by default, and that is the whole point of the setting:
+   * `decideInplaceWrite` (`isolation.ts`) refuses this combination, because
+   * it mingles the sub-agent's modifications with the user's and with
+   * those of the other tasks, out of reach of `caesar diff`. The opt-in exists
+   * for repositories where the user knowingly accepts this mixing —
+   * never as an answer to an incomplete worktree, whose remedy is the
+   * `[worktree]` section.
    */
   allow_inplace_write: boolean;
   max_depth: number;
 }
 
 /**
- * `[worktree]` : ce qu'il faut ajouter au worktree d'une tâche isolée pour
- * qu'on puisse y travailler.
+ * `[worktree]`: what must be added to an isolated task's worktree so
+ * that one can actually work in it.
  *
- * Un worktree git ne contient que les fichiers **suivis**. Tout le reste —
- * dépendances installées, `.env`, répertoires ignorés portant des briefs ou
- * des artefacts — en est absent, si bien que l'isolation était souvent
- * littéralement inexploitable : rien ne s'y installait, rien ne s'y lançait,
- * et la contourner par `isolation = "inplace"` restait la seule issue
- * praticable. C'est la cause de fond du défaut que ce module et
- * `isolation.ts` corrigent ensemble : durcir la règle sans rendre le worktree
- * habitable n'aurait fait que déplacer le contournement.
+ * A git worktree only contains **tracked** files. Everything else —
+ * installed dependencies, `.env`, ignored directories carrying briefs or
+ * artifacts — is absent from it, so much so that isolation was often
+ * literally unusable: nothing installed there, nothing launched there,
+ * and bypassing it with `isolation = "inplace"` remained the only
+ * practicable way out. That is the root cause of the defect this module and
+ * `isolation.ts` fix together: hardening the rule without making the worktree
+ * habitable would only have displaced the workaround.
  *
- * Hors de `[policy]` délibérément : ce n'est pas un arbitrage de gouvernance
- * — qui a le droit de quoi — mais une description du projet, au même titre
- * que la liste de ses agents. Rien ici ne s'autorise ni ne s'interdit.
+ * Deliberately outside `[policy]`: this is not a governance trade-off
+ * — who is allowed to do what — but a description of the project, in the same
+ * way as the list of its agents. Nothing here grants or denies anything.
  */
 export interface WorktreeConfig {
   /**
-   * Chemins recopiés du workspace vers le worktree, relatifs à la racine.
-   * Isolés : ce que le sous-agent y écrit ne touche pas l'original. Sur un
-   * système de fichiers copy-on-write (APFS, Btrfs, XFS…), rien n'est
-   * réellement dupliqué tant que personne n'écrit — voir `copyTree`
-   * (`engine/materialize.ts`) pour les mesures.
+   * Paths copied from the workspace into the worktree, relative to the root.
+   * Isolated: what the sub-agent writes there does not touch the original. On
+   * a copy-on-write filesystem (APFS, Btrfs, XFS…), nothing is
+   * actually duplicated as long as nobody writes — see `copyTree`
+   * (`engine/materialize.ts`) for the measurements.
    */
   copy: string[];
   /**
-   * Chemins **liés** plutôt que copiés — partagés, donc non isolés : deux
-   * tâches simultanées écrivent dans le même répertoire, et ce qu'elles y
-   * cassent, elles le cassent pour le workspace. Dernier recours, quand la
-   * copie est hors de prix faute de copy-on-write ; la tâche le signale alors
-   * dans son rapport plutôt que de le taire.
+   * Paths **linked** rather than copied — shared, therefore not isolated: two
+   * simultaneous tasks write into the same directory, and what they break
+   * there, they break for the workspace. Last resort, when copying is
+   * prohibitively expensive for lack of copy-on-write; the task then reports
+   * it in its report rather than keeping quiet about it.
    */
   link: string[];
   /**
-   * Commandes lancées dans le worktree après sa création et sa
-   * matérialisation, avant que le sous-agent ne démarre — l'étape « Project
-   * Setup » du skill `superpowers:using-git-worktrees`. Un échec fait échouer
-   * la tâche : mieux vaut ne pas démarrer qu'ouvrir à l'agent un atelier à
-   * moitié monté.
+   * Commands run in the worktree after its creation and
+   * materialization, before the sub-agent starts — the "Project
+   * Setup" step of the `superpowers:using-git-worktrees` skill. A failure
+   * fails the task: better not to start than to open a half-assembled
+   * workshop to the agent.
    */
   setup: string[];
 }
@@ -129,37 +129,37 @@ export interface CaesarConfig {
 }
 
 /**
- * Une contribution à fusionner dans un `CaesarConfig` de base — ce que `mergeConfig`
- * accepte comme `override`, et ce qu'un seul fichier de configuration (global ou
- * projet) apporte une fois parsé.
+ * A contribution to merge into a base `CaesarConfig` — what `mergeConfig`
+ * accepts as `override`, and what a single configuration file (global or
+ * project) contributes once parsed.
  *
- * `policy` est volontairement `Partial<PolicyConfig>`, pas `PolicyConfig` :
- * `Partial<CaesarConfig>` ne l'aurait rendu superficiellement optionnel qu'au
- * niveau de `policy` lui-même, en exigeant qu'il soit complet dès qu'il est
- * présent — alors que la fusion voulue (et testée) est champ par champ. `roles`
- * et `agents` restent des listes d'entrées complètes : ces deux-là se
- * fusionnent par clé, avec remplacement entier de l'entrée (voir `mergeConfig`),
- * pas champ par champ.
+ * `policy` is deliberately `Partial<PolicyConfig>`, not `PolicyConfig`:
+ * `Partial<CaesarConfig>` would only have made it superficially optional at
+ * the level of `policy` itself, requiring it to be complete as soon as it is
+ * present — whereas the intended (and tested) merge is field by field. `roles`
+ * and `agents` remain lists of complete entries: those two merge
+ * by key, with whole-entry replacement (see `mergeConfig`),
+ * not field by field.
  */
 export interface ConfigOverride {
   policy?: Partial<PolicyConfig>;
   /**
-   * `Partial<WorktreeConfig>` pour la même raison que `policy` : la fusion se
-   * fait champ par champ, un fichier qui déclare `setup` sans `copy` ne dit
-   * rien de `copy`. Chaque champ présent **remplace** celui de la couche
-   * précédente, jamais ne s'y ajoute : une union rendrait impossible le
-   * retrait local d'une entrée héritée du global, alors que c'est justement
-   * le cas d'usage de la couche locale.
+   * `Partial<WorktreeConfig>` for the same reason as `policy`: the merge is
+   * done field by field, a file that declares `setup` without `copy` says
+   * nothing about `copy`. Each present field **replaces** the previous
+   * layer's, never adds to it: a union would make it impossible to
+   * locally remove an entry inherited from the global layer, whereas that is
+   * precisely the use case of the local layer.
    */
   worktree?: Partial<WorktreeConfig>;
   roles?: RoleConfig[];
   agents?: GenericAgentSpec[];
 }
 
-/** Les trois couches, du plus général au plus spécifique — voir l'en-tête de ce module. */
+/** The three layers, from most general to most specific — see this module's header. */
 export type ConfigScope = "global" | "project" | "local";
 
-/** Une couche telle qu'elle existe sur disque : `override` est exactement ce que le fichier déclare, jamais le résultat d'une fusion (voir `loadLayer`). */
+/** A layer as it exists on disk: `override` is exactly what the file declares, never the result of a merge (see `loadLayer`). */
 export interface ConfigLayer {
   scope: ConfigScope;
   path: string;
@@ -168,36 +168,36 @@ export interface ConfigLayer {
 
 export interface LoadedConfig {
   config: CaesarConfig;
-  /** Les trois couches, dans l'ordre d'application (global, projet, local) — y compris celles dont le fichier est absent (`override` vide alors). */
+  /** The three layers, in application order (global, project, local) — including those whose file is absent (`override` empty then). */
   layers: ConfigLayer[];
   sources: { global?: string; project?: string; local?: string };
   /**
-   * Réservé aux avertissements non bloquants (fichier chargé mais
-   * comportant une incohérence mineure). Aucune condition de ce type n'est
-   * encore produite par cette tâche : toujours vide pour l'instant.
+   * Reserved for non-blocking warnings (file loaded but carrying
+   * a minor inconsistency). No condition of that kind is
+   * produced yet by this task: always empty for now.
    */
   warnings: string[];
 }
 
 // ---------------------------------------------------------------------------
-// Durées
+// Durations
 // ---------------------------------------------------------------------------
 
 const DURATION_PATTERN = /^(\d+)(ms|s|m|h)?$/;
 const DURATION_FACTORS: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
-const DURATION_HELP = 'formes acceptées : "10m", "90s", "1h", ou un entier de millisecondes';
+const DURATION_HELP = 'accepted forms: "10m", "90s", "1h", or an integer number of milliseconds';
 
-/** Convertit une durée TOML ("10m", "90s", "1h", ou un entier de millisecondes) en millisecondes. */
+/** Converts a TOML duration ("10m", "90s", "1h", or an integer number of milliseconds) into milliseconds. */
 export function parseDuration(value: string | number): number {
   if (typeof value === "number") {
     if (!Number.isFinite(value) || value < 0) {
-      throw new Error(`Durée invalide : ${value} (${DURATION_HELP})`);
+      throw new Error(`Invalid duration: ${value} (${DURATION_HELP})`);
     }
     return Math.trunc(value);
   }
   const match = DURATION_PATTERN.exec(value.trim());
   if (!match || !match[1]) {
-    throw new Error(`Durée invalide : "${value}" (${DURATION_HELP})`);
+    throw new Error(`Invalid duration: "${value}" (${DURATION_HELP})`);
   }
   const amount = Number(match[1]);
   const unit = match[2] ?? "ms";
@@ -205,12 +205,12 @@ export function parseDuration(value: string | number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Schéma brut : la forme telle qu'elle apparaît dans le TOML
+// Raw schema: the shape as it appears in the TOML
 // ---------------------------------------------------------------------------
 
 const DurationInputSchema = z.union([z.string(), z.number()]);
 
-/** Durée TOML obligatoire, avec une valeur par défaut si le champ est absent. */
+/** Required TOML duration, with a default value if the field is absent. */
 function requiredDurationMsSchema(defaultValue: string | number) {
   return DurationInputSchema.default(defaultValue).transform((value, ctx) => {
     try {
@@ -223,11 +223,11 @@ function requiredDurationMsSchema(defaultValue: string | number) {
 }
 
 /**
- * Durée TOML facultative, qui reste `undefined` si le champ est absent —
- * utilisée uniquement pour `policy`, dont les champs se fusionnent un par un
- * entre le global et le projet (voir `mergeConfig`) : un champ absent d'un
- * fichier ne doit jamais écraser la valeur de l'autre par une valeur par
- * défaut appliquée trop tôt.
+ * Optional TOML duration, which stays `undefined` if the field is absent —
+ * used only for `policy`, whose fields merge one by one
+ * between the global and the project (see `mergeConfig`): a field absent from
+ * one file must never overwrite the other's value with a default
+ * value applied too early.
  */
 function optionalDurationMsSchema() {
   return DurationInputSchema.optional().transform((value, ctx) => {
@@ -245,12 +245,12 @@ const IsolationOrAutoSchema = z.enum(["inplace", "worktree", "auto"]);
 const NetworkRequestSchema = z.enum(NETWORK_REQUESTS);
 
 /**
- * `[policy]` : chaque champ reste facultatif ici. Un fichier qui ne
- * mentionne pas un champ ne dit rien à son sujet — c'est `mergeConfig` qui
- * décide, en le retombant sur la couche précédente (global, puis
- * `defaultConfig()`). Défaulter ce champ ici referait perdre cette
- * distinction entre « absent » et « explicitement mis à la valeur par
- * défaut ».
+ * `[policy]`: each field remains optional here. A file that does not
+ * mention a field says nothing about it — it is `mergeConfig` that
+ * decides, by falling it back to the previous layer (global, then
+ * `defaultConfig()`). Defaulting the field here would lose that
+ * distinction between "absent" and "explicitly set to the default
+ * value".
  */
 const RawPolicySchema = z
   .object({
@@ -269,38 +269,38 @@ const RawPolicySchema = z
 type RawPolicy = z.infer<typeof RawPolicySchema>;
 
 /**
- * Un chemin de `[worktree] copy`/`link` : relatif à la racine du workspace,
- * restant à l'intérieur, et ne touchant ni `.git` ni `.caesar`.
+ * A `[worktree] copy`/`link` path: relative to the workspace root,
+ * staying inside it, and touching neither `.git` nor `.caesar`.
  *
- * Validé ici plutôt qu'à la matérialisation, parce qu'une entrée invalide est
- * une erreur de configuration, pas une circonstance d'exécution : elle doit se
- * voir au chargement du fichier, avec son nom et sa ligne, et non se
- * transformer plus tard en tâche qui échoue. Les trois interdits :
+ * Validated here rather than at materialization, because an invalid entry is
+ * a configuration error, not an execution circumstance: it must show
+ * up when the file is loaded, with its name and its line, not turn
+ * later into a task that fails. The three prohibitions:
  *
- * - **absolu** : désignerait un ailleurs quelconque de la machine ;
- * - **`..`** : sortirait du workspace, donc du périmètre que l'isolation
- *   promet de contenir ;
- * - **`.git` / `.caesar`** : recopier ou lier l'un des deux ferait écrire le
- *   sous-agent dans l'administration du dépôt ou de l'orchestrateur —
- *   exactement ce à quoi le worktree sert à ne pas toucher.
+ * - **absolute**: would point to some arbitrary elsewhere on the machine;
+ * - **`..`**: would leave the workspace, hence the perimeter that isolation
+ *   promises to contain;
+ * - **`.git` / `.caesar`**: copying or linking either would make the
+ *   sub-agent write into the administration of the repository or of the
+ *   orchestrator — exactly what the worktree exists not to touch.
  */
 const WorktreePathSchema = z
   .string()
   .min(1)
   .refine((value) => !value.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(value), {
-    message: "chemin absolu interdit : les chemins sont relatifs à la racine du workspace",
+    message: "absolute path forbidden: paths are relative to the workspace root",
   })
   .refine((value) => !value.split(/[\\/]/).includes(".."), {
-    message: 'segment ".." interdit : un chemin ne peut pas sortir du workspace',
+    message: '".." segment forbidden: a path cannot leave the workspace',
   })
   .refine((value) => {
     const first = value.split(/[\\/]/)[0];
     return first !== ".git" && first !== ".caesar";
-  }, { message: '".git" et ".caesar" sont exclus : ce sont l\'administration du dépôt et celle d\'caesar' });
+  }, { message: '".git" and ".caesar" are excluded: they are the administration of the repository and of caesar' });
 
 /**
- * `[worktree]` : mêmes règles que `[policy]` — chaque champ facultatif, la
- * fusion décide. Voir `WorktreeConfig`.
+ * `[worktree]`: same rules as `[policy]` — each field optional, the
+ * merge decides. See `WorktreeConfig`.
  */
 const RawWorktreeSchema = z
   .object({
@@ -312,11 +312,11 @@ const RawWorktreeSchema = z
 type RawWorktree = z.infer<typeof RawWorktreeSchema>;
 
 /**
- * `[[role]]` : à l'inverse de `policy`, un rôle du projet qui porte le même
- * `name` qu'un rôle global remplace ce dernier **entièrement** (fusion par
- * clé, pas champ par champ — voir `mergeConfig`). Chaque entrée doit donc
- * être complète par elle-même ; ses champs par défaut sont donc appliqués
- * ici, localement à l'entrée.
+ * `[[role]]`: unlike `policy`, a project role bearing the same
+ * `name` as a global role replaces the latter **entirely** (merge by
+ * key, not field by field — see `mergeConfig`). Each entry must therefore
+ * be complete by itself; its default fields are thus applied
+ * here, locally to the entry.
  */
 const RawRoleSchema = z
   .object({
@@ -333,20 +333,20 @@ const RawRoleSchema = z
 type RawRole = z.infer<typeof RawRoleSchema>;
 
 /**
- * `[[agent]]` : agent personnalisé, cf. `GenericAgentSpec`. Fusion par clé
- * (`id`), même logique que les rôles.
+ * `[[agent]]`: custom agent, cf. `GenericAgentSpec`. Merge by key
+ * (`id`), same logic as roles.
  *
- * `native_read_only` est la seule capacité déclarable ici, et c'est
- * délibéré : c'est la seule que le moteur honore sans que la construction de
- * la ligne de commande ait à coopérer (`runner.ts` s'en sert pour décider si
- * une tâche en lecture seule doit être isolée dans un worktree). Les autres —
- * schéma de sortie, injection MCP, message final en fichier, flux
- * d'événements — supposent que l'adaptateur passe quelque chose au CLI cible,
- * ce que `buildGeneric` ne fait pas : les rendre déclarables reviendrait à
- * laisser promettre un canal de rapport que rien ne branche, et à faire
- * échouer la tâche plus loin, sans rapport avec la case cochée. Le choix du
- * modèle, lui, se déduit de la présence de `{{model}}` dans les arguments
- * (voir `createGenericAgent`) plutôt que de se déclarer.
+ * `native_read_only` is the only capability declarable here, and that is
+ * deliberate: it is the only one the engine honors without the command-line
+ * construction having to cooperate (`runner.ts` uses it to decide whether
+ * a read-only task must be isolated in a worktree). The others —
+ * output schema, MCP injection, final message as a file, event
+ * stream — assume the adapter passes something to the target CLI,
+ * which `buildGeneric` does not do: making them declarable would amount to
+ * letting a report channel be promised that nothing wires up, and to making
+ * the task fail further along, unrelated to the box that was ticked. The
+ * model choice, for its part, is deduced from the presence of `{{model}}` in
+ * the arguments (see `createGenericAgent`) rather than declared.
  */
 const RawAgentSchema = z
   .object({
@@ -371,10 +371,10 @@ const RawFileSchema = z
   .strict();
 
 // ---------------------------------------------------------------------------
-// Conversions entre la forme brute (TOML) et la forme applicative (CaesarConfig)
+// Conversions between the raw shape (TOML) and the applicative shape (CaesarConfig)
 // ---------------------------------------------------------------------------
 
-/** Ne garde que les champs effectivement présents : c'est ce qui rend la fusion `policy` champ par champ possible. */
+/** Keeps only the fields actually present: this is what makes the field-by-field `policy` merge possible. */
 function toPolicyOverride(raw: RawPolicy): Partial<PolicyConfig> {
   const override: Partial<PolicyConfig> = {};
   if (raw.allowed !== undefined) override.allowed = raw.allowed;
@@ -390,7 +390,7 @@ function toPolicyOverride(raw: RawPolicy): Partial<PolicyConfig> {
   return override;
 }
 
-/** Même contrat que `toPolicyOverride` : seuls les champs réellement déclarés. */
+/** Same contract as `toPolicyOverride`: only the fields actually declared. */
 function toWorktreeOverride(raw: RawWorktree): Partial<WorktreeConfig> {
   const override: Partial<WorktreeConfig> = {};
   if (raw.copy !== undefined) override.copy = raw.copy;
@@ -431,13 +431,13 @@ function toAgentSpec(raw: RawAgent): GenericAgentSpec {
 }
 
 /**
- * Inverse de `toPolicyOverride` : ne rend que les champs effectivement
- * présents dans `policy`. `PolicyConfig` (complet) se passe aussi bien à
- * cette fonction que `Partial<PolicyConfig>` — un objet complet a, par
- * définition, tous ses champs "présents" — ce qui lui permet de servir aussi
- * bien à sérialiser une couche partielle (`saveLayer`, la matérialisation
- * d'une liste) qu'une configuration complète (`caesar init --global`, qui
- * écrit `defaultConfig()` intégralement à la couche globale).
+ * Inverse of `toPolicyOverride`: returns only the fields actually
+ * present in `policy`. `PolicyConfig` (complete) can be passed to
+ * this function just as well as `Partial<PolicyConfig>` — a complete object
+ * has, by definition, all its fields "present" — which lets it serve both
+ * to serialize a partial layer (`saveLayer`, the materialization
+ * of a list) and a complete configuration (`caesar init --global`, which
+ * writes `defaultConfig()` in full to the global layer).
  */
 function fromPolicyOverride(policy: Partial<PolicyConfig>): Record<string, unknown> {
   const raw: Record<string, unknown> = {};
@@ -447,9 +447,9 @@ function fromPolicyOverride(policy: Partial<PolicyConfig>): Record<string, unkno
   if (policy.default_isolation !== undefined) raw.default_isolation = policy.default_isolation;
   if (policy.default_mode !== undefined) raw.default_mode = policy.default_mode;
   if (policy.default_network !== undefined) raw.default_network = policy.default_network;
-  // Stockée en millisecondes brutes plutôt que reformatée en "10m" : une
-  // forme, `parseDuration` l'accepte aussi bien, et l'aller-retour
-  // save/load reste ainsi exact au lieu de dépendre d'un formatage inverse.
+  // Stored as raw milliseconds rather than reformatted as "10m": one
+  // form, `parseDuration` accepts it just as well, and the save/load
+  // round-trip thus stays exact instead of depending on inverse formatting.
   if (policy.default_timeout_ms !== undefined) raw.default_timeout = policy.default_timeout_ms;
   if (policy.allow_recursion !== undefined) raw.allow_recursion = policy.allow_recursion;
   if (policy.allow_inplace_write !== undefined) raw.allow_inplace_write = policy.allow_inplace_write;
@@ -475,28 +475,28 @@ function fromAgentSpec(agent: GenericAgentSpec): Record<string, unknown> {
   const out: Record<string, unknown> = { id: agent.id, bin: agent.bin, args: agent.args };
   if (agent.displayName !== undefined) out.display_name = agent.displayName;
   if (agent.cwdMode !== undefined) out.cwd_mode = agent.cwdMode;
-  // Seule capacité que le TOML sait porter (voir `RawAgentSchema`) : les
-  // autres, si un appelant en glissait dans le `GenericAgentSpec` qu'il
-  // enregistre, ne survivraient pas à l'aller-retour. Aucune interface n'en
-  // produit, et `RawAgentSchema` est `.strict()` : elles seraient de toute
-  // façon refusées à la relecture.
+  // The only capability the TOML can carry (see `RawAgentSchema`): the
+  // others, if a caller slipped some into the `GenericAgentSpec` it
+  // registers, would not survive the round-trip. No interface produces
+  // any, and `RawAgentSchema` is `.strict()`: they would in any case be
+  // refused on re-read.
   if (agent.capabilities?.nativeReadOnly !== undefined) out.native_read_only = agent.capabilities.nativeReadOnly;
   if (agent.networkArgs !== undefined) out.network_args = agent.networkArgs;
   return out;
 }
 
 // ---------------------------------------------------------------------------
-// Messages d'erreur — en français, nommant le fichier, le champ, et ce qui
-// était attendu (voir les points de vigilance du brief de la tâche 5).
+// Error messages — human-readable, naming the file, the field, and what
+// was expected (see the vigilance points of the task 5 brief).
 // ---------------------------------------------------------------------------
 
 const TYPE_NAMES: Record<string, string> = {
-  string: "une chaîne",
-  number: "un nombre",
-  int: "un entier",
-  boolean: "un booléen",
-  array: "une liste",
-  object: "un objet",
+  string: "a string",
+  number: "a number",
+  int: "an integer",
+  boolean: "a boolean",
+  array: "a list",
+  object: "an object",
 };
 
 function describeType(expected: string): string {
@@ -504,78 +504,78 @@ function describeType(expected: string): string {
 }
 
 function describeReceived(input: unknown): string {
-  if (input === undefined) return "aucune valeur (champ absent)";
+  if (input === undefined) return "no value (field absent)";
   if (input === null) return "null";
-  if (Array.isArray(input)) return `une liste (${JSON.stringify(input)})`;
-  if (typeof input === "string") return `la chaîne ${JSON.stringify(input)}`;
-  if (typeof input === "number") return `le nombre ${input}`;
-  if (typeof input === "boolean") return `le booléen ${input}`;
-  if (typeof input === "object") return `un objet (${JSON.stringify(input)})`;
+  if (Array.isArray(input)) return `a list (${JSON.stringify(input)})`;
+  if (typeof input === "string") return `the string ${JSON.stringify(input)}`;
+  if (typeof input === "number") return `the number ${input}`;
+  if (typeof input === "boolean") return `the boolean ${input}`;
+  if (typeof input === "object") return `an object (${JSON.stringify(input)})`;
   return String(input);
 }
 
 function describeIssue(issue: ZodIssue): string {
-  const field = issue.path.length > 0 ? issue.path.join(".") : "(racine du fichier)";
+  const field = issue.path.length > 0 ? issue.path.join(".") : "(file root)";
   switch (issue.code) {
     case "unrecognized_keys": {
       const prefix = issue.path.length > 0 ? `${issue.path.join(".")}.` : "";
       const names = issue.keys.map((key) => `"${prefix}${key}"`).join(", ");
-      return `${names} : champ inconnu (vérifier une faute de frappe dans le nom).`;
+      return `${names}: unknown field (check for a typo in the name).`;
     }
     case "invalid_type":
-      return `${field} : attendu ${describeType(issue.expected)}, reçu ${describeReceived(issue.input)}`;
+      return `${field}: expected ${describeType(issue.expected)}, received ${describeReceived(issue.input)}`;
     case "invalid_value":
-      return `${field} : valeur non reconnue (attendu l'une de : ${issue.values.map((v) => JSON.stringify(v)).join(", ")})`;
+      return `${field}: unrecognized value (expected one of: ${issue.values.map((v) => JSON.stringify(v)).join(", ")})`;
     case "too_small":
-      if (issue.origin === "string" && issue.minimum === 1) return `${field} : ne peut pas être vide`;
+      if (issue.origin === "string" && issue.minimum === 1) return `${field}: cannot be empty`;
       if (typeof issue.minimum === "number") {
-        return `${field} : doit être ${issue.inclusive ? "≥" : ">"} ${issue.minimum}`;
+        return `${field}: must be ${issue.inclusive ? "≥" : ">"} ${issue.minimum}`;
       }
-      return `${field} : ${issue.message}`;
+      return `${field}: ${issue.message}`;
     case "custom":
-      return `${field} : ${issue.message}`;
+      return `${field}: ${issue.message}`;
     default:
-      return `${field} : ${issue.message}`;
+      return `${field}: ${issue.message}`;
   }
 }
 
 function formatZodError(error: z.ZodError, filePath: string): string {
   const lines = error.issues.map((issue) => `  - ${describeIssue(issue)}`);
-  return `Configuration invalide dans ${filePath} :\n${lines.join("\n")}`;
+  return `Invalid configuration in ${filePath}:\n${lines.join("\n")}`;
 }
 
 // ---------------------------------------------------------------------------
-// Chargement
+// Loading
 // ---------------------------------------------------------------------------
 
 /**
- * Répertoire personnel de l'utilisateur — **le seul point d'accès au
- * répertoire personnel que ce monorepo doit utiliser** (`mcp-registration.ts`
- * en dépend aussi, pour les chemins de config MCP sous `$HOME` de `copilot`/
- * `antigravity`/`opencode` ; tout futur besoin similaire doit passer par ici,
- * jamais par un nouvel appel direct à `os.homedir()`).
+ * The user's home directory — **the only access point to the home
+ * directory this monorepo must use** (`mcp-registration.ts`
+ * depends on it too, for the MCP config paths under `$HOME` of `copilot`/
+ * `antigravity`/`opencode`; any similar future need must go through here,
+ * never through a new direct call to `os.homedir()`).
  *
- * `os.homedir()` (Node) préfère déjà `$HOME` sur POSIX, mais **Bun** — le
- * runtime de `packages/tui`, voir les contraintes globales du projet —
- * ignore silencieusement `$HOME` et retombe toujours sur l'utilisateur
- * système réel, constaté en écrivant les tests de la tâche 15 : neutraliser
- * `HOME` pour isoler un test (le motif déjà en place dans
- * `packages/core/src/config.test.ts` et `packages/cli/test/support.ts`)
- * n'empêchait pas `globalConfigPath()` de résoudre le vrai
- * `~/.config/caesar/` sous Bun, avec le risque réel d'écrire dedans — ce qui
- * s'est produit en écrivant le test qui a révélé le défaut. Lire `$HOME`
- * explicitement avant de retomber sur `homedir()` reproduit le comportement
- * Node existant (aucun changement sous Node, où `$HOME` l'emportait déjà) et
- * le rend fiable sous Bun aussi.
+ * `os.homedir()` (Node) already prefers `$HOME` on POSIX, but **Bun** — the
+ * runtime of `packages/tui`, see the project's global constraints —
+ * silently ignores `$HOME` and always falls back to the real system
+ * user, observed while writing the task 15 tests: neutralizing
+ * `HOME` to isolate a test (the pattern already in place in
+ * `packages/core/src/config.test.ts` and `packages/cli/test/support.ts`)
+ * did not stop `globalConfigPath()` from resolving the real
+ * `~/.config/caesar/` under Bun, with the real risk of writing into it — which
+ * happened while writing the test that revealed the defect. Reading `$HOME`
+ * explicitly before falling back to `homedir()` reproduces the existing Node
+ * behavior (no change under Node, where `$HOME` already won) and
+ * makes it reliable under Bun as well.
  *
- * Ce correctif n'avait d'abord routé que `globalConfigPath()` : trois appels
- * directs à `homedir()` dans `mcp-registration.ts` (`buildPlan`, chemins
- * `copilot`/`antigravity`/`opencode`) sont restés non protégés jusqu'à la
- * revue de la tâche 15, qui l'a signalé — `IntegrationsScreen.render.test.tsx`
- * neutralise `HOME` puis appelle `checkMcpStatus` pour les cinq clients au
- * montage, donc lisait les fichiers réels de la machine sous Bun malgré la
- * neutralisation. `homeDirectory` exportée plutôt que la règle recopiée à
- * l'identique dans ce second fichier.
+ * This fix had at first only routed `globalConfigPath()`: three direct
+ * calls to `homedir()` in `mcp-registration.ts` (`buildPlan`, the
+ * `copilot`/`antigravity`/`opencode` paths) remained unprotected until the
+ * task 15 review, which flagged it — `IntegrationsScreen.render.test.tsx`
+ * neutralizes `HOME` then calls `checkMcpStatus` for the five clients on
+ * mount, and so read the machine's real files under Bun despite the
+ * neutralization. `homeDirectory` exported rather than the rule copied
+ * verbatim into that second file.
  */
 export function homeDirectory(): string {
   return process.env["HOME"] || homedir();
@@ -589,12 +589,12 @@ export function projectConfigPath(root: string): string {
   return join(root, ".caesar", "config.toml");
 }
 
-/** Couche locale : jamais versionnée (voir `caesar init`, qui la déclare au `.gitignore`), propre à un poste de travail pour un projet donné. */
+/** Local layer: never versioned (see `caesar init`, which declares it in the `.gitignore`), specific to one workstation for a given project. */
 export function localConfigPath(root: string): string {
   return join(root, ".caesar", "config.local.toml");
 }
 
-/** Chemin du fichier d'une couche donnée — la seule fonction qui doit choisir entre `globalConfigPath`/`projectConfigPath`/`localConfigPath`, pour que le choix de la couche reste un simple paramètre partout ailleurs (`loadLayer`, `saveLayer`, les façades CLI). */
+/** Path of a given layer's file — the only function that may choose between `globalConfigPath`/`projectConfigPath`/`localConfigPath`, so that the choice of layer remains a simple parameter everywhere else (`loadLayer`, `saveLayer`, the CLI facades). */
 export function configPathFor(scope: ConfigScope, root: string): string {
   switch (scope) {
     case "global":
@@ -606,29 +606,29 @@ export function configPathFor(scope: ConfigScope, root: string): string {
   }
 }
 
-/** Vrai si `error` est un `ENOENT` (fichier ou répertoire absent) — partagée avec `roles.ts`, qui a le même besoin pour `system_prompt_file`. */
+/** True if `error` is an `ENOENT` (absent file or directory) — shared with `roles.ts`, which has the same need for `system_prompt_file`. */
 export function isEnoent(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
-/** Lit un fichier de configuration. `null` si absent — ce n'est pas une erreur. Toute autre erreur nomme le fichier. */
+/** Reads a configuration file. `null` if absent — that is not an error. Any other error names the file. */
 async function readConfigFile(path: string): Promise<string | null> {
   try {
     return await readFile(path, "utf8");
   } catch (error) {
     if (isEnoent(error)) return null;
-    throw new Error(`Impossible de lire ${path} : ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Cannot read ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-/** Parse et valide le contenu TOML d'un fichier de configuration en une contribution à fusionner. */
+/** Parses and validates the TOML content of a configuration file into a contribution to merge. */
 function parseConfigFile(toml: string, filePath: string): ConfigOverride {
   let raw: unknown;
   try {
     raw = parseToml(toml);
   } catch (error) {
     if (error instanceof TomlError) {
-      throw new Error(`Fichier TOML invalide : ${filePath} (ligne ${error.line}, colonne ${error.column}) — ${error.message}`);
+      throw new Error(`Invalid TOML file: ${filePath} (line ${error.line}, column ${error.column}) — ${error.message}`);
     }
     throw error;
   }
@@ -638,24 +638,24 @@ function parseConfigFile(toml: string, filePath: string): ConfigOverride {
     throw new Error(formatZodError(result.error, filePath));
   }
 
-  // `RawFileSchema` défaute `role`/`agent` à `[]` (`z.array(...).default([])`)
-  // pour que le schéma reste simple à écrire — mais ça rendrait `override`
-  // infidèle au fichier : un fichier qui ne déclare aucun `[[role]]` doit
-  // produire un `override.roles` absent (`undefined`), pas `[]` — c'est ce
-  // que `loadLayer` promet ("exactement ce que le fichier déclare, rien de
-  // plus"). D'où la vérification sur `raw` lui-même (avant l'application des
-  // défauts du schéma), seule source qui distingue encore "absent du
-  // fichier" de "présent mais vide" (impossible à écrire pour un array de
-  // tables TOML, mais on ne présume pas de la forme de `raw` avant coup).
+  // `RawFileSchema` defaults `role`/`agent` to `[]` (`z.array(...).default([])`)
+  // so that the schema stays simple to write — but that would make `override`
+  // unfaithful to the file: a file that declares no `[[role]]` must
+  // produce an absent `override.roles` (`undefined`), not `[]` — that is
+  // what `loadLayer` promises ("exactly what the file declares, nothing
+  // more"). Hence the check on `raw` itself (before the schema's
+  // defaults are applied), the only source that still distinguishes "absent
+  // from the file" from "present but empty" (impossible to write for a TOML
+  // array of tables, but we do not presume the shape of `raw` beforehand).
   const rawRecord = raw as Record<string, unknown>;
   const override: ConfigOverride = {};
   if (rawRecord["role"] !== undefined) override.roles = result.data.role.map(toRoleConfig);
   if (rawRecord["agent"] !== undefined) override.agents = result.data.agent.map(toAgentSpec);
   if (result.data.worktree) override.worktree = toWorktreeOverride(result.data.worktree);
   if (result.data.policy) {
-    // `toPolicyOverride` renvoie déjà un `Partial<PolicyConfig>` ne portant
-    // que les champs présents dans ce fichier — exactement la forme que
-    // `ConfigOverride.policy` attend, sans conversion ni cast.
+    // `toPolicyOverride` already returns a `Partial<PolicyConfig>` carrying
+    // only the fields present in this file — exactly the shape that
+    // `ConfigOverride.policy` expects, without conversion or cast.
     override.policy = toPolicyOverride(result.data.policy);
   }
   return override;
@@ -663,7 +663,7 @@ function parseConfigFile(toml: string, filePath: string): ConfigOverride {
 
 const CONFIG_SCOPES: readonly ConfigScope[] = ["global", "project", "local"];
 
-/** Lit et parse une couche, sans savoir si le fichier existait — partagé par `loadLayer` (qui n'a besoin que de l'override) et `loadConfig` (qui a aussi besoin de savoir si la couche a une source). */
+/** Reads and parses a layer, without knowing whether the file existed — shared by `loadLayer` (which only needs the override) and `loadConfig` (which also needs to know whether the layer has a source). */
 async function readLayer(scope: ConfigScope, root: string): Promise<{ path: string; text: string | null; override: ConfigOverride }> {
   const path = configPathFor(scope, root);
   const text = await readConfigFile(path);
@@ -672,24 +672,24 @@ async function readLayer(scope: ConfigScope, root: string): Promise<{ path: stri
 }
 
 /**
- * Rend exactement ce que la couche `scope` déclare — pas le résultat d'une
- * fusion avec les autres couches, jamais des valeurs par défaut. Un fichier
- * absent rend un override vide (`{}`), pas une erreur : c'est ce qui permet
- * à une façade d'éditer une couche sans se soucier de son existence
- * préalable (voir `saveLayer`, et le brief de la tâche 13).
+ * Returns exactly what layer `scope` declares — not the result of a
+ * merge with the other layers, never default values. An absent file
+ * yields an empty override (`{}`), not an error: that is what allows
+ * a facade to edit a layer without worrying about its prior
+ * existence (see `saveLayer`, and the task 13 brief).
  */
 export async function loadLayer(scope: ConfigScope, root: string): Promise<ConfigOverride> {
   return (await readLayer(scope, root)).override;
 }
 
 /**
- * Charge la configuration : `defaultConfig()` fusionnée avec le global, puis
- * le projet, puis le local, dans cet ordre — chacun s'il existe. Un fichier
- * absent des trois côtés n'est pas une erreur — la configuration par défaut
- * suffit. `config` est la fusion, seule lue par les consommateurs (moteur,
- * serveur MCP, rôles, politique) ; `layers` donne accès à la contribution
- * propre de chaque couche, pour les façades qui doivent savoir *où* vit une
- * valeur plutôt que seulement *laquelle* (provenance, écriture ciblée).
+ * Loads the configuration: `defaultConfig()` merged with the global, then
+ * the project, then the local layer, in that order — each if it exists. A
+ * file absent on all three sides is not an error — the default configuration
+ * suffices. `config` is the merge, the only thing consumers read (engine,
+ * MCP server, roles, policy); `layers` gives access to each layer's own
+ * contribution, for the facades that must know *where* a value lives
+ * rather than only *which one* (provenance, targeted writing).
  */
 export async function loadConfig(root: string): Promise<LoadedConfig> {
   const sources: { global?: string; project?: string; local?: string } = {};
@@ -710,7 +710,7 @@ export async function loadConfig(root: string): Promise<LoadedConfig> {
 
 export type ProvenanceSource = ConfigScope | "default";
 
-/** La dernière couche (la plus spécifique) dont `predicate(override)` est vrai, "default" si aucune. `layers` doit être dans l'ordre d'application (`loadConfig` le garantit). */
+/** The last (most specific) layer for which `predicate(override)` is true, "default" if none. `layers` must be in application order (`loadConfig` guarantees it). */
 function lastLayerDeclaring(layers: readonly ConfigLayer[], predicate: (override: ConfigOverride) => boolean): ProvenanceSource {
   for (let i = layers.length - 1; i >= 0; i--) {
     const layer = layers[i]!;
@@ -720,31 +720,31 @@ function lastLayerDeclaring(layers: readonly ConfigLayer[], predicate: (override
 }
 
 /**
- * Provenance d'un champ de `policy` : la couche la plus spécifique qui le
- * déclare explicitement, "default" si aucune ne le fait. Calcul direct à
- * partir de `layers` — remplace le contournement à trois chargements
- * (`computeProvenance`, `packages/cli/src/commands/policy.ts`) que ce module
- * ne permettait pas d'éviter avant l'introduction des couches.
+ * Provenance of a `policy` field: the most specific layer that declares
+ * it explicitly, "default" if none does. Computed directly from
+ * `layers` — replaces the three-load workaround
+ * (`computeProvenance`, `packages/cli/src/commands/policy.ts`) that this
+ * module gave no way to avoid before layers were introduced.
  */
 export function policyFieldProvenance(layers: readonly ConfigLayer[], field: keyof PolicyConfig): ProvenanceSource {
   return lastLayerDeclaring(layers, (override) => override.policy?.[field] !== undefined);
 }
 
-/** Provenance d'un rôle par nom : la couche la plus spécifique qui déclare une entrée `[[role]]` de ce nom. */
+/** Provenance of a role by name: the most specific layer that declares a `[[role]]` entry of that name. */
 export function roleProvenance(layers: readonly ConfigLayer[], name: string): ProvenanceSource {
   return lastLayerDeclaring(layers, (override) => override.roles?.some((role) => role.name === name) ?? false);
 }
 
-/** Provenance d'un agent générique par identifiant : la couche la plus spécifique qui déclare une entrée `[[agent]]` de cet id. Les agents du catalogue natif (codex, antigravity…) ne sont déclarés par aucune couche : toujours "default". */
+/** Provenance of a generic agent by identifier: the most specific layer that declares an `[[agent]]` entry with that id. The native catalog agents (codex, antigravity…) are declared by no layer: always "default". */
 export function agentProvenance(layers: readonly ConfigLayer[], id: string): ProvenanceSource {
   return lastLayerDeclaring(layers, (override) => override.agents?.some((agent) => agent.id === id) ?? false);
 }
 
 // ---------------------------------------------------------------------------
-// Fusion
+// Merge
 // ---------------------------------------------------------------------------
 
-/** Fusionne par clé : une entrée d'`override` remplace entièrement celle de `base` qui porte la même clé ; les autres entrées de `base` sont conservées. */
+/** Merges by key: an `override` entry entirely replaces the `base` entry bearing the same key; the other `base` entries are kept. */
 function mergeByKey<T>(base: readonly T[], override: readonly T[] | undefined, keyOf: (item: T) => string): T[] {
   if (!override || override.length === 0) return [...base];
   const merged = new Map(base.map((item) => [keyOf(item), item] as const));
@@ -755,16 +755,16 @@ function mergeByKey<T>(base: readonly T[], override: readonly T[] | undefined, k
 }
 
 /**
- * `policy` se fusionne champ par champ (le champ d'`override`, s'il est
- * présent, remplace celui de `base`). `roles` et `agents` se fusionnent par
- * clé (`name`, `id`) : une entrée d'`override` remplace entièrement celle de
- * `base` de même clé, les entrées propres à chaque niveau sont conservées.
+ * `policy` merges field by field (the `override` field, if
+ * present, replaces the `base` one). `roles` and `agents` merge by
+ * key (`name`, `id`): an `override` entry entirely replaces the same-key
+ * `base` entry, entries specific to each level are kept.
  */
 export function mergeConfig(base: CaesarConfig, override: ConfigOverride): CaesarConfig {
   const policy: PolicyConfig = override.policy ? { ...base.policy, ...override.policy } : base.policy;
-  // Champ par champ, comme `policy` — et donc par *remplacement* de chaque
-  // liste, jamais par concaténation : une union rendrait impossible le retrait
-  // local d'une entrée héritée du global. Voir `ConfigOverride.worktree`.
+  // Field by field, like `policy` — and therefore by *replacement* of each
+  // list, never by concatenation: a union would make it impossible to locally
+  // remove an entry inherited from the global layer. See `ConfigOverride.worktree`.
   const worktree: WorktreeConfig = override.worktree ? { ...base.worktree, ...override.worktree } : base.worktree;
   const roles = mergeByKey(base.roles, override.roles, (role) => role.name);
   const agents = mergeByKey(base.agents, override.agents, (agent) => agent.id);
@@ -772,7 +772,7 @@ export function mergeConfig(base: CaesarConfig, override: ConfigOverride): Caesa
 }
 
 // ---------------------------------------------------------------------------
-// Configuration par défaut
+// Default configuration
 // ---------------------------------------------------------------------------
 
 const DEFAULT_POLICY: PolicyConfig = {
@@ -781,41 +781,41 @@ const DEFAULT_POLICY: PolicyConfig = {
   max_parallel: 4,
   default_isolation: "auto",
   default_mode: "write",
-  // "auto" : le réseau s'ouvre partout où l'agent retenu le permet, et le
-  // rapport le dit là où il ne le permet pas. "on" en défaut ferait échouer
-  // toute tâche en lecture seule sur codex — donc les rôles `reviewer` et
-  // `investigator` livrés ci-dessous.
+  // "auto": the network opens wherever the selected agent allows it, and the
+  // report says so wherever it does not. "on" as a default would fail
+  // every read-only task on codex — hence the `reviewer` and
+  // `investigator` roles shipped below.
   default_network: "auto",
   default_timeout_ms: parseDuration("10m"),
   allow_recursion: false,
-  // Faux : une tâche en écriture ne s'exécute pas dans l'arbre de travail de
-  // l'utilisateur tant qu'un worktree est possible. Le défaut inverse est ce
-  // qui a laissé trois délégations écrire sur une branche de travail réelle,
-  // en silence.
+  // False: a write task does not run in the user's working tree
+  // as long as a worktree is possible. The opposite default is what
+  // let three delegations write onto a real working branch,
+  // silently.
   allow_inplace_write: false,
   max_depth: 2,
 };
 
 /**
- * `system_prompt_file` pointe déjà ici vers la convention `roles/<name>.md`
- * (résolue par `resolveRole`, relativement à `<root>/.caesar/`), alors même
- * qu'aucune couche ne l'a déclaré : c'est délibéré, depuis la tâche 13.
+ * `system_prompt_file` already points here to the `roles/<name>.md` convention
+ * (resolved by `resolveRole`, relative to `<root>/.caesar/`), even though
+ * no layer has declared it: this is deliberate, since task 13.
  *
- * `caesar init` (variante projet) matérialise le *fichier* (`.caesar/roles/<name>.md`,
- * un prompt système par défaut) mais ne déclare plus le rôle lui-même dans la
- * couche projet — sans quoi cette couche figerait la politique et les rôles
- * par défaut au moment de l'init, masquant toute configuration globale
- * ultérieure (exactement le défaut I11 que cette tâche corrige). En portant
- * la référence au fichier ici, dans la base commune à toutes les couches, le
- * rôle reste utilisable (prompt vide, `resolveRole` tolère un fichier
- * absent) même sans `caesar init`, et se remplit dès que `caesar init` a écrit
- * le fichier — quel que soit le projet, sans que la couche projet ait besoin
- * de le répéter.
+ * `caesar init` (project variant) materializes the *file* (`.caesar/roles/<name>.md`,
+ * a default system prompt) but no longer declares the role itself in the
+ * project layer — otherwise that layer would freeze the default policy and
+ * roles at init time, masking any later global configuration
+ * (exactly the I11 defect this task fixes). By carrying
+ * the file reference here, in the base common to all layers, the
+ * role stays usable (empty prompt, `resolveRole` tolerates an absent
+ * file) even without `caesar init`, and fills up as soon as `caesar init` has
+ * written the file — whatever the project, without the project layer having
+ * to repeat it.
  */
 const DEFAULT_ROLES: RoleConfig[] = [
   {
     name: "reviewer",
-    purpose: "Relit un diff et signale bugs et régressions. Ne modifie rien.",
+    purpose: "Reviews a diff and reports bugs and regressions. Modifies nothing.",
     agents: ["codex", "antigravity"],
     mode: "read-only",
     isolation: "inplace",
@@ -825,7 +825,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
   },
   {
     name: "implementer",
-    purpose: "Implémente une tâche précise et rend un diff revu.",
+    purpose: "Implements a precise task and returns a reviewed diff.",
     agents: ["codex", "antigravity", "opencode"],
     mode: "write",
     isolation: "worktree",
@@ -835,7 +835,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
   },
   {
     name: "investigator",
-    purpose: "Explore le code et explique un mécanisme. Ne modifie rien.",
+    purpose: "Explores the code and explains a mechanism. Modifies nothing.",
     agents: ["antigravity", "codex", "opencode"],
     mode: "read-only",
     isolation: "auto",
@@ -845,7 +845,7 @@ const DEFAULT_ROLES: RoleConfig[] = [
   },
 ];
 
-/** La configuration de base, avant toute fusion avec un fichier global ou projet. Toujours une copie fraîche. */
+/** The base configuration, before any merge with a global or project file. Always a fresh copy. */
 export function defaultConfig(): CaesarConfig {
   return {
     policy: { ...DEFAULT_POLICY, allowed: [...DEFAULT_POLICY.allowed], denied: [...DEFAULT_POLICY.denied] },
@@ -856,25 +856,25 @@ export function defaultConfig(): CaesarConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Écriture
+// Writing
 // ---------------------------------------------------------------------------
 
 const SAVE_HEADER =
-  "# Fichier généré par @caesar/core : les commentaires ajoutés à la main ne survivent pas à une prochaine écriture.\n\n";
+  "# File generated by @caesar/core: comments added by hand do not survive the next write.\n\n";
 
 /**
- * Régénère le fichier de la couche `scope`, à partir de `override` — pas
- * d'un `CaesarConfig` fusionné. `override` ne sérialise que ce qu'il porte
- * explicitement : une section `[policy]` uniquement pour les champs présents
- * dans `override.policy`, des sections `[[role]]`/`[[agent]]` uniquement si
- * `override.roles`/`override.agents` sont définis. C'est ce qui rend une
- * couche fidèle à ce qu'elle déclare en propre, jamais un aplatissement de
- * la fusion (voir l'en-tête de ce module, et le défaut I11 qu'il corrige) :
- * un appelant qui ne veut modifier qu'un seul champ doit lire la couche au
- * préalable (`loadLayer`) et ne réécrire que le champ voulu dans l'override
- * relu, sous peine d'effacer le reste de ce qu'elle déclarait.
+ * Regenerates the file of layer `scope`, from `override` — not
+ * from a merged `CaesarConfig`. `override` serializes only what it carries
+ * explicitly: a `[policy]` section only for the fields present
+ * in `override.policy`, `[[role]]`/`[[agent]]` sections only if
+ * `override.roles`/`override.agents` are defined. This is what keeps a
+ * layer faithful to what it declares in its own right, never a flattening of
+ * the merge (see this module's header, and the I11 defect it fixes):
+ * a caller that wants to modify a single field must read the layer
+ * beforehand (`loadLayer`) and rewrite only the intended field in the
+ * re-read override, on pain of erasing the rest of what it declared.
  *
- * Écriture atomique (`writeFileAtomic`, `fs-atomic.ts`) — même motif que
+ * Atomic write (`writeFileAtomic`, `fs-atomic.ts`) — same pattern as
  * `packages/core/src/store.ts`.
  */
 export async function saveLayer(scope: ConfigScope, root: string, override: ConfigOverride): Promise<void> {
@@ -889,26 +889,26 @@ export async function saveLayer(scope: ConfigScope, root: string, override: Conf
 }
 
 export interface PolicyListEdit {
-  /** Liste effective (fusionnée) après la modification — ce que la couche `scope` porte désormais. */
+  /** Effective (merged) list after the edit — what layer `scope` now carries. */
   effective: string[];
-  /** Vrai si la couche `scope` ne déclarait pas encore ce champ avant cette écriture. */
+  /** True if layer `scope` did not yet declare this field before this write. */
   materialized: boolean;
 }
 
 /**
- * Calcul pur de la matérialisation d'une liste — ajoute ou retire `id` de la
- * liste **effective** (`effective`, celle que `loadConfig` calculerait pour
- * ce champ), et signale si `currentOverride` (ce que la couche visée déclare
- * aujourd'hui ; `undefined` si elle ne déclare pas encore ce champ) va être
- * pris en main par cette écriture.
+ * Pure computation of a list materialization — adds or removes `id` from the
+ * **effective** list (`effective`, the one `loadConfig` would compute for
+ * this field), and reports whether `currentOverride` (what the targeted layer
+ * declares today; `undefined` if it does not declare this field yet) is
+ * about to be taken over by this write.
  *
- * Séparée de `materializePolicyList` (qui lit/écrit le disque) pour qu'une
- * façade tenant sa propre copie de travail en mémoire — le TUI
- * (`packages/tui/src/state/config-state.ts`), qui ne peut pas relire/réécrire
- * le disque à chaque frappe sans violer "aucune écriture sans action
- * explicite de l'utilisateur" — applique exactement la même règle plutôt que
- * de la recopier (voir le brief de la tâche 15, et les deux duplications de
- * règles entre façades que ce projet a déjà connues).
+ * Separated from `materializePolicyList` (which reads/writes the disk) so
+ * that a facade holding its own working copy in memory — the TUI
+ * (`packages/tui/src/state/config-state.ts`), which cannot re-read/rewrite
+ * the disk on every keystroke without violating "no write without an
+ * explicit user action" — applies exactly the same rule rather than
+ * copying it (see the task 15 brief, and the two rule duplications
+ * between facades this project has already seen).
  */
 export function materializeListEdit(
   effective: readonly string[],
@@ -924,23 +924,23 @@ export function materializeListEdit(
 }
 
 /**
- * Ajoute ou retire `id` de `policy.allowed`/`policy.denied`, à la couche
- * `scope` — la matérialisation de liste décrite par le brief de la tâche 13.
+ * Adds or removes `id` from `policy.allowed`/`policy.denied`, at layer
+ * `scope` — the list materialization described by the task 13 brief.
  *
- * `allowed`/`denied` se fusionnent par remplacement entier, pas par union
- * (voir `mergeConfig`) : une couche qui déclare `denied` remplace celui des
- * couches moins spécifiques. Se contenter d'écrire `[id]` à la couche visée
- * effacerait donc tout ce que ces couches y avaient placé. Cette fonction
- * charge la liste effective et la déclaration actuelle de la couche visée,
- * délègue le calcul à `materializeListEdit`, puis écrit son résultat — jamais
- * `id` seul — dans la couche visée, en conservant le reste de ce qu'elle
- * déclarait déjà (`loadLayer` relu avant d'écrire).
+ * `allowed`/`denied` merge by whole replacement, not by union
+ * (see `mergeConfig`): a layer that declares `denied` replaces that of the
+ * less specific layers. Merely writing `[id]` to the targeted layer
+ * would therefore erase everything those layers had put there. This function
+ * loads the effective list and the targeted layer's current declaration,
+ * delegates the computation to `materializeListEdit`, then writes its result
+ * — never `id` alone — into the targeted layer, keeping the rest of what it
+ * already declared (`loadLayer` re-read before writing).
  *
- * `materialized` vaut vrai quand la couche ne déclarait pas encore ce champ :
- * elle en prend désormais la main sur toute la liste, et une couche moins
- * spécifique modifiée ensuite n'aura plus d'effet sur ce champ ici. Un
- * signal que l'appelant (CLI, TUI) doit rendre visible, pas seulement
- * consigner.
+ * `materialized` is true when the layer did not yet declare this field:
+ * it now takes over the entire list, and a less specific layer
+ * modified afterwards will have no further effect on this field here. A
+ * signal the caller (CLI, TUI) must make visible, not merely
+ * log.
  */
 export async function materializePolicyList(
   root: string,
