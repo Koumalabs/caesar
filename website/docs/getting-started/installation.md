@@ -8,7 +8,17 @@ description: Prerequisites and first steps to set up caesar from a checkout of t
 
 # Installation
 
-caesar is a pnpm monorepo. It is **not yet published on npm**: you use it from a checkout of the repository, targeting the project where you want to delegate tasks with `--root`.
+caesar is a pnpm monorepo. It is **not yet published on npm**: you use it from a checkout of the repository — either installed for you by the one-liner below, or checked out and driven by hand with `--root`.
+
+## One-liner install
+
+```bash
+curl -fsSL https://caesar.koumalabs.org/install | sh
+```
+
+The script checks the prerequisites (git, Node ≥ 22, pnpm or corepack), clones the repository into `~/.local/share/caesar`, builds the CLI, and writes a `caesar` launcher into `~/.local/bin` — after which `caesar <command>` works from any project on your machine, no `--root` needed. Run it again at any time to update: same directories, `git pull`, rebuild.
+
+Two environment variables override the locations: `CAESAR_INSTALL_DIR` (the checkout) and `CAESAR_BIN_DIR` (the launcher). The script refuses to update over local modifications in the checkout rather than discard them.
 
 ## Prerequisites
 

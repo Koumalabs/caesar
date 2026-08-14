@@ -1,0 +1,131 @@
+#!/bin/sh
+# caesar installer — https://caesar.koumalabs.org
+#
+#   curl -fsSL https://caesar.koumalabs.org/install | sh
+#
+# caesar is not published on npm: this script installs it from a checkout
+# of the repository, the only supported installation today.
+#
+#   1. checks the prerequisites: git, Node >= 22, pnpm (or corepack)
+#   2. clones github.com/Koumalabs/caesar into $CAESAR_INSTALL_DIR
+#      (default: ~/.local/share/caesar) — or updates an existing install
+#   3. builds the CLI (pnpm install + tsc -b; the website workspace is
+#      skipped, it is not needed to run caesar)
+#   4. writes a `caesar` launcher into $CAESAR_BIN_DIR (default: ~/.local/bin)
+#
+# Run it again at any time to update: same directories, git pull, rebuild.
+# Bun is NOT required for the CLI — only for the optional TUI and the
+# standalone binary, neither of which this script builds.
+
+set -eu
+
+REPO_URL="${CAESAR_REPO_URL:-https://github.com/Koumalabs/caesar.git}"
+INSTALL_DIR="${CAESAR_INSTALL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/caesar}"
+BIN_DIR="${CAESAR_BIN_DIR:-$HOME/.local/bin}"
+NODE_MAJOR_REQUIRED=22
+
+if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
+  GOLD="$(printf '\033[33m')"
+  RED="$(printf '\033[31m')"
+  DIM="$(printf '\033[2m')"
+  RESET="$(printf '\033[0m')"
+else
+  GOLD="" RED="" DIM="" RESET=""
+fi
+
+say() { printf '%s\n' "${GOLD}▞▚${RESET} $1" >&2; }
+note() { printf '%s\n' "   ${DIM}$1${RESET}" >&2; }
+fail() {
+  printf '%s\n' "${RED}▞▚ $1${RESET}" >&2
+  shift
+  for line in "$@"; do printf '%s\n' "   $line" >&2; done
+  exit 1
+}
+
+say "caesar installer"
+note "install dir: $INSTALL_DIR"
+note "launcher:    $BIN_DIR/caesar"
+
+# --- prerequisites -----------------------------------------------------------
+
+command -v git >/dev/null 2>&1 || fail "git is required and was not found." \
+  "Install git, then run this script again."
+
+command -v node >/dev/null 2>&1 || fail "Node.js >= $NODE_MAJOR_REQUIRED is required and was not found." \
+  "Install it from https://nodejs.org (or your version manager), then run this script again."
+
+NODE_MAJOR="$(node -v | sed 's/^v//' | cut -d. -f1)"
+case "$NODE_MAJOR" in
+  *[!0-9]*|'') fail "Could not read the Node.js version from 'node -v'." ;;
+esac
+[ "$NODE_MAJOR" -ge "$NODE_MAJOR_REQUIRED" ] || fail "Node.js >= $NODE_MAJOR_REQUIRED is required — found $(node -v)." \
+  "Upgrade Node.js, then run this script again."
+
+if command -v pnpm >/dev/null 2>&1; then
+  PNPM="pnpm"
+elif command -v corepack >/dev/null 2>&1; then
+  # corepack ships with Node: it runs the pnpm version pinned by the
+  # repository's "packageManager" field without a global install.
+  PNPM="corepack pnpm"
+else
+  fail "pnpm is required and was not found (and corepack is not available either)." \
+    "Install pnpm — https://pnpm.io/installation — then run this script again."
+fi
+
+# --- clone or update ---------------------------------------------------------
+
+if [ -e "$INSTALL_DIR" ]; then
+  [ -d "$INSTALL_DIR/.git" ] || fail "$INSTALL_DIR exists but is not a git checkout." \
+    "Move it out of the way, or point CAESAR_INSTALL_DIR elsewhere, then run this script again."
+  if [ -n "$(git -C "$INSTALL_DIR" status --porcelain)" ]; then
+    fail "$INSTALL_DIR has local modifications — refusing to update over them." \
+      "Commit, stash or discard them, then run this script again."
+  fi
+  say "updating existing install"
+  git -C "$INSTALL_DIR" pull --ff-only </dev/null >&2
+else
+  say "cloning $REPO_URL"
+  mkdir -p "$(dirname "$INSTALL_DIR")"
+  git clone "$REPO_URL" "$INSTALL_DIR" </dev/null >&2
+fi
+
+# --- build -------------------------------------------------------------------
+
+say "installing dependencies (website workspace skipped)"
+(cd "$INSTALL_DIR" && $PNPM --filter '!website' install --frozen-lockfile </dev/null >&2)
+
+say "building the CLI (tsc -b)"
+(cd "$INSTALL_DIR" && $PNPM run build </dev/null >&2)
+
+# On a first install, pnpm warns that it cannot create the `caesar-channel`
+# bin shims: they point into dist/, which only exists after the build above.
+# Nothing resolves those shims at runtime (the engine invokes the channel via
+# process.execPath and a dynamically resolved path), but a second, silent
+# install pass recreates them now that dist/ exists, leaving the tree clean.
+(cd "$INSTALL_DIR" && $PNPM --filter '!website' install --frozen-lockfile --reporter=silent </dev/null >&2) || true
+
+# --- launcher ----------------------------------------------------------------
+
+mkdir -p "$BIN_DIR"
+{
+  printf '#!/bin/sh\n'
+  printf '# caesar launcher — written by the installer, safe to regenerate by re-running it.\n'
+  printf 'exec node "%s/packages/cli/dist/bin.js" "$@"\n' "$INSTALL_DIR"
+} >"$BIN_DIR/caesar"
+chmod +x "$BIN_DIR/caesar"
+say "launcher written to $BIN_DIR/caesar"
+
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *)
+    note ""
+    note "$BIN_DIR is not on your PATH. Add it — for bash/zsh:"
+    note "  export PATH=\"$BIN_DIR:\$PATH\""
+    note "for fish:"
+    note "  fish_add_path $BIN_DIR"
+    ;;
+esac
+
+say "done. From the project you want to delegate tasks in:"
+note "  caesar init      # writes .caesar/config.toml"
+note "  caesar doctor    # checks which agent CLIs are installed and allowed"
