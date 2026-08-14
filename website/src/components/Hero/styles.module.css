@@ -211,6 +211,46 @@
   right: 0.9rem;
 }
 
+/* The delegation chain, promoted from a corner annotation to the panel's
+   headline: the three CLIs in hairline chips, caesar in gold between the
+   caller and the delegate. */
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font-family: var(--landing-pixel);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chainNode {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--landing-hairline);
+  color: var(--landing-ink-secondary);
+  white-space: nowrap;
+}
+
+.chainNodeCaesar {
+  border-color: var(--landing-accent);
+  color: var(--landing-accent);
+}
+
+.chainArrow {
+  font-family: var(--landing-mono);
+  color: var(--landing-accent);
+}
+
 /* The MCP session window. Dark by definition in both site themes, like
    every terminal on the page: literal colors, never --landing-* variables. */
 .demo {
@@ -294,5 +334,14 @@
 
   .demoBody {
     font-size: 0.6rem;
+  }
+
+  .chain {
+    gap: 0.4rem;
+    font-size: 0.68rem;
+  }
+
+  .chainNode {
+    padding: 0.35rem 0.5rem;
   }
 }

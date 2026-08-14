@@ -61,7 +61,7 @@ function McpDemo(): ReactNode {
 
   return (
     <div className={styles.demo}>
-      <div className={styles.demoTitlebar}>claude code · mcp → caesar</div>
+      <div className={styles.demoTitlebar}>claude code · mcp</div>
       <pre className={styles.demoBody}>
         {DEMO_LINES.map((line, i) => (
           <span
@@ -235,10 +235,16 @@ export default function Hero(): ReactNode {
 
           <div className={styles.panel} aria-hidden="true">
             <span className={`${styles.corner} ${styles.cornerTl}`}>mcp · 10 tools</span>
-            <span className={`${styles.corner} ${styles.cornerTr}`}>
-              claude code → caesar → opencode
-            </span>
-            <McpDemo />
+            <div className={styles.stage}>
+              <div className={styles.chain}>
+                <span className={styles.chainNode}>claude code</span>
+                <span className={styles.chainArrow}>→</span>
+                <span className={`${styles.chainNode} ${styles.chainNodeCaesar}`}>caesar</span>
+                <span className={styles.chainArrow}>→</span>
+                <span className={styles.chainNode}>opencode</span>
+              </div>
+              <McpDemo />
+            </div>
             <span className={`${styles.corner} ${styles.cornerBl}`}>session · abridged</span>
             <span className={`${styles.corner} ${styles.cornerBr}`}>oacp · fs-native</span>
           </div>
