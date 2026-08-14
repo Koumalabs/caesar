@@ -11,7 +11,8 @@ import styles from './styles.module.css';
  * names and report fields are the real ones from packages/mcp-server
  * (caesar_delegate → task_id, caesar_await → normalized report with
  * changes_verified_by, caesar_apply → git apply --3way, never a commit);
- * the session itself is abridged, and the corner label says so. Purely
+ * the session itself is abridged, and the caption under the window says so.
+ * Purely
  * decorative (`aria-hidden`), hence the animation carries no content of
  * its own; reduced-motion users get the full transcript at rest.
  */
@@ -22,7 +23,8 @@ type DemoLine = {
 
 const DEMO_LINES: readonly DemoLine[] = [
   {kind: 'call', text: '▸ caesar_delegate'},
-  {kind: 'arg', text: '    agent: "opencode" · model: "deepseek-v4-pro"'},
+  {kind: 'arg', text: '    agent: "opencode"'},
+  {kind: 'arg', text: '    model: "deepseek-v4-pro"'},
   {kind: 'arg', text: '    isolation: "worktree"'},
   {kind: 'arg', text: '    objective: "Add a --json flag to status"'},
   {kind: 'result', text: '◂ task_id: "t_4b21c9de"'},
@@ -61,7 +63,7 @@ function McpDemo(): ReactNode {
 
   return (
     <div className={styles.demo}>
-      <div className={styles.demoTitlebar}>claude code · mcp</div>
+      <div className={styles.demoTitlebar}>claude code · mcp → caesar</div>
       <pre className={styles.demoBody}>
         {DEMO_LINES.map((line, i) => (
           <span
@@ -234,19 +236,10 @@ export default function Hero(): ReactNode {
           </div>
 
           <div className={styles.panel} aria-hidden="true">
-            <span className={`${styles.corner} ${styles.cornerTl}`}>mcp · 10 tools</span>
-            <div className={styles.stage}>
-              <div className={styles.chain}>
-                <span className={styles.chainNode}>claude code</span>
-                <span className={styles.chainArrow}>→</span>
-                <span className={`${styles.chainNode} ${styles.chainNodeCaesar}`}>caesar</span>
-                <span className={styles.chainArrow}>→</span>
-                <span className={styles.chainNode}>opencode</span>
-              </div>
-              <McpDemo />
-            </div>
-            <span className={`${styles.corner} ${styles.cornerBl}`}>session · abridged</span>
-            <span className={`${styles.corner} ${styles.cornerBr}`}>oacp · fs-native</span>
+            <McpDemo />
+            <p className={styles.panelCaption}>
+              mcp · 10 tools — session abridged — oacp · fs-native
+            </p>
           </div>
         </div>
       </div>
