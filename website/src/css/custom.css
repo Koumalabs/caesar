@@ -1,2 +1,54 @@
-:root { --ifm-color-primary: #9F6E1F; }
-[data-theme='dark'] { --ifm-color-primary: #EAA52E; }
+/**
+ * The caesar palette, ported from `packages/theme/src/palette.ts`.
+ *
+ * Two rules from that source hold here too: primary text never carries a
+ * color (only secondary/tertiary/semantic tones are colored), and the
+ * accent ramp is narrow and goes toward the dark, never toward white.
+ *
+ * Light mode: #EAA52E does not hold AA contrast on a light background, so
+ * the bottom of the ramp (#9F6E1F) is the light-mode primary instead — its
+ * "light" declinations climb back up the ramp, its "dark" declinations
+ * continue the ramp's own per-channel progression (R -0x0F, G -0x0B,
+ * B -0x03 per step) past #9F6E1F.
+ */
+:root {
+  --ifm-color-primary: #9f6e1f;
+  --ifm-color-primary-dark: #90631c;
+  --ifm-color-primary-darker: #815819;
+  --ifm-color-primary-darkest: #724d16;
+  --ifm-color-primary-light: #ae7922;
+  --ifm-color-primary-lighter: #bd8425;
+  --ifm-color-primary-lightest: #cc8f28;
+
+  /* Semantic tones and the wordmark's ramp — theme-invariant by design
+     (see palette.ts): they are tuned to stay readable on light and dark
+     backgrounds alike, so they are not redeclared under [data-theme='dark']. */
+  --caesar-ok: #7dce82;
+  --caesar-warn: #e0af68;
+  --caesar-bad: #e88388;
+  --caesar-dim: #9e9284;
+  --caesar-faint: #6b6252;
+  --caesar-accent-ink: #1a1206;
+  --caesar-selected-bg: #4a3714;
+
+  --caesar-ramp-0: #eaa52e;
+  --caesar-ramp-1: #db9a2b;
+  --caesar-ramp-2: #cc8f28;
+  --caesar-ramp-3: #bd8425;
+  --caesar-ramp-4: #ae7922;
+  --caesar-ramp-5: #9f6e1f;
+}
+
+/* Dark mode: the brand gold itself is the primary. Its "dark" declinations
+   step down the ramp; the ramp never climbs past #EAA52E toward white, so
+   there is no brighter tone to give the "light" declinations — they hold
+   at the same value as the primary rather than inventing one. */
+[data-theme='dark'] {
+  --ifm-color-primary: #eaa52e;
+  --ifm-color-primary-dark: #db9a2b;
+  --ifm-color-primary-darker: #cc8f28;
+  --ifm-color-primary-darkest: #bd8425;
+  --ifm-color-primary-light: #eaa52e;
+  --ifm-color-primary-lighter: #eaa52e;
+  --ifm-color-primary-lightest: #eaa52e;
+}

@@ -1,0 +1,60 @@
+.section {
+  padding: 3.5rem 0;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
+}
+
+.mark {
+  font-family: var(--ifm-font-family-monospace);
+  color: var(--ifm-color-primary);
+}
+
+/* The table manages its own horizontal overflow, so a narrow viewport
+   never forces the page itself to scroll sideways. */
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 4px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.table th,
+.table td {
+  padding: 0.65rem 1rem;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.table td:last-child,
+.table th:last-child {
+  white-space: normal;
+}
+
+.table thead th {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ifm-color-emphasis-700);
+  background: var(--ifm-background-surface-color);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table td:nth-child(2) code {
+  font-size: 0.88em;
+}

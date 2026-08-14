@@ -1,0 +1,75 @@
+.section {
+  padding: 3.5rem 0;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
+}
+
+.mark {
+  font-family: var(--ifm-font-family-monospace);
+  color: var(--ifm-color-primary);
+}
+
+.axis {
+  padding: 1.5rem 0;
+}
+
+.axis + .axis {
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.axisTitle {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 720px) {
+  .columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.column {
+  border-left: 3px solid var(--ifm-color-emphasis-300);
+  padding-left: 1rem;
+}
+
+.columnWith {
+  border-left-color: var(--ifm-color-primary);
+}
+
+.columnLabel {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ifm-color-emphasis-600);
+}
+
+.columnWith .columnLabel {
+  color: var(--ifm-color-primary);
+}
+
+.columnBody {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--ifm-color-emphasis-800);
+}
+
+.columnBody code {
+  white-space: nowrap;
+}
