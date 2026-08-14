@@ -44,6 +44,20 @@ fail() {
   exit 1
 }
 
+# Runs a step's command with its output captured: nothing shown when it
+# succeeds — the ▞▚ lines alone tell the story — replayed in full when it
+# fails, so nothing useful is ever hidden.
+STEP_LOG="$(mktemp "${TMPDIR:-/tmp}/caesar-install-log.XXXXXX")"
+trap 'rm -f "$STEP_LOG"' EXIT
+
+quietly() {
+  _label="$1"; shift
+  "$@" </dev/null >"$STEP_LOG" 2>&1 && return 0
+  _status=$?
+  cat "$STEP_LOG" >&2
+  fail "$_label failed with status $_status — its full output is above."
+}
+
 say "caesar installer"
 note "install dir: $INSTALL_DIR"
 note "launcher:    $BIN_DIR/caesar"
@@ -84,20 +98,20 @@ if [ -e "$INSTALL_DIR" ]; then
       "Commit, stash or discard them, then run this script again."
   fi
   say "updating existing install"
-  git -C "$INSTALL_DIR" pull --ff-only </dev/null >&2
+  quietly "git pull" git -C "$INSTALL_DIR" pull --ff-only
 else
   say "cloning $REPO_URL"
   mkdir -p "$(dirname "$INSTALL_DIR")"
-  git clone "$REPO_URL" "$INSTALL_DIR" </dev/null >&2
+  quietly "git clone" git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
 # --- build -------------------------------------------------------------------
 
 say "installing dependencies (website workspace skipped)"
-(cd "$INSTALL_DIR" && $PNPM --filter '!website' install --frozen-lockfile </dev/null >&2)
+(cd "$INSTALL_DIR" && quietly "pnpm install" $PNPM --filter '!website' install --frozen-lockfile)
 
 say "building the CLI (tsc -b)"
-(cd "$INSTALL_DIR" && $PNPM run build </dev/null >&2)
+(cd "$INSTALL_DIR" && quietly "the build" $PNPM run build)
 
 # --- launcher ----------------------------------------------------------------
 
