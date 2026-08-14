@@ -378,6 +378,53 @@ describe("loadConfig", () => {
     });
   });
 
+  it("reads a [[role]] model and carries it on the merged role", async () => {
+    await withFakeHome(async () => {
+      await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+      await writeFile(
+        join(projectRoot, ".caesar", "config.toml"),
+        '[[role]]\nname = "custom"\nagents = ["codex"]\nmode = "write"\nmodel = "gpt-6"\n',
+        "utf8",
+      );
+
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.roles.find((r) => r.name === "custom")?.model).toBe("gpt-6");
+    });
+  });
+
+  it("an empty [[role]] model is refused, naming the field", async () => {
+    await withFakeHome(async () => {
+      await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+      await writeFile(
+        join(projectRoot, ".caesar", "config.toml"),
+        '[[role]]\nname = "custom"\nagents = ["codex"]\nmode = "write"\nmodel = ""\n',
+        "utf8",
+      );
+
+      await expect(loadConfig(projectRoot)).rejects.toThrow(/model/);
+    });
+  });
+
+  it("a role redeclared without model loses it: whole-entry replacement, like every other role field", async () => {
+    await withFakeHome(async (home) => {
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
+      await writeFile(
+        join(home, ".config", "caesar", "config.toml"),
+        '[[role]]\nname = "reviewer"\nagents = ["codex"]\nmode = "read-only"\nmodel = "gpt-6"\n',
+        "utf8",
+      );
+      await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+      await writeFile(
+        join(projectRoot, ".caesar", "config.toml"),
+        '[[role]]\nname = "reviewer"\nagents = ["codex"]\nmode = "read-only"\n',
+        "utf8",
+      );
+
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.roles.find((r) => r.name === "reviewer")).not.toHaveProperty("model");
+    });
+  });
+
   it("syntactically invalid TOML produces an error naming the file", async () => {
     await withFakeHome(async () => {
       await mkdir(join(projectRoot, ".caesar"), { recursive: true });
@@ -716,6 +763,37 @@ describe("saveLayer / loadConfig — round-trip", () => {
     await saveLayer("project", projectRoot, { agents: [{ id: "myagent", bin: "my-cli", args: ["{{prompt}}"] }] });
     const layer = await loadLayer("project", projectRoot);
     expect(layer.agents?.[0]).not.toHaveProperty("capabilities");
+  });
+
+  it("a [[role]] model survives the saveLayer/loadLayer round-trip", async () => {
+    const role: RoleConfig = {
+      name: "custom",
+      purpose: "",
+      agents: ["codex"],
+      mode: "write",
+      isolation: "auto",
+      network: "auto",
+      timeout_ms: 60_000,
+      model: "gpt-6",
+    };
+    await saveLayer("project", projectRoot, { roles: [role] });
+    expect((await loadLayer("project", projectRoot)).roles).toEqual([role]);
+  });
+
+  it("a role without model does not get one serialized for it", async () => {
+    const role: RoleConfig = {
+      name: "custom",
+      purpose: "",
+      agents: ["codex"],
+      mode: "write",
+      isolation: "auto",
+      network: "auto",
+      timeout_ms: 60_000,
+    };
+    await saveLayer("project", projectRoot, { roles: [role] });
+    const raw = await readFile(projectConfigPath(projectRoot), "utf8");
+    expect(raw).not.toContain("model");
+    expect((await loadLayer("project", projectRoot)).roles?.[0]).not.toHaveProperty("model");
   });
 
   it("writes a header warning that manual comments do not survive", async () => {

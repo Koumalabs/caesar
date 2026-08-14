@@ -119,6 +119,14 @@ export interface RoleConfig {
   network: NetworkRequest;
   timeout_ms: number;
   system_prompt_file?: string;
+  /**
+   * Model requested from whichever agent the role's fallback elects —
+   * model names are provider-specific, so a role listing several providers
+   * only makes sense with a name they all accept, or a single agent.
+   * Beats the `[models]` per-agent default, loses to an explicit
+   * `--model`/`model:` (see `resolveDelegation`).
+   */
+  model?: string;
 }
 
 export interface CaesarConfig {
@@ -346,6 +354,7 @@ const RawRoleSchema = z
     network: NetworkRequestSchema.default("auto"),
     timeout: requiredDurationMsSchema("10m"),
     system_prompt_file: z.string().optional(),
+    model: z.string().min(1).optional(),
   })
   .strict();
 type RawRole = z.infer<typeof RawRoleSchema>;
@@ -440,6 +449,7 @@ function toRoleConfig(raw: RawRole): RoleConfig {
     timeout_ms: raw.timeout,
   };
   if (raw.system_prompt_file !== undefined) role.system_prompt_file = raw.system_prompt_file;
+  if (raw.model !== undefined) role.model = raw.model;
   return role;
 }
 
@@ -490,6 +500,7 @@ function fromRoleConfig(role: RoleConfig): Record<string, unknown> {
     timeout: role.timeout_ms,
   };
   if (role.system_prompt_file !== undefined) out.system_prompt_file = role.system_prompt_file;
+  if (role.model !== undefined) out.model = role.model;
   return out;
 }
 
