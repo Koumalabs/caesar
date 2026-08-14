@@ -126,6 +126,18 @@ export interface CaesarConfig {
   worktree: WorktreeConfig;
   roles: RoleConfig[];
   agents: GenericAgentSpec[];
+  /**
+   * `[models]`: default model per agent id (`codex = "gpt-5.2"`), applied by
+   * `resolveDelegation` when neither the caller (`--model`/`model:`) nor the
+   * role requests one.
+   *
+   * A table of its own, deliberately not a field on `[[agent]]`: the
+   * `[[agent]]` entries describe *generic* CLIs outside the catalog, and an
+   * entry bearing a native id would replace the native adapter entirely
+   * (see `listAgentDefinitions`) — losing every capability along the way,
+   * which a mere model preference must never do.
+   */
+  models: Record<string, string>;
 }
 
 /**
@@ -154,6 +166,12 @@ export interface ConfigOverride {
   worktree?: Partial<WorktreeConfig>;
   roles?: RoleConfig[];
   agents?: GenericAgentSpec[];
+  /**
+   * Merged key by key, like the fields of `policy`: a file that declares
+   * `codex` says nothing about `opencode`. A record indexed by agent id is
+   * already intrinsically partial — no `Partial<...>` wrapper needed.
+   */
+  models?: Record<string, string>;
 }
 
 /** The three layers, from most general to most specific — see this module's header. */
@@ -365,6 +383,10 @@ const RawFileSchema = z
   .object({
     policy: RawPolicySchema.optional(),
     worktree: RawWorktreeSchema.optional(),
+    // `.min(1)`: an empty string is not how a default is removed — deleting
+    // the key is (`caesar agents unset-model`). Accepting "" would create a
+    // value that *looks* configured yet asks the adapter for nothing.
+    models: z.record(z.string(), z.string().min(1)).optional(),
     role: z.array(RawRoleSchema).default([]),
     agent: z.array(RawAgentSchema).default([]),
   })
@@ -651,6 +673,7 @@ function parseConfigFile(toml: string, filePath: string): ConfigOverride {
   const override: ConfigOverride = {};
   if (rawRecord["role"] !== undefined) override.roles = result.data.role.map(toRoleConfig);
   if (rawRecord["agent"] !== undefined) override.agents = result.data.agent.map(toAgentSpec);
+  if (result.data.models !== undefined) override.models = result.data.models;
   if (result.data.worktree) override.worktree = toWorktreeOverride(result.data.worktree);
   if (result.data.policy) {
     // `toPolicyOverride` already returns a `Partial<PolicyConfig>` carrying
@@ -740,6 +763,11 @@ export function agentProvenance(layers: readonly ConfigLayer[], id: string): Pro
   return lastLayerDeclaring(layers, (override) => override.agents?.some((agent) => agent.id === id) ?? false);
 }
 
+/** Provenance of a `[models]` default, per key: the most specific layer that declares *this agent's* key — a layer declaring the table without the key says nothing about it. */
+export function modelProvenance(layers: readonly ConfigLayer[], agentId: string): ProvenanceSource {
+  return lastLayerDeclaring(layers, (override) => override.models?.[agentId] !== undefined);
+}
+
 // ---------------------------------------------------------------------------
 // Merge
 // ---------------------------------------------------------------------------
@@ -768,7 +796,10 @@ export function mergeConfig(base: CaesarConfig, override: ConfigOverride): Caesa
   const worktree: WorktreeConfig = override.worktree ? { ...base.worktree, ...override.worktree } : base.worktree;
   const roles = mergeByKey(base.roles, override.roles, (role) => role.name);
   const agents = mergeByKey(base.agents, override.agents, (agent) => agent.id);
-  return { policy, worktree, roles, agents };
+  // Key by key, like `policy` field by field: a layer redeclares the agents
+  // it names and leaves the others to the less specific layers.
+  const models: Record<string, string> = override.models ? { ...base.models, ...override.models } : base.models;
+  return { policy, worktree, roles, agents, models };
 }
 
 // ---------------------------------------------------------------------------
@@ -852,6 +883,7 @@ export function defaultConfig(): CaesarConfig {
     worktree: { copy: [], link: [], setup: [] },
     roles: DEFAULT_ROLES.map((role) => ({ ...role, agents: [...role.agents] })),
     agents: [],
+    models: {},
   };
 }
 
@@ -881,6 +913,7 @@ export async function saveLayer(scope: ConfigScope, root: string, override: Conf
   const raw: Record<string, unknown> = {};
   if (override.policy !== undefined) raw.policy = fromPolicyOverride(override.policy);
   if (override.worktree !== undefined) raw.worktree = fromWorktreeOverride(override.worktree);
+  if (override.models !== undefined) raw.models = override.models;
   if (override.roles !== undefined) raw.role = override.roles.map(fromRoleConfig);
   if (override.agents !== undefined) raw.agent = override.agents.map(fromAgentSpec);
   const content = SAVE_HEADER + stringifyToml(raw);

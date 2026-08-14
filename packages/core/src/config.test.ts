@@ -14,6 +14,7 @@ import {
   materializeListEdit,
   materializePolicyList,
   mergeConfig,
+  modelProvenance,
   parseDuration,
   policyFieldProvenance,
   projectConfigPath,
@@ -110,6 +111,16 @@ describe("defaultConfig", () => {
 
   it("no custom agent by default", () => {
     expect(defaultConfig().agents).toEqual([]);
+  });
+
+  it("no per-agent default model out of the box", () => {
+    expect(defaultConfig().models).toEqual({});
+  });
+
+  it("returns a fresh copy of models on every call", () => {
+    const a = defaultConfig();
+    a.models["codex"] = "intruder";
+    expect(defaultConfig().models).toEqual({});
   });
 
   it("each default role already carries the system_prompt_file convention (roles/<name>.md), without any layer having declared it", () => {
@@ -234,6 +245,17 @@ describe("mergeConfig", () => {
     const base: CaesarConfig = { policy: policyOf({ max_parallel: 7 }), roles: [], agents: [] };
     const merged = mergeConfig(base, {});
     expect(merged.policy.max_parallel).toBe(7);
+  });
+
+  it("models merge key by key: the override wins on the keys it declares, the others survive", () => {
+    const base: CaesarConfig = { ...defaultConfig(), models: { codex: "gpt-5.2", opencode: "big" } };
+    const merged = mergeConfig(base, { models: { codex: "gpt-6" } });
+    expect(merged.models).toEqual({ codex: "gpt-6", opencode: "big" });
+  });
+
+  it("an override without models leaves the base models untouched", () => {
+    const base: CaesarConfig = { ...defaultConfig(), models: { codex: "gpt-5.2" } };
+    expect(mergeConfig(base, {}).models).toEqual({ codex: "gpt-5.2" });
   });
 });
 
@@ -531,6 +553,87 @@ describe("[worktree]", () => {
   });
 });
 
+/**
+ * `[models]` — the per-agent default model table. A twin of `[policy]` in its
+ * merge semantics (key by key), never of `[[agent]]`: declaring an
+ * `[[agent]]` entry with a native id would replace the native adapter
+ * entirely (see `listAgentDefinitions`), which is exactly what a mere model
+ * preference must not do.
+ */
+describe("[models]", () => {
+  let projectRoot: string;
+
+  beforeEach(async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), "caesar-models-cfg-"));
+  });
+
+  afterEach(async () => {
+    await rm(projectRoot, { recursive: true, force: true });
+  });
+
+  async function writeProject(toml: string): Promise<void> {
+    await mkdir(join(projectRoot, ".caesar"), { recursive: true });
+    await writeFile(join(projectRoot, ".caesar", "config.toml"), toml, "utf8");
+  }
+
+  it("absent everywhere: an empty table, never undefined", async () => {
+    await withFakeHome(async () => {
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.models).toEqual({});
+    });
+  });
+
+  it("reads a per-agent default model table", async () => {
+    await withFakeHome(async () => {
+      await writeProject('[models]\ncodex = "gpt-5.2"\nclaude = "claude-opus-5"\n');
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.models).toEqual({ codex: "gpt-5.2", claude: "claude-opus-5" });
+    });
+  });
+
+  it("merges key by key across layers: the project wins on the keys it redeclares, the global keeps the others", async () => {
+    await withFakeHome(async (home) => {
+      await mkdir(join(home, ".config", "caesar"), { recursive: true });
+      await writeFile(join(home, ".config", "caesar", "config.toml"), '[models]\ncodex = "gpt-5.2"\nopencode = "big"\n', "utf8");
+      await writeProject('[models]\ncodex = "gpt-6"\n');
+
+      const loaded = await loadConfig(projectRoot);
+      expect(loaded.config.models).toEqual({ codex: "gpt-6", opencode: "big" });
+    });
+  });
+
+  it("an empty value is refused: removing a default means deleting the key, not emptying it", async () => {
+    await withFakeHome(async () => {
+      await writeProject('[models]\ncodex = ""\n');
+      await expect(loadConfig(projectRoot)).rejects.toThrow(/models\.codex/);
+      await expect(loadConfig(projectRoot)).rejects.toThrow(/empty/);
+    });
+  });
+
+  it("a non-string value is refused, naming the field and the file", async () => {
+    await withFakeHome(async () => {
+      await writeProject("[models]\ncodex = 4\n");
+      await expect(loadConfig(projectRoot)).rejects.toThrow(/models\.codex/);
+    });
+  });
+
+  it("a file without [models] declares nothing: loadLayer stays faithful", async () => {
+    await withFakeHome(async () => {
+      await writeProject("[policy]\nmax_parallel = 3\n");
+      const layer = await loadLayer("project", projectRoot);
+      expect(layer.models).toBeUndefined();
+    });
+  });
+
+  it("survives the saveLayer/loadLayer round-trip", async () => {
+    await withFakeHome(async () => {
+      const models = { codex: "gpt-5.2", claude: "claude-opus-5" };
+      await saveLayer("project", projectRoot, { models });
+      expect(await loadLayer("project", projectRoot)).toEqual({ models });
+    });
+  });
+});
+
 describe("saveLayer / loadConfig — round-trip", () => {
   let projectRoot: string;
 
@@ -800,6 +903,17 @@ describe("policyFieldProvenance / roleProvenance / agentProvenance", () => {
     const layers = layersOf({ project: { agents: [{ id: "myagent", bin: "my-cli", args: [] }] } });
     expect(agentProvenance(layers, "myagent")).toBe("project");
     expect(agentProvenance(layers, "codex")).toBe("default");
+  });
+
+  it("modelProvenance: the most specific layer that declares this agent's key, \"default\" otherwise — per key, not per table", () => {
+    const layers = layersOf({
+      global: { models: { codex: "gpt-5.2", opencode: "big" } },
+      local: { models: { codex: "gpt-6" } },
+    });
+    expect(modelProvenance(layers, "codex")).toBe("local");
+    // The local layer declares *a* [models] table, but not this key: the global keeps the provenance.
+    expect(modelProvenance(layers, "opencode")).toBe("global");
+    expect(modelProvenance(layers, "claude")).toBe("default");
   });
 });
 
