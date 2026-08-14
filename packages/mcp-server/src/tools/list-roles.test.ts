@@ -10,6 +10,7 @@ import { caesarListRoles } from "./list-roles.js";
 interface RoleRow {
   name: string;
   agents: string[];
+  model?: string;
   would_pick: string | null;
   reason?: string;
   skipped: Array<{ agentId: string; reason: string }>;
@@ -78,6 +79,23 @@ describe("caesar_list_roles", () => {
         expect(reviewer?.would_pick).toBeNull();
         expect(reviewer?.reason).toMatch(/codex.*refused/);
         expect(reviewer?.reason).toMatch(/antigravity.*not installed/);
+      }),
+    );
+  });
+
+  it("publishes the model of the roles that request one, and only of those", async () => {
+    await withFakeHome(() =>
+      withEmptyPath(root, async () => {
+        const { config } = await loadConfig(root);
+        const reviewer = config.roles.find((r) => r.name === "reviewer")!;
+        await saveLayer("project", root, { roles: [{ ...reviewer, model: "gpt-6" }] });
+
+        const session = await createSession(root);
+        const result = await caesarListRoles(session);
+        const roles = (result.structuredContent as { roles: RoleRow[] }).roles;
+
+        expect(roles.find((r) => r.name === "reviewer")?.model).toBe("gpt-6");
+        expect(roles.find((r) => r.name === "implementer")?.model).toBeUndefined();
       }),
     );
   });

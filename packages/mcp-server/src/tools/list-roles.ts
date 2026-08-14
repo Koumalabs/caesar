@@ -11,7 +11,7 @@ import { jsonResult } from "./result.js";
 export const CAESAR_LIST_ROLES = "caesar_list_roles";
 
 export const caesarListRolesDescription =
-  "List the roles configured for this project: their purpose, default mode (read-only or write), isolation and network policy, " +
+  "List the roles configured for this project: their purpose, default mode (read-only or write), isolation and network policy, the model they request if any, " +
   "and — resolved right now against installed binaries and the current policy — which agent caesar_delegate would " +
   "actually pick if you passed this role, including the fallback chain and why any earlier candidate was " +
   "skipped. Use this to decide whether to delegate through a role (role=\"...\") or to name an agent directly " +
@@ -41,6 +41,7 @@ export async function caesarListRoles(session: McpSession): Promise<CallToolResu
         isolation: role.isolation,
         network: role.network,
         timeout_ms: role.timeout_ms,
+        ...(role.model !== undefined ? { model: role.model } : {}),
         agents: role.agents,
         would_pick: "error" in pick ? null : pick.agentId,
         reason: "error" in pick ? pick.error : undefined,

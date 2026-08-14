@@ -13,9 +13,10 @@ export const CAESAR_LIST_AGENTS = "caesar_list_agents";
 export const caesarListAgentsDescription =
   "List every sub-agent provider the orchestrator knows about (codex, antigravity, opencode, copilot, claude): " +
   "whether its CLI is actually installed on this machine, what it can do (native read-only mode, structured " +
-  "output, resumable sessions, model selection…), and whether the current policy would allow delegating to it " +
-  "right now. Call this before caesar_delegate when you are unsure which providers are usable, or when you want " +
-  "to compare providers before running the same objective on several of them in parallel.";
+  "output, resumable sessions, model selection…), the default model configured for it ([models] table), and " +
+  "whether the current policy would allow delegating to it right now. Call this before caesar_delegate when you " +
+  "are unsure which providers are usable, or when you want to compare providers before running the same " +
+  "objective on several of them in parallel.";
 
 export async function caesarListAgents(session: McpSession): Promise<CallToolResult> {
   const { config } = await loadConfig(session.root);
@@ -36,6 +37,8 @@ export async function caesarListAgents(session: McpSession): Promise<CallToolRes
         installed: path !== null,
         path: path ?? undefined,
         capabilities: def.capabilities,
+        // Only alongside a value: an absent key already says "provider default".
+        ...(config.models[def.id] !== undefined ? { default_model: config.models[def.id] } : {}),
         policy: policy.allowed ? { allowed: true } : { allowed: false, reason: policy.reason },
       };
     }),

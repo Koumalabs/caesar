@@ -11,6 +11,7 @@ interface AgentRow {
   id: string;
   installed: boolean;
   policy: { allowed: boolean; reason?: string };
+  default_model?: string;
 }
 
 /**
@@ -64,6 +65,21 @@ describe("caesar_list_agents", () => {
 
         const antigravity = agents.find((a) => a.id === "antigravity");
         expect(antigravity?.policy.allowed).toBe(true);
+      }),
+    );
+  });
+
+  it("publishes the [models] default of each agent that has one, and only of those", async () => {
+    await withFakeHome(() =>
+      withEmptyPath(root, async () => {
+        await saveLayer("project", root, { models: { codex: "gpt-5.2" } });
+
+        const session = await createSession(root);
+        const result = await caesarListAgents(session);
+        const agents = (result.structuredContent as { agents: AgentRow[] }).agents;
+
+        expect(agents.find((a) => a.id === "codex")?.default_model).toBe("gpt-5.2");
+        expect(agents.find((a) => a.id === "claude")?.default_model).toBeUndefined();
       }),
     );
   });
