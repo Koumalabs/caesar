@@ -1,15 +1,12 @@
-# Post-remote checklist (this repo has no GitHub remote yet):
-# 1. Settings → Pages → Source: "GitHub Actions".
-# 2. Confirm org/repo/default-branch below and in website/docusaurus.config.ts
-#    (url, baseUrl, organizationName, projectName) and in
-#    website/src/components/Quickstart/index.tsx (clone URL).
-# 3. Custom domain? Set baseUrl to '/' and add website/static/CNAME.
+# Remote: https://github.com/Koumalabs/caesar — site at https://koumalabs.github.io/caesar/.
+# One-time activation: Settings → Pages → Source: "GitHub Actions".
+# Custom domain? Set baseUrl to '/' in website/docusaurus.config.ts and add website/static/CNAME.
 
 name: Deploy website
 
 on:
   push:
-    branches: [main] # TODO: confirm default branch when the remote exists
+    branches: [main]
     paths:
       - "website/**"
       - "pnpm-lock.yaml"

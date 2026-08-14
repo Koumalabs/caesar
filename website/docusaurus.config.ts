@@ -7,16 +7,11 @@ const config: Config = {
   tagline: 'Delegate coding tasks to external agent CLIs — safely.',
   favicon: 'img/favicon.svg',
 
-  // TODO: confirm when the GitHub remote exists
   url: process.env.DOCUSAURUS_URL ?? 'https://koumalabs.github.io',
-  // TODO: confirm when the GitHub remote exists
-  baseUrl: process.env.DOCUSAURUS_BASE_URL ?? '/agent-orchestrateur/',
+  baseUrl: process.env.DOCUSAURUS_BASE_URL ?? '/caesar/',
 
-  // TODO: confirm when the GitHub remote exists
-  organizationName: 'koumalabs',
-  // TODO: confirm when the GitHub remote exists
-  projectName: 'agent-orchestrateur',
-  // TODO: confirm when the GitHub remote exists
+  organizationName: 'Koumalabs',
+  projectName: 'caesar',
   trailingSlash: false,
 
   onBrokenLinks: 'throw',
@@ -82,8 +77,7 @@ const config: Config = {
           position: 'right',
         },
         {
-          // TODO: confirm org/repo when the remote exists
-          href: 'https://github.com/koumalabs/agent-orchestrateur',
+          href: 'https://github.com/Koumalabs/caesar',
           label: 'GitHub',
           position: 'right',
         },

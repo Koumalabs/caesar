@@ -11,9 +11,8 @@ import styles from './styles.module.css';
  * "Installation and first steps" in this repository's README.
  */
 const COMMANDS = [
-  // TODO: confirm org/repo when the GitHub remote exists (same values as docusaurus.config.ts).
-  'git clone https://github.com/koumalabs/agent-orchestrateur.git',
-  'cd agent-orchestrateur',
+  'git clone https://github.com/Koumalabs/caesar.git',
+  'cd caesar',
   'pnpm install',
   'pnpm exec tsc -b',
   'pnpm run caesar init --root <your-project>',
