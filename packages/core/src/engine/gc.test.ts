@@ -110,6 +110,7 @@ describe("garbageCollectWorktrees", () => {
     }));
     const applied = await applyRecordedWorktree(root, fileTaskStore(root), record);
     expect(applied.outcome).toBe("applied");
+    expect(applied.isEmpty).toBe(false);
     return (await fileTaskStore(root).get(id))!;
   }
 

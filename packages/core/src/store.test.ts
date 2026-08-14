@@ -142,7 +142,6 @@ describe("fileTaskStore", () => {
   });
 
   it("persiste et relit les champs d'application (applied_at, applied_patch_digest)", async () => {
-    const store_local = fileTaskStore(root);
     const record: TaskRecord = {
       id: "t_applique",
       agent: "codex",
@@ -156,13 +155,13 @@ describe("fileTaskStore", () => {
       report_via: "file",
       depth: 0,
     };
-    await store_local.create(record);
-    await store_local.update("t_applique", {
+    await store.create(record);
+    await store.update("t_applique", {
       applied_at: "2026-08-12T10:00:00.000Z",
       applied_patch_digest: "a".repeat(64),
     });
 
-    const relu = await store_local.get("t_applique");
+    const relu = await store.get("t_applique");
     expect(relu?.applied_at).toBe("2026-08-12T10:00:00.000Z");
     expect(relu?.applied_patch_digest).toBe("a".repeat(64));
   });

@@ -390,7 +390,7 @@ export async function applyRecordedWorktree(root: string, store: TaskStore, reco
 }
 
 /**
- * Applique le patch du worktree au dépôt principal par `git apply --3way`,
+ * Applique un patch au dépôt principal par `git apply --3way`,
  * sans toucher aux branches ni à l'historique : réversible, sans effet de
  * bord sur l'historique de l'utilisateur. N'appelle jamais `git commit`.
  *
