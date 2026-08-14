@@ -138,6 +138,42 @@ describe("caesar role show / add / remove", () => {
     });
   });
 
+  it("add: records --model on the role; without the option, the field stays absent", async () => {
+    await withFakeHome(async () => {
+      expect(await runRoleAdd(root, "modeled", { agents: "codex", mode: "write", model: "gpt-6" }, io)).toBe(EXIT_OK);
+      expect(await runRoleAdd(root, "bare", { agents: "codex", mode: "write" }, makeIo())).toBe(EXIT_OK);
+
+      const { config } = await loadConfig(root);
+      expect(config.roles.find((r) => r.name === "modeled")?.model).toBe("gpt-6");
+      expect(config.roles.find((r) => r.name === "bare")).not.toHaveProperty("model");
+    });
+  });
+
+  it("add: refuses an empty --model — dropping the model is done by omitting the option", async () => {
+    await withFakeHome(async () => {
+      const code = await runRoleAdd(root, "custom", { agents: "codex", mode: "write", model: "  " }, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toMatch(/--model/);
+    });
+  });
+
+  it("show: displays the role's model, and its absence explicitly", async () => {
+    await withFakeHome(async () => {
+      await runRoleAdd(root, "modeled", { agents: "codex", mode: "write", model: "gpt-6" }, makeIo());
+
+      expect(await runRoleShow(root, "modeled", { json: true }, io)).toBe(EXIT_OK);
+      expect(JSON.parse(io.stdoutText()).model).toBe("gpt-6");
+
+      const humanIo = makeIo();
+      expect(await runRoleShow(root, "modeled", {}, humanIo)).toBe(EXIT_OK);
+      expect(humanIo.stdoutText()).toContain("gpt-6");
+
+      const bareIo = makeIo();
+      expect(await runRoleShow(root, "reviewer", {}, bareIo)).toBe(EXIT_OK);
+      expect(bareIo.stdoutText()).toMatch(/model.*agent default/);
+    });
+  });
+
   it("add: refuses an invalid --mode", async () => {
     await withFakeHome(async () => {
       const code = await runRoleAdd(root, "custom", { agents: "codex", mode: "readonly" }, io);

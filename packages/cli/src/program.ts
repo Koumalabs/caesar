@@ -404,6 +404,10 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
       "\"worktree\" (dedicated workshop on a disposable branch), \"auto\" (default, picks the worktree for writes) or \"inplace\" — the latter refused for writes in a git repository without allow_inplace_write.",
     )
     .option("--network <network>", "\"auto\" (default), \"on\" (refuses the delegation if the agent cannot open the network) or \"off\".")
+    .option(
+      "--model <model>",
+      "Model requested from whichever agent the role picks. Beats the [models] per-agent default; an explicit --model on \"caesar run\" still wins.",
+    )
     .option("--timeout <duration>", "Maximum delay, e.g. \"10m\" (default: 10m).")
     .action(
       async (
@@ -414,6 +418,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
           mode?: string;
           isolation?: string;
           network?: string;
+          model?: string;
           timeout?: string;
           global?: boolean;
           local?: boolean;
@@ -431,6 +436,7 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
               mode: opts.mode,
               isolation: opts.isolation,
               network: opts.network,
+              model: opts.model,
               timeout: opts.timeout,
               json: opts.json,
               global: opts.global,

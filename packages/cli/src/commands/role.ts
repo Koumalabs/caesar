@@ -102,6 +102,7 @@ export async function runRoleShow(root: string, name: string, options: RoleShowO
   printField(io, "mode", resolved.mode, LABEL_WIDTH);
   printField(io, "isolation", resolved.isolation, LABEL_WIDTH);
   printField(io, "network", resolved.network, LABEL_WIDTH);
+  printField(io, "model", resolved.model ?? "(none — agent default)", LABEL_WIDTH);
   printField(io, "timeout", `${resolved.timeout_ms} ms`, LABEL_WIDTH);
   writeLine(io.stdout);
   printNote(io, "system prompt");
@@ -154,6 +155,7 @@ export interface RoleAddOptions extends ScopeOptions {
   mode?: string;
   isolation?: string;
   network?: string;
+  model?: string;
   timeout?: string;
   json?: boolean;
 }
@@ -192,6 +194,15 @@ export async function runRoleAdd(root: string, name: string, options: RoleAddOpt
     return EXIT_USAGE;
   }
 
+  // Free string — model names belong to each provider — but never empty:
+  // dropping the model is done by omitting the option, and an empty value
+  // recorded here would be refused at the next config load anyway.
+  const model = options.model?.trim();
+  if (options.model !== undefined && !model) {
+    printError(io, "Invalid --model: cannot be empty. Omit the option to leave the model to the agent's default.");
+    return EXIT_USAGE;
+  }
+
   let timeoutMs: number;
   try {
     timeoutMs = parseDuration(options.timeout ?? "10m");
@@ -209,6 +220,7 @@ export async function runRoleAdd(root: string, name: string, options: RoleAddOpt
     network,
     timeout_ms: timeoutMs,
   };
+  if (model !== undefined) role.model = model;
 
   const layer = await loadLayer(scope, root);
   const replaced = layer.roles?.some((r) => r.name === name) ?? false;
