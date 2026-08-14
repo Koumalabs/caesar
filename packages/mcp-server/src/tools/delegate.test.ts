@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -58,6 +58,36 @@ describe("caesar_delegate", () => {
         const entry = session.tasks.get(data.task_id);
         entry?.controller.abort();
         await entry?.promise;
+      }),
+    );
+  }, 20_000);
+
+  it("applies the [models] default of the agent, announced at launch and passed to the command line", async () => {
+    await withFakeHome(() =>
+      withFakeAgentAsBin("codex", async () => {
+        await saveLayer("project", root, { models: { codex: "m-test" } });
+        const session = await createSession(root);
+
+        const result = await caesarDelegate(session, {
+          objective: "task with a configured default model",
+          agent: "codex",
+          mode: "write",
+          isolation: "inplace",
+        });
+        expect(result.isError).toBeFalsy();
+        const data = result.structuredContent as { task_id: string; model?: string };
+        // Announced at launch time, like the network: the orchestrator can
+        // react before the sub-agent has spent its budget.
+        expect(data.model).toBe("m-test");
+
+        await session.tasks.get(data.task_id)?.promise;
+        const events = await readFile(join(root, ".caesar", "tasks", data.task_id, "events.jsonl"), "utf8");
+        const started = events
+          .split("\n")
+          .filter((line) => line.trim() !== "")
+          .map((line) => JSON.parse(line) as { type: string; command?: string })
+          .find((event) => event.type === "started");
+        expect(started?.command).toContain("-m m-test");
       }),
     );
   }, 20_000);

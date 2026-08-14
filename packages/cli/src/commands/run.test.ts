@@ -443,6 +443,75 @@ describe("caesar run", () => {
       }),
     );
   }, 20_000);
+
+  /** The `started` command line of task `taskId` — the proof a model reached the subprocess, not merely the `RunTaskInput`. */
+  async function startedCommand(taskId: string): Promise<string | undefined> {
+    const events = await readFile(join(root, ".caesar", "tasks", taskId, "events.jsonl"), "utf8");
+    return events
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => JSON.parse(line) as { type: string; command?: string })
+      .find((event) => event.type === "started")?.command;
+  }
+
+  it("applies the [models] default of the agent without any --model, all the way to the command line", async () => {
+    // The e2e net that was missing when C6 shipped: nothing checked that a
+    // model actually reached the subprocess's command line.
+    await withFakeHome(() =>
+      withFakeAgentAsBin("codex", async () => {
+        await initGitRepoAllowingInplaceWrite(root);
+        const path = join(root, ".caesar", "config.toml");
+        await writeFile(path, `${await readFile(path, "utf8")}\n[models]\ncodex = "m-test"\n`, "utf8");
+
+        const code = await runRun(root, "objective", { agent: "codex", mode: "write", isolation: "inplace", json: true }, io);
+        expect(code).toBe(EXIT_OK);
+        const taskId = JSON.parse(io.stdoutText()).task_id as string;
+        expect(await startedCommand(taskId)).toContain("-m m-test");
+      }),
+    );
+  }, 20_000);
+
+  it("an explicit --model wins over the [models] default", async () => {
+    await withFakeHome(() =>
+      withFakeAgentAsBin("codex", async () => {
+        await initGitRepoAllowingInplaceWrite(root);
+        const path = join(root, ".caesar", "config.toml");
+        await writeFile(path, `${await readFile(path, "utf8")}\n[models]\ncodex = "m-test"\n`, "utf8");
+
+        const code = await runRun(
+          root,
+          "objective",
+          { agent: "codex", mode: "write", isolation: "inplace", model: "m-explicit", json: true },
+          io,
+        );
+        expect(code).toBe(EXIT_OK);
+        const command = await startedCommand(JSON.parse(io.stdoutText()).task_id as string);
+        expect(command).toContain("-m m-explicit");
+        expect(command).not.toContain("m-test");
+      }),
+    );
+  }, 20_000);
+
+  it("refuses --model on an agent that cannot choose one, launching nothing and leaving nothing behind", async () => {
+    await withFakeHome(async () => {
+      // A generic agent whose args carry no {{model}}: `capabilities.model`
+      // is deduced as false — an explicit --model would go nowhere.
+      await mkdir(join(root, ".caesar"), { recursive: true });
+      const toml = [
+        "[[agent]]",
+        'id = "my-bash-agent"',
+        `bin = ${JSON.stringify(process.execPath)}`,
+        `args = [${JSON.stringify(FAKE_AGENT_PATH)}, "{{prompt}}"]`,
+        "",
+      ].join("\n");
+      await writeFile(join(root, ".caesar", "config.toml"), toml, "utf8");
+
+      const code = await runRun(root, "objective", { agent: "my-bash-agent", mode: "write", model: "x", json: true }, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toMatch(/model/i);
+      await expect(readFile(join(root, ".caesar", "tasks"), "utf8")).rejects.toThrow();
+    });
+  });
 });
 
 describe("caesar run — raw arguments and the \"--\" separator", () => {

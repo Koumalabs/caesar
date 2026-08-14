@@ -224,17 +224,32 @@ export async function runRun(root: string, objective: string, options: RunOption
     network: options.network as NetworkRequest | undefined,
     context,
     timeout: options.timeout,
+    model: options.model,
     depth,
   });
   if ("error" in resolved) {
     printError(io, resolved.error);
     return EXIT_USAGE;
   }
-  const { agentId, mode, isolation, allowInplaceWrite, network, networkWarning, timeoutMs, context: resolvedContext } = resolved;
+  const {
+    agentId,
+    mode,
+    isolation,
+    allowInplaceWrite,
+    network,
+    networkWarning,
+    timeoutMs,
+    context: resolvedContext,
+    model,
+    modelWarning,
+  } = resolved;
 
   // After the error branch, and only in human mode: `--json` must carry
   // nothing but the final result on stdout.
   if (!options.json) sectionHeader(io, "run");
+  // Said before the launch, not only as a report finding: the user watching
+  // the run can still Ctrl-C and pick another agent before any budget burns.
+  if (!options.json && modelWarning) printWarning(io, modelWarning);
 
   const store = fileTaskStore(root);
   const taskId = generateTaskId();
@@ -298,7 +313,11 @@ export async function runRun(root: string, objective: string, options: RunOption
         ...(networkWarning !== undefined ? { networkWarning } : {}),
         workspace: root,
         ...(options.role ? { role: options.role } : {}),
-        ...(options.model ? { model: options.model } : {}),
+        // The *resolved* model — explicit flag, role, or [models] default —
+        // never `options.model` directly: that raw read is what left the
+        // config defaults inapplicable (and --model unvalidated) before.
+        ...(model !== undefined ? { model } : {}),
+        ...(modelWarning !== undefined ? { modelWarning } : {}),
         timeoutMs,
         depth,
         extraAgents: config.agents,

@@ -100,7 +100,13 @@ export const caesarDelegateInputShape = {
     .describe("Freeform background the sub-agent needs — relevant code, prior findings, links. Inline the content, not a file path."),
   constraints: z.array(z.string()).optional().describe("Explicit dos and don'ts the sub-agent must respect."),
   acceptance_criteria: z.array(z.string()).optional().describe("How to judge the task successful; included in the sub-agent's brief."),
-  model: z.string().optional().describe("Model to request from the provider, if it supports choosing one."),
+  model: z
+    .string()
+    .optional()
+    .describe(
+      "Model to request from the provider, if it supports choosing one. Overrides the role's model and the " +
+        "per-agent default from the [models] config table; refused if the agent cannot choose a model.",
+    ),
   timeout: z
     .string()
     .optional()
@@ -138,6 +144,7 @@ export async function caesarDelegate(session: McpSession, input: CaesarDelegateI
     network: input.network,
     context: input.context,
     timeout: input.timeout,
+    model: input.model,
     depth,
   });
   if ("error" in resolved) {
@@ -161,7 +168,10 @@ export async function caesarDelegate(session: McpSession, input: CaesarDelegateI
     ...(resolved.networkWarning !== undefined ? { networkWarning: resolved.networkWarning } : {}),
     workspace: session.root,
     ...(resolved.role ? { role: resolved.role } : {}),
-    ...(input.model ? { model: input.model } : {}),
+    // The *resolved* model, never `input.model` raw: it folds in the role's
+    // and the [models] default, and has passed the capability check.
+    ...(resolved.model !== undefined ? { model: resolved.model } : {}),
+    ...(resolved.modelWarning !== undefined ? { modelWarning: resolved.modelWarning } : {}),
     timeoutMs: resolved.timeoutMs,
     depth,
     extraAgents: config.agents,
@@ -194,6 +204,8 @@ export async function caesarDelegate(session: McpSession, input: CaesarDelegateI
     // the subagent has spent its budget.
     network: resolved.network,
     ...(resolved.networkWarning !== undefined ? { network_warning: resolved.networkWarning } : {}),
+    ...(resolved.model !== undefined ? { model: resolved.model } : {}),
+    ...(resolved.modelWarning !== undefined ? { model_warning: resolved.modelWarning } : {}),
     status: "running",
   });
 }
