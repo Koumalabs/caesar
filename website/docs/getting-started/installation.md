@@ -20,6 +20,15 @@ The script checks the prerequisites (git, Node ≥ 22, pnpm or corepack), clones
 
 Two environment variables override the locations: `CAESAR_INSTALL_DIR` (the checkout) and `CAESAR_BIN_DIR` (the launcher). The script refuses to update over local modifications in the checkout rather than discard them.
 
+### Uninstall
+
+```bash
+rm ~/.local/bin/caesar          # the launcher
+rm -rf ~/.local/share/caesar    # the checkout
+```
+
+Those are the default locations — if you installed with `CAESAR_INSTALL_DIR` or `CAESAR_BIN_DIR`, remove those instead. Anything caesar wrote beyond that lives in the projects themselves: the files deposited by `caesar init` (the `.caesar/` directory, the skill and the commands), and the MCP registration added by `caesar mcp install <client>` (remove it with `claude mcp remove caesar`, `codex mcp remove caesar`, or by editing the client's configuration file).
+
 ## Prerequisites
 
 - Node ≥ 22 (developed on Node 24).

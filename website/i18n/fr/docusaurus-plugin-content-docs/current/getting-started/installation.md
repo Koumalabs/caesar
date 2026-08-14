@@ -20,6 +20,15 @@ Le script vérifie les prérequis (git, Node ≥ 22, pnpm ou corepack), clone le
 
 Deux variables d'environnement remplacent les emplacements : `CAESAR_INSTALL_DIR` (le checkout) et `CAESAR_BIN_DIR` (le lanceur). Le script refuse de mettre à jour par-dessus des modifications locales du checkout plutôt que de les écraser.
 
+### Désinstallation
+
+```bash
+rm ~/.local/bin/caesar          # le lanceur
+rm -rf ~/.local/share/caesar    # le checkout
+```
+
+Ce sont les emplacements par défaut — si vous avez installé avec `CAESAR_INSTALL_DIR` ou `CAESAR_BIN_DIR`, supprimez ces emplacements-là. Tout ce que caesar a écrit au-delà vit dans les projets eux-mêmes : les fichiers déposés par `caesar init` (le répertoire `.caesar/`, la skill et les commandes), et l'enregistrement MCP ajouté par `caesar mcp install <client>` (retirez-le avec `claude mcp remove caesar`, `codex mcp remove caesar`, ou en éditant le fichier de configuration du client).
+
 ## Prérequis
 
 - Node ≥ 22 (développé sous Node 24).

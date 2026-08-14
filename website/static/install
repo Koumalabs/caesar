@@ -14,6 +14,8 @@
 #   4. writes a `caesar` launcher into $CAESAR_BIN_DIR (default: ~/.local/bin)
 #
 # Run it again at any time to update: same directories, git pull, rebuild.
+# To uninstall, delete the launcher and the checkout:
+#   rm ~/.local/bin/caesar && rm -rf ~/.local/share/caesar
 # Bun is NOT required for the CLI — only for the optional TUI and the
 # standalone binary, neither of which this script builds.
 
