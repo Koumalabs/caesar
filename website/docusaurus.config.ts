@@ -7,8 +7,8 @@ const config: Config = {
   tagline: 'Delegate coding tasks to external agent CLIs — safely.',
   favicon: 'img/favicon.svg',
 
-  url: process.env.DOCUSAURUS_URL ?? 'https://koumalabs.github.io',
-  baseUrl: process.env.DOCUSAURUS_BASE_URL ?? '/caesar/',
+  url: process.env.DOCUSAURUS_URL ?? 'https://caesar.koumalabs.org',
+  baseUrl: process.env.DOCUSAURUS_BASE_URL ?? '/',
 
   organizationName: 'Koumalabs',
   projectName: 'caesar',
