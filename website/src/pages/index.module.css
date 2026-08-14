@@ -1,0 +1,39 @@
+/**
+ * Landing-only design tokens, inherited by every section through CSS custom
+ * properties. The landing is dark-first: the dark values are the design, the
+ * light values are derived from the same caesar palette (custom.css) so the
+ * toggle still yields a finished page. Only tokens live here — each section
+ * styles itself in its own module against these variables.
+ */
+.landing {
+  /* type */
+  --landing-serif: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
+  --landing-mono: var(--ifm-font-family-monospace);
+
+  /* light derivation of the caesar palette */
+  --landing-bg: #faf6ee;
+  --landing-bg-raised: #f3ede0;
+  --landing-ink: #201a10;
+  --landing-ink-secondary: #6b6252;
+  --landing-ink-faint: #9e9284;
+  --landing-hairline: rgba(107, 98, 82, 0.28);
+  --landing-grid: rgba(107, 98, 82, 0.12);
+  --landing-accent: #90631c;
+  --landing-accent-strong: #9f6e1f;
+
+  background: var(--landing-bg);
+  color: var(--landing-ink);
+}
+
+/* dark-first: the reference rendering */
+[data-theme='dark'] .landing {
+  --landing-bg: #0c0904;
+  --landing-bg-raised: #120e06;
+  --landing-ink: #f0e9dc;
+  --landing-ink-secondary: #9e9284;
+  --landing-ink-faint: #6b6252;
+  --landing-hairline: rgba(158, 146, 132, 0.18);
+  --landing-grid: rgba(158, 146, 132, 0.07);
+  --landing-accent: #eaa52e;
+  --landing-accent-strong: #eaa52e;
+}

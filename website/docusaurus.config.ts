@@ -97,6 +97,10 @@ const config: Config = {
               label: 'Protocol',
               to: '/docs/protocol/overview',
             },
+            {
+              label: 'GitHub',
+              href: 'https://github.com/Koumalabs/caesar',
+            },
           ],
         },
       ],

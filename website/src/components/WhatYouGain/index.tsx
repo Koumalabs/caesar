@@ -1,120 +1,116 @@
 import type {ReactNode} from 'react';
-import clsx from 'clsx';
 import Translate from '@docusaurus/Translate';
+import SectionHeader from '../SectionHeader';
 import styles from './styles.module.css';
 
 /**
- * Three axes (Time, Risk, Cost & flexibility), each a without/with pair.
- * No number appears here beyond the one real benchmark (975 MB / 6.3 s /
+ * The without/with comparison, recomposed as a ledger: the "without" story
+ * as prose on the left, the "with" side as four itemized entries on the
+ * right. No number appears beyond the one real benchmark (975 MB / 6.3 s /
  * 11 MB versus 15.0 s / 994 MB) — everything else is qualitative, on
- * purpose. Written out literally rather than from a data array: the
- * `write-translations` extraction needs a static `id` and message on every
- * `<Translate>` call site.
+ * purpose, and the method line says so. Written out literally rather than
+ * from a data array: the `write-translations` extraction needs a static
+ * `id` and message on every `<Translate>` call site.
  */
 export default function WhatYouGain(): ReactNode {
   return (
     <section className={styles.section}>
       <div className="container">
-        <h2 className={styles.heading}>
-          <span aria-hidden="true" className={styles.mark}>
-            ▞▚
-          </span>{' '}
-          <Translate id="homepage.gain.title">What you gain</Translate>
-        </h2>
+        <SectionHeader
+          num="02"
+          label={<Translate id="homepage.gain.title">What you gain</Translate>}
+          aside={'without → with'}
+        />
+        <div className={styles.grid}>
+          <div className={styles.copy}>
+            <h2 className={styles.title}>
+              <Translate
+                id="homepage.gain.headline"
+                values={{
+                  receipts: (
+                    <em className={styles.em}>
+                      <Translate id="homepage.gain.headline.em">receipts included</Translate>
+                    </em>
+                  ),
+                }}>
+                {'What you gain, {receipts}.'}
+              </Translate>
+            </h2>
+            <p className={styles.body}>
+              <Translate id="homepage.gain.without">
+                Without caesar: one agent at a time in your working tree, every CLI with its
+                own mission format to relearn, the agent writing straight into your repository
+                — and you take its word for what changed. Locked into one provider&apos;s tool
+                and subscription.
+              </Translate>
+            </p>
+          </div>
 
-        <div className={styles.axis}>
-          <h3 className={styles.axisTitle}>
-            <Translate id="homepage.gain.axis.time">Time</Translate>
-          </h3>
-          <div className={styles.columns}>
-            <div className={styles.column}>
-              <p className={styles.columnLabel}>
-                <Translate id="homepage.gain.label.without">Without caesar</Translate>
-              </p>
-              <p className={styles.columnBody}>
-                <Translate id="homepage.gain.time.without">
-                  One agent at a time in your working tree; every CLI has its own mission format
-                  to relearn.
-                </Translate>
-              </p>
-            </div>
-            <div className={clsx(styles.column, styles.columnWith)}>
-              <p className={styles.columnLabel}>
-                <Translate id="homepage.gain.label.with">With caesar</Translate>
-              </p>
-              <p className={styles.columnBody}>
+          <div className={styles.receipts}>
+            <div className={styles.row}>
+              <span className={styles.rowLabel}>
+                <Translate id="homepage.gain.workshop.label">workshop · copy-on-write</Translate>
+              </span>
+              <span className={styles.rowValue}>6.3&thinsp;s</span>
+              <p className={styles.rowBody}>
                 <Translate
-                  id="homepage.gain.time.with"
-                  values={{
-                    maxParallel: <code>max_parallel</code>,
-                    nodeModules: <code>node_modules</code>,
-                  }}>
+                  id="homepage.gain.workshop.body"
+                  values={{nodeModules: <code>node_modules</code>}}>
                   {
-                    'N tasks in parallel ({maxParallel} slots shared across processes); one workflow for five providers; a ready-to-build workshop in seconds — 975 MB of {nodeModules} cloned in 6.3 s and 11 MB of disk with copy-on-write, versus 15.0 s and 994 MB with a plain copy.'
+                    '975 MB of {nodeModules} cloned in 6.3 s and 11 MB of disk — versus 15.0 s and 994 MB with a plain copy.'
                   }
                 </Translate>
               </p>
             </div>
-          </div>
-        </div>
 
-        <div className={styles.axis}>
-          <h3 className={styles.axisTitle}>
-            <Translate id="homepage.gain.axis.risk">Risk</Translate>
-          </h3>
-          <div className={styles.columns}>
-            <div className={styles.column}>
-              <p className={styles.columnLabel}>
-                <Translate id="homepage.gain.label.without">Without caesar</Translate>
-              </p>
-              <p className={styles.columnBody}>
-                <Translate id="homepage.gain.risk.without">
-                  The agent writes straight into your repository, and you take its word for what
-                  changed.
+            <div className={styles.row}>
+              <span className={styles.rowLabel}>
+                <Translate id="homepage.gain.parallel.label">parallelism</Translate>
+              </span>
+              <span className={styles.rowValue}>
+                <Translate id="homepage.gain.parallel.value">N tasks</Translate>
+              </span>
+              <p className={styles.rowBody}>
+                <Translate
+                  id="homepage.gain.parallel.body"
+                  values={{maxParallel: <code>max_parallel</code>}}>
+                  {
+                    '{maxParallel} slots shared across processes; one workflow for five providers.'
+                  }
                 </Translate>
               </p>
             </div>
-            <div className={clsx(styles.column, styles.columnWith)}>
-              <p className={styles.columnLabel}>
-                <Translate id="homepage.gain.label.with">With caesar</Translate>
-              </p>
-              <p className={styles.columnBody}>
+
+            <div className={styles.row}>
+              <span className={styles.rowLabel}>
+                <Translate id="homepage.gain.risk.label">risk</Translate>
+              </span>
+              <span className={styles.rowValue}>
+                <Translate id="homepage.gain.risk.value">0 writes</Translate>
+              </span>
+              <p className={styles.rowBody}>
                 <Translate
-                  id="homepage.gain.risk.with"
+                  id="homepage.gain.risk.body"
                   values={{
                     changesVerified: <code>changes_verified_by: &quot;git&quot;</code>,
                   }}>
                   {
-                    'A disposable worktree; nothing reaches your repository before an explicit diff → apply; file changes are reconciled against git ({changesVerified}); writing in place is refused by default.'
+                    'Nothing reaches your repository before an explicit diff → apply; file changes are reconciled against git ({changesVerified}); writing in place is refused by default.'
                   }
                 </Translate>
               </p>
             </div>
-          </div>
-        </div>
 
-        <div className={styles.axis}>
-          <h3 className={styles.axisTitle}>
-            <Translate id="homepage.gain.axis.cost">Cost &amp; flexibility</Translate>
-          </h3>
-          <div className={styles.columns}>
-            <div className={styles.column}>
-              <p className={styles.columnLabel}>
-                <Translate id="homepage.gain.label.without">Without caesar</Translate>
-              </p>
-              <p className={styles.columnBody}>
-                <Translate id="homepage.gain.cost.without">
-                  Locked into one provider&apos;s tool and subscription.
-                </Translate>
-              </p>
-            </div>
-            <div className={clsx(styles.column, styles.columnWith)}>
-              <p className={styles.columnLabel}>
-                <Translate id="homepage.gain.label.with">With caesar</Translate>
-              </p>
-              <p className={styles.columnBody}>
+            <div className={styles.row}>
+              <span className={styles.rowLabel}>
+                <Translate id="homepage.gain.cost.label">cost · flexibility</Translate>
+              </span>
+              <span className={styles.rowValue}>
+                <Translate id="homepage.gain.cost.value">5 quotas</Translate>
+              </span>
+              <p className={styles.rowBody}>
                 <Translate
-                  id="homepage.gain.cost.with"
+                  id="homepage.gain.cost.body"
                   values={{
                     models: <code>[models]</code>,
                     roleModel: <code>role.model</code>,
@@ -125,6 +121,13 @@ export default function WhatYouGain(): ReactNode {
                 </Translate>
               </p>
             </div>
+
+            <p className={styles.method}>
+              <Translate id="homepage.gain.method">
+                method · the clone benchmark is measured in this repository (APFS
+                copy-on-write); the rest is design, not marketing
+              </Translate>
+            </p>
           </div>
         </div>
       </div>

@@ -32,23 +32,8 @@
   "homepage.agents.claude.note": {
     "message": "refusé par défaut — protection contre la récursion"
   },
-  "homepage.hero.title": {
-    "message": "caesar"
-  },
-  "homepage.hero.tagline": {
-    "message": "Déléguez des tâches de code à des CLI d'agents externes — en toute sécurité."
-  },
   "homepage.hero.subtext": {
     "message": "Un seul protocole, cinq providers, et un worktree Git jetable entre eux et votre dépôt."
-  },
-  "homepage.hero.cta.primary": {
-    "message": "Démarrer"
-  },
-  "homepage.hero.cta.secondary": {
-    "message": "Le protocole OACP"
-  },
-  "homepage.pillars.title": {
-    "message": "Trois idées, un orchestrateur"
   },
   "homepage.pillars.protocol.title": {
     "message": "Un protocole, pas cinq intégrations"
@@ -72,19 +57,16 @@
     "message": "Démarrage rapide"
   },
   "homepage.quickstart.intro": {
-    "message": "Clonez le dépôt et pointez caesar vers le projet dans lequel vous voulez déléguer des tâches."
+    "message": "Lancez l'installeur, puis pointez caesar vers le projet dans lequel vous voulez déléguer des tâches."
   },
   "homepage.quickstart.note.label": {
     "message": "Remarque"
   },
   "homepage.quickstart.note.body": {
-    "message": "caesar n'est pas encore publié sur npm. Chaque commande ci-dessus s'exécute depuis un checkout de ce dépôt — il n'y a rien à installer comme dépendance de projet."
-  },
-  "homepage.quickstart.more": {
-    "message": "Le parcours complet, dépannage inclus, se trouve dans le guide d'installation."
+    "message": "caesar n'est pas encore publié sur npm. L'installeur l'exécute depuis un checkout qu'il gère pour vous — il n'y a rien à installer comme dépendance de projet."
   },
   "homepage.quickstart.more.link": {
-    "message": "Lire le guide d'installation"
+    "message": "Lire le guide d'installation →"
   },
   "homepage.terminal.title": {
     "message": "Voyez-le à l'œuvre"
@@ -94,39 +76,6 @@
   },
   "homepage.gain.title": {
     "message": "Ce que vous gagnez"
-  },
-  "homepage.gain.axis.time": {
-    "message": "Temps"
-  },
-  "homepage.gain.label.without": {
-    "message": "Sans caesar"
-  },
-  "homepage.gain.time.without": {
-    "message": "Un agent à la fois dans votre arbre de travail ; chaque CLI a son propre format de mission à réapprendre."
-  },
-  "homepage.gain.label.with": {
-    "message": "Avec caesar"
-  },
-  "homepage.gain.time.with": {
-    "message": "N tâches en parallèle ({maxParallel} emplacements partagés entre processus) ; un seul workflow pour cinq providers ; un atelier prêt à construire en quelques secondes — 975 Mo de {nodeModules} clonés en 6,3 s et 11 Mo de disque avec copy-on-write, contre 15,0 s et 994 Mo avec une copie classique."
-  },
-  "homepage.gain.axis.risk": {
-    "message": "Risque"
-  },
-  "homepage.gain.risk.without": {
-    "message": "L'agent écrit directement dans votre dépôt, et vous devez le croire sur parole quant à ce qui a changé."
-  },
-  "homepage.gain.risk.with": {
-    "message": "Un worktree jetable ; rien n'atteint votre dépôt avant un diff → apply explicite ; les changements de fichiers sont réconciliés avec git ({changesVerified}) ; l'écriture in-place est refusée par défaut."
-  },
-  "homepage.gain.axis.cost": {
-    "message": "Coût et flexibilité"
-  },
-  "homepage.gain.cost.without": {
-    "message": "Enfermé dans l'outil et l'abonnement d'un seul provider."
-  },
-  "homepage.gain.cost.with": {
-    "message": "Utilisez les quotas que vous payez déjà, répartis sur cinq providers ; choisissez le modèle par tâche ou par rôle ({models}, {roleModel}) ; faites courir les providers sur un même objectif et ne gardez que le meilleur diff."
   },
   "theme.ErrorPageContent.title": {
     "message": "Cette page a planté.",
@@ -454,5 +403,143 @@
   "theme.tags.tagsPageTitle": {
     "message": "Tags",
     "description": "The title of the tag list page"
+  },
+  "homepage.anatomy.eyebrow": {
+    "message": "comment ça marche"
+  },
+  "homepage.anatomy.headline": {
+    "message": "Un protocole, un atelier jetable, et {judge}."
+  },
+  "homepage.anatomy.headline.em": {
+    "message": "git comme juge"
+  },
+  "homepage.anatomy.intro": {
+    "message": "Trois idées portées à travers toute la CLI — et une vue en direct pour les suivre à l'œuvre."
+  },
+  "homepage.anatomy.protocol.more": {
+    "message": "Lire le protocole →"
+  },
+  "homepage.anatomy.protocol.spec.surface": {
+    "message": "répertoire de tâche · report.json · events.ndjson"
+  },
+  "homepage.anatomy.protocol.spec.sdk": {
+    "message": "aucun — de simples fichiers"
+  },
+  "homepage.anatomy.protocol.spec.channel": {
+    "message": "canal MCP de retour ({flag})"
+  },
+  "homepage.anatomy.workshop.spec.bench": {
+    "message": "6,3 s / 11 Mo, copy-on-write"
+  },
+  "homepage.anatomy.workshop.caption": {
+    "message": "Sortie non retouchée de caesar run."
+  },
+  "homepage.anatomy.verdict.spec.integrate": {
+    "message": "diff → apply, explicite"
+  },
+  "homepage.anatomy.verdict.spec.inplace": {
+    "message": "refusée par défaut"
+  },
+  "homepage.anatomy.verdict.caption": {
+    "message": "Sortie non retouchée de caesar diff, puis caesar apply."
+  },
+  "homepage.anatomy.follow.body": {
+    "message": "Une vue en direct de chaque délégation en cours — l'outil apparaît dès qu'il démarre, et ce que dit l'agent s'affiche au fil du flux. Regarder ne modifie rien."
+  },
+  "homepage.anatomy.follow.spec.slots": {
+    "message": "{maxParallel}, partagé entre processus"
+  },
+  "homepage.agents.headline": {
+    "message": "Cinq providers, un orchestrateur."
+  },
+  "homepage.hero.eyebrow": {
+    "message": "caesar · l'orchestrateur"
+  },
+  "homepage.hero.headline": {
+    "message": "Déléguez des tâches de code à des CLI d'agents externes — {safely}."
+  },
+  "homepage.hero.copied": {
+    "message": "copié"
+  },
+  "homepage.hero.copy": {
+    "message": "copier"
+  },
+  "homepage.hero.meta.npm": {
+    "message": "pas sur npm — s'installe depuis un checkout"
+  },
+  "homepage.hero.meta.docs": {
+    "message": "lire la doc →"
+  },
+  "homepage.hero.meta.source": {
+    "message": "lire la source ↗"
+  },
+  "homepage.hero.stat.providers": {
+    "message": "providers"
+  },
+  "homepage.hero.stat.commands": {
+    "message": "commandes CLI"
+  },
+  "homepage.hero.stat.tools": {
+    "message": "outils MCP"
+  },
+  "homepage.hero.stat.workshop": {
+    "message": "clone de l'atelier, CoW"
+  },
+  "homepage.hero.stat.sdk": {
+    "message": "SDK à intégrer"
+  },
+  "homepage.quickstart.headline": {
+    "message": "De zéro au {diff}."
+  },
+  "homepage.quickstart.headline.em": {
+    "message": "premier diff"
+  },
+  "homepage.gain.headline": {
+    "message": "Ce que vous gagnez, {receipts}."
+  },
+  "homepage.gain.headline.em": {
+    "message": "preuves à l'appui"
+  },
+  "homepage.gain.without": {
+    "message": "Sans caesar : un agent à la fois dans votre arbre de travail, chaque CLI avec son propre format de mission à réapprendre, l'agent qui écrit directement dans votre dépôt — et qu'il faut croire sur parole quant à ce qui a changé. Enfermé dans l'outil et l'abonnement d'un seul provider."
+  },
+  "homepage.gain.workshop.label": {
+    "message": "atelier · copy-on-write"
+  },
+  "homepage.gain.workshop.body": {
+    "message": "975 Mo de {nodeModules} clonés en 6,3 s et 11 Mo de disque — contre 15,0 s et 994 Mo avec une copie classique."
+  },
+  "homepage.gain.parallel.label": {
+    "message": "parallélisme"
+  },
+  "homepage.gain.parallel.value": {
+    "message": "N tâches"
+  },
+  "homepage.gain.parallel.body": {
+    "message": "{maxParallel} emplacements partagés entre processus ; un seul workflow pour cinq providers."
+  },
+  "homepage.gain.risk.label": {
+    "message": "risque"
+  },
+  "homepage.gain.risk.value": {
+    "message": "0 écriture"
+  },
+  "homepage.gain.risk.body": {
+    "message": "Rien n'atteint votre dépôt avant un diff → apply explicite ; les changements de fichiers sont réconciliés avec git ({changesVerified}) ; l'écriture in-place est refusée par défaut."
+  },
+  "homepage.gain.cost.label": {
+    "message": "coût · flexibilité"
+  },
+  "homepage.gain.cost.value": {
+    "message": "5 quotas"
+  },
+  "homepage.gain.cost.body": {
+    "message": "Utilisez les quotas que vous payez déjà, répartis sur cinq providers ; choisissez le modèle par tâche ou par rôle ({models}, {roleModel}) ; faites courir les providers sur un même objectif et ne gardez que le meilleur diff."
+  },
+  "homepage.gain.method": {
+    "message": "méthode · le benchmark de clone est mesuré dans ce dépôt (copy-on-write APFS) ; le reste est du design, pas du marketing"
+  },
+  "homepage.hero.headline.em": {
+    "message": "en toute sécurité"
   }
 }

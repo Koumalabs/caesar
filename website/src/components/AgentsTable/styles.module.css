@@ -1,60 +1,91 @@
 .section {
-  padding: 3.5rem 0;
-  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  padding: 4.5rem 0;
+  border-bottom: 1px solid var(--landing-hairline);
 }
 
-.heading {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1.75rem;
+.title {
+  margin: 3rem 0 2rem;
+  font-family: var(--landing-serif);
+  font-size: clamp(2rem, 3.4vw, 3rem);
+  font-weight: 550;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
 }
 
-.mark {
-  font-family: var(--ifm-font-family-monospace);
-  color: var(--ifm-color-primary);
-}
-
-/* The table manages its own horizontal overflow, so a narrow viewport
-   never forces the page itself to scroll sideways. */
 .tableWrap {
   overflow-x: auto;
-  border: 1px solid var(--ifm-color-emphasis-300);
-  border-radius: 4px;
 }
 
 .table {
+  display: table;
   width: 100%;
+  margin: 0;
   border-collapse: collapse;
-  font-size: 0.92rem;
 }
 
-.table th,
-.table td {
-  padding: 0.65rem 1rem;
+.table thead {
+  border: none;
+}
+
+.table th {
+  padding: 0 1.25rem 0.6rem 0;
+  border: none;
   text-align: left;
-  white-space: nowrap;
-  border-bottom: 1px solid var(--ifm-color-emphasis-200);
-}
-
-.table td:last-child,
-.table th:last-child {
-  white-space: normal;
-}
-
-.table thead th {
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-family: var(--landing-mono);
+  font-size: 0.62rem;
+  font-weight: 400;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ifm-color-emphasis-700);
-  background: var(--ifm-background-surface-color);
+  color: var(--landing-ink-faint);
 }
 
-.table tbody tr:last-child td {
-  border-bottom: none;
+.table tr,
+.table tr:nth-child(2n) {
+  border: none;
+  background: none;
 }
 
-.table td:nth-child(2) code {
-  font-size: 0.88em;
+.table td {
+  padding: 0.85rem 1.25rem 0.85rem 0;
+  border: none;
+  border-top: 1px solid var(--landing-hairline);
+  font-size: 0.95rem;
+  vertical-align: baseline;
+}
+
+.table td:first-child {
+  font-family: var(--landing-serif);
+  font-size: 1.1rem;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.table td code {
+  border: none;
+  padding: 0;
+  background: none;
+  font-size: 0.85rem;
+  color: var(--landing-ink);
+}
+
+.table td:last-child {
+  color: var(--landing-ink-secondary);
+}
+
+.dotOk,
+.dotBad {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.6rem;
+  border-radius: 50%;
+  vertical-align: baseline;
+}
+
+.dotOk {
+  background: var(--caesar-ok);
+}
+
+.dotBad {
+  background: var(--caesar-bad);
 }

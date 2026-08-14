@@ -1,0 +1,285 @@
+.section {
+  padding: 4.5rem 0;
+  border-bottom: 1px solid var(--landing-hairline);
+}
+
+/* --- mother header -------------------------------------------------------- */
+
+.intro {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 4fr);
+  gap: 3rem;
+  align-items: end;
+  margin-top: 3rem;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--landing-serif);
+  font-size: clamp(2.2rem, 4.2vw, 3.6rem);
+  font-weight: 550;
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.em {
+  font-style: italic;
+  font-weight: 480;
+  color: var(--landing-accent);
+}
+
+.introBody {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--landing-ink-secondary);
+}
+
+/* --- sub-sections --------------------------------------------------------- */
+
+.sub {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr) minmax(0, 19rem);
+  gap: 1.5rem 2.5rem;
+  margin-top: 3.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--landing-hairline);
+}
+
+.subMargin {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-family: var(--landing-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.subNum {
+  color: var(--landing-accent);
+}
+
+.subSlug {
+  color: var(--landing-ink-faint);
+}
+
+.subTitle {
+  margin: 0 0 0.9rem;
+  font-family: var(--landing-serif);
+  font-size: clamp(1.5rem, 2.4vw, 2.1rem);
+  font-weight: 550;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.subBody {
+  max-width: 34rem;
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.65;
+  color: var(--landing-ink-secondary);
+}
+
+.subMore {
+  margin: 1rem 0 0;
+}
+
+.subMore a {
+  font-family: var(--landing-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--landing-accent);
+  text-decoration: none;
+}
+
+.subMore a:hover {
+  text-decoration: underline;
+}
+
+/* --- spec tables ---------------------------------------------------------- */
+
+.specs {
+  align-self: start;
+  margin: 0;
+  border-left: 1px solid var(--landing-hairline);
+  padding-left: 1.5rem;
+}
+
+.specRow {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.45rem 0;
+}
+
+.specRow + .specRow {
+  border-top: 1px solid var(--landing-hairline);
+}
+
+.specRow dt {
+  font-family: var(--landing-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  line-height: 1.9;
+  color: var(--landing-ink-faint);
+}
+
+.specRow dd {
+  margin: 0;
+  font-family: var(--landing-mono);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  text-align: right;
+  overflow-wrap: break-word;
+  color: var(--landing-ink-secondary);
+}
+
+.specRow dd code {
+  border: none;
+  padding: 0;
+  background: none;
+  font-size: inherit;
+  color: var(--landing-ink);
+  white-space: nowrap;
+}
+
+/* --- terminal demos ------------------------------------------------------- */
+
+.demo {
+  grid-column: 1 / -1;
+}
+
+/* A terminal window is dark by definition, in both site themes: every
+   color below is a literal value, never a --landing-* theme variable. */
+.window {
+  overflow: hidden;
+  border: 1px solid rgba(240, 234, 217, 0.12);
+  border-radius: 8px;
+  background: var(--caesar-accent-ink);
+  box-shadow: 0 24px 48px -28px rgba(0, 0, 0, 0.6);
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  background: rgba(240, 234, 217, 0.04);
+  border-bottom: 1px solid rgba(240, 234, 217, 0.1);
+}
+
+.dots {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.dotBad,
+.dotWarn,
+.dotOk {
+  display: block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.dotBad {
+  background: var(--caesar-bad);
+}
+
+.dotWarn {
+  background: var(--caesar-warn);
+}
+
+.dotOk {
+  background: var(--caesar-ok);
+}
+
+.windowTitle {
+  margin-left: 0.2rem;
+  font-family: var(--landing-mono);
+  font-size: 0.8rem;
+  color: var(--caesar-dim);
+}
+
+.body {
+  margin: 0;
+  padding: 1.25rem 1.5rem 1.5rem;
+  overflow-x: auto;
+  font-family: var(--landing-mono);
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: #f0ead9;
+  background: transparent;
+}
+
+.line {
+  display: block;
+  white-space: pre;
+  min-height: 1.7em;
+}
+
+.accent {
+  color: #eaa52e;
+}
+
+.ok {
+  color: var(--caesar-ok);
+}
+
+.dim {
+  color: var(--caesar-dim);
+}
+
+.faint {
+  color: var(--caesar-faint);
+}
+
+.caption {
+  margin: 0.9rem 0 0;
+  font-family: var(--landing-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--landing-ink-faint);
+}
+
+/* --- responsive ----------------------------------------------------------- */
+
+@media (max-width: 996px) {
+  .intro {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .sub {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+
+  .subMargin {
+    flex-direction: row;
+    gap: 1rem;
+  }
+
+  .specs {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--landing-hairline);
+    padding-top: 0.75rem;
+  }
+
+  .specRow dd {
+    text-align: left;
+  }
+}
+
+@media (max-width: 480px) {
+  .body {
+    padding: 1rem;
+    font-size: 0.62rem;
+  }
+}

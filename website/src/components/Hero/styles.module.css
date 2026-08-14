@@ -1,28 +1,231 @@
 .hero {
-  padding: 4rem 0 3.5rem;
-  text-align: center;
-  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  padding: 3rem 0 4.5rem;
+  border-bottom: 1px solid var(--landing-hairline);
 }
 
-.inner {
-  display: flex;
-  flex-direction: column;
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 3rem;
   align-items: center;
+  margin-top: 3.5rem;
+}
+
+/* --- left column ---------------------------------------------------------- */
+
+.title {
+  margin: 0 0 1.5rem;
+  font-family: var(--landing-serif);
+  font-size: clamp(2.6rem, 5.2vw, 4.4rem);
+  font-weight: 550;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.em {
+  font-style: italic;
+  font-weight: 480;
+  color: var(--landing-accent);
+}
+
+.subtext {
+  max-width: 34rem;
+  margin: 0 0 2.25rem;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: var(--landing-ink-secondary);
+}
+
+/* --- installer ------------------------------------------------------------ */
+
+.installer {
+  max-width: 36rem;
+}
+
+.tabs {
+  display: flex;
+  align-items: baseline;
+  gap: 1.25rem;
+  margin-bottom: 0.6rem;
+  font-family: var(--landing-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.tab,
+.tabActive {
+  padding: 0 0 0.25rem;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--landing-ink-faint);
+  cursor: pointer;
+}
+
+.tabActive {
+  color: var(--landing-ink);
+  border-bottom-color: var(--landing-accent);
+}
+
+.tab:hover {
+  color: var(--landing-ink-secondary);
+}
+
+.tabsAside {
+  margin-left: auto;
+  color: var(--landing-ink-faint);
+}
+
+.cmdRow {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--landing-hairline);
+  background: var(--landing-bg-raised);
+}
+
+.prompt {
+  display: flex;
+  align-items: center;
+  padding: 0.85rem 0 0.85rem 1rem;
+  font-family: var(--landing-mono);
+  font-size: 0.85rem;
+  color: var(--landing-accent);
+}
+
+.cmd {
+  flex: 1;
+  align-self: center;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  border: none;
+  background: none;
+  font-family: var(--landing-mono);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  color: var(--landing-ink);
+}
+
+.copyBtn {
+  padding: 0 1.1rem;
+  border: none;
+  border-left: 1px solid var(--landing-hairline);
+  background: none;
+  font-family: var(--landing-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--landing-ink-secondary);
+  cursor: pointer;
+}
+
+.copyBtn:hover {
+  color: var(--landing-accent);
+}
+
+/* --- meta + stats --------------------------------------------------------- */
+
+.meta {
+  margin: 0.9rem 0 0;
+  font-family: var(--landing-mono);
+  font-size: 0.78rem;
+  color: var(--landing-ink-faint);
+}
+
+.meta a {
+  color: var(--landing-ink-secondary);
+  text-decoration: none;
+}
+
+.meta a:hover {
+  color: var(--landing-accent);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2.25rem;
+  margin: 3rem 0 0;
+}
+
+.stat dd {
+  margin: 0;
+  font-family: var(--landing-serif);
+  font-size: 2rem;
+  font-weight: 550;
+  line-height: 1;
+}
+
+.stat dt {
+  margin-top: 0.35rem;
+  font-family: var(--landing-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--landing-ink-faint);
+}
+
+/* --- right panel ---------------------------------------------------------- */
+
+.panel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-height: 20rem;
+  border: 1px solid var(--landing-hairline);
+  background-image: linear-gradient(var(--landing-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--landing-grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.corner {
+  position: absolute;
+  font-family: var(--landing-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--landing-ink-faint);
+}
+
+.cornerTl {
+  top: 0.75rem;
+  left: 0.9rem;
+}
+
+.cornerTr {
+  top: 0.75rem;
+  right: 0.9rem;
+}
+
+.cornerBl {
+  bottom: 0.75rem;
+  left: 0.9rem;
+}
+
+.cornerBr {
+  bottom: 0.75rem;
+  right: 0.9rem;
 }
 
 /* Decorative ANSI Shadow wordmark. Its own overflow-x handles narrow
    viewports so the page itself never scrolls horizontally. */
 .wordmark {
-  margin: 0 auto 1.75rem;
-  padding: 0;
+  margin: 0;
+  padding: 0 0.5rem;
   max-width: 100%;
   width: max-content;
   overflow-x: auto;
   background: none;
   border: none;
-  font-family: var(--ifm-font-family-monospace);
-  font-size: 1.05rem;
-  line-height: 1.15;
+  font-family: var(--landing-mono);
+  font-size: 0.78rem;
+  line-height: 1.2;
   white-space: pre;
 }
 
@@ -30,61 +233,29 @@
   display: block;
 }
 
-@media (max-width: 768px) {
-  .wordmark {
-    font-size: 0.78rem;
+/* --- responsive ----------------------------------------------------------- */
+
+@media (max-width: 996px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+  }
+
+  .panel {
+    min-height: 14rem;
   }
 }
 
 @media (max-width: 480px) {
+  .hero {
+    padding-top: 2rem;
+  }
+
+  .stats {
+    gap: 1.5rem;
+  }
+
   .wordmark {
-    font-size: 0.58rem;
-  }
-}
-
-/* Visually hidden, but present for assistive tech: the wordmark above is
-   aria-hidden, so this <h1> is the page's one real accessible heading. */
-.srOnly {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.tagline {
-  max-width: 40rem;
-  margin: 0 auto;
-  font-size: 1.375rem;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.subtext {
-  max-width: 36rem;
-  margin: 0.75rem auto 0;
-  font-size: 1.05rem;
-  color: var(--ifm-color-emphasis-700);
-}
-
-.ctas {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.75rem;
-  margin-top: 2rem;
-}
-
-@media (max-width: 480px) {
-  .tagline {
-    font-size: 1.15rem;
-  }
-
-  .subtext {
-    font-size: 0.95rem;
+    font-size: 0.45rem;
   }
 }

@@ -22,8 +22,10 @@ If a French file is missing entirely, Docusaurus falls back to rendering the Eng
 Run from the repo root:
 
 ```bash
-pnpm --filter website start                       # dev server, English
-pnpm --filter website start -- --locale fr         # dev server, French
-pnpm --filter website build                        # production build, both locales
-pnpm --filter website write-translations -- --locale fr  # regenerate the French chrome (navbar/footer/sidebar labels)
+pnpm --filter website start                                    # dev server, English
+pnpm --filter website exec docusaurus start --locale fr        # dev server, French
+pnpm --filter website build                                    # production build, both locales
+pnpm --filter website exec docusaurus write-translations --locale fr  # regenerate the French strings (code.json, navbar/footer/sidebar labels)
 ```
+
+Flags go through `pnpm --filter website exec docusaurus <cmd> --flags`: with pnpm 10, the `-- --flag` form mis-forwards the `--` boundary and Docusaurus reads the flag as a positional argument.

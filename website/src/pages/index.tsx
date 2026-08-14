@@ -2,11 +2,14 @@ import type {ReactNode} from 'react';
 import Layout from '@theme/Layout';
 import {translate} from '@docusaurus/Translate';
 import Hero from '../components/Hero';
-import Pillars from '../components/Pillars';
 import WhatYouGain from '../components/WhatYouGain';
+import Anatomy from '../components/Anatomy';
 import AgentsTable from '../components/AgentsTable';
-import TerminalBlock from '../components/TerminalBlock';
 import Quickstart from '../components/Quickstart';
+import styles from './index.module.css';
+
+import '@fontsource-variable/fraunces';
+import '@fontsource-variable/fraunces/wght-italic.css';
 
 export default function Home(): ReactNode {
   return (
@@ -20,12 +23,11 @@ export default function Home(): ReactNode {
         message:
           'An orchestrator that lets a coding agent delegate tasks to external agent CLIs (Codex, Antigravity, OpenCode, Copilot, Claude) over one protocol, isolated on disposable git worktrees.',
       })}>
-      <main>
+      <main className={styles.landing}>
         <Hero />
-        <Pillars />
         <WhatYouGain />
+        <Anatomy />
         <AgentsTable />
-        <TerminalBlock />
         <Quickstart />
       </main>
     </Layout>

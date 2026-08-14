@@ -1,63 +1,99 @@
 .section {
-  padding: 3.5rem 0 4.5rem;
+  padding: 4.5rem 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 3.5rem;
+  align-items: start;
+  margin-top: 3rem;
 }
 
 .heading {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  margin: 0 0 1.25rem;
+  font-family: var(--landing-serif);
+  font-size: clamp(2rem, 3.4vw, 3rem);
+  font-weight: 550;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
-.mark {
-  font-family: var(--ifm-font-family-monospace);
-  color: var(--ifm-color-primary);
+.em {
+  font-style: italic;
+  font-weight: 480;
+  color: var(--landing-accent);
 }
 
 .intro {
-  max-width: 42rem;
-  margin: 0 0 1.25rem;
-  color: var(--ifm-color-emphasis-800);
-}
-
-.code {
-  max-width: 42rem;
-  margin: 0 0 1.25rem;
-  padding: 1rem 1.25rem;
-  overflow-x: auto;
-  border-radius: 4px;
-  border: 1px solid var(--ifm-color-emphasis-300);
-  background: var(--ifm-background-surface-color);
-  font-family: var(--ifm-font-family-monospace);
-  font-size: 0.88rem;
-  line-height: 1.7;
+  max-width: 30rem;
+  margin: 0 0 1.5rem;
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--landing-ink-secondary);
 }
 
 .note {
-  max-width: 42rem;
+  max-width: 30rem;
   margin: 0 0 1.5rem;
-  padding: 0.9rem 1.1rem;
-  border-left: 3px solid var(--ifm-color-primary);
-  background: var(--ifm-color-emphasis-100);
+  padding-left: 1rem;
+  border-left: 2px solid var(--landing-accent);
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--landing-ink-secondary);
 }
 
 .noteLabel {
-  margin: 0 0 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-family: var(--landing-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ifm-color-primary);
-}
-
-.noteBody {
-  margin: 0;
-  color: var(--ifm-color-emphasis-800);
-  line-height: 1.55;
+  color: var(--landing-ink);
 }
 
 .more {
-  max-width: 42rem;
   margin: 0;
-  color: var(--ifm-color-emphasis-800);
+}
+
+.more a {
+  font-family: var(--landing-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--landing-accent);
+  text-decoration: none;
+}
+
+.more a:hover {
+  text-decoration: underline;
+}
+
+/* The command block borrows the installer chrome from the hero rather than
+   the terminal-window chrome: these are lines you type, not output. */
+.code {
+  margin: 0;
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+  border: 1px solid var(--landing-hairline);
+  border-radius: 0;
+  background: var(--landing-bg-raised);
+  font-family: var(--landing-mono);
+  font-size: 0.85rem;
+  line-height: 1.9;
+  color: var(--landing-ink);
+}
+
+.code code {
+  border: none;
+  padding: 0;
+  background: none;
+  font-size: inherit;
+  color: inherit;
+}
+
+@media (max-width: 996px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+  }
 }

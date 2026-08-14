@@ -1,0 +1,40 @@
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  font-family: var(--landing-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.num {
+  color: var(--landing-accent);
+  white-space: nowrap;
+}
+
+.label {
+  color: var(--landing-ink-secondary);
+  white-space: nowrap;
+}
+
+.rule {
+  flex: 1;
+  align-self: center;
+  border-top: 1px solid var(--landing-hairline);
+}
+
+.aside {
+  color: var(--landing-ink-faint);
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .aside {
+    display: none;
+  }
+
+  .label {
+    white-space: normal;
+  }
+}
