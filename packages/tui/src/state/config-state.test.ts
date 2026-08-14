@@ -28,6 +28,8 @@ import {
   upsertAgentSpec,
   isDirty,
   loadConfigState,
+  modelDeclaredByActiveLayer,
+  modelMark,
   moveRoleAgent,
   nextScope,
   pickAgentForRoleName,
@@ -41,6 +43,7 @@ import {
   setPolicyListEntry,
   setScope,
   toggleAgentDenied,
+  updateModel,
   updatePolicy,
   updateRole,
   upsertRole,
@@ -87,6 +90,85 @@ describe("isDirty", () => {
 
         const saved = await saveConfigState(root, edited);
         expect(isDirty(saved)).toBe(false);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+describe("default model per agent ([models])", () => {
+  it("updateModel writes only that key into the draft, visible in the effective merge", () => {
+    const state = emptyState();
+    const edited = updateModel(state, "codex", "gpt-5.2");
+
+    expect(effectiveConfig(edited).models).toEqual({ codex: "gpt-5.2" });
+    expect(edited.draft.models).toEqual({ codex: "gpt-5.2" });
+    // The original working copy stays intact (pure mutation).
+    expect(effectiveConfig(state).models).toEqual({});
+  });
+
+  it("updateModel(..., undefined) removes the key; an emptied table leaves the draft entirely", () => {
+    let state = updateModel(emptyState(), "codex", "a");
+    state = updateModel(state, "claude", "b");
+
+    state = updateModel(state, "codex", undefined);
+    expect(state.draft.models).toEqual({ claude: "b" });
+
+    state = updateModel(state, "claude", undefined);
+    expect(state.draft.models).toBeUndefined();
+  });
+
+  it("removing the active layer's key lets an inherited value reappear — the limit to explain on screen", async () => {
+    await withFakeHome(async () => {
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-model-inherit-"));
+      try {
+        await saveLayer("global", root, { models: { codex: "from-global" } });
+        let state = await loadConfigState(root); // "project"
+
+        state = updateModel(state, "codex", "override");
+        expect(effectiveConfig(state).models["codex"]).toBe("override");
+
+        state = updateModel(state, "codex", undefined);
+        expect(effectiveConfig(state).models["codex"]).toBe("from-global");
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("modelMark and modelDeclaredByActiveLayer follow the key's provenance, per key", async () => {
+    await withFakeHome(async () => {
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-model-mark-"));
+      try {
+        await saveLayer("global", root, { models: { codex: "a" } });
+        const state = await loadConfigState(root); // "project"
+
+        expect(modelMark(state, "codex")).toBe("global");
+        expect(modelDeclaredByActiveLayer(state, "codex")).toBe(false);
+        // No declaration anywhere: "default", like policyFieldMark.
+        expect(modelMark(state, "claude")).toBe("default");
+
+        const declared = updateModel(state, "codex", "b");
+        expect(modelMark(declared, "codex")).toBeNull();
+        expect(modelDeclaredByActiveLayer(declared, "codex")).toBe(true);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("survives the save/reload round-trip on the active layer", async () => {
+    await withFakeHome(async () => {
+      const root = await mkdtemp(join(tmpdir(), "caesar-tui-model-roundtrip-"));
+      try {
+        let state = await loadConfigState(root);
+        state = updateModel(state, "codex", "gpt-5.2");
+        await saveConfigState(root, state);
+
+        const reloaded = await loadConfigState(root);
+        expect(reloaded.draft.models).toEqual({ codex: "gpt-5.2" });
+        expect(effectiveConfig(reloaded).models["codex"]).toBe("gpt-5.2");
       } finally {
         await rm(root, { recursive: true, force: true });
       }

@@ -47,6 +47,7 @@ import {
   loadConfig,
   materializeListEdit,
   mergeConfig,
+  modelProvenance,
   pickAgentForRole,
   policyFieldProvenance,
   roleProvenance,
@@ -289,6 +290,46 @@ export function removeAgentSpec(state: ConfigState, id: string): ConfigState {
  */
 export function updatePolicy(state: ConfigState, patch: Partial<PolicyConfig>): ConfigState {
   return withDraft(state, { ...state.draft, policy: { ...state.draft.policy, ...patch } });
+}
+
+// ---------------------------------------------------------------------------
+// Default model per agent (`[models]`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sets (or, with `undefined`, removes) the active layer's default model for
+ * `agentId`. Key by key like `updatePolicy` — never `materializeListEdit`,
+ * which serves the whole-list replacement of `allowed`/`denied`: in a
+ * key-by-key merge, writing one key is enough to take it over, and an
+ * emptied table can mask nothing, so it leaves the draft entirely rather
+ * than staying behind as dead weight in the file. Removing a key declared
+ * by a *less specific* layer does not hide it — the inherited value
+ * reappears in the merge, the same limit as inherited roles: the caller
+ * explains it on screen rather than working around it here.
+ */
+export function updateModel(state: ConfigState, agentId: string, model: string | undefined): ConfigState {
+  const models = { ...state.draft.models };
+  if (model === undefined) delete models[agentId];
+  else models[agentId] = model;
+  const draft = { ...state.draft };
+  if (Object.keys(models).length > 0) draft.models = models;
+  else delete draft.models;
+  return withDraft(state, draft);
+}
+
+/** Provenance of an agent's default model (per key — see `modelProvenance`, `@caesar/core`), computed on `layers` with `draft` substituted. */
+export function modelProvenanceOf(state: ConfigState, agentId: string): ProvenanceSource {
+  return modelProvenance(layersWithDraft(state), agentId);
+}
+
+/** Inheritance mark of an agent's default model, `null` if the active layer already declares the key itself. */
+export function modelMark(state: ConfigState, agentId: string): ProvenanceSource | null {
+  return inheritedMark(state, modelProvenanceOf(state, agentId));
+}
+
+/** True if the active layer declares this agent's default model itself — the condition for removing it from here (see `updateModel`). */
+export function modelDeclaredByActiveLayer(state: ConfigState, agentId: string): boolean {
+  return state.draft.models?.[agentId] !== undefined;
 }
 
 // ---------------------------------------------------------------------------
