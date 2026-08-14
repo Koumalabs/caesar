@@ -1,17 +1,15 @@
 /**
  * Le logotype et le bandeau de commande.
  *
- * Le logotype est du pixel art au sens propre : chaque cellule du terminal
- * porte **deux** pixels verticaux, du demi-bloc haut (`▀`) au demi-bloc bas
- * (`▄`) en passant par le bloc plein (`█`). Les lettres sont dessinées sur
- * une grille de 5 × 8 pixels, repliée en 4 lignes de texte — d'où sa densité :
- * 35 colonnes sur 4 lignes, là où un logotype ASCII de même hauteur apparente
- * en demanderait 8.
+ * Le logotype suit le style « ANSI Shadow » : le corps de chaque lettre est
+ * en blocs pleins (`█`), et son flanc droit comme sa base portent une ombre
+ * en traits doubles (`╗ ║ ╚ ═`), ce qui donne du relief sans deuxième
+ * couleur. Chaque lettre occupe 8 colonnes, ombre et respiration comprises —
+ * les glyphes s'accolent donc sans séparateur : 48 colonnes sur 6 lignes.
  *
- * Sans Unicode, il n'y a pas de pixel art possible : les demi-blocs *sont* la
- * technique. Le repli n'essaie donc pas de l'imiter en `#`, ce qui donnerait
- * un dessin grossier et deux fois trop haut ; il rend une seule ligne, et
- * l'assume.
+ * Sans Unicode, ni les blocs pleins ni les traits doubles n'existent : le
+ * repli n'essaie pas d'imiter le dessin en `#`, ce qui donnerait un pavé
+ * grossier ; il rend une seule ligne, et l'assume.
  */
 import type { ColorDepth } from "./ansi.js";
 import { paint } from "./ansi.js";
@@ -19,18 +17,21 @@ import type { Glyphs } from "./glyphs.js";
 import { ACCENT, ACCENT_RAMP, BORDER, DIM } from "./palette.js";
 
 /**
- * Les quatre lignes du logotype, non colorées. Chacune fait exactement
- * `WORDMARK_WIDTH` colonnes — les espaces de fin des lettres « C », « E »
- * et « S » sont significatifs pour l'alignement des lettres suivantes.
+ * Les six lignes du logotype, non colorées. Chacune fait exactement
+ * `WORDMARK_WIDTH` colonnes — les espaces intérieurs et de fin de chaque
+ * glyphe de 8 colonnes sont significatifs pour l'alignement des lettres
+ * suivantes.
  */
 export const WORDMARK_LINES: readonly string[] = [
-  "▄▀▀▀▀ ▄▀▀▀▄ █▀▀▀▀ ▄▀▀▀▀ ▄▀▀▀▄ █▀▀▀▄",
-  "█     █▄▄▄█ █▄▄▄  ▀▄▄▄  █▄▄▄█ █▄▄▄▀",
-  "█     █   █ █         █ █   █ █  ▀▄",
-  " ▀▀▀▀ ▀   ▀ ▀▀▀▀▀ ▀▀▀▀  ▀   ▀ ▀   ▀",
+  " ██████╗ █████╗ ███████╗███████╗ █████╗ ██████╗ ",
+  "██╔════╝██╔══██╗██╔════╝██╔════╝██╔══██╗██╔══██╗",
+  "██║     ███████║█████╗  ███████╗███████║██████╔╝",
+  "██║     ██╔══██║██╔══╝  ╚════██║██╔══██║██╔══██╗",
+  "╚██████╗██║  ██║███████╗███████║██║  ██║██║  ██║",
+  " ╚═════╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝",
 ];
 
-export const WORDMARK_WIDTH = 35;
+export const WORDMARK_WIDTH = 48;
 
 /**
  * Le logotype, une couleur de la rampe par ligne — la lumière vient d'en

@@ -20,7 +20,7 @@ describe("caesar --help", () => {
   const aide = (): string => helpFor([]);
 
   it("ouvre sur le logotype", () => {
-    expect(aide()).toMatch(/^▄▀▀▀▀ ▄▀▀▀▄ █▀▀▀▀ ▄▀▀▀▀ ▄▀▀▀▄ █▀▀▀▄\n/);
+    expect(aide()).toMatch(/^ ██████╗ █████╗ ███████╗███████╗ █████╗ ██████╗ \n/);
   });
 
   it("dit ce qu'est l'outil et quels agents il pilote", () => {

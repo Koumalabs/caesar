@@ -15,15 +15,15 @@ describe("logotype", () => {
     for (const line of WORDMARK_LINES) expect([...line].length).toBe(WORDMARK_WIDTH);
   });
 
-  it("n'emploie que des demi-blocs et des espaces", () => {
-    expect(WORDMARK_LINES.join("")).toMatch(/^[▀▄█ ]+$/);
+  it("n'emploie que des blocs pleins, des traits doubles et des espaces", () => {
+    expect(WORDMARK_LINES.join("")).toMatch(/^[█╔╗╚╝═║ ]+$/);
   });
 
   it("porte une couleur par ligne, du plus clair au plus sombre", () => {
     const lines = renderWordmark(UNICODE_GLYPHS, "truecolor");
-    expect(lines).toHaveLength(4);
+    expect(lines).toHaveLength(6);
     const codes = lines.map((line) => /38;2;(\d+);(\d+);(\d+)/.exec(line)?.[0]);
-    expect(new Set(codes).size).toBe(4);
+    expect(new Set(codes).size).toBe(6);
     for (const line of lines) expect(visibleLength(line)).toBe(WORDMARK_WIDTH);
   });
 
@@ -34,8 +34,8 @@ describe("logotype", () => {
 
   it("l'accroche s'ajoute en dernière ligne", () => {
     const lines = renderWordmark(UNICODE_GLYPHS, "none", "orchestrateur de sous-agents · v0.1.0");
-    expect(lines).toHaveLength(5);
-    expect(lines[4]).toBe("  orchestrateur de sous-agents · v0.1.0");
+    expect(lines).toHaveLength(7);
+    expect(lines[6]).toBe("  orchestrateur de sous-agents · v0.1.0");
   });
 
   it("sans couleur, ne laisse aucune séquence ANSI", () => {
