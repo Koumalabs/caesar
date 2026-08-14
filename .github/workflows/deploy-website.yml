@@ -1,0 +1,52 @@
+# Post-remote checklist (this repo has no GitHub remote yet):
+# 1. Settings → Pages → Source: "GitHub Actions".
+# 2. Confirm org/repo/default-branch below and in website/docusaurus.config.ts
+#    (url, baseUrl, organizationName, projectName).
+# 3. Custom domain? Set baseUrl to '/' and add website/static/CNAME.
+
+name: Deploy website
+
+on:
+  push:
+    branches: [main] # TODO: confirm default branch when the remote exists
+    paths:
+      - "website/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-website.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter website build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
