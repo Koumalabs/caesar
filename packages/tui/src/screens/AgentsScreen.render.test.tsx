@@ -99,6 +99,40 @@ describe("AgentsScreen — the selected agent's detail", () => {
   });
 });
 
+describe("AgentsScreen — default model per agent", () => {
+  it("shows the effective default model of a native agent, with its inheritance mark", async () => {
+    const state = makeState(); // "project" scope active, the value comes from "global"
+    state.layers[0] = { ...state.layers[0]!, override: { models: { codex: "gpt-5.2" } } };
+    const setup = await mount(state, new Map());
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("Default model");
+    expect(frame).toContain("gpt-5.2 ← global");
+    setup.renderer.destroy();
+  });
+
+  it("says explicitly when no default model is configured", async () => {
+    const setup = await mount(makeState(), new Map());
+    expect(setup.captureCharFrame()).toContain("(none — provider default)");
+    setup.renderer.destroy();
+  });
+
+  it("flags a default model the agent cannot honor, instead of displaying it as applied", async () => {
+    const state = makeState();
+    state.draft = { agents: [{ id: "aider", bin: "aider", args: ["{{prompt}}"] }], models: { aider: "x" } };
+    const setup = await mount(state, new Map());
+    await pressDown(setup, NATIVE_COUNT);
+    expect(setup.captureCharFrame()).toContain("(ignored: no model choice)");
+    setup.renderer.destroy();
+  });
+
+  it('offers the "m" gesture from the list, native agents included', async () => {
+    const setup = await mount(makeState(), new Map());
+    // Lowercase: the key hint at the bottom of the screen, not the field label.
+    expect(setup.captureCharFrame()).toContain("default model");
+    setup.renderer.destroy();
+  });
+});
+
 describe("AgentsScreen — declaring an agent outside the catalog", () => {
   it("lists a declared agent after the native catalog, and marks it", async () => {
     const state = makeState();

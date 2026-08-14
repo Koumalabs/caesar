@@ -299,6 +299,7 @@ function HelpOverlay({ onClose }: { onClose: () => void }) {
       <text attributes={TextAttributes.BOLD}>Agents</text>
       <text>{"  ↑↓: agent · Space: allow / deny · Enter: edit a declared agent"}</text>
       <text>{"  n: declare a CLI outside the catalog · x: remove a declaration"}</text>
+      <text>{"  m: default model for the selected agent (native ones included)"}</text>
       <text fg={DIM}>{"      Allowing and declaring are two different gestures: the first writes a"}</text>
       <text fg={DIM}>{"      policy list, the second adds an agent to the catalog."}</text>
       <text> </text>

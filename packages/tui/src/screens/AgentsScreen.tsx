@@ -56,8 +56,11 @@ import {
   effectiveConfig,
   findAgentSpec,
   formatInheritedMark,
+  modelDeclaredByActiveLayer,
+  modelMark,
   policyFieldMark,
   removeAgentSpec,
+  updateModel,
   upsertAgentSpec,
   type ConfigState,
 } from "../state/config-state";
@@ -123,7 +126,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
   const [selected, setSelected] = useState(0);
   const [focus, setFocus] = useState<"list" | "fields">("list");
   const [fieldIndex, setFieldIndex] = useState(0);
-  const [editing, setEditing] = useState<{ kind: "new-agent" | "displayName" | "bin" | "args" | "networkArgs"; buffer: string } | null>(null);
+  const [editing, setEditing] = useState<{ kind: "new-agent" | "model" | "displayName" | "bin" | "args" | "networkArgs"; buffer: string } | null>(null);
 
   const deniedMark = formatInheritedMark(policyFieldMark(state, "denied"));
   const allowedMark = formatInheritedMark(policyFieldMark(state, "allowed"));
@@ -179,6 +182,30 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
           ? `Agent "${id}" redeclared — this declaration replaces the agent with the same identifier.`
           : `Agent "${id}" declared. Adjust its binary and arguments, then "s" to save.`,
       );
+      setEditingAndNotifyApp(null);
+      return;
+    }
+
+    // Before the `spec` guard: the default model applies to native agents
+    // too — that is precisely why it is not one of the `[[agent]]` fields.
+    if (editing.kind === "model") {
+      if (!def) return;
+      const value = editing.buffer.trim();
+      if (value.length === 0) {
+        if (config.models[def.id] !== undefined && !modelDeclaredByActiveLayer(state, def.id)) {
+          notify(
+            `"${def.id}"'s default model is inherited${formatInheritedMark(modelMark(state, def.id))}: removing it here cannot hide it. Switch scope (p) to remove it where it is declared.`,
+            true,
+          );
+          return;
+        }
+        onChange(updateModel(state, def.id, undefined));
+      } else {
+        onChange(updateModel(state, def.id, value));
+        if (!def.capabilities.model) {
+          notify(`"${def.id}" does not support choosing a model: this default will be ignored (with a report finding) until it does.`);
+        }
+      }
       setEditingAndNotifyApp(null);
       return;
     }
@@ -264,6 +291,11 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
       if (def) onToggleDenied(def.id);
     } else if (key.name === "n") {
       setEditingAndNotifyApp({ kind: "new-agent", buffer: "" });
+    } else if (key.name === "m") {
+      // From the list, not the fields: the fields belong to `[[agent]]`
+      // declarations, while the default model must stay editable for the
+      // native catalog too.
+      if (def) setEditingAndNotifyApp({ kind: "model", buffer: config.models[def.id] ?? "" });
     } else if (key.name === "x") {
       if (!def) return;
       if (!spec) {
@@ -348,6 +380,7 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
           { key: "↑↓", label: "agent" },
           { key: "Space", label: "allow / deny" },
           { key: "n", label: "declare a CLI" },
+          { key: "m", label: "default model" },
           ...(spec ? [{ key: "Enter", label: "edit" }, { key: "x", label: "remove the declaration" }] : []),
         ]
       : [
@@ -381,6 +414,25 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
               focused
               value={editing.buffer}
               onInput={(value) => setEditing({ kind: "new-agent", buffer: value })}
+              onSubmit={commitEdit}
+              onKeyDown={(key) => {
+                if (key.name === "escape") setEditingAndNotifyApp(null);
+              }}
+            />
+          </box>
+        </Panel>
+      ) : editing?.kind === "model" && def ? (
+        <Panel
+          title={`Default model — ${def.id}`}
+          focused
+          note="Requested when neither an explicit model nor the role chooses one. Empty: back to the provider's default."
+        >
+          <box flexDirection="row">
+            <text>{"Model         "}</text>
+            <input
+              focused
+              value={editing.buffer}
+              onInput={(value) => setEditing({ kind: "model", buffer: value })}
               onSubmit={commitEdit}
               onKeyDown={(key) => {
                 if (key.name === "escape") setEditingAndNotifyApp(null);
@@ -525,6 +577,23 @@ export function AgentsScreen({ state, installed, onToggleDenied, onChange, onEdi
             </>
           )}
 
+          {/* Outside the `spec` fork, like Permission and Used by: the
+              default model concerns native agents as much as declared ones.
+              A value the agent cannot honor is flagged rather than shown
+              bare — displayed as applied, it would lie about the launch. */}
+          <Field
+            label="Default model"
+            width={panelWidth}
+            labelWidth={LABEL_WIDTH}
+            value={
+              config.models[def.id] === undefined
+                ? "(none — provider default)"
+                : def.capabilities.model
+                  ? `${config.models[def.id]}${formatInheritedMark(modelMark(state, def.id))}`
+                  : `${config.models[def.id]} (ignored: no model choice)`
+            }
+            valueFg={config.models[def.id] === undefined ? DIM : def.capabilities.model ? undefined : WARN}
+          />
           {policy ? (
             <Field
               label="Permission"
