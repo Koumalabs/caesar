@@ -1,0 +1,22 @@
+{
+  "version.label": {
+    "message": "Suivante",
+    "description": "The label for version current"
+  },
+  "sidebar.docs.category.Getting started": {
+    "message": "Prise en main",
+    "description": "The label for category 'Getting started' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.Guides": {
+    "message": "Guides",
+    "description": "The label for category 'Guides' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.Reference": {
+    "message": "Référence",
+    "description": "The label for category 'Reference' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.OACP protocol": {
+    "message": "Protocole OACP",
+    "description": "The label for category 'OACP protocol' in sidebar 'docs'"
+  }
+}
