@@ -72,13 +72,13 @@ export const BORDER = FAINT;
  * contraste utilisable sur fond blanc comme sur fond noir — c'est la même
  * exigence que la règle 1 ci-dessus, appliquée à la seule décoration de
  * l'outil. Une entrée par ligne du logotype, en progression régulière par
- * canal (R −0x0F, G −0x10, B −0x13 à chaque pas).
+ * canal (R −0x0F, G −0x0B, B −0x03 à chaque pas), depuis l'or de la marque.
  */
 export const ACCENT_RAMP: readonly string[] = [
-  "#7AA2F7",
-  "#6B92E4",
-  "#5C82D1",
-  "#4D72BE",
-  "#3E62AB",
-  "#2F5298",
+  "#EAA52E",
+  "#DB9A2B",
+  "#CC8F28",
+  "#BD8425",
+  "#AE7922",
+  "#9F6E1F",
 ];

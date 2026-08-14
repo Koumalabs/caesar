@@ -41,7 +41,9 @@ export function renderWordmark(glyphs: Glyphs, depth: ColorDepth, tagline?: stri
   const unicode = glyphs.box.horizontal === "─";
   const lines = unicode
     ? WORDMARK_LINES.map((line, i) => paint(line, { hex: ACCENT_RAMP[i] ?? ACCENT }, depth))
-    : [paint("CAESAR", { hex: ACCENT, bold: true }, depth)];
+    : // La couleur de marque du logotype, pas l'accent de l'interface : le
+      // repli reste le logotype, réduit à sa plus simple expression.
+      [paint("CAESAR", { hex: ACCENT_RAMP[0] ?? ACCENT, bold: true }, depth)];
   if (tagline === undefined) return lines;
   // Aligné sous la deuxième lettre plutôt que sur le bord : le logotype a
   // déjà un bord gauche franc, et une accroche qui s'en écarte se lit comme
