@@ -9,6 +9,7 @@
   /* type */
   --landing-serif: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
   --landing-mono: var(--ifm-font-family-monospace);
+  --landing-pixel: 'Geist Pixel', var(--ifm-font-family-monospace);
 
   /* light derivation of the caesar palette */
   --landing-bg: #faf6ee;

@@ -154,17 +154,17 @@
 
 .stat dd {
   margin: 0;
-  font-family: var(--landing-serif);
+  font-family: var(--landing-pixel);
   font-size: 2rem;
-  font-weight: 550;
+  font-weight: 400;
   line-height: 1;
 }
 
 .stat dt {
   margin-top: 0.35rem;
-  font-family: var(--landing-mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.16em;
+  font-family: var(--landing-pixel);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--landing-ink-faint);
 }
@@ -186,9 +186,9 @@
 
 .corner {
   position: absolute;
-  font-family: var(--landing-mono);
-  font-size: 0.6rem;
-  letter-spacing: 0.16em;
+  font-family: var(--landing-pixel);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--landing-ink-faint);
 }
