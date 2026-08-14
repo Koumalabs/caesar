@@ -16,11 +16,16 @@
     "test:watch": "vitest",
     "caesar": "node packages/cli/dist/bin.js",
     "build:binary": "bash scripts/build-binary.sh",
-    "assets:sync": "node scripts/generate-agent-assets.mjs"
+    "assets:sync": "node scripts/generate-agent-assets.mjs",
+    "website:start": "pnpm --filter website start",
+    "website:build": "pnpm --filter website build"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
     "typescript": "~5.9.3",
     "vitest": "^4.1.10"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["core-js"]
   }
 }
