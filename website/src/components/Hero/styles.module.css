@@ -178,10 +178,8 @@
   justify-content: center;
   align-self: stretch;
   min-height: 20rem;
+  padding: 3rem 1.25rem;
   border: 1px solid var(--landing-hairline);
-  background-image: linear-gradient(var(--landing-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--landing-grid) 1px, transparent 1px);
-  background-size: 28px 28px;
 }
 
 .corner {
@@ -216,7 +214,7 @@
 /* The MCP session window. Dark by definition in both site themes, like
    every terminal on the page: literal colors, never --landing-* variables. */
 .demo {
-  width: min(92%, 26rem);
+  width: min(100%, 30rem);
   overflow: hidden;
   border: 1px solid rgba(240, 234, 217, 0.12);
   border-radius: 8px;
@@ -225,29 +223,29 @@
 }
 
 .demoTitlebar {
-  padding: 0.5rem 0.9rem;
+  padding: 0.6rem 1rem;
   background: rgba(240, 234, 217, 0.04);
   border-bottom: 1px solid rgba(240, 234, 217, 0.1);
   font-family: var(--landing-mono);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--caesar-dim);
 }
 
 .demoBody {
   margin: 0;
-  padding: 1rem 1.1rem 1.1rem;
+  padding: 1.1rem 1.2rem 1.2rem;
   overflow-x: auto;
   background: transparent;
   font-family: var(--landing-mono);
-  font-size: 0.72rem;
-  line-height: 1.75;
+  font-size: 0.85rem;
+  line-height: 1.8;
   color: #f0ead9;
 }
 
 .demoLine {
   display: block;
   white-space: pre;
-  min-height: 1.75em;
+  min-height: 1.8em;
   opacity: 1;
   transition: opacity 0.3s ease;
 }

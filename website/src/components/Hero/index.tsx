@@ -22,8 +22,9 @@ type DemoLine = {
 
 const DEMO_LINES: readonly DemoLine[] = [
   {kind: 'call', text: '▸ caesar_delegate'},
-  {kind: 'arg', text: '    agent: "opencode" · isolation: "worktree"'},
-  {kind: 'arg', text: '    objective: "Add a --json flag to caesar status"'},
+  {kind: 'arg', text: '    agent: "opencode" · model: "deepseek-v4-pro"'},
+  {kind: 'arg', text: '    isolation: "worktree"'},
+  {kind: 'arg', text: '    objective: "Add a --json flag to status"'},
   {kind: 'result', text: '◂ task_id: "t_4b21c9de"'},
   {kind: 'call', text: '▸ caesar_await'},
   {kind: 'ok', text: '◂ succeeded · changes_verified_by: "git"'},
