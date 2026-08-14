@@ -97,13 +97,6 @@ say "installing dependencies (website workspace skipped)"
 say "building the CLI (tsc -b)"
 (cd "$INSTALL_DIR" && $PNPM run build </dev/null >&2)
 
-# On a first install, pnpm warns that it cannot create the `caesar-channel`
-# bin shims: they point into dist/, which only exists after the build above.
-# Nothing resolves those shims at runtime (the engine invokes the channel via
-# process.execPath and a dynamically resolved path), but a second, silent
-# install pass recreates them now that dist/ exists, leaving the tree clean.
-(cd "$INSTALL_DIR" && $PNPM --filter '!website' install --frozen-lockfile --reporter=silent </dev/null >&2) || true
-
 # --- launcher ----------------------------------------------------------------
 
 mkdir -p "$BIN_DIR"
