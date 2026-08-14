@@ -87,10 +87,14 @@ under `.caesar/roles/<name>.md` — written by `caesar init`, and tolerated as a
 works, with no system prompt).
 
 A role's system prompt is prepended to the task's `context`, separated by a horizontal rule. Its
-`mode`, `isolation`, `network` and `timeout` fill in whatever the delegation did not state
-explicitly. The chain is walked in declaration order, skipping agents whose binary is not installed
-and agents the policy refuses; `caesar role list` and `caesar_list_roles` both show which one would be
-picked right now and why the earlier candidates were skipped.
+`mode`, `isolation`, `network`, optional `model` and `timeout` fill in whatever the delegation did
+not state explicitly. The chain is walked in declaration order, skipping agents whose binary is not
+installed and agents the policy refuses; `caesar role list` and `caesar_list_roles` both show which
+one would be picked right now and why the earlier candidates were skipped.
+
+A role's `model` applies to **whichever agent the fallback elects** — model names belong to each
+provider, so a chain mixing providers only makes sense with a name they all accept, or a single
+agent. It beats the `[models]` per-agent default and loses to an explicit `--model`/`model:`.
 
 ## `[worktree]` — the workshop
 
@@ -168,6 +172,43 @@ is confined — the agent's network capability then moves from "unknown" to "con
 A declared agent otherwise has no capabilities: no native output schema, no MCP channel. It uses the
 most tolerant report tier, which asks only that it read `$CAESAR_TASK_FILE` and write
 `$CAESAR_REPORT_PATH`. See `references/protocol.md`.
+
+## `[models]` — default model per agent
+
+```toml
+[models]
+codex = "gpt-5.2-codex"
+claude = "claude-opus-5"
+```
+
+One key per agent id, native or declared. The value is passed to the agent's CLI (`-m`/`--model`, or
+the `{{model}}` token of an `[[agent]]` template) for every delegation that names no model itself.
+Resolution order, first hit wins:
+
+1. explicit `--model` (`caesar run`) or `model:` (`caesar_delegate`);
+2. the role's `model`;
+3. `[models].<agent>` — looked up for the agent the delegation actually elected;
+4. nothing: the provider's own default.
+
+A table of its own, deliberately **not** a field on `[[agent]]`: declaring an `[[agent]]` entry with
+a native id replaces the native adapter entirely, capabilities included — far too heavy a gesture for
+a mere model preference.
+
+Merged key by key across layers, like the fields of `[policy]`: a project layer that declares `codex`
+says nothing about the other agents. The same limit follows: a more specific layer cannot *cancel* an
+inherited key, only redeclare it — `caesar agents unset-model` removes the key from the layer that
+declares it (it names that layer when you target another).
+
+An agent without the "model" capability (a generic `[[agent]]` whose `args` carry no `{{model}}`):
+an explicit `--model`/`model:` is **refused** before anything starts; a config-derived model (role or
+table) is dropped with a warning at launch and an `info` finding in the report — a delegation is
+never failed over a default the caller did not ask for. An empty value is refused at load time:
+removing a default means deleting the key, not emptying it.
+
+Set with `caesar agents set-model <id> <model>` / `unset-model <id>` (`--global`/`--local`, project
+by default), shown by `caesar agents list` (the `model` column marks an inapplicable default as
+`(ignored)`), and editable in the `caesar config` TUI (key `m` on the Agents tab, `Model` field on
+the Roles tab).
 
 ## `max_parallel`
 

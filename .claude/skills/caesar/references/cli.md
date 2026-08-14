@@ -114,13 +114,15 @@ it knowingly with `--force`.
 | `caesar agents disable <id>` | scope flags |
 | `caesar agents add <id>` | `--bin <command>` (**required**), `--args <template>` (default `{{prompt}}`), `--display-name <name>`, `--cwd-mode <process\|flag>` (default `process`), `--read-only-native`, scope flags |
 | `caesar agents remove <id>` | scope flags |
+| `caesar agents set-model <id> <model>` | scope flags — default model for this agent (`[models]` table); beaten by a role's `model`, then by an explicit `--model` |
+| `caesar agents unset-model <id>` | scope flags — removes the key from the targeted layer (names the declaring layer when you target another) |
 | `caesar agents test <id>` | `--yes` (**required** — the test runs a real read-only micro-task and consumes the provider's quota) |
 | `caesar policy show` | — (prints the effective policy with the provenance of each value) |
 | `caesar policy allow <id>` | scope flags |
 | `caesar policy deny <id>` | scope flags |
 | `caesar role list` | — (with the agent each role would pick today) |
 | `caesar role show <name>` | — (system prompt included) |
-| `caesar role add <name>` | `--purpose <text>`, `--agents <ids>` (comma-separated, in fallback order), `--mode <read-only\|write>`, `--isolation <inplace\|worktree\|auto>`, `--network <auto\|on\|off>`, `--timeout <duration>`, scope flags |
+| `caesar role add <name>` | `--purpose <text>`, `--agents <ids>` (comma-separated, in fallback order), `--mode <read-only\|write>`, `--isolation <inplace\|worktree\|auto>`, `--network <auto\|on\|off>`, `--model <model>`, `--timeout <duration>`, scope flags |
 | `caesar role remove <name>` | scope flags |
 
 **Scope flags** — `--global` (the global layer) and `--local` (the project's untracked local layer)
