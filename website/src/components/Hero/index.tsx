@@ -1,25 +1,87 @@
 import type {ReactNode} from 'react';
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import Link from '@docusaurus/Link';
 import Translate, {translate} from '@docusaurus/Translate';
 import SectionHeader from '../SectionHeader';
 import styles from './styles.module.css';
 
 /**
- * The six lines of the "CAESAR" wordmark, ANSI Shadow style — copied
- * verbatim from `packages/theme/src/wordmark.ts` (`WORDMARK_LINES`), the
- * same six lines the CLI itself prints on startup. Purely decorative
- * (`aria-hidden`): the page's accessible name comes from the <h1>, not
- * from this <pre>.
+ * The hero panel plays the product's core loop: a Claude instance driving
+ * an OpenCode delegation through caesar's MCP tools. Tool names, argument
+ * names and report fields are the real ones from packages/mcp-server
+ * (caesar_delegate → task_id, caesar_await → normalized report with
+ * changes_verified_by, caesar_apply → git apply --3way, never a commit);
+ * the session itself is abridged, and the corner label says so. Purely
+ * decorative (`aria-hidden`), hence the animation carries no content of
+ * its own; reduced-motion users get the full transcript at rest.
  */
-const WORDMARK_LINES: readonly string[] = [
-  " ██████╗ █████╗ ███████╗███████╗ █████╗ ██████╗ ",
-  "██╔════╝██╔══██╗██╔════╝██╔════╝██╔══██╗██╔══██╗",
-  "██║     ███████║█████╗  ███████╗███████║██████╔╝",
-  "██║     ██╔══██║██╔══╝  ╚════██║██╔══██║██╔══██╗",
-  "╚██████╗██║  ██║███████╗███████║██║  ██║██║  ██║",
-  " ╚═════╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝",
+type DemoLine = {
+  kind: 'call' | 'arg' | 'result' | 'ok' | 'blank';
+  text: string;
+};
+
+const DEMO_LINES: readonly DemoLine[] = [
+  {kind: 'call', text: '▸ caesar_delegate'},
+  {kind: 'arg', text: '    agent: "opencode" · isolation: "worktree"'},
+  {kind: 'arg', text: '    objective: "Add a --json flag to caesar status"'},
+  {kind: 'result', text: '◂ task_id: "t_4b21c9de"'},
+  {kind: 'call', text: '▸ caesar_await'},
+  {kind: 'ok', text: '◂ succeeded · changes_verified_by: "git"'},
+  {kind: 'result', text: '◂ ~ modified src/commands/status.ts'},
+  {kind: 'call', text: '▸ caesar_diff'},
+  {kind: 'result', text: '◂ the diff — your repo still untouched'},
+  {kind: 'call', text: '▸ caesar_apply'},
+  {kind: 'ok', text: '◂ applied — git apply --3way, no commit'},
 ];
+
+const DEMO_TICK_MS = 800;
+const DEMO_HOLD_TICKS = 5;
+
+function McpDemo(): ReactNode {
+  // SSR and no-JS render the full transcript; the loop only starts on the
+  // client, and never starts for prefers-reduced-motion users.
+  const [step, setStep] = useState(DEMO_LINES.length);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
+    let tick = 0;
+    setStep(0);
+    const id = window.setInterval(() => {
+      tick += 1;
+      if (tick > DEMO_LINES.length + DEMO_HOLD_TICKS) {
+        tick = 0;
+      }
+      setStep(Math.min(tick, DEMO_LINES.length));
+    }, DEMO_TICK_MS);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <div className={styles.demo}>
+      <div className={styles.demoTitlebar}>claude code · mcp → caesar</div>
+      <pre className={styles.demoBody}>
+        {DEMO_LINES.map((line, i) => (
+          <span
+            key={i}
+            className={[
+              styles.demoLine,
+              line.kind === 'call' && styles.demoCall,
+              line.kind === 'arg' && styles.demoArg,
+              line.kind === 'result' && styles.demoResult,
+              line.kind === 'ok' && styles.demoOk,
+              i >= step && styles.demoHidden,
+            ]
+              .filter(Boolean)
+              .join(' ')}>
+            {line.text}
+          </span>
+        ))}
+      </pre>
+    </div>
+  );
+}
 
 /**
  * Real, copy-pasteable shell input — technical identifiers stay out of
@@ -171,21 +233,12 @@ export default function Hero(): ReactNode {
           </div>
 
           <div className={styles.panel} aria-hidden="true">
-            <span className={`${styles.corner} ${styles.cornerTl}`}>mark · ▞▚</span>
-            <span className={`${styles.corner} ${styles.cornerTr}`}>ansi shadow · 6 lines</span>
-            <pre className={styles.wordmark}>
-              {WORDMARK_LINES.map((line, i) => (
-                <span
-                  key={i}
-                  className={styles.wordmarkLine}
-                  style={{color: `var(--caesar-ramp-${i})`}}>
-                  {line}
-                </span>
-              ))}
-            </pre>
-            <span className={`${styles.corner} ${styles.cornerBl}`}>
-              ramp · #EAA52E → #9F6E1F
+            <span className={`${styles.corner} ${styles.cornerTl}`}>mcp · 10 tools</span>
+            <span className={`${styles.corner} ${styles.cornerTr}`}>
+              claude code → caesar → opencode
             </span>
+            <McpDemo />
+            <span className={`${styles.corner} ${styles.cornerBl}`}>session · abridged</span>
             <span className={`${styles.corner} ${styles.cornerBr}`}>oacp · fs-native</span>
           </div>
         </div>

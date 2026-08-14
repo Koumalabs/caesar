@@ -213,24 +213,63 @@
   right: 0.9rem;
 }
 
-/* Decorative ANSI Shadow wordmark. Its own overflow-x handles narrow
-   viewports so the page itself never scrolls horizontally. */
-.wordmark {
-  margin: 0;
-  padding: 0 0.5rem;
-  max-width: 100%;
-  width: max-content;
-  overflow-x: auto;
-  background: none;
-  border: none;
-  font-family: var(--landing-mono);
-  font-size: 0.78rem;
-  line-height: 1.2;
-  white-space: pre;
+/* The MCP session window. Dark by definition in both site themes, like
+   every terminal on the page: literal colors, never --landing-* variables. */
+.demo {
+  width: min(92%, 26rem);
+  overflow: hidden;
+  border: 1px solid rgba(240, 234, 217, 0.12);
+  border-radius: 8px;
+  background: var(--caesar-accent-ink);
+  box-shadow: 0 24px 48px -28px rgba(0, 0, 0, 0.6);
 }
 
-.wordmarkLine {
+.demoTitlebar {
+  padding: 0.5rem 0.9rem;
+  background: rgba(240, 234, 217, 0.04);
+  border-bottom: 1px solid rgba(240, 234, 217, 0.1);
+  font-family: var(--landing-mono);
+  font-size: 0.72rem;
+  color: var(--caesar-dim);
+}
+
+.demoBody {
+  margin: 0;
+  padding: 1rem 1.1rem 1.1rem;
+  overflow-x: auto;
+  background: transparent;
+  font-family: var(--landing-mono);
+  font-size: 0.72rem;
+  line-height: 1.75;
+  color: #f0ead9;
+}
+
+.demoLine {
   display: block;
+  white-space: pre;
+  min-height: 1.75em;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.demoHidden {
+  opacity: 0;
+}
+
+.demoCall {
+  color: #eaa52e;
+}
+
+.demoArg {
+  color: var(--caesar-dim);
+}
+
+.demoResult {
+  color: #f0ead9;
+}
+
+.demoOk {
+  color: var(--caesar-ok);
 }
 
 /* --- responsive ----------------------------------------------------------- */
@@ -255,7 +294,7 @@
     gap: 1.5rem;
   }
 
-  .wordmark {
-    font-size: 0.45rem;
+  .demoBody {
+    font-size: 0.6rem;
   }
 }
