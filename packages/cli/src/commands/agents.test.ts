@@ -4,9 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig } from "@caesar/core";
+import { loadConfig, loadLayer, saveLayer } from "@caesar/core";
 import { makeIo, withFakeAgentAsBin, withFakeHome, type CapturedIo } from "../../test/support.js";
-import { runAgentsAdd, runAgentsDisable, runAgentsEnable, runAgentsList, runAgentsRemove, runAgentsTest } from "./agents.js";
+import {
+  runAgentsAdd,
+  runAgentsDisable,
+  runAgentsEnable,
+  runAgentsList,
+  runAgentsRemove,
+  runAgentsSetModel,
+  runAgentsTest,
+  runAgentsUnsetModel,
+} from "./agents.js";
 import { EXIT_OK, EXIT_USAGE } from "../output.js";
 
 const execFileAsync = promisify(execFile);
@@ -220,6 +229,122 @@ describe("caesar agents add / remove", () => {
       const code = await runAgentsRemove(root, "codex", {}, io);
       expect(code).toBe(EXIT_USAGE);
       expect(io.stderrText()).toMatch(/agents disable codex/);
+    });
+  });
+});
+
+describe("caesar agents set-model / unset-model", () => {
+  let root: string;
+  let io: CapturedIo;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "caesar-cli-agents-model-"));
+    io = makeIo();
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("writes the targeted layer (project by default), keeping the rest of what it declared", async () => {
+    await withFakeHome(async () => {
+      await saveLayer("project", root, { policy: { max_parallel: 7 } });
+      expect(await runAgentsSetModel(root, "codex", "gpt-5.2", {}, io)).toBe(EXIT_OK);
+
+      const layer = await loadLayer("project", root);
+      expect(layer.models).toEqual({ codex: "gpt-5.2" });
+      expect(layer.policy?.max_parallel).toBe(7);
+      expect((await loadConfig(root)).config.models["codex"]).toBe("gpt-5.2");
+    });
+  });
+
+  it("--global writes the global layer, and it alone", async () => {
+    await withFakeHome(async () => {
+      expect(await runAgentsSetModel(root, "codex", "gpt-5.2", { global: true }, io)).toBe(EXIT_OK);
+      expect((await loadLayer("global", root)).models).toEqual({ codex: "gpt-5.2" });
+      expect((await loadLayer("project", root)).models).toBeUndefined();
+    });
+  });
+
+  it("refuses an agent unknown to the catalog, naming it", async () => {
+    await withFakeHome(async () => {
+      const code = await runAgentsSetModel(root, "ghost", "m", {}, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toContain("ghost");
+    });
+  });
+
+  it("recognizes a generic agent declared in another layer than the targeted one", async () => {
+    await withFakeHome(async () => {
+      // Declared in the global layer, model written to the project layer:
+      // existence is judged on the merged catalog, not on the target.
+      await saveLayer("global", root, { agents: [{ id: "aider", bin: "aider", args: ["{{model}}", "{{prompt}}"] }] });
+      expect(await runAgentsSetModel(root, "aider", "m", {}, io)).toBe(EXIT_OK);
+      expect((await loadLayer("project", root)).models).toEqual({ aider: "m" });
+    });
+  });
+
+  it("an agent without the model capability: records the default anyway, but says it", async () => {
+    await withFakeHome(async () => {
+      await runAgentsAdd(root, "aider", { bin: "aider", args: "--message {{prompt}}" }, makeIo());
+
+      const code = await runAgentsSetModel(root, "aider", "m", { json: true }, io);
+      expect(code).toBe(EXIT_OK);
+      const parsed = JSON.parse(io.stdoutText());
+      expect(parsed.capability_missing).toBe(true);
+      expect((await loadLayer("project", root)).models).toEqual({ aider: "m" });
+
+      const humanIo = makeIo();
+      expect(await runAgentsSetModel(root, "aider", "m2", {}, humanIo)).toBe(EXIT_OK);
+      expect(humanIo.stdoutText()).toMatch(/does not support choosing a model/);
+    });
+  });
+
+  it("unset-model removes the key and keeps the others; an emptied table disappears from the layer", async () => {
+    await withFakeHome(async () => {
+      await runAgentsSetModel(root, "codex", "a", {}, makeIo());
+      await runAgentsSetModel(root, "claude", "b", {}, makeIo());
+
+      expect(await runAgentsUnsetModel(root, "codex", {}, io)).toBe(EXIT_OK);
+      expect((await loadLayer("project", root)).models).toEqual({ claude: "b" });
+
+      expect(await runAgentsUnsetModel(root, "claude", {}, makeIo())).toBe(EXIT_OK);
+      // An empty record would merely be dead weight in a key-by-key merge —
+      // unlike policy lists, it can mask nothing: the key goes entirely.
+      expect((await loadLayer("project", root)).models).toBeUndefined();
+    });
+  });
+
+  it("unset-model on a layer that does not declare the key names the declaring layer", async () => {
+    await withFakeHome(async () => {
+      await runAgentsSetModel(root, "codex", "a", { global: true }, makeIo());
+
+      const code = await runAgentsUnsetModel(root, "codex", {}, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toContain("--global");
+    });
+  });
+
+  it("unset-model when no layer declares the key says there is nothing to remove", async () => {
+    await withFakeHome(async () => {
+      const code = await runAgentsUnsetModel(root, "codex", {}, io);
+      expect(code).toBe(EXIT_USAGE);
+      expect(io.stderrText()).toMatch(/no layer/i);
+    });
+  });
+
+  it("agents list publishes the effective default model and its provenance", async () => {
+    await withFakeHome(async () => {
+      await runAgentsSetModel(root, "codex", "gpt-5.2", {}, makeIo());
+
+      const code = await runAgentsList(root, { json: true }, io);
+      expect(code).toBe(EXIT_OK);
+      const parsed = JSON.parse(io.stdoutText());
+      const codex = parsed.agents.find((a: { id: string }) => a.id === "codex");
+      expect(codex.default_model).toBe("gpt-5.2");
+      expect(codex.model_provenance).toBe("project");
+      const claude = parsed.agents.find((a: { id: string }) => a.id === "claude");
+      expect(claude.default_model).toBeUndefined();
     });
   });
 });

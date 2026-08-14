@@ -30,6 +30,7 @@ import {
   loadConfig,
   loadLayer,
   materializePolicyList,
+  modelProvenance,
   runTask,
   saveLayer,
   splitArgTemplate,
@@ -82,6 +83,11 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
         policy: describeAgentPolicy(config.policy, def.id),
         // "default" for the five agents of the native catalog: no layer declares them, they are wired into the registry.
         provenance: agentProvenance(layers, def.id),
+        // Provenance only alongside a value: "default" for every agent
+        // without one would merely be noise in the JSON.
+        ...(config.models[def.id] !== undefined
+          ? { default_model: config.models[def.id], model_provenance: modelProvenance(layers, def.id) }
+          : {}),
       };
     }),
   );
@@ -100,11 +106,18 @@ export async function runAgentsList(root: string, options: AgentsListOptions, io
   const tableRows: Cell[][] = rows.map((r) => [
     r.id,
     r.installed ? homePath(r.path ?? "found") : { text: "missing", token: "bad" },
+    // "(ignored)" when the agent cannot choose a model: a configured default
+    // displayed bare would read as applied when the delegation drops it.
+    r.default_model === undefined
+      ? { text: "-", token: "dim" }
+      : r.capabilitiesShort.includes("model")
+        ? r.default_model
+        : { text: `${r.default_model} (ignored)`, token: "warn" },
     { text: r.capabilitiesShort.join(" ") || "-", token: "dim" },
     r.policy.allowed ? { text: "allowed", token: "ok" } : { text: "denied", token: "bad" },
     { text: r.provenance, token: "dim" },
   ]);
-  printTable(io, ["agent", "binary", "capabilities", "policy", "provenance"], tableRows);
+  printTable(io, ["agent", "binary", "model", "capabilities", "policy", "provenance"], tableRows);
 
   const denied = rows.filter((r) => !r.policy.allowed);
   if (denied.length > 0) {
@@ -325,6 +338,102 @@ export async function runAgentsRemove(root: string, id: string, options: AgentsR
   }
   printDone(io, `Agent "${id}" removed (${scopeLabel(scope)} layer).`);
   if (NATIVE_IDS.has(id)) printNote(io, `  The native "${id}" adapter takes over again.`);
+  return EXIT_OK;
+}
+
+// ---------------------------------------------------------------------------
+// Default model (`[models]`)
+// ---------------------------------------------------------------------------
+
+export interface AgentsModelOptions extends ScopeOptions {
+  json?: boolean;
+}
+
+export async function runAgentsSetModel(root: string, id: string, model: string, options: AgentsModelOptions, io: Io): Promise<number> {
+  const scope = resolveScope(options);
+  if (typeof scope !== "string") {
+    printError(io, scope.error);
+    return EXIT_USAGE;
+  }
+
+  const trimmed = model.trim();
+  if (!trimmed) {
+    printError(io, `An empty model removes nothing: to drop the default, "caesar agents unset-model ${id}".`);
+    return EXIT_USAGE;
+  }
+
+  // Existence judged on the merged catalog (native + every layer's
+  // [[agent]]), never on the targeted layer alone: declaring the agent
+  // globally and its model per project is a legitimate split.
+  const { config } = await loadConfig(root);
+  const def = findAgentDefinition(id, config.agents);
+  if (!def) {
+    printError(io, `Unknown agent: "${id}". Check the identifier with "caesar agents list".`);
+    return EXIT_USAGE;
+  }
+
+  const layer = await loadLayer(scope, root);
+  await saveLayer(scope, root, { ...layer, models: { ...layer.models, [id]: trimmed } });
+
+  // Recorded even without the capability — the declaration may target a
+  // shared layer, or a generic agent whose args will gain {{model}} later —
+  // but never silently: the delegation will drop it with a report finding.
+  const capabilityMissing = !def.capabilities.model;
+
+  if (options.json) {
+    printJson(io, { id, model: trimmed, scope, ...(capabilityMissing ? { capability_missing: true } : {}) });
+    return EXIT_OK;
+  }
+  printDone(io, `Default model for "${id}" set to "${trimmed}" (${scopeLabel(scope)} layer).`);
+  if (capabilityMissing) {
+    writeLine(
+      io.stdout,
+      `Warning: "${id}" does not support choosing a model — the default is recorded but delegations will ignore it (with a report finding) until the agent gains that capability.`,
+    );
+  }
+  return EXIT_OK;
+}
+
+export async function runAgentsUnsetModel(root: string, id: string, options: AgentsModelOptions, io: Io): Promise<number> {
+  const scope = resolveScope(options);
+  if (typeof scope !== "string") {
+    printError(io, scope.error);
+    return EXIT_USAGE;
+  }
+
+  const layer = await loadLayer(scope, root);
+  if (layer.models?.[id] === undefined) {
+    // Same limit as `caesar agents remove`: keyed merging replaces, it never
+    // deletes by absence — removing the key from a layer that does not
+    // declare it would change nothing in the merge.
+    const { layers } = await loadConfig(root);
+    const actual = modelProvenance(layers, id);
+    if (actual === "default") {
+      printError(io, `Nothing to remove for agent "${id}": no layer declares a default model for it.`);
+    } else {
+      printError(
+        io,
+        `Agent "${id}"'s default model is not declared by the ${scopeLabel(scope)} layer: it comes from the ${scopeLabel(actual)} layer — retry with ${scopeFlagHint(actual)}.`,
+      );
+    }
+    return EXIT_USAGE;
+  }
+
+  const models = { ...layer.models };
+  delete models[id];
+  const next = { ...layer };
+  // An emptied table goes entirely: in a key-by-key merge it can mask
+  // nothing (unlike the policy lists, replaced as a whole), so keeping
+  // `[models]` around would only be dead weight in the file.
+  if (Object.keys(models).length > 0) next.models = models;
+  else delete next.models;
+  await saveLayer(scope, root, next);
+
+  if (options.json) {
+    printJson(io, { id, removed: true, scope });
+    return EXIT_OK;
+  }
+  printDone(io, `Default model for "${id}" removed (${scopeLabel(scope)} layer).`);
   return EXIT_OK;
 }
 

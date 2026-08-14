@@ -40,7 +40,9 @@ import {
   runAgentsEnable,
   runAgentsList,
   runAgentsRemove,
+  runAgentsSetModel,
   runAgentsTest,
+  runAgentsUnsetModel,
 } from "./commands/agents.js";
 import type { AgentsAddOptions } from "./commands/agents.js";
 import { runChannelServe } from "./commands/channel.js";
@@ -290,6 +292,31 @@ export function buildProgram(io: Io, exitCodeRef: { value: number }, argv: reado
       const opts = command.optsWithGlobals<typeof options>();
       await run(async () =>
         runAgentsRemove(await resolveRoot(opts.root), id, { json: opts.json, global: opts.global, local: opts.local }, io),
+      );
+    });
+
+  withScopeOptions(withCommonOptions(agents.command("set-model")))
+    .description(
+      "Sets the agent's default model ([models] table; project layer by default, --global/--local). Beaten by a role's model, then by an explicit --model.",
+    )
+    .argument("<id>", "Agent identifier")
+    .argument("<model>", "Model name, as the agent's own CLI accepts it")
+    .action(
+      async (id: string, model: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
+        const opts = command.optsWithGlobals<typeof options>();
+        await run(async () =>
+          runAgentsSetModel(await resolveRoot(opts.root), id, model, { json: opts.json, global: opts.global, local: opts.local }, io),
+        );
+      },
+    );
+
+  withScopeOptions(withCommonOptions(agents.command("unset-model")))
+    .description("Removes the agent's default model from the targeted layer (project layer by default; --global/--local).")
+    .argument("<id>", "Agent identifier")
+    .action(async (id: string, options: GlobalOptions & { global?: boolean; local?: boolean }, command: Command) => {
+      const opts = command.optsWithGlobals<typeof options>();
+      await run(async () =>
+        runAgentsUnsetModel(await resolveRoot(opts.root), id, { json: opts.json, global: opts.global, local: opts.local }, io),
       );
     });
 
