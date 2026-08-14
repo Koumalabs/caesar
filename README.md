@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" width="96" alt="caesar — the wordmark's ANSI Shadow initial, in the brand gold ramp" />
+</p>
+
 # caesar
 
 An orchestrator that lets a coding agent — typically Claude Code — delegate tasks to **external** sub-agents (Codex, Antigravity, OpenCode, Copilot, or even another Claude Code instance) run as plain CLI processes, exactly the way it would delegate to a native sub-agent.
