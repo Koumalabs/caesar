@@ -17,15 +17,21 @@
     "caesar": "node packages/cli/dist/bin.js",
     "build:binary": "bash scripts/build-binary.sh",
     "assets:sync": "node scripts/generate-agent-assets.mjs",
+    "og:build": "node scripts/generate-og.mjs",
     "website:start": "pnpm --filter website start",
     "website:build": "pnpm --filter website build"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
     "@types/node": "^24.10.1",
+    "fontkit": "2.0.4",
     "typescript": "~5.9.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wawoff2": "2.0.1"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["core-js"]
+    "onlyBuiltDependencies": [
+      "core-js"
+    ]
   }
 }

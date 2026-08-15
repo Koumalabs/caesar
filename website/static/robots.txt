@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+# One sitemap per locale — Docusaurus emits them separately.
+Sitemap: https://caesar.koumalabs.org/sitemap.xml
+Sitemap: https://caesar.koumalabs.org/fr/sitemap.xml

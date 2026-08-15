@@ -1,0 +1,21 @@
+{
+  "name": "caesar",
+  "short_name": "caesar",
+  "description": "Delegate coding tasks to external agent CLIs — safely.",
+  "start_url": "/",
+  "display": "browser",
+  "theme_color": "#0c0904",
+  "background_color": "#0c0904",
+  "icons": [
+    {
+      "src": "/img/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/img/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
